@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Starting up...")
+    from backend.database import engine
+    dialect = getattr(engine.dialect, "name", "sqlite")
+    is_postgres = dialect == "postgresql"
     try:
         from alembic.config import Config
         from alembic import command
@@ -31,7 +34,14 @@ async def lifespan(app: FastAPI):
         command.upgrade(alembic_cfg, "head")
         log.info("Database migrations applied successfully.")
     except Exception as e:
-        log.warning("Alembic upgrade on startup skipped or failed (%s). Falling back if needed.", e)
+        log.error("Alembic upgrade failed on startup: %s", e)
+        if is_postgres:
+            log.critical("FATAL: Database migration failed on PostgreSQL. Halting startup.")
+            raise RuntimeError(f"Database migration failed on PostgreSQL: {e}") from e
+        else:
+            log.warning("Falling back to Base.metadata.create_all on SQLite (%s)...", e)
+            from backend.database import Base
+            Base.metadata.create_all(bind=engine)
     yield
     log.info("Shutting down.")
 

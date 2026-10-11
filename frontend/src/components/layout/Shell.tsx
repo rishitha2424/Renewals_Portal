@@ -56,7 +56,15 @@ export default function Shell() {
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {dbHealth?.is_legacy && (
+        {dbHealth?.status === 'error' && (
+          <div className="bg-rose-600 text-white px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-rose-700 z-50 shadow-sm">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              Database Warning ({dbHealth?.dialect || 'unknown'}): {dbHealth?.error || `Schema revision (${dbHealth?.alembic_revision ?? 'none'}) is behind Alembic head (${dbHealth?.alembic_head ?? 'unknown'})`}
+            </span>
+          </div>
+        )}
+        {dbHealth?.status !== 'error' && dbHealth?.is_legacy && (
           <div className="bg-amber-100 text-amber-900 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-amber-200 z-50">
             <AlertTriangle className="w-4 h-4" />
             Warning: The connected database was created by an older version of the app. Please re-upload the latest Excel snapshots for full compatibility.
