@@ -168,8 +168,15 @@ def validate_upload(
         files_dict["fiscal_q4"] = fq4_path
 
     svc = IngestService(db)
-    result = svc.validate_upload(ctx, files_dict, as_of, yest)
-    return result
+    try:
+        result = svc.validate_upload(ctx, files_dict, as_of, yest)
+        return result
+    finally:
+        # Clean up temporary uploaded files after validate extracts dataframe payloads
+        try:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 @router.post("/commit")

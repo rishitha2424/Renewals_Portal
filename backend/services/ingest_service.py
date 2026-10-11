@@ -46,6 +46,62 @@ log = logging.getLogger(__name__)
 # Temporary in-memory cache for validated upload sessions
 _UPLOAD_SESSIONS: dict[str, dict[str, Any]] = {}
 
+def _get_sessions_storage_dir() -> Path:
+    from backend.config import settings, ROOT_DIR
+    upload_dir = getattr(settings, "UPLOAD_DIR", None)
+    if upload_dir:
+        base = Path(upload_dir) / "sessions"
+    else:
+        base = ROOT_DIR / "scratch" / "upload_sessions"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+def _save_session_to_disk(session_id: str, data: dict[str, Any]) -> None:
+    _UPLOAD_SESSIONS[session_id] = data
+    try:
+        import pickle
+        p = _get_sessions_storage_dir() / f"{session_id}.pkl"
+        with p.open("wb") as f:
+            pickle.dump({
+                "created_at": datetime.now(timezone.utc),
+                "data": data,
+            }, f)
+    except Exception as exc:
+        log.warning("Could not persist upload session %s to disk: %s", session_id, exc)
+
+def _get_session_from_disk(session_id: str) -> dict[str, Any] | None:
+    # Check in-memory first
+    if session_id in _UPLOAD_SESSIONS:
+        return _UPLOAD_SESSIONS[session_id]
+    p = _get_sessions_storage_dir() / f"{session_id}.pkl"
+    if p.exists():
+        try:
+            import pickle
+            with p.open("rb") as f:
+                saved = pickle.load(f)
+            created_at = saved.get("created_at")
+            if created_at and (datetime.now(timezone.utc) - created_at) > timedelta(hours=24):
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return None
+            data = saved.get("data")
+            if data:
+                _UPLOAD_SESSIONS[session_id] = data
+                return data
+        except Exception as exc:
+            log.warning("Could not load upload session %s from disk: %s", session_id, exc)
+    return None
+
+def _delete_session(session_id: str) -> None:
+    _UPLOAD_SESSIONS.pop(session_id, None)
+    try:
+        p = _get_sessions_storage_dir() / f"{session_id}.pkl"
+        p.unlink(missing_ok=True)
+    except Exception:
+        pass
+
 
 def compute_previous_working_day(d: date) -> date:
     weekday = d.weekday()  # Monday=0, Sunday=6
@@ -198,13 +254,24 @@ class IngestService:
             return {"errors": errors, "warnings": warnings, "can_commit": False, "session_id": None}
 
         today_mapped = _map_columns(today_raw)
-        if "opportunity_id_18" not in today_mapped.columns:
-            errors.append("Comparison Tool 'today' sheet is missing required column 'Opportunity ID 18 Digit'.")
-        if "forecast_acv_amount" not in today_mapped.columns:
-            errors.append("Comparison Tool 'today' sheet is missing required column 'Forecast ACV Amount'.")
+        required_cols = [
+            ("opportunity_id_18", "Opportunity ID 18 Digit"),
+            ("forecast_acv_amount", "Forecast ACV Amount"),
+            ("forecast_category", "Forecast Category"),
+            ("close_date", "Close Date"),
+        ]
+        for col_key, col_display in required_cols:
+            if col_key not in today_mapped.columns:
+                errors.append(f"Comparison Tool 'today' sheet is missing required column '{col_display}'.")
 
         if errors:
             return {"errors": errors, "warnings": warnings, "can_commit": False, "session_id": None}
+
+        # Check for unmapped regions
+        if "revised_sub_region" in today_mapped.columns:
+            unmapped_regions = today_mapped[today_mapped["revised_sub_region"].isna() | (today_mapped["revised_sub_region"].astype(str).str.strip().isin(["", "nan", "None"]))]
+            if len(unmapped_regions) > 0:
+                warnings.append(f"Comparison Tool 'today' sheet contains {len(unmapped_regions)} rows with unmapped or blank regions.")
 
         today_ids = today_mapped["opportunity_id_18"].dropna().astype(str).str.strip()
         dupes = today_ids[today_ids.duplicated()].unique()
@@ -298,7 +365,7 @@ class IngestService:
         
         can_commit = len(errors) == 0
         session_id = str(uuid.uuid4())
-        _UPLOAD_SESSIONS[session_id] = {
+        session_dict = {
             "data_as_of": data_as_of,
             "yesterday_date": yesterday_date,
             "files_dict": files_dict,
@@ -312,6 +379,7 @@ class IngestService:
             "snapshot_exists": snapshot_exists,
             "can_commit": can_commit,
         }
+        _save_session_to_disk(session_id, session_dict)
 
         return {
             "session_id": session_id,
@@ -331,11 +399,20 @@ class IngestService:
     # ------------------------------------------------------------------
 
     def commit_upload(self, ctx: UserContext, session_id: str, replace: bool = False) -> UploadSnapshot:
-        session_data = _UPLOAD_SESSIONS.get(session_id)
+        session_data = _get_session_from_disk(session_id)
         if not session_data:
             raise ValueError("Upload session expired or invalid. Please re-upload and re-validate files.")
         if not session_data.get("can_commit", True):
             raise ValueError("Cannot commit: this upload session had validation errors. Please re-validate.")
+
+        try:
+            return self._commit_upload_impl(ctx, session_id, session_data, replace=replace)
+        except Exception as exc:
+            self.db.rollback()
+            log.error("Commit failed for session %s: %s", session_id, exc)
+            raise
+
+    def _commit_upload_impl(self, ctx: UserContext, session_id: str, session_data: dict[str, Any], replace: bool = False) -> UploadSnapshot:
 
         data_as_of: date = session_data["data_as_of"]
         yesterday_date: date = session_data["yesterday_date"]
@@ -529,10 +606,15 @@ class IngestService:
         if yesterday_raw is not None and not yesterday_raw.empty:
             self._compute_yesterday_changelog(snap, yesterday_raw)
 
-        self.db.commit()
-        _UPLOAD_SESSIONS.pop(session_id, None)
-        log.info("Committed snapshot %s (%s) with %d rows (%d active)", snap.id, snap.snapshot_date, snap.row_count, snap.active_row_count)
-        return snap
+        try:
+            self.db.commit()
+            _delete_session(session_id)
+            log.info("Committed snapshot %s (%s) with %d rows (%d active)", snap.id, snap.snapshot_date, snap.row_count, snap.active_row_count)
+            return snap
+        except Exception as exc:
+            self.db.rollback()
+            log.error("Commit failed for snapshot %s: %s", getattr(snap, 'id', 'unknown'), exc)
+            raise
 
     
     def _clear_snapshot_rows(self, snapshot_id: str) -> None:
