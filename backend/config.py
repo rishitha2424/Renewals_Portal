@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = f"sqlite:///{ROOT_DIR / 'renewals.db'}"
 
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        """Ensure standard postgres:// or postgresql:// URLs use psycopg v3 dialect."""
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url
+
     # AI provider (stub by default; swap to "gemini" or "openai" via .env)
     AI_PROVIDER: str = "demo"          # "demo" | "gemini" | "openai" | "custom"
     AI_BASE_URL: str = ""              # e.g. https://generativelanguage.googleapis.com

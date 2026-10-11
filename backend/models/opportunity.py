@@ -8,8 +8,9 @@ from decimal import Decimal
 
 from sqlalchemy import (
     String, Numeric, Date, DateTime, Integer, Float,
-    ForeignKey, Text, Index, Boolean, JSON,
+    ForeignKey, Text, Index, Boolean, JSON, UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -72,8 +73,8 @@ class Opportunity(Base):
     in_fy2027: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
     in_q4_2026: Mapped[bool | None] = mapped_column(Boolean, nullable=True, index=True)
 
-    # Raw full attributes (all 172 columns preserved)
-    extra_attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Raw full attributes (all 172 columns preserved) — JSON on SQLite, JSONB on Postgres
+    extra_attributes: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
     # Relationships
     snapshot: Mapped["UploadSnapshot"] = relationship(  # noqa: F821
@@ -81,7 +82,12 @@ class Opportunity(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("snapshot_id", "opportunity_id_18", name="uq_opp_snapshot_opportunity_id"),
         Index("ix_opp_snapshot_opp_id", "snapshot_id", "opportunity_id_18"),
+        Index("ix_opp_snap_sales_type_fiscal", "snapshot_id", "sales_type", "fiscal_period"),
+        Index("ix_opp_snap_revised_sub_region", "snapshot_id", "revised_sub_region"),
+        Index("ix_opp_snap_forecast_category", "snapshot_id", "forecast_category"),
+        Index("ix_opp_snap_approval_status", "snapshot_id", "approval_status"),
         Index("ix_opp_snap_sales_type", "snapshot_id", "sales_type"),
         Index("ix_opp_snap_fiscal_period", "snapshot_id", "fiscal_period"),
         Index("ix_opp_snap_service_expiry", "snapshot_id", "service_expiry_period"),
