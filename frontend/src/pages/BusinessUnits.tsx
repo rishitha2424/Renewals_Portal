@@ -190,6 +190,10 @@ function BusinessUnitsContent() {
   }
   const donutColors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#6366f1']
 
+  // Determine whether Pipeline has non-zero cells in as-of or comparisons
+  const hasPipelineInGrid = rows.some((r: any) => (r.cells?.['Pipeline']?.count ?? 0) > 0 || (r.cells?.['Pipeline']?.acv ?? 0) > 0 || (r.cells?.['Pipeline']?.delta_yesterday?.count ?? 0) !== 0 || (r.cells?.['Pipeline']?.delta_lastweek?.count ?? 0) !== 0) || (totals.categories?.['Pipeline']?.count ?? 0) > 0
+  const displayCategories = categories.filter((c: string) => c !== 'Pipeline' || hasPipelineInGrid)
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
@@ -276,7 +280,7 @@ function BusinessUnitsContent() {
           <CompactGrid
             title="BU x Forecast Category Heatmap"
             rowLabelName="Business Unit"
-            columns={categories.filter((c: string) => c !== 'Pipeline')}
+            columns={displayCategories}
             rows={gridRows}
             totals={{ category: totals.categories, grand: totals.grand }}
             deltas={gridDeltas}
@@ -364,7 +368,7 @@ function BusinessUnitsContent() {
           <CompactGrid
             title="Business Units"
             rowLabelName="Business Unit"
-            columns={categories.filter((c: string) => c !== 'Pipeline')}
+            columns={displayCategories}
             rows={gridRows}
             totals={{ category: totals.categories, grand: totals.grand }}
             deltas={gridDeltas}

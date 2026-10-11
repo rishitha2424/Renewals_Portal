@@ -235,7 +235,8 @@ export default function Dashboard() {
   const propRows  = orderRegions(propConf)
   const trendRows = orderRegions(regTrend)
 
-  const FC_COLS = ['Closed', 'Commit', 'Best Case', 'Blank'] as const
+  const showPipelineInTrend = trendRows.some((r: any) => (r.pipeline_acv ?? 0) > 0) || ((regTotals.pipeline_acv ?? 0) > 0)
+  const FC_COLS = ['Closed', 'Commit', 'Best Case', ...(showPipelineInTrend ? ['Pipeline'] : []), 'Blank'] as const
 
   return (
     <div className="space-y-6 pb-16 max-w-[1600px] mx-auto">
@@ -330,83 +331,69 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── SECTION 2 – Four category cards in one row ──────────────────────── */}
-      <div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {([
-            { key: 'Closed', label: 'Closed', dataKey: 'Closed' },
-            { key: 'Commit', label: 'Commit', dataKey: 'Commit' },
-            { key: 'Best Case', label: 'Best Case', dataKey: 'Best Case' },
-            { key: 'Blank', label: 'Not yet proposed', dataKey: 'Blank' },
-          ] as const).map(({ key, label, dataKey }) => {
-            const cat = cats[dataKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
-            const color = FORECAST_COLORS[dataKey] || '#64748b'
-            const isBlank = key === 'Blank'
-            const pipelineCat = cats['Pipeline'] ?? { count: 0, acv: 0 }
+      {/* ── SECTION 2 – Category cards in one row ──────────────────────── */}
+      {(() => {
+        const pipelineCat = cats['Pipeline'] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
+        const showPipelineCard = (pipelineCat.count ?? 0) > 0
+        const categoryCards = [
+          { key: 'Closed', label: 'Closed', dataKey: 'Closed' },
+          { key: 'Commit', label: 'Commit', dataKey: 'Commit' },
+          { key: 'Best Case', label: 'Best Case', dataKey: 'Best Case' },
+          ...(showPipelineCard ? [{ key: 'Pipeline', label: 'Pipeline', dataKey: 'Pipeline' }] : []),
+          { key: 'Blank', label: 'Not yet proposed', dataKey: 'Blank' },
+        ] as const
 
-            return (
-              <motion.div
-                key={key}
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className="card-premium p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
-                style={{ borderTop: `3px solid ${color}` }}
-                onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: dataKey }, { forecast_category: dataKey })}
-                title={`Click to view ${label} deals`}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
-                    <Pill color="slate"><Users className="w-3 h-3" />{cat.count} deals</Pill>
-                  </div>
-                  {sumLoading
-                    ? <div className="h-8 w-28 skeleton-shimmer rounded" />
-                    : <span className="font-display font-extrabold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
-                  
-                  <hr className="border-[var(--border-subtle)]" />
-                  
-                  <div className="flex flex-col gap-1">
-                    {[
-                      { l: 'vs Yesterday', d: cat.delta_yesterday },
-                      { l: 'vs Last Week', d: cat.delta_lastweek },
-                    ].map(({ l, d }) => d ? (
-                      <div key={l} className="flex items-center justify-between text-[11px]">
-                        <span className="text-[var(--text-muted)]">{l}</span>
-                        <div className="flex gap-1"><DeltaBadge val={d.count} /><AcvDelta val={d.acv} /></div>
-                      </div>
-                    ) : (
-                      <div key={l} className="flex items-center justify-between text-[11px] text-[var(--text-muted)] opacity-60">
-                        <span>{l}</span>
-                        <span>\u2014</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+        return (
+          <div>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${showPipelineCard ? 'lg:grid-cols-5' : 'xl:grid-cols-4'} gap-4`}>
+              {categoryCards.map(({ key, label, dataKey }) => {
+                const cat = cats[dataKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
+                const color = FORECAST_COLORS[dataKey] || '#64748b'
 
-                {isBlank && (
-                  <div
-                    className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (pipelineCat.count > 0) {
-                        openDealsQuery(`Other / Pipeline Deals (${pipelineCat.count} deal · ${acvM(pipelineCat.acv)})`, { category: 'Pipeline' }, { forecast_category: 'Pipeline' })
-                      }
-                    }}
-                    title={`Sum check: Closed (${cats['Closed']?.count || 0}) + Commit (${cats['Commit']?.count || 0}) + Best Case (${cats['Best Case']?.count || 0}) + Not yet proposed (${cats['Blank']?.count || 0}) + Other (${pipelineCat.count || 0}) = ${total.count} deals ($${(total.acv / 1_000_000).toFixed(2)}M)`}
+                return (
+                  <motion.div
+                    key={key}
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    className="card-premium p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
+                    style={{ borderTop: `3px solid ${color}` }}
+                    onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: dataKey }, { forecast_category: dataKey })}
+                    title={`Click to view ${label} deals`}
                   >
-                    <span className="font-medium flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                      Other / Pipeline:
-                    </span>
-                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400 hover:underline">
-                      {pipelineCat.count} deal ({acvM(pipelineCat.acv)})
-                    </span>
-                  </div>
-                )}
-              </motion.div>
-            )
-          })}
-        </div>
-      </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
+                        <Pill color="slate"><Users className="w-3 h-3" />{cat.count} deals</Pill>
+                      </div>
+                      {sumLoading
+                        ? <div className="h-8 w-28 skeleton-shimmer rounded" />
+                        : <span className="font-display font-extrabold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
+                      
+                      <hr className="border-[var(--border-subtle)]" />
+                      
+                      <div className="flex flex-col gap-1">
+                        {[
+                          { l: 'vs Yesterday', d: cat.delta_yesterday },
+                          { l: 'vs Last Week', d: cat.delta_lastweek },
+                        ].map(({ l, d }) => d ? (
+                          <div key={l} className="flex items-center justify-between text-[11px]">
+                            <span className="text-[var(--text-muted)]">{l}</span>
+                            <div className="flex gap-1"><DeltaBadge val={d.count} /><AcvDelta val={d.acv} /></div>
+                          </div>
+                        ) : (
+                          <div key={l} className="flex items-center justify-between text-[11px] text-[var(--text-muted)] opacity-60">
+                            <span>{l}</span>
+                            <span>—</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── SECTION 3 – Slippage to Next Year (Movement-based) ─────────────── */}
       <div className="card-premium p-6" style={{ borderLeft: '4px solid #F59E0B' }}>

@@ -244,17 +244,23 @@ export default function Approvals() {
 
         {/* Right: Grid */}
         <div className="xl:col-span-7">
-          <CompactGrid
-            title="Status vs. Forecast Category"
-            columns={categories.filter((c: string) => c !== 'Pipeline')}
-            rows={rowsForGrid}
-            totals={{ category: colSums, grand: { count: total.count, acv: total.acv } }}
-            deltas={deltasForGrid}
-            metricMode={metricMode}
-            onCellClick={(r, c, title) => handleCellClick({ approval_status: r === 'Total' ? null : r, forecast_category: c === 'Total' ? null : c }, title)}
-            rowLabelName="Status"
-            compareDate={compareSnapshot?.snapshot_date}
-          />
+          {(() => {
+            const hasPipelineInApprovals = rowsForGrid.some((r: any) => (r.cells?.['Pipeline']?.count ?? 0) > 0 || (r.cells?.['Pipeline']?.acv ?? 0) > 0) || (colSums?.['Pipeline']?.count ?? 0) > 0
+            const displayCategories = categories.filter((c: string) => c !== 'Pipeline' || hasPipelineInApprovals)
+            return (
+              <CompactGrid
+                title="Status vs. Forecast Category"
+                columns={displayCategories}
+                rows={rowsForGrid}
+                totals={{ category: colSums, grand: { count: total.count, acv: total.acv } }}
+                deltas={deltasForGrid}
+                metricMode={metricMode}
+                onCellClick={(r, c, title) => handleCellClick({ approval_status: r === 'Total' ? null : r, forecast_category: c === 'Total' ? null : c }, title)}
+                rowLabelName="Status"
+                compareDate={compareSnapshot?.snapshot_date}
+              />
+            )
+          })()}
         </div>
       </div>
 

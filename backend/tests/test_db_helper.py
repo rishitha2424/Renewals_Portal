@@ -27,5 +27,12 @@ def get_test_engine_and_session(test_name: str, tmp_path_factory=None):
     # Drop and re-create schema for clean test isolation
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    if test_db_url:
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+        alembic_cfg = Config(str(Path(__file__).resolve().parent.parent.parent / "alembic.ini"))
+        alembic_cfg.set_main_option("sqlalchemy.url", test_db_url)
+        command.stamp(alembic_cfg, "head")
     Session = sessionmaker(bind=engine)
     return engine, Session

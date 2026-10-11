@@ -534,32 +534,38 @@ function RegionsContent() {
         <div className="space-y-8">
           <div>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Forecast Category</h3>
-            <CompactGrid
-              title="Regions (Forecast Category)"
-              rowLabelName="Region"
-              columns={ALL_FC}
-              rows={regions.map((r: any) => ({
-                label: r.region,
-                cells: r.cells,
-                total: { count: r.count, acv: r.acv }
-              }))}
-              totals={{ category: summary.totals.categories, grand: summary.total }}
-              deltas={heatMode === 'Yesterday' ? 
-                regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_yesterday}), {}) :
-                heatMode === 'LastWeek' ? 
-                regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_lastweek}), {}) : {}
-              }
-              metricMode={metricMode}
-              onCellClick={(rowLabel, col) => {
-                if (!col && !rowLabel) handleDrill(`All Regions`, {})
-                else if (!col) handleDrill(`${rowLabel} Deals`, { region: rowLabel })
-                else if (!rowLabel) handleDrill(`All Regions - ${col}`, { category: col })
-                else handleDrill(`${rowLabel} - ${col}`, { region: rowLabel, category: col })
-              }}
-              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-            />
+            {(() => {
+              const hasPipelineInRegions = regions.some((r: any) => (r.cells?.['Pipeline']?.count ?? 0) > 0 || (r.cells?.['Pipeline']?.acv ?? 0) > 0) || (summary?.totals?.categories?.['Pipeline']?.count ?? 0) > 0
+              const displayFc = ['Closed', 'Commit', 'Best Case', ...(hasPipelineInRegions ? ['Pipeline'] : []), 'Blank']
+              return (
+                <CompactGrid
+                  title="Regions (Forecast Category)"
+                  rowLabelName="Region"
+                  columns={displayFc}
+                  rows={regions.map((r: any) => ({
+                    label: r.region,
+                    cells: r.cells,
+                    total: { count: r.count, acv: r.acv }
+                  }))}
+                  totals={{ category: summary.totals.categories, grand: summary.total }}
+                  deltas={heatMode === 'Yesterday' ? 
+                    regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_yesterday}), {}) :
+                    heatMode === 'LastWeek' ? 
+                    regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_lastweek}), {}) : {}
+                  }
+                  metricMode={metricMode}
+                  onCellClick={(rowLabel, col) => {
+                    if (!col && !rowLabel) handleDrill(`All Regions`, {})
+                    else if (!col) handleDrill(`${rowLabel} Deals`, { region: rowLabel })
+                    else if (!rowLabel) handleDrill(`All Regions - ${col}`, { category: col })
+                    else handleDrill(`${rowLabel} - ${col}`, { region: rowLabel, category: col })
+                  }}
+                  compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+                  yesterdayDate={summary.yesterday_date}
+                  lastweekDate={summary.lastweek_date}
+                />
+              )
+            })()}
           </div>
 
           <div>
