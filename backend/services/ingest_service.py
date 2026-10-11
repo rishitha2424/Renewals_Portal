@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.snapshot import UploadSnapshot, UploadedFile
@@ -23,6 +24,7 @@ from backend.services.context import UserContext
 from backend.utils.excel_parser import (
     detect_file_slot,
     compute_file_sha256,
+    detect_suggested_snapshot_date,
     _normalise_col,
     _map_columns,
     RENEWALS_COLUMN_MAP,
@@ -203,8 +205,13 @@ class IngestService:
                 .first()
             )
             if existing_upload:
+                snap_date_str = (
+                    str(existing_upload.snapshot.snapshot_date)
+                    if existing_upload.snapshot
+                    else "an earlier snapshot"
+                )
                 warnings.append(
-                    f"File '{path.name}' has identical content (SHA-256) to an earlier upload on snapshot date {existing_upload.snapshot.snapshot_date}."
+                    f"File '{path.name}' has identical content (SHA-256) to an earlier upload on snapshot date {snap_date_str}."
                 )
 
             file_metadata.append({
@@ -260,18 +267,111 @@ class IngestService:
             ("forecast_category", "Forecast Category"),
             ("close_date", "Close Date"),
         ]
+        # --- Item 2 & 3: Date detection and yesterday / last week resolution ---
+        suggested_date = None
+        for p in files_dict.values():
+            if p and p.exists():
+                sd = detect_suggested_snapshot_date(p, xf_cache.get(p.name))
+                if sd:
+                    suggested_date = sd
+                    break
+
+        if suggested_date and suggested_date != data_as_of:
+            warnings.append(
+                f"Suggested as-of date from uploaded workbook is {suggested_date.isoformat()}, but entered date is {data_as_of.isoformat()}."
+            )
+
+        # Yesterday resolution:
+        # a) Latest snapshot ALREADY IN THE DATABASE before as-of within previous 5 days (e.g. Monday -> Friday, holiday gap)
+        earliest_yesterday_window = data_as_of - timedelta(days=5)
+        db_prev_snap = (
+            self.db.query(UploadSnapshot)
+            .filter(
+                UploadSnapshot.snapshot_date < data_as_of,
+                UploadSnapshot.snapshot_date >= earliest_yesterday_window,
+                UploadSnapshot.uploaded_by.notin_(AUTO_SNAPSHOT_SOURCES)
+            )
+            .order_by(UploadSnapshot.snapshot_date.desc())
+            .first()
+        )
+        if not db_prev_snap:
+            # Fallback check any previous snapshot in DB within 5 days
+            db_prev_snap = (
+                self.db.query(UploadSnapshot)
+                .filter(
+                    UploadSnapshot.snapshot_date < data_as_of,
+                    UploadSnapshot.snapshot_date >= earliest_yesterday_window
+                )
+                .order_by(UploadSnapshot.snapshot_date.desc())
+                .first()
+            )
+
+        resolved_yesterday_date: date
+        yesterday_source_desc: str
+        if db_prev_snap:
+            resolved_yesterday_date = db_prev_snap.snapshot_date
+            yesterday_source_desc = f"from database snapshot ({db_prev_snap.snapshot_date.isoformat()})"
+        else:
+            if yesterday_date:
+                resolved_yesterday_date = yesterday_date
+            else:
+                resolved_yesterday_date = compute_previous_working_day(data_as_of)
+            yesterday_source_desc = "from file (bootstrapped from Yesterday_Data sheet)"
+
+        # Last week resolution:
+        last_week_target = data_as_of - timedelta(days=7)
+        db_lw_snap = (
+            self.db.query(UploadSnapshot)
+            .filter(UploadSnapshot.snapshot_date == last_week_target)
+            .first()
+        )
+        real_lw_snap = db_lw_snap if db_lw_snap and db_lw_snap.uploaded_by not in AUTO_SNAPSHOT_SOURCES else None
+        last_week_source_desc: str
+        last_week_is_partial: bool
+        if real_lw_snap:
+            last_week_source_desc = f"from database snapshot ({last_week_target.isoformat()})"
+            last_week_is_partial = False
+        else:
+            last_week_source_desc = "from file (bootstrapped from Lastweek_Data sheet - flagged partial)"
+            last_week_is_partial = True
+
+        # Existing snapshot details if overwriting (Item 4)
+        existing_snap_info = None
+        if existing_snap:
+            existing_acv = (
+                self.db.query(func.sum(Opportunity.forecast_acv_amount))
+                .filter(Opportunity.snapshot_id == existing_snap.id)
+                .scalar()
+            ) or 0.0
+            existing_snap_info = {
+                "snapshot_date": existing_snap.snapshot_date.isoformat(),
+                "row_count": existing_snap.row_count,
+                "active_row_count": existing_snap.active_row_count,
+                "total_acv": float(existing_acv),
+                "uploaded_at": existing_snap.uploaded_at.isoformat() if existing_snap.uploaded_at else None,
+                "uploaded_by": existing_snap.uploaded_by or "system",
+                "files": [f.filename for f in existing_snap.uploaded_files],
+            }
+
+        missing_columns: list[str] = []
         for col_key, col_display in required_cols:
             if col_key not in today_mapped.columns:
+                missing_columns.append(col_display)
                 errors.append(f"Comparison Tool 'today' sheet is missing required column '{col_display}'.")
 
-        if errors:
-            return {"errors": errors, "warnings": warnings, "can_commit": False, "session_id": None}
-
-        # Check for unmapped regions
+        # Unmapped regions list (Item 5)
+        unmapped_regions_list: list[str] = []
         if "revised_sub_region" in today_mapped.columns:
-            unmapped_regions = today_mapped[today_mapped["revised_sub_region"].isna() | (today_mapped["revised_sub_region"].astype(str).str.strip().isin(["", "nan", "None"]))]
-            if len(unmapped_regions) > 0:
-                warnings.append(f"Comparison Tool 'today' sheet contains {len(unmapped_regions)} rows with unmapped or blank regions.")
+            unmapped_series = today_mapped[
+                today_mapped["revised_sub_region"].isna() |
+                (today_mapped["revised_sub_region"].astype(str).str.strip().isin(["", "nan", "None"]))
+            ]
+            if len(unmapped_series) > 0:
+                raw_regs = today_mapped.loc[unmapped_series.index, "sub_region"].dropna().unique().tolist() if "sub_region" in today_mapped.columns else []
+                unmapped_regions_list = [str(r) for r in raw_regs[:10]]
+                warnings.append(
+                    f"Comparison Tool 'today' sheet contains {len(unmapped_series)} rows with unmapped or blank revised sub-regions ({', '.join(unmapped_regions_list) if unmapped_regions_list else 'Blank'})."
+                )
 
         today_ids = today_mapped["opportunity_id_18"].dropna().astype(str).str.strip()
         dupes = today_ids[today_ids.duplicated()].unique()
@@ -284,7 +384,15 @@ class IngestService:
             errors.append(f"Comparison Tool 'today' sheet contains {non_numeric_acv} non-numeric ACV entries.")
 
         if errors:
-            return {"errors": errors, "warnings": warnings, "can_commit": False, "session_id": None}
+            return {
+                "errors": errors,
+                "warnings": warnings,
+                "missing_columns": missing_columns,
+                "unmapped_regions": unmapped_regions_list,
+                "can_commit": False,
+                "session_id": None,
+                "files": file_metadata,
+            }
 
         # 4. Parse Summary Workbooks for last-week bootstrap only
         summary_dfs: dict[str, dict[str, pd.DataFrame]] = {}
@@ -297,7 +405,7 @@ class IngestService:
                 except Exception as exc:
                     warnings.append(f"Warning reading {slot_path.name}: {exc}")
 
-# 5. Compute Scope Metrics
+        # 5. Compute Scope Metrics
         from backend.services.scopes import ScopeService
         
         stage_col = next((c for c in today_mapped.columns if c in ("stage_number", "stage")), None)
@@ -355,7 +463,7 @@ class IngestService:
                     f"Row count moved by {diff_pct:.1f}% vs previous snapshot ({prev_snap.snapshot_date}: {prev_snap.row_count} rows -> today: {len(today_mapped)} rows)."
                 )
 
-# 6. Reconcile FinalChangeReport
+        # 6. Reconcile FinalChangeReport
         fcr = comp_sheets.get("finalchangereport")
         fcr_count = len(fcr) if fcr is not None and not fcr.empty else None
 
@@ -367,7 +475,7 @@ class IngestService:
         session_id = str(uuid.uuid4())
         session_dict = {
             "data_as_of": data_as_of,
-            "yesterday_date": yesterday_date,
+            "yesterday_date": resolved_yesterday_date,
             "files_dict": files_dict,
             "file_metadata": file_metadata,
             "today_mapped": today_mapped,
@@ -384,10 +492,21 @@ class IngestService:
         return {
             "session_id": session_id,
             "data_as_of_date": data_as_of.isoformat(),
-            "yesterday_date": yesterday_date.isoformat(),
+            "suggested_date": suggested_date.isoformat() if suggested_date else None,
+            "weekday": data_as_of.strftime("%A"),
+            "quarter_label": ScopeService.quarter_label(cq),
+            "yesterday_date": resolved_yesterday_date.isoformat(),
+            "yesterday_source_desc": yesterday_source_desc,
+            "last_week_date": last_week_target.isoformat(),
+            "last_week_source_desc": last_week_source_desc,
+            "last_week_is_partial": last_week_is_partial,
             "snapshot_exists": snapshot_exists,
+            "existing_snapshot": existing_snap_info,
             "files": file_metadata,
             "scopes": scopes_summary,
+            "current_quarter_renewals": scopes_summary["current_quarter"],
+            "unmapped_regions": unmapped_regions_list,
+            "missing_columns": missing_columns,
             "warnings": warnings,
             "errors": errors,
             "can_commit": can_commit,
@@ -398,7 +517,7 @@ class IngestService:
     # Atomic Commit of Upload
     # ------------------------------------------------------------------
 
-    def commit_upload(self, ctx: UserContext, session_id: str, replace: bool = False) -> UploadSnapshot:
+    def commit_upload(self, ctx: UserContext, session_id: str, replace: bool = False, make_active: bool | None = None) -> UploadSnapshot:
         session_data = _get_session_from_disk(session_id)
         if not session_data:
             raise ValueError("Upload session expired or invalid. Please re-upload and re-validate files.")
@@ -406,13 +525,13 @@ class IngestService:
             raise ValueError("Cannot commit: this upload session had validation errors. Please re-validate.")
 
         try:
-            return self._commit_upload_impl(ctx, session_id, session_data, replace=replace)
+            return self._commit_upload_impl(ctx, session_id, session_data, replace=replace, make_active=make_active)
         except Exception as exc:
             self.db.rollback()
             log.error("Commit failed for session %s: %s", session_id, exc)
             raise
 
-    def _commit_upload_impl(self, ctx: UserContext, session_id: str, session_data: dict[str, Any], replace: bool = False) -> UploadSnapshot:
+    def _commit_upload_impl(self, ctx: UserContext, session_id: str, session_data: dict[str, Any], replace: bool = False, make_active: bool | None = None) -> UploadSnapshot:
 
         data_as_of: date = session_data["data_as_of"]
         yesterday_date: date = session_data["yesterday_date"]
@@ -450,10 +569,27 @@ class IngestService:
             self.db.add(snap)
             self.db.flush()
 
-        self.db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).update(  # noqa: E712
-            {"is_active_today": False}
+        # Out-of-order backfill: if uploading an older date, do NOT automatically make it today's active snapshot unless make_active is True.
+        # Default: latest date in DB is active.
+        max_date_in_db = (
+            self.db.query(func.max(UploadSnapshot.snapshot_date))
+            .filter(UploadSnapshot.id != snap.id)
+            .scalar()
         )
-        snap.is_active_today = True
+        if make_active is True:
+            should_be_active = True
+        elif make_active is False:
+            should_be_active = False
+        else:
+            should_be_active = (max_date_in_db is None or data_as_of >= max_date_in_db)
+
+        if should_be_active:
+            self.db.query(UploadSnapshot).filter(UploadSnapshot.id != snap.id).update(
+                {"is_active_today": False}
+            )
+            snap.is_active_today = True
+        else:
+            snap.is_active_today = False
 
         last_week_target = data_as_of - timedelta(days=7)
         # A snapshot at date-7 is "real" only if it was uploaded as its own day. One that an earlier

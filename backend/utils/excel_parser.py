@@ -148,8 +148,16 @@ def available_sheets(path: Path) -> list[str]:
     return _open(path).sheet_names
 
 
+REAL_SLOT_NAMES: dict[str, str] = {
+    "comparison_tool": "Renewal Comparison Tool",
+    "fiscal_2026": "Renewals Summary - Fiscal 2026",
+    "fiscal_2027": "Renewals Summary - Fiscal 2027",
+    "fiscal_q4": "Renewals Summary - Fiscal Q4",
+}
+
+
 def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, str]:
-    """Detect slot by CONTENT and sheet signature."""
+    """Detect slot by CONTENT and sheet signature, returning canonical slot key and descriptive real name."""
     try:
         xf = xf or _open(path)
         sheet_names = xf.sheet_names
@@ -182,9 +190,39 @@ def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, s
                         return "fiscal_2027", "Renewals Summary - Fiscal 2027 (all Closing Year = 2027)"
             return "fiscal_2026", "Renewals Summary - Fiscal 2026 (Renewals scope)"
         except Exception:
-            return "fiscal_2026", "Renewals Summary (defaulted to Fiscal 2026)"
+            return "fiscal_2026", "Renewals Summary - Fiscal 2026 (defaulted from sheet layout)"
 
     return "unknown", f"Unrecognized sheet structure: {sheet_names[:5]}"
+
+
+def detect_suggested_snapshot_date(path: Path, xf: pd.ExcelFile | None = None) -> date | None:
+    """Inspect filename or sheets for date suggestion."""
+    # 1. Regex on filename
+    fn = path.name
+    m = re.search(r"(\d{4})[-_](\d{2})[-_](\d{2})", fn)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            pass
+
+    # 2. Check today sheet Last Modified Date max
+    try:
+        xf = xf or _open(path)
+        lookup = {s.lower(): s for s in xf.sheet_names}
+        today_sheet = lookup.get("today")
+        if today_sheet:
+            header = xf.parse(today_sheet, nrows=0, dtype=str)
+            lmd_col = next((c for c in header.columns if "last modified date" in _normalise_col(c)), None)
+            if lmd_col:
+                df = xf.parse(today_sheet, usecols=[lmd_col], dtype=str)
+                s = pd.to_datetime(df[lmd_col], errors="coerce").dropna()
+                if not s.empty:
+                    return s.max().date()
+    except Exception:
+        pass
+
+    return None
 
 
 COMPARISON_NEEDED = ["today", "yesterday", "finalchangereport"]

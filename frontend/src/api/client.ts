@@ -42,8 +42,8 @@ export const validateUpload = (form: FormData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)
 
-export const commitUpload = (sessionId: string, replace = false) =>
-  api.post('/snapshots/commit', { session_id: sessionId, replace }).then(r => r.data)
+export const commitUpload = (sessionId: string, replace = false, makeActive?: boolean) =>
+  api.post('/snapshots/commit', { session_id: sessionId, replace, make_active: makeActive }).then(r => r.data)
 
 export const uploadFiles = (form: FormData) =>
   api.post('/snapshots/upload', form, {

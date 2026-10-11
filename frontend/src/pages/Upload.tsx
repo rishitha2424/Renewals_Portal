@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload as UploadIcon,
@@ -18,12 +18,17 @@ import {
   ShieldCheck,
   RefreshCw,
   FileCheck2,
+  AlertCircle,
+  HelpCircle,
+  CheckSquare,
+  Square,
+  Repeat,
 } from 'lucide-react'
 import { validateUpload, commitUpload, getUploadHistory } from '@/api/client'
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 
-type FileSlot = 'comparison_tool' | 'fiscal_2026' | 'fiscal_2027' | 'fiscal_q4'
+export type FileSlot = 'comparison_tool' | 'fiscal_2026' | 'fiscal_2027' | 'fiscal_q4'
 
 interface UploadSlotState {
   file: File | null
@@ -31,8 +36,51 @@ interface UploadSlotState {
   size: number
 }
 
-// Format a Date using LOCAL calendar fields. (toISOString() converts to UTC, which shifts
-// the date back by one day in time zones ahead of UTC such as India.)
+const SLOT_DEFINITIONS: Record<
+  FileSlot,
+  {
+    key: FileSlot
+    title: string
+    subtitle: string
+    expected: string
+    required: boolean
+    badgeColor: string
+  }
+> = {
+  comparison_tool: {
+    key: 'comparison_tool',
+    title: 'Renewal Comparison Tool',
+    subtitle: 'Mandatory · All sales types',
+    expected: "Sheets: 'today' & 'yesterday'",
+    required: true,
+    badgeColor: 'teal',
+  },
+  fiscal_2026: {
+    key: 'fiscal_2026',
+    title: 'Renewals Summary - Fiscal 2026',
+    subtitle: 'Optional · Renewals only',
+    expected: "Sheets: 'Today_Data', 'Yesterday', 'Lastweek'",
+    required: false,
+    badgeColor: 'blue',
+  },
+  fiscal_2027: {
+    key: 'fiscal_2027',
+    title: 'Renewals Summary - Fiscal 2027',
+    subtitle: 'Optional · Renewals only',
+    expected: 'Closing Year = 2027',
+    required: false,
+    badgeColor: 'purple',
+  },
+  fiscal_q4: {
+    key: 'fiscal_q4',
+    title: 'Renewals Summary - Fiscal Q4',
+    subtitle: 'Optional · Renewals only',
+    expected: 'Fiscal Period = Q4-2026',
+    required: false,
+    badgeColor: 'amber',
+  },
+}
+
 function formatLocalDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
@@ -56,6 +104,15 @@ function getAutoYesterdayDate(asOfStr: string): string {
   return formatLocalDate(y)
 }
 
+function detectSlotForFile(filename: string): FileSlot {
+  const fn = filename.toLowerCase()
+  if (fn.includes('comparison')) return 'comparison_tool'
+  if (fn.includes('q4') || fn.includes('fiscal q4')) return 'fiscal_q4'
+  if (fn.includes('2027') || fn.includes('fiscal 2027')) return 'fiscal_2027'
+  if (fn.includes('2026') || fn.includes('fiscal 2026')) return 'fiscal_2026'
+  return 'comparison_tool'
+}
+
 export default function Upload() {
   const qc = useQueryClient()
 
@@ -76,7 +133,10 @@ export default function Upload() {
   const [isValidating, setIsValidating] = useState(false)
   const [previewData, setPreviewData] = useState<any>(null)
   const [isCommitting, setIsCommitting] = useState(false)
-  const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false)
+  
+  // Backfill and replace safety states
+  const [makeActiveChecked, setMakeActiveChecked] = useState(true)
+  const [userConfirmReplace, setUserConfirmReplace] = useState(false)
 
   // Auto-fill yesterday date when dataAsOf changes (unless user manually modified)
   useEffect(() => {
@@ -85,8 +145,11 @@ export default function Upload() {
     }
   }, [dataAsOf, manualYesterdayEdited])
 
-  // Weekend warning
-  const asOfDateObj = new Date(dataAsOf + 'T00:00:00')
+  // Weekday and quarter calculation
+  const asOfDateObj = useMemo(() => new Date(dataAsOf + 'T00:00:00'), [dataAsOf])
+  const weekdayName = useMemo(() => {
+    return asOfDateObj.toLocaleDateString('en-US', { weekday: 'long' })
+  }, [asOfDateObj])
   const isWeekend = asOfDateObj.getDay() === 0 || asOfDateObj.getDay() === 6
   const isMonday = asOfDateObj.getDay() === 1
 
@@ -96,21 +159,22 @@ export default function Upload() {
     queryFn: getUploadHistory,
   })
 
+  // Detect whether dataAsOf is older than the newest date in history (out-of-order backfill)
+  const isBackfillDate = useMemo(() => {
+    if (!uploadHistory || uploadHistory.length === 0) return false
+    const latestHistoryDate = uploadHistory[0]?.snapshot_date
+    if (!latestHistoryDate) return false
+    return dataAsOf < latestHistoryDate
+  }, [dataAsOf, uploadHistory])
+
+  // Auto-set default makeActive checkbox based on backfill check
+  useEffect(() => {
+    setMakeActiveChecked(!isBackfillDate)
+  }, [isBackfillDate])
+
   // Content / Name based auto-assignment for multi-file drop
   const assignFileToSlot = (file: File) => {
-    const fn = file.name.toLowerCase()
-    let targetSlot: FileSlot = 'comparison_tool'
-
-    if (fn.includes('comparison')) {
-      targetSlot = 'comparison_tool'
-    } else if (fn.includes('q4') || fn.includes('fiscal q4')) {
-      targetSlot = 'fiscal_q4'
-    } else if (fn.includes('2027') || fn.includes('fiscal 2027')) {
-      targetSlot = 'fiscal_2027'
-    } else if (fn.includes('2026') || fn.includes('fiscal 2026')) {
-      targetSlot = 'fiscal_2026'
-    }
-
+    const targetSlot = detectSlotForFile(file.name)
     setSlots((prev) => ({
       ...prev,
       [targetSlot]: { file, name: file.name, size: file.size },
@@ -124,6 +188,7 @@ export default function Upload() {
       onDrop: (acceptedFiles) => {
         acceptedFiles.forEach((f) => assignFileToSlot(f))
         setPreviewData(null)
+        setUserConfirmReplace(false)
       },
     })
 
@@ -134,6 +199,7 @@ export default function Upload() {
       [slot]: { file, name: file.name, size: file.size },
     }))
     setPreviewData(null)
+    setUserConfirmReplace(false)
   }
 
   const handleClearSlot = (slot: FileSlot) => {
@@ -142,6 +208,19 @@ export default function Upload() {
       [slot]: { file: null, name: '', size: 0 },
     }))
     setPreviewData(null)
+    setUserConfirmReplace(false)
+  }
+
+  const handleMoveSlot = (currentSlot: FileSlot, targetSlot: FileSlot) => {
+    if (currentSlot === targetSlot) return
+    const fileState = slots[currentSlot]
+    setSlots((prev) => ({
+      ...prev,
+      [currentSlot]: { file: null, name: '', size: 0 },
+      [targetSlot]: fileState,
+    }))
+    setPreviewData(null)
+    setUserConfirmReplace(false)
   }
 
   // Validation Call
@@ -153,6 +232,7 @@ export default function Upload() {
 
     setIsValidating(true)
     setPreviewData(null)
+    setUserConfirmReplace(false)
 
     try {
       const formData = new FormData()
@@ -190,10 +270,15 @@ export default function Upload() {
     if (!previewData?.session_id) return
     setIsCommitting(true)
     try {
-      const res = await commitUpload(previewData.session_id, replace)
-      showToast.success('Snapshot committed', `Saved ${res.row_count} total (${res.active_row_count} active) opportunities.`)
-      setReplaceConfirmOpen(false)
+      const res = await commitUpload(previewData.session_id, replace, makeActiveChecked)
+      showToast.success(
+        'Snapshot committed',
+        `Saved ${res.row_count} total (${res.active_row_count} active) opportunities. Active today: ${
+          res.is_active_today ? 'Yes' : 'No'
+        }.`
+      )
       setPreviewData(null)
+      setUserConfirmReplace(false)
       // Reset slots
       setSlots({
         comparison_tool: { file: null, name: '', size: 0 },
@@ -204,15 +289,14 @@ export default function Upload() {
       qc.invalidateQueries()
       refetchHistory()
     } catch (err: any) {
-      if (err?.response?.status === 409 || err?.response?.data?.detail?.includes('replace=True')) {
-        setReplaceConfirmOpen(true)
-      } else {
-        showToast.error('Commit failed', err?.response?.data?.detail || err.message)
-      }
+      showToast.error('Commit failed', err?.response?.data?.detail || err.message)
     } finally {
       setIsCommitting(false)
     }
   }
+
+  const suggestedDateMismatch =
+    previewData?.suggested_date && previewData.suggested_date !== dataAsOf
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-12">
@@ -234,20 +318,27 @@ export default function Upload() {
       </motion.div>
 
       {/* Date Configuration Strip */}
-      <div className="card p-5 border border-[var(--border)] shadow-sm">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3 flex items-center gap-2">
+      <div className="card p-5 border border-[var(--border)] shadow-sm space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
           <Calendar className="w-4 h-4 text-teal-500" />
-          Snapshot Dates & Previous Working Day Configuration
+          Snapshot Date & Resolution Parameters
         </h2>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
           <div>
-            <label className="text-xs font-semibold text-[var(--text-secondary)]">Data as of Date</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[var(--text-secondary)]">Data as of Date</label>
+              <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">
+                {weekdayName}
+              </span>
+            </div>
             <input
               type="date"
               value={dataAsOf}
               onChange={(e) => {
                 setDataAsOf(e.target.value)
                 setManualYesterdayEdited(false)
+                setPreviewData(null)
               }}
               className="mt-1.5 w-full px-3 py-2 rounded-xl text-sm border outline-none bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] focus:ring-2 focus:ring-teal-500"
               id="upload-data-as-of"
@@ -256,13 +347,16 @@ export default function Upload() {
 
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[var(--text-secondary)]">Yesterday Date (Prev Working Day)</label>
+              <label className="text-xs font-semibold text-[var(--text-secondary)]">
+                Yesterday Date (Prev Working Day)
+              </label>
               {manualYesterdayEdited && (
                 <button
                   type="button"
                   onClick={() => {
                     setManualYesterdayEdited(false)
                     setYesterdayDate(getAutoYesterdayDate(dataAsOf))
+                    setPreviewData(null)
                   }}
                   className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline"
                 >
@@ -276,6 +370,7 @@ export default function Upload() {
               onChange={(e) => {
                 setYesterdayDate(e.target.value)
                 setManualYesterdayEdited(true)
+                setPreviewData(null)
               }}
               className="mt-1.5 w-full px-3 py-2 rounded-xl text-sm border outline-none bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-primary)] focus:ring-2 focus:ring-teal-500"
               id="upload-yesterday-date"
@@ -298,6 +393,31 @@ export default function Upload() {
             )}
           </div>
         </div>
+
+        {/* Date Suggestion Warning Banner */}
+        {suggestedDateMismatch && (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-700 dark:text-amber-400">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Detected snapshot date from file content is{' '}
+                <strong className="underline">{previewData.suggested_date}</strong>, but entered date is{' '}
+                <strong>{dataAsOf}</strong>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDataAsOf(previewData.suggested_date)
+                setYesterdayDate(getAutoYesterdayDate(previewData.suggested_date))
+                setPreviewData(null)
+              }}
+              className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] transition-all"
+            >
+              Use Detected Date ({previewData.suggested_date})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Multi-Drop Zone Banner */}
@@ -318,61 +438,32 @@ export default function Upload() {
             Drag & drop all 4 Excel files here at once
           </p>
           <p className="text-xs text-[var(--text-muted)] max-w-md">
-            Our content signature detection automatically classifies each file into its matching scope slot (Fiscal Q4, Fiscal 2027, Fiscal 2026, or Comparison Tool).
+            Our content signature detection automatically classifies each file into its matching scope slot (Renewal Comparison Tool, Renewals Summary - Fiscal 2026, Fiscal 2027, or Fiscal Q4).
           </p>
         </div>
       </div>
 
       {/* 4 Dedicated File Slots */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Slot 1: Comparison Tool */}
-        <SlotCard
-          title="Comparison Tool"
-          subtitle="Mandatory · All sales types"
-          expected="today & yesterday sheets"
-          required
-          state={slots.comparison_tool}
-          onDrop={(f) => handleSlotDrop('comparison_tool', f)}
-          onClear={() => handleClearSlot('comparison_tool')}
-          badgeColor="teal"
-          id="slot-comparison-tool"
-        />
-
-        {/* Slot 2: Fiscal 2026 */}
-        <SlotCard
-          title="Fiscal 2026 Summary"
-          subtitle="Optional · Renewals only"
-          expected="Today_Data, Yesterday, Lastweek"
-          state={slots.fiscal_2026}
-          onDrop={(f) => handleSlotDrop('fiscal_2026', f)}
-          onClear={() => handleClearSlot('fiscal_2026')}
-          badgeColor="blue"
-          id="slot-fiscal-2026"
-        />
-
-        {/* Slot 3: Fiscal 2027 */}
-        <SlotCard
-          title="Fiscal 2027 Summary"
-          subtitle="Optional · Renewals only"
-          expected="Closing Year = 2027"
-          state={slots.fiscal_2027}
-          onDrop={(f) => handleSlotDrop('fiscal_2027', f)}
-          onClear={() => handleClearSlot('fiscal_2027')}
-          badgeColor="purple"
-          id="slot-fiscal-2027"
-        />
-
-        {/* Slot 4: Fiscal Q4 */}
-        <SlotCard
-          title="Fiscal Q4 Summary"
-          subtitle="Optional · Renewals only"
-          expected="Fiscal Period = Q4-2026"
-          state={slots.fiscal_q4}
-          onDrop={(f) => handleSlotDrop('fiscal_q4', f)}
-          onClear={() => handleClearSlot('fiscal_q4')}
-          badgeColor="amber"
-          id="slot-fiscal-q4"
-        />
+        {(Object.keys(SLOT_DEFINITIONS) as FileSlot[]).map((slotKey) => {
+          const def = SLOT_DEFINITIONS[slotKey]
+          return (
+            <SlotCard
+              key={slotKey}
+              slotKey={slotKey}
+              title={def.title}
+              subtitle={def.subtitle}
+              expected={def.expected}
+              required={def.required}
+              state={slots[slotKey]}
+              onDrop={(f) => handleSlotDrop(slotKey, f)}
+              onClear={() => handleClearSlot(slotKey)}
+              onMove={(target) => handleMoveSlot(slotKey, target)}
+              badgeColor={def.badgeColor}
+              id={`slot-${slotKey.replace('_', '-')}`}
+            />
+          )
+        })}
       </div>
 
       {/* Validate & Preview Action Button */}
@@ -380,7 +471,7 @@ export default function Upload() {
         <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
           <Info className="w-4 h-4 text-teal-500 flex-shrink-0" />
           <span>
-            Validation reads and verifies all sheets without writing to the database. You will see active vs raw rows and reconciliation reports before confirming.
+            Validation reads and verifies all sheets without writing to the database. You will see active vs raw rows, detected columns, and reconciliation reports before confirming.
           </span>
         </div>
         <button
@@ -414,57 +505,192 @@ export default function Upload() {
             className="card p-6 border-2 border-teal-500/30 space-y-6 bg-[var(--bg-card)] shadow-lg"
             id="upload-preview-container"
           >
-            {/* Preview Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-[var(--border)]">
+            {/* Preview Header & Date / Quarter Summary */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-[var(--border)] gap-4">
               <div>
                 <h3 className="text-lg font-black text-[var(--text-primary)] flex items-center gap-2">
                   <FileCheck2 className="w-5 h-5 text-teal-500" />
                   Pre-Commit Validation Preview
                 </h3>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Comparison against previous snapshot ({previewData.previous_snapshot?.snapshot_date ?? 'Baseline'}), excluding Deleted &amp; Lost by default.
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-[var(--text-secondary)]">
+                  <span className="font-bold text-[var(--text-primary)]">
+                    As-of: {previewData.data_as_of_date} ({previewData.weekday})
+                  </span>
+                  <span>·</span>
+                  <span className="px-2 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold">
+                    Quarter: {previewData.quarter_label}
+                  </span>
+                </div>
               </div>
 
-              {/* Commit button — only enabled when preview loaded successfully with no blocking errors */}
-              <button
-                type="button"
-                onClick={() => handleCommit(false)}
-                disabled={
-                  isCommitting ||
-                  !previewData.can_commit ||
-                  (previewData.errors && previewData.errors.length > 0)
-                }
-                title={
-                  !previewData.can_commit
-                    ? 'Cannot commit: validation errors present. Fix errors and re-validate.'
-                    : 'Confirm and save this snapshot to the database'
-                }
-                className="px-6 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center gap-2 transition-all
-                  bg-emerald-600 hover:bg-emerald-700 text-white
-                  disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-500"
-                id="confirm-commit-btn"
-              >
-                {isCommitting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Committing Transaction...
-                  </>
-                ) : !previewData.can_commit ? (
-                  <>
-                    <XCircle className="w-4 h-4" />
-                    Blocked — Fix Errors First
-                  </>
-                ) : (
-                  <>
-                    <Database className="w-4 h-4" />
-                    Confirm &amp; Commit to Database
-                  </>
-                )}
-              </button>
+              {/* Commit Button */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleCommit(previewData.snapshot_exists)}
+                  disabled={
+                    isCommitting ||
+                    !previewData.can_commit ||
+                    (previewData.errors && previewData.errors.length > 0) ||
+                    (previewData.snapshot_exists && !userConfirmReplace)
+                  }
+                  className={`px-6 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center gap-2 transition-all text-white ${
+                    previewData.snapshot_exists
+                      ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-slate-500'
+                      : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-500'
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  id="confirm-commit-btn"
+                >
+                  {isCommitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Committing Transaction...
+                    </>
+                  ) : !previewData.can_commit ? (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      Blocked — Fix Errors First
+                    </>
+                  ) : previewData.snapshot_exists ? (
+                    <>
+                      <Database className="w-4 h-4" />
+                      Replace Existing Snapshot &amp; Commit
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-4 h-4" />
+                      Confirm &amp; Commit to Database
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Warnings & Reconciliation Alerts */}
+            {/* Backfill Active Setting & Baseline Comparison Strip */}
+            <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-[var(--text-primary)]">
+                    <input
+                      type="checkbox"
+                      checked={makeActiveChecked}
+                      onChange={(e) => setMakeActiveChecked(e.target.checked)}
+                      className="rounded border-[var(--border)] text-teal-600 focus:ring-teal-500"
+                      id="upload-make-active-checkbox"
+                    />
+                    <span>Set as Active Today's Snapshot</span>
+                  </label>
+                  {isBackfillDate && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-semibold">
+                      Out-of-order backfill (newer date already exists in DB)
+                    </span>
+                  )}
+                </div>
+
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  {makeActiveChecked
+                    ? 'This snapshot will be displayed as the default view across all dashboards.'
+                    : 'This snapshot will be saved to history without altering the currently active dashboard date.'}
+                </div>
+              </div>
+
+              {/* Yesterday & Last Week Resolution Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-[var(--border-subtle)] text-[11px]">
+                <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                  <span className="font-bold text-[var(--text-primary)] block">
+                    Yesterday Baseline ({previewData.yesterday_date}):
+                  </span>
+                  <span className="text-[var(--text-muted)]">
+                    Resolved {previewData.yesterday_source_desc}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                  <span className="font-bold text-[var(--text-primary)] block">
+                    Last Week Baseline ({previewData.last_week_date}):
+                  </span>
+                  <span className="text-[var(--text-muted)]">
+                    Resolved {previewData.last_week_source_desc}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Snapshot Exists Safety Confirmation Banner */}
+            {previewData.snapshot_exists && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-800 dark:text-amber-300 space-y-3 text-xs">
+                <div className="flex items-center gap-2 font-bold text-sm">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  Replace Existing Snapshot Warning
+                </div>
+                <p className="leading-relaxed">
+                  A snapshot for <strong>{previewData.data_as_of_date}</strong> already exists in the database
+                  {previewData.existing_snapshot?.uploaded_at && (
+                    <> (uploaded on {new Date(previewData.existing_snapshot.uploaded_at).toLocaleString()}</>
+                  )}
+                  {previewData.existing_snapshot?.uploaded_by && (
+                    <> by <strong>{previewData.existing_snapshot.uploaded_by}</strong></>
+                  )}
+                  {previewData.existing_snapshot?.row_count !== undefined && (
+                    <>, containing <strong>{formatNumber(previewData.existing_snapshot.row_count)}</strong> deals / <strong>{formatCurrency(previewData.existing_snapshot.total_acv || 0)}</strong></>
+                  )}
+                  ). Overwriting will replace existing opportunities and change logs for this date in a single atomic transaction.
+                </p>
+
+                <label className="flex items-center gap-2.5 font-bold cursor-pointer pt-1 text-[var(--text-primary)]">
+                  <input
+                    type="checkbox"
+                    checked={userConfirmReplace}
+                    onChange={(e) => setUserConfirmReplace(e.target.checked)}
+                    className="w-4 h-4 rounded border-[var(--border)] text-amber-600 focus:ring-amber-500"
+                    id="upload-confirm-replace-checkbox"
+                  />
+                  <span>Yes, I confirm replacing the existing snapshot for {previewData.data_as_of_date}</span>
+                </label>
+              </div>
+            )}
+
+            {/* Missing Required Columns (Blocking Error Banner) */}
+            {previewData.missing_columns && previewData.missing_columns.length > 0 && (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 space-y-2 text-xs">
+                <div className="font-bold flex items-center gap-1.5 text-sm">
+                  <XCircle className="w-4 h-4" /> Missing Required Columns:
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {previewData.missing_columns.map((col: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-700 dark:text-rose-300 font-mono text-[11px]"
+                    >
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Unmapped Regions (Warning Banner) */}
+            {previewData.unmapped_regions && previewData.unmapped_regions.length > 0 && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-2 text-xs">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" /> Unmapped Sub-Regions Flagged:
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  The following raw sub-region values did not match the standard region lookup table:
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {previewData.unmapped_regions.map((reg: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-[11px]"
+                    >
+                      {reg || 'Blank'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* General Warnings & Reconciliation Notices */}
             {previewData.warnings && previewData.warnings.length > 0 && (
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-1.5 text-xs">
                 <div className="font-bold flex items-center gap-1.5">
@@ -478,7 +704,7 @@ export default function Upload() {
               </div>
             )}
 
-            {/* Errors */}
+            {/* General Errors */}
             {previewData.errors && previewData.errors.length > 0 && (
               <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 space-y-1.5 text-xs">
                 <div className="font-bold flex items-center gap-1.5">
@@ -497,12 +723,12 @@ export default function Upload() {
               <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">
                 Scope Summary Matrix (Active vs Raw)
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <ScopePreviewCard
-                  title="Renewals (Default)"
+                  title="Renewals (Standard)"
                   scopeKey="renewals"
                   data={previewData.scopes?.renewals}
-                  badge="Summary Union"
+                  badge="Comparison Tool"
                   color="teal"
                 />
                 <ScopePreviewCard
@@ -513,114 +739,17 @@ export default function Upload() {
                   color="slate"
                 />
                 <ScopePreviewCard
-                  title="Fiscal 2026"
-                  scopeKey="fy2026"
-                  data={previewData.scopes?.fy2026}
-                  badge="Summary File"
-                  color="blue"
-                />
-                <ScopePreviewCard
-                  title="Fiscal 2027"
-                  scopeKey="fy2027"
-                  data={previewData.scopes?.fy2027}
-                  badge="Summary File"
-                  color="purple"
-                />
-                <ScopePreviewCard
-                  title="Fiscal Q4"
-                  scopeKey="q4_2026"
-                  data={previewData.scopes?.q4_2026}
-                  badge="Summary File"
+                  title={`Current Quarter (${previewData.quarter_label})`}
+                  scopeKey="current_quarter"
+                  data={previewData.scopes?.current_quarter}
+                  badge="Fiscal Period Slice"
                   color="amber"
                 />
               </div>
             </div>
-
-            {/* Delta vs Previous Snapshot Table */}
-            {previewData.delta_vs_previous && (
-              <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs">
-                <div className="flex items-center justify-between font-bold text-[var(--text-primary)] mb-2">
-                  <span>Delta vs Previous Snapshot ({previewData.previous_snapshot?.snapshot_date})</span>
-                  <span className="text-[11px] font-normal text-[var(--text-muted)]">
-                    Span: {previewData.delta_vs_previous.days_between} day(s) · Rate:{' '}
-                    {formatCurrency(previewData.delta_vs_previous.active_daily_acv_rate)}/day
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-                    <p className="text-[10px] text-[var(--text-muted)] uppercase">Active ACV Delta</p>
-                    <p
-                      className={`font-black text-sm ${
-                        previewData.delta_vs_previous.active_acv_delta >= 0 ? 'text-emerald-500' : 'text-rose-500'
-                      }`}
-                    >
-                      {previewData.delta_vs_previous.active_acv_delta >= 0 ? '+' : ''}
-                      {formatCurrency(previewData.delta_vs_previous.active_acv_delta)}
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-                    <p className="text-[10px] text-[var(--text-muted)] uppercase">Active Deals Delta</p>
-                    <p
-                      className={`font-black text-sm ${
-                        previewData.delta_vs_previous.active_count_delta >= 0 ? 'text-emerald-500' : 'text-rose-500'
-                      }`}
-                    >
-                      {previewData.delta_vs_previous.active_count_delta >= 0 ? '+' : ''}
-                      {formatNumber(previewData.delta_vs_previous.active_count_delta)}
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-                    <p className="text-[10px] text-[var(--text-muted)] uppercase">Raw ACV Delta</p>
-                    <p className="font-black text-sm text-[var(--text-primary)]">
-                      {previewData.delta_vs_previous.raw_acv_delta >= 0 ? '+' : ''}
-                      {formatCurrency(previewData.delta_vs_previous.raw_acv_delta)}
-                    </p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-                    <p className="text-[10px] text-[var(--text-muted)] uppercase">Raw Deals Delta</p>
-                    <p className="font-black text-sm text-[var(--text-primary)]">
-                      {previewData.delta_vs_previous.raw_count_delta >= 0 ? '+' : ''}
-                      {formatNumber(previewData.delta_vs_previous.raw_count_delta)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Replace Confirmation Modal */}
-      {replaceConfirmOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card max-w-md w-full p-6 space-y-4 border border-[var(--border)] shadow-2xl bg-[var(--bg-card)]">
-            <div className="flex items-center gap-3 text-amber-500">
-              <AlertTriangle className="w-6 h-6" />
-              <h4 className="font-black text-base text-[var(--text-primary)]">Overwrite Existing Snapshot?</h4>
-            </div>
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              A snapshot dated <span className="font-bold">{dataAsOf}</span> already exists in the database. Overwriting
-              will replace existing opportunities and change logs for this date in a single atomic transaction.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setReplaceConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCommit(true)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
-              >
-                Replace Snapshot
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Upload History Table (Last 10 Uploads) */}
       <div className="card p-6 border border-[var(--border)] space-y-4">
@@ -709,6 +838,7 @@ export default function Upload() {
 }
 
 function SlotCard({
+  slotKey,
   title,
   subtitle,
   expected,
@@ -716,9 +846,11 @@ function SlotCard({
   state,
   onDrop,
   onClear,
+  onMove,
   badgeColor,
   id,
 }: {
+  slotKey: FileSlot
   title: string
   subtitle: string
   expected: string
@@ -726,6 +858,7 @@ function SlotCard({
   state: UploadSlotState
   onDrop: (file: File) => void
   onClear: () => void
+  onMove: (target: FileSlot) => void
   badgeColor: string
   id: string
 }) {
@@ -769,21 +902,38 @@ function SlotCard({
         <p className="text-[10px] text-[var(--text-muted)] opacity-80 mt-1 italic font-mono">{expected}</p>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 space-y-2">
         {state.file ? (
-          <div className="p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] flex items-center justify-between">
-            <div className="overflow-hidden pr-2">
-              <p className="text-xs font-bold text-[var(--text-primary)] truncate">{state.name}</p>
-              <p className="text-[10px] text-[var(--text-muted)]">{(state.size / (1024 * 1024)).toFixed(2)} MB</p>
+          <div>
+            <div className="p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] flex items-center justify-between">
+              <div className="overflow-hidden pr-2">
+                <p className="text-xs font-bold text-[var(--text-primary)] truncate">{state.name}</p>
+                <p className="text-[10px] text-[var(--text-muted)]">{(state.size / (1024 * 1024)).toFixed(2)} MB</p>
+              </div>
+              <button
+                type="button"
+                onClick={onClear}
+                className="p-1 rounded-md hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-rose-500 transition-colors"
+                title="Remove file"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onClear}
-              className="p-1 rounded-md hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-rose-500 transition-colors"
-              title="Remove file"
-            >
-              <XCircle className="w-4 h-4" />
-            </button>
+
+            {/* Slot re-assign dropdown */}
+            <div className="pt-1.5 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+              <span>Re-assign:</span>
+              <select
+                value={slotKey}
+                onChange={(e) => onMove(e.target.value as FileSlot)}
+                className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[10px] text-[var(--text-primary)] outline-none"
+              >
+                <option value="comparison_tool">Renewal Comparison Tool</option>
+                <option value="fiscal_2026">Renewals Summary - Fiscal 2026</option>
+                <option value="fiscal_2027">Renewals Summary - Fiscal 2027</option>
+                <option value="fiscal_q4">Renewals Summary - Fiscal Q4</option>
+              </select>
+            </div>
           </div>
         ) : (
           <div
@@ -825,13 +975,13 @@ function ScopePreviewCard({
       <div className="p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] opacity-60">
         <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{badge}</p>
         <h5 className="font-bold text-xs text-[var(--text-primary)]">{title}</h5>
-        <p className="text-xs text-[var(--text-muted)] mt-2 italic">No summary file uploaded — scope not available</p>
+        <p className="text-xs text-[var(--text-muted)] mt-2 italic">Scope not available</p>
       </div>
     )
   }
 
   return (
-    <div className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] flex flex-col justify-between">
+    <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] flex flex-col justify-between">
       <div>
         <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{badge}</span>
         <h5 className="font-extrabold text-xs text-[var(--text-primary)] leading-tight">{title}</h5>

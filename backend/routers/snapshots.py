@@ -183,19 +183,21 @@ def validate_upload(
 def commit_upload(
     session_id: str = Body(..., embed=True),
     replace: bool = Body(False, embed=True),
+    make_active: Optional[bool] = Body(None, embed=True),
     db: Session = Depends(get_db),
     ctx: UserContext = Depends(get_user_context),
 ):
     """Atomic commit of previously validated upload session."""
     svc = IngestService(db)
     try:
-        snap = svc.commit_upload(ctx, session_id, replace=replace)
+        snap = svc.commit_upload(ctx, session_id, replace=replace, make_active=make_active)
         return {
             "status": "ok",
             "snapshot_id": snap.id,
             "snapshot_date": snap.snapshot_date.isoformat(),
             "row_count": snap.row_count,
             "active_row_count": snap.active_row_count,
+            "is_active_today": snap.is_active_today,
         }
     except ValueError as exc:
         msg = str(exc)
