@@ -270,3 +270,123 @@ class TestOverviewMovements:
         slipped_later = d["slipped_later_quarter"]
         assert slipped_later["count"] == 0
 
+
+# ── SECTION 5: Deals Drilldown & Click Targets ──────────────────────────────
+
+class TestOverviewDealsClickTargets:
+    def test_overview_deals_structure(self, client_and_db):
+        client, _ = client_and_db
+        r = client.get("/api/v2/overview/deals")
+        assert r.status_code == 200
+        d = r.json()
+        assert "count" in d and "acv" in d and "filters_applied" in d and "deals" in d
+        assert d["count"] == 348
+        assert d["acv"] == pytest.approx(40068990.09, abs=0.01)
+        assert len(d["deals"]) == 348
+
+    def test_overview_deals_categories(self, client_and_db):
+        client, _ = client_and_db
+
+        # Closed
+        r_closed = client.get("/api/v2/overview/deals?category=Closed")
+        d_closed = r_closed.json()
+        assert d_closed["count"] == 0
+        assert d_closed["acv"] == 0.0
+
+        # Commit
+        r_commit = client.get("/api/v2/overview/deals?category=Commit")
+        d_commit = r_commit.json()
+        assert d_commit["count"] == 308
+        assert d_commit["acv"] == pytest.approx(30349636.71, abs=0.01)
+
+        # Best Case
+        r_bc = client.get("/api/v2/overview/deals?category=Best Case")
+        d_bc = r_bc.json()
+        assert d_bc["count"] == 34
+        assert d_bc["acv"] == pytest.approx(9456843.36, abs=0.01)
+
+        # Blank (Not yet proposed)
+        r_blank = client.get("/api/v2/overview/deals?category=Blank")
+        d_blank = r_blank.json()
+        assert d_blank["count"] == 5
+        assert d_blank["acv"] == pytest.approx(212772.40, abs=0.01)
+
+        # Other / Pipeline
+        r_pipe = client.get("/api/v2/overview/deals?category=Pipeline")
+        d_pipe = r_pipe.json()
+        assert d_pipe["count"] == 1
+        assert d_pipe["acv"] == pytest.approx(49737.62, abs=0.01)
+
+        # Category sum check matches total
+        total_cats_count = d_closed["count"] + d_commit["count"] + d_bc["count"] + d_blank["count"] + d_pipe["count"]
+        total_cats_acv = d_closed["acv"] + d_commit["acv"] + d_bc["acv"] + d_blank["acv"] + d_pipe["acv"]
+        assert total_cats_count == 348
+        assert total_cats_acv == pytest.approx(40068990.09, abs=0.01)
+
+    def test_overview_deals_slipped(self, client_and_db):
+        client, _ = client_and_db
+
+        # Slipped vs yesterday
+        r_sy = client.get("/api/v2/overview/deals?kind=slipped&compare=yesterday")
+        d_sy = r_sy.json()
+        assert d_sy["count"] == 2
+        assert d_sy["acv"] == pytest.approx(59514.21, abs=0.01)
+        assert len(d_sy["deals"]) == 2
+        sy_ids = {deal["opportunity_id_18"] for deal in d_sy["deals"]}
+        assert "006Qp00000asTgFIAU" in sy_ids
+        assert "006Qp00000jgO7FIAU" in sy_ids
+
+        # Slipped vs last week
+        r_slw = client.get("/api/v2/overview/deals?kind=slipped&compare=last_week")
+        d_slw = r_slw.json()
+        assert d_slw["count"] == 5
+        assert d_slw["acv"] == pytest.approx(1315839.07, abs=0.01)
+        assert len(d_slw["deals"]) == 5
+        slw_ids = {deal["opportunity_id_18"] for deal in d_slw["deals"]}
+        assert "0061K00000iGWbBQAW" in slw_ids
+        assert "006Qp00000asRzQIAU" in slw_ids
+
+    def test_overview_deals_deltas_reconciliation(self, client_and_db):
+        client, _ = client_and_db
+
+        # Delta Yesterday: chip is +2 / +$476,219.18
+        r_dy = client.get("/api/v2/overview/deals?kind=delta_yesterday")
+        d_dy = r_dy.json()
+        assert d_dy["count"] == 2
+        assert d_dy["acv"] == pytest.approx(476219.18, abs=0.01)
+        assert "delta_groups" in d_dy
+        groups_y = d_dy["delta_groups"]
+        assert groups_y["added"]["count"] == 4
+        assert groups_y["added"]["acv"] == pytest.approx(538915.01, abs=0.01)
+        assert groups_y["left"]["count"] == 2
+        assert groups_y["left"]["acv"] == pytest.approx(59514.21, abs=0.01)
+        assert groups_y["amount_changed"]["count"] == 2
+        assert groups_y["amount_changed"]["acv"] == pytest.approx(-3181.62, abs=0.01)
+        # Added - Left = Net count
+        assert groups_y["added"]["count"] - groups_y["left"]["count"] == groups_y["net"]["count"]
+        # Added ACV - Left ACV + Amount changed diff = Net ACV
+        calc_acv_y = groups_y["added"]["acv"] - groups_y["left"]["acv"] + groups_y["amount_changed"]["acv"]
+        assert calc_acv_y == pytest.approx(groups_y["net"]["acv"], abs=0.01)
+        assert groups_y["net"]["acv"] == pytest.approx(476219.18, abs=0.01)
+
+        # Delta Last Week: chip is +14 / +$904,132.33
+        r_dlw = client.get("/api/v2/overview/deals?kind=delta_lastweek")
+        d_dlw = r_dlw.json()
+        assert d_dlw["count"] == 14
+        assert d_dlw["acv"] == pytest.approx(904132.33, abs=0.01)
+        assert "delta_groups" in d_dlw
+        groups_lw = d_dlw["delta_groups"]
+        assert groups_lw["added"]["count"] == 20
+        assert groups_lw["added"]["acv"] == pytest.approx(2118711.22, abs=0.01)
+        assert groups_lw["left"]["count"] == 6
+        assert groups_lw["left"]["acv"] == pytest.approx(1391391.20, abs=0.01)
+        assert groups_lw["amount_changed"]["count"] == 10
+        assert groups_lw["amount_changed"]["acv"] == pytest.approx(176812.31, abs=0.01)
+        # Added - Left = Net count
+        assert groups_lw["added"]["count"] - groups_lw["left"]["count"] == groups_lw["net"]["count"]
+        # Added ACV - Left ACV + Amount changed diff = Net ACV
+        calc_acv_lw = groups_lw["added"]["acv"] - groups_lw["left"]["acv"] + groups_lw["amount_changed"]["acv"]
+        assert calc_acv_lw == pytest.approx(groups_lw["net"]["acv"], abs=0.01)
+        assert groups_lw["net"]["acv"] == pytest.approx(904132.33, abs=0.01)
+
+

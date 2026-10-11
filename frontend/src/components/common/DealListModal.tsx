@@ -18,6 +18,8 @@ interface Deal {
   close_date?: string
   owner?: string
   stage?: string
+  delta_group?: string
+  delta_acv_change?: number
 }
 
 interface DealListModalProps {
@@ -31,14 +33,22 @@ interface DealListModalProps {
     business_unit_primary?: string | null
     owner?: string | null
   }
+  deltaGroups?: {
+    added: { name: string; count: number; acv: number; deals: any[] }
+    left: { name: string; count: number; acv: number; deals: any[] }
+    amount_changed: { name: string; count: number; acv: number; deals: any[] }
+    net: { count: number; acv: number }
+  }
   onSelectOpp: (id: string) => void
   onClose: () => void
 }
 
-export default function DealListModal({ title, deals, initialFilters, onSelectOpp, onClose }: DealListModalProps) {
+export default function DealListModal({ title, deals, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
+  const [selectedGroup, setSelectedGroup] = useState<'All' | 'added' | 'left' | 'amount_changed'>('All')
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState<keyof Deal | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
   
   const [filterFC, setFilterFC] = useState<string>(initialFilters?.forecast_category || 'All')
   const [filterStatus, setFilterStatus] = useState<string>(initialFilters?.approval_status || 'All')
@@ -70,6 +80,11 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
 
   const filteredDeals = useMemo(() => {
     let result = deals.filter(d => {
+      if (deltaGroups && selectedGroup !== 'All') {
+        if (selectedGroup === 'added' && d.delta_group !== 'Added to Q4') return false
+        if (selectedGroup === 'left' && d.delta_group !== 'Left Q4 – moved or lost') return false
+        if (selectedGroup === 'amount_changed' && d.delta_group !== 'Amount changed') return false
+      }
       if (filterFC !== 'All' && d.forecast_category !== filterFC) return false
       if (filterStatus !== 'All' && d.approval_status !== filterStatus) return false
       if (filterStage !== 'All' && d.stage !== filterStage) return false
@@ -99,7 +114,7 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
       })
     }
     return result
-  }, [deals, search, filterFC, filterStatus, filterStage, filterRegion, filterBU, filterOwner, sortField, sortDir])
+  }, [deals, search, filterFC, filterStatus, filterStage, filterRegion, filterBU, filterOwner, sortField, sortDir, deltaGroups, selectedGroup])
 
   const totalAcv = filteredDeals.reduce((sum, d) => sum + (d.forecast_acv_amount || 0), 0)
 
@@ -140,6 +155,7 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
     setFilterRegion(initialFilters?.sub_region || 'All')
     setFilterBU(initialFilters?.business_unit_primary || 'All')
     setFilterOwner(initialFilters?.owner || 'All')
+    setSelectedGroup('All')
     setSearch('')
   }
   
@@ -150,9 +166,11 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
     filterRegion !== (initialFilters?.sub_region || 'All') ||
     filterBU !== (initialFilters?.business_unit_primary || 'All') ||
     filterOwner !== (initialFilters?.owner || 'All') ||
+    selectedGroup !== 'All' ||
     search !== ''
     
   const activeChips = []
+  if (selectedGroup !== 'All') activeChips.push({ label: 'Group', value: selectedGroup === 'added' ? 'Added to Q4' : selectedGroup === 'left' ? 'Left Q4' : 'Amount changed', onRemove: () => setSelectedGroup('All') })
   if (filterFC !== 'All') activeChips.push({ label: 'Category', value: filterFC, onRemove: () => setFilterFC('All') })
   if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus, onRemove: () => setFilterStatus('All') })
   if (filterStage !== 'All') activeChips.push({ label: 'Stage', value: filterStage, onRemove: () => setFilterStage('All') })
@@ -181,6 +199,39 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
               <p className="text-[var(--text-muted)] text-sm mt-1 font-medium">
                 Showing {formatNumber(filteredDeals.length)} deals · <span className="font-bold text-[var(--primary)]">{formatCurrency(totalAcv)}</span>
               </p>
+              {deltaGroups && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 px-2.5 py-1 rounded-md">
+                    Net: {deltaGroups.net.count >= 0 ? `+${deltaGroups.net.count}` : deltaGroups.net.count} deals / {deltaGroups.net.acv >= 0 ? `+$${(deltaGroups.net.acv / 1000).toFixed(1)}K` : `-$${(Math.abs(deltaGroups.net.acv) / 1000).toFixed(1)}K`} ({formatCurrency(deltaGroups.net.acv)})
+                  </span>
+                  <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-0.5 text-xs font-semibold">
+                    <button
+                      onClick={() => setSelectedGroup('All')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'All' ? 'bg-[var(--brand-teal)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    >
+                      All ({deals.length})
+                    </button>
+                    <button
+                      onClick={() => setSelectedGroup('added')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'added' ? 'bg-emerald-600 text-white' : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700'}`}
+                    >
+                      Added to Q4 ({deltaGroups.added.count})
+                    </button>
+                    <button
+                      onClick={() => setSelectedGroup('left')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'left' ? 'bg-rose-600 text-white' : 'text-rose-600 dark:text-rose-400 hover:text-rose-700'}`}
+                    >
+                      Left Q4 – moved or lost ({deltaGroups.left.count})
+                    </button>
+                    <button
+                      onClick={() => setSelectedGroup('amount_changed')}
+                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'amount_changed' ? 'bg-amber-600 text-white' : 'text-amber-600 dark:text-amber-400 hover:text-amber-700'}`}
+                    >
+                      Amount changed ({deltaGroups.amount_changed.count})
+                    </button>
+                  </div>
+                </div>
+              )}
               {activeChips.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {activeChips.map(chip => (
@@ -198,6 +249,7 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-xs font-semibold hover:bg-[var(--bg-secondary)] hover:border-[var(--primary)] transition-all shadow-sm"
               >
                 <Download className="w-3.5 h-3.5" /> Export CSV
+
               </button>
               <button onClick={onClose} className="p-1.5 rounded-full hover:bg-[var(--bg-primary)] text-[var(--text-muted)] transition-colors">
                 <X className="w-5 h-5" />

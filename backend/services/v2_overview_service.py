@@ -284,11 +284,16 @@ class V2OverviewService:
                     deal = {
                         "opportunity_id_18": opp_id,
                         "opportunity_name": str(t_opp["opportunity_name"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["opportunity_name"]),
+                        "account_name": str(t_opp["account_name"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["account_name"]),
                         "canonical_region": str(t_opp["canonical_region"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["canonical_region"]),
                         "forecast_category": str(t_opp["forecast_category"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["forecast_category"]),
                         "forecast_acv_amount": float(t_opp["forecast_acv_amount"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["forecast_acv_amount"]),
+                        "approval_status": str(t_opp["approval_status"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["approval_status"]),
+                        "business_unit_primary": str(t_opp["business_unit_primary"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["business_unit_primary"]),
                         "fiscal_period": t_fp,
+                        "close_date": (t_opp["close_date"].isoformat() if hasattr(t_opp["close_date"], "isoformat") else str(t_opp["close_date"])) if (t_opp["close_date"] is not None and not pd.isna(t_opp["close_date"])) else None,
                     }
+
                     
                     if t_parsed[0] > target_parsed[0]:
                         slipped_next_year_deals.append(deal)
@@ -642,42 +647,172 @@ class V2OverviewService:
         region: str | None = None,
         approval_status: str | None = None,
         kind: str | None = None,
+        compare: str | None = None,
         exclude_deleted: bool = False,
         as_of: str | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         snap = self._active_snap(as_of)
         if snap is None:
-            return []
+            return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
+
+        filters_applied: dict[str, str] = {}
+        if category:
+            filters_applied["category"] = category
+        if region:
+            filters_applied["region"] = region
+        if approval_status:
+            filters_applied["approval_status"] = approval_status
+        if kind:
+            filters_applied["kind"] = kind
+        if compare:
+            filters_applied["compare"] = compare
+
+        # ── Kind: slipped ─────────────────────────────────────────────────────
+        if kind == "slipped":
+            comp = compare if compare in ("yesterday", "last_week") else "yesterday"
+            moves = self.get_movements(ctx, compare=comp, exclude_deleted=exclude_deleted)
+            slip = moves.get("slippage_to_2027") or {"count": 0, "acv": 0.0, "deals": []}
+            raw_deals = slip.get("deals", [])
+            # Map deal fields consistently
+            records = []
+            for d in raw_deals:
+                records.append({
+                    "id": str(d.get("opportunity_id_18", "")),
+                    "opportunity_id_18": str(d.get("opportunity_id_18", "")),
+                    "opportunity_name": str(d.get("opportunity_name", "")),
+                    "account_name": str(d.get("account_name", "")),
+                    "forecast_category": str(d.get("forecast_category", "")),
+                    "forecast_acv_amount": float(d.get("forecast_acv_amount") or d.get("acv") or 0),
+                    "approval_status": str(d.get("approval_status", "")),
+                    "sub_region": str(d.get("canonical_region") or d.get("region") or ""),
+                    "business_unit_primary": str(d.get("business_unit_primary", "")),
+                    "close_date": d.get("close_date"),
+                })
+            return {
+                "count": slip.get("count", len(records)),
+                "acv": round(float(slip.get("acv", sum(r["forecast_acv_amount"] for r in records))), 2),
+                "filters_applied": filters_applied,
+                "deals": records,
+            }
 
         opps = self._q4_opps(snap, exclude_deleted=exclude_deleted)
         df = _opps_to_df(opps)
         if df.empty:
-            return []
+            return {"count": 0, "acv": 0.0, "filters_applied": filters_applied, "deals": []}
 
         if kind in ("delta_yesterday", "delta_lastweek"):
             prev_snap = self._yesterday_snap(snap) if kind == "delta_yesterday" else self._lastweek_snap(snap)
             if prev_snap:
                 prev_opps = self._q4_opps(prev_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
                 prev_df = _opps_to_df(prev_opps)
-                # Deals in today not in prev, or where category/approval/acv/close_date changed
-                today_indexed = df.set_index("opportunity_id_18")
-                prev_indexed = prev_df.set_index("opportunity_id_18") if not prev_df.empty else pd.DataFrame()
-                changed_ids = []
-                for opp_id in today_indexed.index:
-                    if opp_id not in prev_indexed.index:
-                        changed_ids.append(opp_id)
-                    else:
-                        tr = today_indexed.loc[opp_id]
-                        pr = prev_indexed.loc[opp_id]
-                        fc_now = tr["forecast_category"] if isinstance(tr, pd.Series) else tr.iloc[0]["forecast_category"]
-                        fc_prev = pr["forecast_category"] if isinstance(pr, pd.Series) else pr.iloc[0]["forecast_category"]
-                        ap_now = tr["approval_status"] if isinstance(tr, pd.Series) else tr.iloc[0]["approval_status"]
-                        ap_prev = pr["approval_status"] if isinstance(pr, pd.Series) else pr.iloc[0]["approval_status"]
-                        acv_now = float(tr["forecast_acv_amount"] if isinstance(tr, pd.Series) else tr.iloc[0]["forecast_acv_amount"])
-                        acv_prev = float(pr["forecast_acv_amount"] if isinstance(pr, pd.Series) else pr.iloc[0]["forecast_acv_amount"])
-                        if fc_now != fc_prev or ap_now != ap_prev or acv_now != acv_prev:
-                            changed_ids.append(opp_id)
-                df = df[df["opportunity_id_18"].isin(changed_ids)]
+
+                t_map = {str(r["opportunity_id_18"]): r for _, r in df.iterrows()}
+                p_map = {str(r["opportunity_id_18"]): r for _, r in prev_df.iterrows()} if not prev_df.empty else {}
+
+                added_deals = []
+                for oid, tr in t_map.items():
+                    if oid not in p_map:
+                        deal = {
+                            "id": str(tr["opportunity_id_18"]),
+                            "opportunity_id_18": str(tr["opportunity_id_18"]),
+                            "opportunity_name": str(tr["opportunity_name"]),
+                            "account_name": str(tr["account_name"]),
+                            "forecast_category": str(tr["forecast_category"]),
+                            "forecast_acv_amount": float(tr["forecast_acv_amount"] or 0),
+                            "approval_status": str(tr["approval_status"]),
+                            "sub_region": str(tr["canonical_region"]),
+                            "business_unit_primary": str(tr["business_unit_primary"]),
+                            "close_date": tr["close_date"].isoformat() if hasattr(tr["close_date"], "isoformat") else str(tr["close_date"]) if tr["close_date"] else None,
+                            "delta_group": "Added to Q4",
+                            "delta_acv_change": float(tr["forecast_acv_amount"] or 0),
+                        }
+                        added_deals.append(deal)
+
+                left_deals = []
+                for oid, pr in p_map.items():
+                    if oid not in t_map:
+                        deal = {
+                            "id": str(pr["opportunity_id_18"]),
+                            "opportunity_id_18": str(pr["opportunity_id_18"]),
+                            "opportunity_name": str(pr["opportunity_name"]),
+                            "account_name": str(pr["account_name"]),
+                            "forecast_category": str(pr["forecast_category"]),
+                            "forecast_acv_amount": float(pr["forecast_acv_amount"] or 0),
+                            "approval_status": str(pr["approval_status"]),
+                            "sub_region": str(pr["canonical_region"]),
+                            "business_unit_primary": str(pr["business_unit_primary"]),
+                            "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
+                            "delta_group": "Left Q4 – moved or lost",
+                            "delta_acv_change": -float(pr["forecast_acv_amount"] or 0),
+                        }
+                        left_deals.append(deal)
+
+                changed_deals = []
+                for oid in t_map:
+                    if oid in p_map:
+                        tr = t_map[oid]
+                        pr = p_map[oid]
+                        diff = round(float(tr["forecast_acv_amount"] or 0) - float(pr["forecast_acv_amount"] or 0), 2)
+                        if abs(diff) > 0.001:
+                            deal = {
+                                "id": str(tr["opportunity_id_18"]),
+                                "opportunity_id_18": str(tr["opportunity_id_18"]),
+                                "opportunity_name": str(tr["opportunity_name"]),
+                                "account_name": str(tr["account_name"]),
+                                "forecast_category": str(tr["forecast_category"]),
+                                "forecast_acv_amount": float(tr["forecast_acv_amount"] or 0),
+                                "approval_status": str(tr["approval_status"]),
+                                "sub_region": str(tr["canonical_region"]),
+                                "business_unit_primary": str(tr["business_unit_primary"]),
+                                "close_date": tr["close_date"].isoformat() if hasattr(tr["close_date"], "isoformat") else str(tr["close_date"]) if tr["close_date"] else None,
+                                "delta_group": "Amount changed",
+                                "delta_acv_change": diff,
+                            }
+                            changed_deals.append(deal)
+
+                added_acv = round(sum(d["forecast_acv_amount"] for d in added_deals), 2)
+                left_acv = round(sum(d["forecast_acv_amount"] for d in left_deals), 2)
+                changed_diff = round(sum(d["delta_acv_change"] for d in changed_deals), 2)
+
+                # Net calculations
+                net_count = len(df) - len(prev_df)
+                net_acv = round(float(_sum(df, "forecast_acv_amount") - _sum(prev_df, "forecast_acv_amount")), 2)
+
+                all_delta_deals = added_deals + left_deals + changed_deals
+
+                delta_groups = {
+                    "added": {
+                        "name": f"Added to Q4 ({len(added_deals)})",
+                        "count": len(added_deals),
+                        "acv": added_acv,
+                        "deals": added_deals,
+                    },
+                    "left": {
+                        "name": f"Left Q4 – moved or lost ({len(left_deals)})",
+                        "count": len(left_deals),
+                        "acv": left_acv,
+                        "deals": left_deals,
+                    },
+                    "amount_changed": {
+                        "name": f"Amount changed ({len(changed_deals)})",
+                        "count": len(changed_deals),
+                        "acv": changed_diff,
+                        "deals": changed_deals,
+                    },
+                    "net": {
+                        "count": net_count,
+                        "acv": net_acv,
+                    }
+                }
+
+                return {
+                    "count": net_count,
+                    "acv": net_acv,
+                    "filters_applied": filters_applied,
+                    "delta_groups": delta_groups,
+                    "deals": all_delta_deals,
+                }
+
 
         if category:
             df = df[df["forecast_category"] == category]
@@ -702,4 +837,10 @@ class V2OverviewService:
                 "business_unit_primary": str(r["business_unit_primary"]),
                 "close_date": r["close_date"].isoformat() if hasattr(r["close_date"], "isoformat") else str(r["close_date"]) if r["close_date"] else None,
             })
-        return records
+        return {
+            "count": len(records),
+            "acv": round(sum(r["forecast_acv_amount"] for r in records), 2),
+            "filters_applied": filters_applied,
+            "deals": records,
+        }
+

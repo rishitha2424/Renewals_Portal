@@ -139,18 +139,27 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const [movCompare, setMovCompare] = useState<'yesterday' | 'last_week'>('yesterday')
-  const [modal, setModal] = useState<{ title: string; deals: any[] } | null>(null)
+  const [modal, setModal] = useState<{ title: string; deals: any[]; deltaGroups?: any } | null>(null)
   const [modalInitialFilters, setModalInitialFilters] = useState<any>(undefined)
 
-  const openDealsQuery = async (title: string, params: { category?: string; region?: string; approval_status?: string; kind?: string }, initialFilters?: any) => {
+  const openDealsQuery = async (
+    title: string,
+    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string },
+    initialFilters?: any
+  ) => {
     try {
-      const deals = await getV2OverviewDeals(params)
+      const res = await getV2OverviewDeals(params)
       setModalInitialFilters(initialFilters)
-      setModal({ title, deals })
+      setModal({
+        title,
+        deals: res.deals || [],
+        deltaGroups: res.delta_groups,
+      })
     } catch (err) {
       console.error('Failed to load deals', err)
     }
   }
+
 
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
@@ -159,18 +168,27 @@ export default function Dashboard() {
     queryFn: () => getV2OverviewSummary(),
   })
 
-  const { data: movements, isLoading: movLoading, refetch: refetchMov } = useQuery({
-    queryKey: ['v2-movements', movCompare],
-    queryFn: () => getV2OverviewMovements(movCompare),
+  const { data: movYesterday, isLoading: movYLoading, refetch: refetchMovY } = useQuery({
+    queryKey: ['v2-movements-yesterday'],
+    queryFn: () => getV2OverviewMovements('yesterday'),
   })
+
+  const { data: movLastWeek, isLoading: movLWLoading, refetch: refetchMovLW } = useQuery({
+    queryKey: ['v2-movements-lastweek'],
+    queryFn: () => getV2OverviewMovements('last_week'),
+  })
+
+  const movements = movCompare === 'yesterday' ? movYesterday : movLastWeek
+  const movLoading = movCompare === 'yesterday' ? movYLoading : movLWLoading
 
   const { data: regional, isLoading: regLoading, refetch: refetchReg } = useQuery({
     queryKey: ['v2-regional'],
     queryFn: () => getV2RegionalBreakdown(),
   })
 
-  const isLoading = sumLoading || movLoading || regLoading
-  const refetchAll = () => { refetchSum(); refetchMov(); refetchReg() }
+  const isLoading = sumLoading || movYLoading || movLWLoading || regLoading
+  const refetchAll = () => { refetchSum(); refetchMovY(); refetchMovLW(); refetchReg() }
+
 
   if (snapshots.length === 0 && !isLoading) {
     return (
@@ -390,39 +408,73 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── SECTION 3 – Slippage to 2027 ────────────────────────────────────── */}
+      {/* ── SECTION 3 – Slippage to Next Year (Movement-based) ─────────────── */}
       <div className="card-premium p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
-            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">
-              Slipped to Next Year ({movCompare === 'yesterday' ? 'vs Yesterday' : 'vs Last Week'})
-            </p>
-            <div className="flex items-baseline gap-3">
-              {movLoading
-                ? <div className="h-10 w-36 skeleton-shimmer rounded" />
-                : (
-                  <span
-                    className="font-display font-extrabold text-3xl tabular-nums text-amber-600 dark:text-amber-400 cursor-pointer hover:underline"
-                    onClick={() => movSlip.deals?.length && setModal({ title: movSlip.label, deals: movSlip.deals })}
-                  >
-                    {acvM(movSlip.acv)}
-                  </span>
-                )}
-              <Pill color="amber"><AlertTriangle className="w-3 h-3" />{movSlip.count} Slipped Deals</Pill>
-            </div>
-            <p className="text-[11px] text-[var(--text-muted)] mt-2">
-              Q4 deals with a close date after the quarter end: {standingSlip.count}
-            </p>
-            {(slipLater.count > 0 || slipEarlier.count > 0) && (
-              <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                {slipLater.count > 0 && <span className="cursor-pointer hover:underline" onClick={() => setModal({title: slipLater.label, deals: slipLater.deals})}>Slipped to a later quarter, same year: {slipLater.count}</span>}
-                {slipLater.count > 0 && slipEarlier.count > 0 && " | "}
-                {slipEarlier.count > 0 && <span className="cursor-pointer hover:underline" onClick={() => setModal({title: slipEarlier.label, deals: slipEarlier.deals})}>Moved to earlier quarter: {slipEarlier.count}</span>}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+              <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                Slipped to Next Year (Movement-Based)
               </p>
-            )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6 mt-3">
+              {/* Yesterday comparison */}
+              {(() => {
+                const ySlip = movYesterday?.slippage_to_2027 ?? { count: 0, acv: 0, deals: [] }
+                const yDate = movYesterday?.compare_date
+                return (
+                  <div
+                    className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
+                    onClick={() => openDealsQuery(`Slipped to Next Year (vs Yesterday, ${yDate ? formatDate(yDate) : 'Oct 6'}) · ${ySlip.count} deals · ${acvM(ySlip.acv)}`, { kind: 'slipped', compare: 'yesterday' })}
+                    title="Click to view deals slipped vs yesterday"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-semibold text-[var(--text-muted)]">
+                        vs Yesterday {yDate && `(${formatDate(yDate)})`}
+                      </span>
+                      <Pill color="amber"><AlertTriangle className="w-3 h-3" />{ySlip.count} deals</Pill>
+                    </div>
+                    <div className="font-display font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
+                      {acvM(ySlip.acv)}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Last week comparison */}
+              {(() => {
+                const lwSlip = movLastWeek?.slippage_to_2027 ?? { count: 0, acv: 0, deals: [] }
+                const lwDate = movLastWeek?.compare_date
+                return (
+                  <div
+                    className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
+                    onClick={() => openDealsQuery(`Slipped to Next Year (vs Last Week, ${lwDate ? formatDate(lwDate) : 'Sep 30'}) · ${lwSlip.count} deals · ${acvM(lwSlip.acv)}`, { kind: 'slipped', compare: 'last_week' })}
+                    title="Click to view deals slipped vs last week"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-semibold text-[var(--text-muted)]">
+                        vs Last Week {lwDate && `(${formatDate(lwDate)})`}
+                      </span>
+                      <Pill color="amber"><AlertTriangle className="w-3 h-3" />{lwSlip.count} deals</Pill>
+                    </div>
+                    <div className="font-display font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
+                      {acvM(lwSlip.acv)}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <p className="text-[11px] text-[var(--text-muted)] mt-3">
+              Contracts originally in Q4 that moved close date / fiscal period to FY2027.
+              {standingSlip.count > 0 && ` Active snapshot standing slippage: ${standingSlip.count} deals.`}
+            </p>
           </div>
         </div>
       </div>
+
 
       {/* ── SECTION 4 – Forecast Category & Approval Movement ───────────────── */}
       <div className="card-premium p-6 space-y-5">
@@ -753,10 +805,12 @@ export default function Dashboard() {
           title={modal.title}
           deals={modal.deals}
           initialFilters={modalInitialFilters}
+          deltaGroups={modal.deltaGroups}
           onSelectOpp={(id) => { setModal(null); setSelectedOppId(id) }}
           onClose={() => { setModal(null); setModalInitialFilters(undefined) }}
         />
       )}
+
 
       {/* Opportunity drawer */}
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />

@@ -118,10 +118,23 @@ export const getV2OverviewDeals = (params: {
   region?: string
   approval_status?: string
   kind?: string
+  compare?: string
   as_of?: string
   exclude_deleted?: boolean
-} = {}) =>
+} = {}): Promise<{
+  count: number
+  acv: number
+  filters_applied: Record<string, any>
+  delta_groups?: {
+    added: { name: string; count: number; acv: number; deals: any[] }
+    left: { name: string; count: number; acv: number; deals: any[] }
+    amount_changed: { name: string; count: number; acv: number; deals: any[] }
+    net: { count: number; acv: number }
+  }
+  deals: any[]
+}> =>
   api.get('/v2/overview/deals', { params }).then(r => r.data)
+
 
 // ── Opportunities ─────────────────────────────────────────────────────────────
 

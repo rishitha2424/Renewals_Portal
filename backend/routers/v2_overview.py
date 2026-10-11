@@ -49,6 +49,7 @@ def overview_deals(
     region: str = Query(None),
     approval_status: str = Query(None),
     kind: str = Query(None),
+    compare: str = Query(None),
     as_of: str = Query(None),
     exclude_deleted: bool = Query(False),
     svc: V2OverviewService = Depends(_svc),
@@ -60,6 +61,8 @@ def overview_deals(
         region=region,
         approval_status=approval_status,
         kind=kind,
+        compare=compare,
         exclude_deleted=exclude_deleted,
         as_of=as_of,
     )
+
