@@ -31,7 +31,7 @@ export default function Expiry() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
-  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null }>({ quarter: null, category: null })
+  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean }>({ quarter: null, category: null })
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
 
@@ -46,10 +46,11 @@ export default function Expiry() {
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['v2ExpiryDeals', activeSnapshotId, modalParams.quarter, modalParams.category, includeDeletedLost],
+    queryKey: ['v2ExpiryDeals', activeSnapshotId, modalParams.quarter, modalParams.category, modalParams.slippage, includeDeletedLost],
     queryFn: () => getV2ExpiryDeals({
       quarter: modalParams.quarter || undefined,
       category: modalParams.category || undefined,
+      slippage: modalParams.slippage,
       as_of: activeSnapshot?.snapshot_date,
       exclude_deleted_lost: !includeDeletedLost
     }),
@@ -73,22 +74,26 @@ export default function Expiry() {
   if (isError || !sum || sum.error) {
     return <div className="p-8 text-center text-rose-500 font-semibold bg-rose-50 border border-rose-200 rounded-xl m-6">{sum?.error || 'Failed to load Expiry view.'}</div>
   }
-  if (!sum.total) {
+  if (!sum.grand_total) {
     return <EmptyState title="No data" description="No expiry data found or the response was malformed." />
   }
 
-  const handleCellClick = (quarter: string | null, category: string | null, title: string) => {
-    setModalParams({ quarter, category })
+  const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false) => {
+    setModalParams({ quarter, category, slippage: isSlippage })
     setModalTitle(title)
     setModalOpen(true)
   }
 
-  const fy1 = sum.fiscal_years?.[0]?.label
-  const fy2 = sum.fiscal_years?.[1]?.label
+  const fy1 = sum.fiscal_years?.[0]?.label || '2026'
+  const fy2 = sum.fiscal_years?.[1]?.label || '2027'
   const grid1 = sum.grids?.[fy1]
   const grid2 = sum.grids?.[fy2]
   const deltas1 = sum.deltas?.[fy1]
   const deltas2 = sum.deltas?.[fy2]
+
+  const grandTotal = sum.grand_total || { count: 0, acv: 0 }
+  const yestGrand = deltas1?.yesterday?.grand
+  const lastGrand = deltas1?.lastweek?.grand
 
   return (
     <motion.div
@@ -114,17 +119,74 @@ export default function Expiry() {
         </div>
       </div>
 
+      {/* Grand Total & Slippage KPI Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card
+          className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
+          onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                FY{fy1} All-Years Total Expiry
+              </span>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                {grandTotal.count} deals
+              </span>
+            </div>
+            <div className="text-3xl font-black font-display text-[var(--text-primary)] mt-2">
+              {formatCurrency(grandTotal.acv)}
+            </div>
+          </div>
+          <div className="flex items-center gap-4 mt-4 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-muted)]">
+            <span>
+              vs Yesterday: <strong className={yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400" : ""}>
+                {yestGrand ? `${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals / ${formatCurrency(yestGrand.acv)}` : '—'}
+              </strong>
+            </span>
+            <span>
+              vs Last Week: <strong className={lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400" : ""}>
+                {lastGrand ? `${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals / ${formatCurrency(lastGrand.acv)}` : '—'}
+              </strong>
+            </span>
+          </div>
+        </Card>
+
+        <Card
+          className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors cursor-pointer border-l-4 border-l-amber-500"
+          onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Slippage to FY{fy2}
+              </span>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                {sum.slippage?.count ?? 0} deals
+              </span>
+            </div>
+            <div className="text-3xl font-black font-display text-amber-600 dark:text-amber-400 mt-2">
+              {formatCurrency(sum.slippage?.acv ?? 0)}
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-muted)] flex items-center justify-between">
+            <span>Close date after FY{fy1} year end</span>
+            <span className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">Click to view slippage deals →</span>
+          </div>
+        </Card>
+      </div>
+
       {grid1 && (
         <div className="space-y-1">
           <CompactGrid
             title={`FY ${fy1} Expiry`}
-            columns={sum.categories}
+            columns={sum.categories.filter((c: string) => c !== 'Pipeline')}
             rows={grid1.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
             totals={grid1.totals}
             deltas={deltas1}
             metricMode={metricMode}
             heatMode={heatMode}
-            onCellClick={handleCellClick}
+            onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
             rowLabelName="Quarter"
             compareDate={sum.compare_date}
           />
@@ -132,7 +194,7 @@ export default function Expiry() {
             primaryText={`FY${fy1} expiry: ${acvM(sum.acv_by_year?.[fy1]?.acv)} · ${sum.acv_by_year?.[fy1]?.count} deals`}
             secondaryText={`Slippage to ${fy2}: ${acvM(sum.slippage?.acv)} · ${sum.slippage?.count} deals`}
             details={sum.slippage?.by_quarter?.length > 0 ? sum.slippage.by_quarter : undefined}
-            onDetailClick={(q) => handleCellClick(q, null, `Slippage Deals in ${q}`)}
+            onDetailClick={(q) => handleCellClick(q, null, `Slippage Deals in ${q}`, true)}
           />
         </div>
       )}
@@ -141,13 +203,13 @@ export default function Expiry() {
         <div className="space-y-1">
           <CompactGrid
             title={`FY ${fy2} Expiry`}
-            columns={sum.categories}
+            columns={sum.categories.filter((c: string) => c !== 'Pipeline')}
             rows={grid2.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
             totals={grid2.totals}
             deltas={deltas2}
             metricMode={metricMode}
             heatMode={heatMode}
-            onCellClick={handleCellClick}
+            onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
             rowLabelName="Quarter"
             compareDate={sum.compare_date}
           />
@@ -156,6 +218,7 @@ export default function Expiry() {
           />
         </div>
       )}
+
 
       {/* Insights Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mt-8">
@@ -175,7 +238,7 @@ export default function Expiry() {
                        <span>{acvM(qTot)}</span>
                     </div>
                     <div className="flex w-full h-3 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-                       {sum.categories.map((c: string) => {
+                       {sum.categories.filter((c: string) => c !== "Pipeline").map((c: string) => {
                          const cVal = r.cells[c]?.acv || 0
                          if (cVal === 0) return null
                          return (

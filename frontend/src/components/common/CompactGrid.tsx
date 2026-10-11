@@ -1,5 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
+import { getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 
 function acvM(v: number | null | undefined): string {
   if (v == null) return '—'
@@ -46,24 +47,26 @@ export default function CompactGrid({
   title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', compareDate, yesterdayDate, lastweekDate, heatMode = 'Value'
 }: CompactGridProps) {
   
-  // 1. Hide zero columns
-  const activeColumns = columns.filter(c => (totals.category[c]?.count || 0) > 0 || (totals.category[c]?.acv || 0) > 0)
+  // 1. Hide zero columns and Pipeline category
+  const activeColumns = columns
+    .filter(c => c !== 'Pipeline')
+    .filter(c => (totals.category[c]?.count || 0) > 0 || (totals.category[c]?.acv || 0) > 0)
 
   // 2. Max value/delta for heatmap
   let maxVal = 0
   let maxAbsDelta = 0
   rows.forEach(r => {
     activeColumns.forEach(c => {
-      const cell = r.cells[c]
+      const cell = r.cells?.[c]
       if (cell) {
-        const val = metricMode === 'Count' ? cell.count : cell.acv
+        const val = metricMode === 'Count' ? (cell.count || 0) : (cell.acv || 0)
         if (val > maxVal) maxVal = val
       }
       if (heatMode === 'Yesterday' || heatMode === 'LastWeek') {
         const dObj = heatMode === 'Yesterday' ? deltas?.yesterday : deltas?.lastweek
         const dCell = dObj?.matrix?.[r.id]?.[c]
         if (dCell) {
-          const dv = metricMode === 'Count' ? dCell.count : dCell.acv
+          const dv = metricMode === 'Count' ? (dCell.count || 0) : (dCell.acv || 0)
           if (Math.abs(dv) > maxAbsDelta) maxAbsDelta = Math.abs(dv)
         }
       }
@@ -129,9 +132,12 @@ export default function CompactGrid({
           <thead>
             <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
               <th className="px-3 py-2 text-left font-medium text-[var(--text-muted)]">{rowLabelName}</th>
-              {activeColumns.map(c => (
-                <th key={c} className="px-3 py-2 text-center font-medium text-[var(--text-muted)]">{c}</th>
-              ))}
+              {activeColumns.map(c => {
+                const label = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                return (
+                  <th key={c} className="px-3 py-2 text-center font-medium text-[var(--text-muted)]">{label}</th>
+                )
+              })}
               <th className="px-3 py-2 text-center font-semibold text-[var(--text-primary)] border-l border-[var(--border)]">Total</th>
             </tr>
           </thead>
@@ -206,7 +212,7 @@ export default function CompactGrid({
                   onClick={() => onCellClick(r.id, null, `${r.label} Total`)}
                   className="px-3 py-1 text-center cursor-pointer bg-[var(--bg-secondary)] border-l border-[var(--border)] hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
                 >
-                  <div>{renderVal(r.total.count, r.total.acv)}</div>
+                  <div>{renderVal(r.total?.count || 0, r.total?.acv || 0)}</div>
                   {renderDeltas({
                     yesterday: deltas?.yesterday?.quarters?.[r.id] || deltas?.yesterday?.rows?.[r.id],
                     lastweek: deltas?.lastweek?.quarters?.[r.id] || deltas?.lastweek?.rows?.[r.id],

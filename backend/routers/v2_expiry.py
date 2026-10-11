@@ -23,8 +23,9 @@ def get_deals(
     category: str = Query(None),
     as_of: str = Query(None),
     exclude_deleted_lost: bool = Query(False),
+    slippage: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     ctx = UserContext()
     svc = V2ExpiryService(db)
-    return svc.get_deals(ctx, quarter, category, as_of, exclude_deleted_lost)
+    return svc.get_deals(ctx, quarter, category, as_of, exclude_deleted_lost, slippage)

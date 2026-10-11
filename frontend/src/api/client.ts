@@ -113,6 +113,16 @@ export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yes
 export const getV2RegionalBreakdown = (excludeDeleted = false) =>
   api.get('/v2/overview/regional-breakdown', { params: { exclude_deleted: excludeDeleted } }).then(r => r.data)
 
+export const getV2OverviewDeals = (params: {
+  category?: string
+  region?: string
+  approval_status?: string
+  kind?: string
+  as_of?: string
+  exclude_deleted?: boolean
+} = {}) =>
+  api.get('/v2/overview/deals', { params }).then(r => r.data)
+
 // ── Opportunities ─────────────────────────────────────────────────────────────
 
 export interface OppFilters {
@@ -360,11 +370,13 @@ export const getV2ExpiryDeals = async (params: {
   category?: string
   as_of?: string | null
   exclude_deleted_lost?: boolean
+  slippage?: boolean
 }) => {
   const p: any = {}
   if (params.quarter) p.quarter = params.quarter
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
+  if (params.slippage !== undefined) p.slippage = params.slippage
   p.exclude_deleted_lost = params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/deals', { params: p })
   return res.data

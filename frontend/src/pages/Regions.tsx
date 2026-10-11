@@ -24,7 +24,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
-const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
+const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Blank']
 const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Blank']
 
 function RegionsContent() {

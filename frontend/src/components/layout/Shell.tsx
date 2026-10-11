@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle } from 'lucide-react'
-import api from '@/api/client'
+import api, { getSnapshots } from '@/api/client'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import CommandPalette from './CommandPalette'
@@ -9,11 +9,21 @@ import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import AssistantDock from '@/components/assistant/AssistantDock'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
+import { formatDate } from '@/utils/format'
 import { useEffect } from 'react'
 
 export default function Shell() {
-  const activeSnapshot = useAppStore(s => s.snapshots.find(snap => snap.id === s.activeSnapshotId))
-  const asOf = activeSnapshot?.snapshot_date ? new Date(activeSnapshot.snapshot_date).toLocaleDateString() : 'N/A'
+  const storeSnapshots = useAppStore(s => s.snapshots)
+  const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
+
+  const { data: fetchedSnapshots = [] } = useQuery({
+    queryKey: ['snapshots'],
+    queryFn: getSnapshots,
+  })
+
+  const snapshots = storeSnapshots.length > 0 ? storeSnapshots : fetchedSnapshots
+  const activeSnapshot = snapshots.find((snap: any) => snap.id === activeSnapshotId) ?? snapshots[0]
+  const asOf = activeSnapshot?.snapshot_date ? formatDate(activeSnapshot.snapshot_date) : 'N/A'
   const setOpen = useAppStore(s => s.setCommandPaletteOpen)
   const selectedOppId = useAppStore(s => s.selectedOppId)
   const setSelectedOppId = useAppStore(s => s.setSelectedOppId)

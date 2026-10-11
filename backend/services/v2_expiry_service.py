@@ -267,7 +267,8 @@ class V2ExpiryService:
         quarter: Optional[str] = None,
         category: Optional[str] = None,
         as_of: Optional[str] = None,
-        exclude_deleted_lost: bool = False
+        exclude_deleted_lost: bool = False,
+        slippage: bool = False
     ) -> list[dict]:
         snap = self._get_snapshot(ctx, as_of)
         if not snap:
@@ -281,6 +282,11 @@ class V2ExpiryService:
         if exclude_deleted_lost:
             q = q.filter(Opportunity.is_deleted_or_lost == False)
             
+        if slippage:
+            _, current_y_str = target_quarter.split("-")
+            _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
+            q = q.filter(Opportunity.close_date > fy_end_date)
+
         if quarter:
             q = q.filter(Opportunity.service_expiry_period == quarter)
         if category:

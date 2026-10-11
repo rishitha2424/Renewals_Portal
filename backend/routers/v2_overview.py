@@ -42,3 +42,24 @@ def overview_regional_breakdown(
     ctx: UserContext = Depends(get_user_context),
 ):
     return svc.get_regional_breakdown(ctx, exclude_deleted=exclude_deleted)
+
+@router.get("/deals")
+def overview_deals(
+    category: str = Query(None),
+    region: str = Query(None),
+    approval_status: str = Query(None),
+    kind: str = Query(None),
+    as_of: str = Query(None),
+    exclude_deleted: bool = Query(False),
+    svc: V2OverviewService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    return svc.get_deals(
+        ctx,
+        category=category,
+        region=region,
+        approval_status=approval_status,
+        kind=kind,
+        exclude_deleted=exclude_deleted,
+        as_of=as_of,
+    )

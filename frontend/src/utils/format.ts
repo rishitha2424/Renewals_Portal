@@ -32,7 +32,8 @@ export function formatPct(val: number | null | undefined): string {
 /** Format date string to "Oct 5, 2026" */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const dateStr = iso.length === 10 ? iso + 'T00:00:00' : iso
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 /** Get delta direction */
@@ -82,3 +83,16 @@ export function formatNumber(val: number | null | undefined): string {
   if (val == null) return '—'
   return val.toLocaleString('en-US')
 }
+
+/** Display label for forecast category (Blank -> Not yet proposed) */
+export function getForecastCategoryLabel(cat: string | null | undefined): string {
+  if (!cat || cat === 'Blank' || cat === 'blank') return 'Not yet proposed'
+  return cat
+}
+
+/** Display label for approval status (Blank -> Not submitted) */
+export function getApprovalStatusLabel(status: string | null | undefined): string {
+  if (!status || status === 'Blank' || status === 'blank') return 'Not submitted'
+  return status
+}
+

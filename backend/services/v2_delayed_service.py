@@ -50,17 +50,20 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     records = []
     for o in opps:
         records.append({
+            "id": o.opportunity_id_18,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
             "account_name": o.account_name,
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
             "forecast_category": _norm_fc(o.forecast_category),
             "business_unit": (o.business_unit_primary or "").strip() or "Unassigned",
+            "business_unit_primary": (o.business_unit_primary or "").strip() or "Unassigned",
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period": o.fiscal_period or "",
             "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
             "approval_status": _norm_approval(o.approval_status),
             "region": _map_region(o.revised_sub_region),
+            "sub_region": _map_region(o.revised_sub_region),
             "sales_type": o.sales_type or ""
         })
     df = pd.DataFrame(records)

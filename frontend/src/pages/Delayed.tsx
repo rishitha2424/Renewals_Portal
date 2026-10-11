@@ -31,7 +31,7 @@ function DelayedContent() {
   const { data: summary, isLoading, error } = useQuery({
     queryKey: ['v2-delayed-summary', activeSnapshotId, compare],
     queryFn: async () => {
-      const res = await api.get('/api/v2/delayed/summary', {
+      const res = await api.get('/v2/delayed/summary', {
         params: { as_of: activeSnapshotId ?? undefined, compare }
       })
       return res.data
@@ -41,7 +41,7 @@ function DelayedContent() {
   const { data: dealsData } = useQuery({
     queryKey: ['v2-delayed-deals', activeSnapshotId, compare, modalFilters],
     queryFn: async () => {
-      const res = await api.get('/api/v2/delayed/deals', {
+      const res = await api.get('/v2/delayed/deals', {
         params: { as_of: activeSnapshotId ?? undefined, compare, ...modalFilters }
       })
       return res.data
@@ -156,7 +156,7 @@ function DelayedContent() {
   )
 
   const buildGrid = (byField: 'by_region' | 'by_bu', clickKey: 'region' | 'bu') => {
-    const categories = ['Commit', 'Best Case', 'Pipeline', 'Closed', 'Blank']
+    const categories = ['Commit', 'Best Case', 'Closed', 'Blank']
     const totals = { category: {} as any, grand: { count: 0, acv: 0 } }
     const gridDeltas: any = {}
     

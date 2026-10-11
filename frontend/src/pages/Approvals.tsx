@@ -182,7 +182,7 @@ export default function Approvals() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}><StatChip label="Approved" data={attachDates(getStatus('Approved'))} icon={CheckCircle2} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}><StatChip label="Pending" data={attachDates(getStatus('Pending Approval'))} icon={Clock} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Blank Status Deals')}><StatChip label="Blank" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
         <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}><StatChip label="Total" data={attachDates(total)} icon={Sigma} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
       </div>
 
@@ -228,7 +228,7 @@ export default function Approvals() {
                    <div className="flex items-center justify-between font-bold text-[var(--text-primary)] text-xs">
                      <div className="flex items-center gap-1.5">
                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: seg.color }}></div>
-                       <span>{seg.status}</span>
+                       <span>{seg.status === 'Blank' ? 'Not submitted' : seg.status}</span>
                      </div>
                      <span>{metricMode === 'Count' ? formatNumber(seg.count) : acvM(seg.acv)} ({seg.pct.toFixed(0)}%)</span>
                    </div>
@@ -246,7 +246,7 @@ export default function Approvals() {
         <div className="xl:col-span-7">
           <CompactGrid
             title="Status vs. Forecast Category"
-            columns={categories}
+            columns={categories.filter((c: string) => c !== 'Pipeline')}
             rows={rowsForGrid}
             totals={{ category: colSums, grand: { count: total.count, acv: total.acv } }}
             deltas={deltasForGrid}

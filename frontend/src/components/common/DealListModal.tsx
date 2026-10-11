@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX } from 'lucide-react'
-import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
+import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 
 interface Deal {
@@ -219,10 +219,10 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
             </div>
             
             <select value={filterFC} onChange={e => setFilterFC(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
-              {fcOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Categories' : o}</option>)}
+              {fcOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Categories' : getForecastCategoryLabel(o)}</option>)}
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
-              {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : o}</option>)}
+              {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : getApprovalStatusLabel(o)}</option>)}
             </select>
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
               {stageOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Stages' : o}</option>)}
@@ -302,7 +302,7 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
                             color: FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#64748b'
                           }}
                         >
-                          {d.forecast_category || 'Blank'}
+                          {getForecastCategoryLabel(d.forecast_category)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -311,7 +311,7 @@ export default function DealListModal({ title, deals, initialFilters, onSelectOp
                           d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
                           'bg-slate-500/10 text-slate-600 border-slate-500/20'
                         }`}>
-                          {d.approval_status || 'Blank'}
+                          {getApprovalStatusLabel(d.approval_status)}
                         </span>
                       </td>
                     </tr>

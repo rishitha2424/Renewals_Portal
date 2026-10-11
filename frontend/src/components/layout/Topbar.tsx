@@ -61,14 +61,16 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [])
 
-  // Auto-init active and compare snapshots if null
+  // Auto-init active and compare snapshots if null or stale
   useEffect(() => {
     if (snapshots.length > 0) {
-      if (!activeSnapshotId) {
+      const exists = snapshots.some((s: any) => s.id === activeSnapshotId)
+      if (!activeSnapshotId || !exists) {
         const todaySnap = snapshots.find((s: any) => s.is_active_today) ?? snapshots[0]
         setActiveSnapshotId(todaySnap.id)
       }
-      if (!compareSnapshotId && snapshots.length > 1) {
+      const compareExists = snapshots.some((s: any) => s.id === compareSnapshotId)
+      if ((!compareSnapshotId || !compareExists) && snapshots.length > 1) {
         // Default compare to second snapshot (yesterday)
         setCompareSnapshotId(snapshots[1].id)
       }
