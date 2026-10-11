@@ -23,7 +23,7 @@ class Opportunity(Base):
     snapshot_id: Mapped[str] = mapped_column(String(36), ForeignKey("upload_snapshots.id"), index=True)
 
     # --- Natural / business key ---
-    opportunity_id_18: Mapped[str | None] = mapped_column(String(18), index=True)
+    opportunity_id_18: Mapped[str | None] = mapped_column(String(64), index=True)
 
     # --- Core fields ---
     opportunity_name: Mapped[str | None] = mapped_column(String(512))

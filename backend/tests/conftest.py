@@ -20,15 +20,24 @@ SNAPSHOT_DATE = date(2026, 10, 5)   # Oct 5 reference date
 
 
 from sqlalchemy.pool import StaticPool
+import os
 
 
 @pytest.fixture(scope="session")
 def db_engine():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    test_db_url = os.environ.get("TEST_DATABASE_URL")
+    if test_db_url:
+        if test_db_url.startswith("postgres://"):
+            test_db_url = test_db_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif test_db_url.startswith("postgresql://") and not test_db_url.startswith("postgresql+"):
+            test_db_url = test_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        engine = create_engine(test_db_url, pool_pre_ping=True)
+    else:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()

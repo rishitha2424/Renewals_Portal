@@ -7,13 +7,8 @@ from backend.utils.excel_parser import detect_file_slot
 
 @pytest.fixture(scope="module")
 def client_and_db(tmp_path_factory):
-    import sqlalchemy
-    from backend.database import Base
-    
-    db_path = tmp_path_factory.mktemp("data") / "test_approvals.db"
-    engine = sqlalchemy.create_engine(f"sqlite:///{db_path}")
-    Base.metadata.create_all(engine)
-    Session = sqlalchemy.orm.sessionmaker(bind=engine)
+    from backend.tests.test_db_helper import get_test_engine_and_session
+    engine, Session = get_test_engine_and_session("test_v2_approvals", tmp_path_factory)
     
     def override_db():
         db = Session()

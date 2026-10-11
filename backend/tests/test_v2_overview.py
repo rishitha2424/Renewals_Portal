@@ -72,15 +72,11 @@ def client_and_db(tmp_path_factory):
     os.environ.setdefault("DATABASE_URL", "sqlite:///./test_v2_overview.db")
 
     from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from backend.database import Base, get_db
+    from backend.database import get_db
     from backend.main import app
+    from backend.tests.test_db_helper import get_test_engine_and_session
 
-    db_path = tmp_path_factory.mktemp("db") / "test_v2_overview.db"
-    engine  = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    Session = sessionmaker(bind=engine)
-    Base.metadata.create_all(engine)
+    engine, Session = get_test_engine_and_session("test_v2_overview", tmp_path_factory)
 
     def override_db():
         db = Session()

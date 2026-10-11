@@ -32,10 +32,9 @@ EXPECTED = {
 
 
 @pytest.fixture(scope="module")
-def client_and_db():
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(bind=engine)
+def client_and_db(tmp_path_factory):
+    from backend.tests.test_db_helper import get_test_engine_and_session
+    engine, Session = get_test_engine_and_session("test_oct7_upload_e2e", tmp_path_factory)
 
     def _override():
         db = Session()

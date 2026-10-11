@@ -25,7 +25,7 @@ class ChangeLog(Base):
         String(36), ForeignKey("upload_snapshots.id"), index=True
     )
 
-    opportunity_id_18: Mapped[str | None] = mapped_column(String(18), index=True)
+    opportunity_id_18: Mapped[str | None] = mapped_column(String(64), index=True)
     opportunity_name: Mapped[str | None] = mapped_column(String(512))
 
     changed_column: Mapped[str | None] = mapped_column(String(128))
