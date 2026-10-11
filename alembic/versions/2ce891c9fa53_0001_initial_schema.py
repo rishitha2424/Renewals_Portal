@@ -93,7 +93,7 @@ def upgrade() -> None:
     op.create_table('opportunities',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('snapshot_id', sa.String(length=36), nullable=False),
-    sa.Column('opportunity_id_18', sa.String(length=18), nullable=True),
+    sa.Column('opportunity_id_18', sa.String(length=64), nullable=True),
     sa.Column('opportunity_name', sa.String(length=512), nullable=True),
     sa.Column('account_name', sa.String(length=512), nullable=True),
     sa.Column('sub_region', sa.String(length=256), nullable=True),
@@ -120,7 +120,7 @@ def upgrade() -> None:
     sa.Column('in_fy2026', sa.Boolean(), nullable=True),
     sa.Column('in_fy2027', sa.Boolean(), nullable=True),
     sa.Column('in_q4_2026', sa.Boolean(), nullable=True),
-    sa.Column('extra_attributes', sa.JSON().with_variant(postgresql.JSONB(astext_type=Text()), 'postgresql'), nullable=True),
+    sa.Column('extra_attributes', sa.JSON().with_variant(postgresql.JSONB(), 'postgresql'), nullable=True),
     sa.ForeignKeyConstraint(['snapshot_id'], ['upload_snapshots.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('snapshot_id', 'opportunity_id_18', name='uq_opp_snapshot_opportunity_id')
