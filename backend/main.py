@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
-from backend.database import init_db
 from backend.routers import snapshots, analytics, opportunities, ai, export, insights, health
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed
 
@@ -22,9 +21,17 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Starting up — initialising database...")
-    init_db()
-    log.info("Database ready.")
+    log.info("Starting up...")
+    try:
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+        alembic_cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+        log.info("Applying database migrations (alembic upgrade head)...")
+        command.upgrade(alembic_cfg, "head")
+        log.info("Database migrations applied successfully.")
+    except Exception as e:
+        log.warning("Alembic upgrade on startup skipped or failed (%s). Falling back if needed.", e)
     yield
     log.info("Shutting down.")
 
