@@ -14,6 +14,7 @@ import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
+import FilterBar from '@/components/common/FilterBar'
 import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 
@@ -234,6 +235,11 @@ function BusinessUnitsContent() {
         <div className="flex items-center gap-3">
           <MetricToggle />
         </div>
+      </div>
+
+      {/* Local Page Filter Strip */}
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+        <FilterBar isPageOverride={false} />
       </div>
 
       {/* KPI Strip */}

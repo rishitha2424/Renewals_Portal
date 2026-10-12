@@ -262,7 +262,7 @@ class V2DelayedService:
         
         t_snap = data["t_snap"]
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
         target_q_str = res.period if res.period.startswith("Q") and "-" in res.period else ScopeService.current_quarter(t_snap.snapshot_date)
         target_q_label = res.label

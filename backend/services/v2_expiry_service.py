@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import re
 from datetime import date
 from typing import Optional
 import pandas as pd
@@ -45,13 +46,13 @@ class V2ExpiryService:
 
     def _window_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False) -> tuple[pd.DataFrame, list[str]]:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
             
         # We want to apply all FilterSpec conditions EXCEPT period (since expiry organizes by service expiry year)
         # We can construct conditions using FilterSpec with period="all_periods"
-        fs_for_expiry = fs.copy()
+        fs_for_expiry = fs.model_copy()
         fs_for_expiry.period = "all_periods"
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
         
@@ -112,17 +113,27 @@ class V2ExpiryService:
             
         df, years_found = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost)
         
-        # If no years found, fallback to current year
         eff_date = snap.snapshot_date
+        if eff_as_of:
+            try:
+                eff_date = date.fromisoformat(eff_as_of)
+            except ValueError:
+                pass
         target_quarter = ScopeService.current_quarter(eff_date)
         _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
+        next_y_str = str(int(current_y_str) + 1)
+        default_years = [current_y_str, next_y_str]
         
-        if not years_found:
-            years_to_use = [current_y_str, str(int(current_y_str) + 1)]
-        elif len(years_found) == 1:
-            years_to_use = [years_found[0], str(int(years_found[0]) + 1)]
+        fs_period = (filter_spec.period if filter_spec and filter_spec.period else "current_quarter").strip()
+        if fs_period == "all_periods" or fs_period == "all":
+            years_to_use = sorted(years_found) if years_found else default_years
+        elif fs_period.upper().startswith("FY"):
+            years_to_use = [fs_period[2:]]
+        elif re.match(r"^Q[1-4]-\d{4}$", fs_period, re.IGNORECASE):
+            years_to_use = [fs_period.split("-")[1]]
         else:
-            years_to_use = sorted(years_found)
+            # Default Expiry window: current FY + next FY
+            years_to_use = default_years
             
         comp_snap = None
         if eff_compare:
@@ -236,7 +247,9 @@ class V2ExpiryService:
             deltas[y_label] = y_deltas
             
         _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-        slip_df = df[df["close_date"] > fy_end_date] if not df.empty else pd.DataFrame()
+        grid_quarters = [q["key"] for q in quarters]
+        grid_df = df[df["service_expiry_period"].isin(grid_quarters)] if not df.empty else pd.DataFrame()
+        slip_df = grid_df[grid_df["close_date"] > fy_end_date] if not grid_df.empty else pd.DataFrame()
         slip_count = len(slip_df)
         slip_acv = _sum(slip_df, "forecast_acv_amount")
         
@@ -252,11 +265,12 @@ class V2ExpiryService:
                     })
         
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date)
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
 
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
+            "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
             "data_slice": res.label,
             "data_slice_key": target_quarter,
@@ -296,10 +310,10 @@ class V2ExpiryService:
             return []
             
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
-        fs_for_expiry = fs.copy()
+        fs_for_expiry = fs.model_copy()
         fs_for_expiry.period = "all_periods"
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
         

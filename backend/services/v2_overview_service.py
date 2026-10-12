@@ -136,8 +136,15 @@ class V2OverviewService:
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
-        eff_date = target_date if target_date else snap.snapshot_date
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        eff_date = target_date
+        if not eff_date and filter_spec and filter_spec.as_of:
+            try:
+                eff_date = date.fromisoformat(filter_spec.as_of)
+            except ValueError:
+                pass
+        if not eff_date:
+            eff_date = snap.snapshot_date
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
@@ -360,7 +367,7 @@ class V2OverviewService:
         - Snapshot metadata (date, files, uploaded_at)
         """
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
             fs.as_of = as_of
         if exclude_deleted:
@@ -370,7 +377,16 @@ class V2OverviewService:
         if snap is None:
             return {"error": "no_snapshot"}
 
-        opps, res = self._scoped_opps(snap, filter_spec=fs)
+        eff_as_of_date = None
+        if fs.as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
+
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
         total_count = len(df)
@@ -394,7 +410,7 @@ class V2OverviewService:
         cats_delta_yesterday = None
         slip_delta_yesterday = None
         if yest_snap:
-            y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=snap.snapshot_date)
+            y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=eff_as_of_date)
             y_df   = _opps_to_df(y_opps)
             y_total_count = len(y_df)
             y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2) if not y_df.empty else 0.0
@@ -423,7 +439,7 @@ class V2OverviewService:
         cats_delta_lastweek = None
         slip_delta_lastweek = None
         if lw_snap:
-            lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date)
+            lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=eff_as_of_date)
             lw_df   = _opps_to_df(lw_opps)
             lw_total_count = len(lw_df)
             lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2) if not lw_df.empty else 0.0
@@ -463,6 +479,7 @@ class V2OverviewService:
 
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
+            "requested_as_of":  fs.as_of or snap.snapshot_date.isoformat(),
             "snapshot_id":      snap.id,
             "data_slice":       data_slice,
             "data_slice_key":   target_fp,
@@ -497,7 +514,7 @@ class V2OverviewService:
     def get_movements(
         self,
         ctx: UserContext,
-        compare: str = "yesterday",
+        compare: Optional[str] = None,
         exclude_deleted: bool = False,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
@@ -506,7 +523,7 @@ class V2OverviewService:
         compare: 'yesterday' | 'last_week'
         """
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if compare:
             fs.compare = compare
         if exclude_deleted:
@@ -516,7 +533,16 @@ class V2OverviewService:
         if snap is None:
             return {"error": "no_snapshot"}
 
-        opps, res = self._scoped_opps(snap, filter_spec=fs)
+        eff_as_of_date = None
+        if fs.as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
+
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         today_df = _opps_to_df(opps)
 
         comp = fs.compare if fs.compare in ("yesterday", "last_week") else "yesterday"
@@ -533,7 +559,7 @@ class V2OverviewService:
                 "slipped_earlier": {"count": 0, "acv": 0.0},
             }
 
-        prev_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs, target_date=snap.snapshot_date)
+        prev_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs, target_date=eff_as_of_date)
         prev_df   = _opps_to_df(prev_opps)
 
         # Get ALL renewals opps for today to see where prev_df deals went
@@ -562,7 +588,7 @@ class V2OverviewService:
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
 
@@ -685,7 +711,7 @@ class V2OverviewService:
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
             fs.as_of = as_of
         if exclude_deleted:

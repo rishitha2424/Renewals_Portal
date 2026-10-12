@@ -9,6 +9,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
 import DealListModal from '@/components/common/DealListModal'
+import FilterBar from '@/components/common/FilterBar'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import Card from '@/components/ui/Card'
 
@@ -176,6 +177,11 @@ export default function Approvals() {
           </p>
         </div>
         <MetricToggle />
+      </div>
+
+      {/* Local Page Filter Strip */}
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+        <FilterBar isPageOverride={false} />
       </div>
 
       {/* Slim Stat Chips */}

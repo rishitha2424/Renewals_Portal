@@ -29,11 +29,12 @@ def overview_summary(
 
 @router.get("/movements")
 def overview_movements(
+    compare: Optional[str] = Query(None),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2OverviewService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    return svc.get_movements(ctx, filter_spec=filter_spec)
+    return svc.get_movements(ctx, compare=compare, filter_spec=filter_spec)
 
 
 @router.get("/regional-breakdown")

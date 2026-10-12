@@ -12,6 +12,7 @@ import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
 import SummaryLine from '@/components/common/SummaryLine'
 import DealListModal from '@/components/common/DealListModal'
+import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
 import clsx from 'clsx'
 
@@ -119,6 +120,11 @@ export default function Expiry() {
         </div>
       </div>
 
+      {/* Local Page Filter Strip */}
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+        <FilterBar isPageOverride={false} />
+      </div>
+
       {/* Grand Total & Slippage KPI Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
@@ -176,48 +182,34 @@ export default function Expiry() {
         </Card>
       </div>
 
-      {grid1 && (
-        <div className="space-y-1">
-          <CompactGrid
-            title={`FY ${fy1} Expiry`}
-            columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
-            rows={grid1.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
-            totals={grid1.totals}
-            deltas={deltas1}
-            metricMode={metricMode}
-            heatMode={heatMode}
-            onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
-            rowLabelName="Quarter"
-            compareDate={sum.compare_date}
-          />
-          <SummaryLine
-            primaryText={`FY${fy1} expiry: ${acvM(sum.acv_by_year?.[fy1]?.acv)} · ${sum.acv_by_year?.[fy1]?.count} deals`}
-            secondaryText={`Slippage to ${fy2}: ${acvM(sum.slippage?.acv)} · ${sum.slippage?.count} deals`}
-            details={sum.slippage?.by_quarter?.length > 0 ? sum.slippage.by_quarter : undefined}
-            onDetailClick={(q) => handleCellClick(q, null, `Slippage Deals in ${q}`, true)}
-          />
-        </div>
-      )}
-
-      {grid2 && (
-        <div className="space-y-1">
-          <CompactGrid
-            title={`FY ${fy2} Expiry`}
-            columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
-            rows={grid2.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
-            totals={grid2.totals}
-            deltas={deltas2}
-            metricMode={metricMode}
-            heatMode={heatMode}
-            onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
-            rowLabelName="Quarter"
-            compareDate={sum.compare_date}
-          />
-          <SummaryLine
-            primaryText={`FY${fy2} expiry: ${acvM(sum.acv_by_year?.[fy2]?.acv)} · ${sum.acv_by_year?.[fy2]?.count} deals`}
-          />
-        </div>
-      )}
+      {sum.fiscal_years?.map((fyObj: any) => {
+        const yLabel = fyObj.label
+        const grid = sum.grids?.[yLabel]
+        if (!grid) return null
+        const deltas = sum.deltas?.[yLabel]
+        return (
+          <div key={yLabel} className="space-y-1">
+            <CompactGrid
+              title={`FY ${yLabel} Expiry`}
+              columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
+              rows={grid.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
+              totals={grid.totals}
+              deltas={deltas}
+              metricMode={metricMode}
+              heatMode={heatMode}
+              onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
+              rowLabelName="Quarter"
+              compareDate={sum.compare_date}
+            />
+            <SummaryLine
+              primaryText={`FY${yLabel} expiry: ${acvM(sum.acv_by_year?.[yLabel]?.acv)} · ${sum.acv_by_year?.[yLabel]?.count} deals`}
+              secondaryText={yLabel === fy1 && sum.slippage?.count > 0 ? `Slippage to ${fy2}: ${acvM(sum.slippage?.acv)} · ${sum.slippage?.count} deals` : undefined}
+              details={yLabel === fy1 && sum.slippage?.by_quarter?.length > 0 ? sum.slippage.by_quarter : undefined}
+              onDetailClick={(q) => handleCellClick(q, null, `Slippage Deals in ${q}`, true)}
+            />
+          </div>
+        )
+      })}
 
 
       {/* Insights Section */}

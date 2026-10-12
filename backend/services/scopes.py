@@ -270,13 +270,13 @@ class ScopeService:
         Single entry point for resolving a FilterSpec into SQL / Pandas conditions.
         """
         ref_date = as_of_date
-        if not ref_date and snapshot:
-            ref_date = snapshot.snapshot_date
         if not ref_date and filter_spec.as_of:
             try:
                 ref_date = date.fromisoformat(filter_spec.as_of)
             except ValueError:
                 pass
+        if not ref_date and snapshot:
+            ref_date = snapshot.snapshot_date
         if not ref_date:
             ref_date = date.today()
 
@@ -378,14 +378,14 @@ class ScopeService:
             if reg_conds:
                 conditions.append(or_(*reg_conds))
 
-        # 4. Business Units (supports atomic or raw BU matches)
+        # 4. Business Units (supports exact BU raw matches)
         bus = filter_spec.business_units
         if bus and not ("all" in [b.lower() for b in bus] or "" in bus):
             bu_conds = []
             for b in bus:
                 b_clean = b.strip()
                 if b_clean:
-                    bu_conds.append(Opportunity.business_unit_raw.ilike(f"%{b_clean}%"))
+                    bu_conds.append(Opportunity.business_unit_raw == b_clean)
             if bu_conds:
                 conditions.append(or_(*bu_conds))
 

@@ -73,8 +73,15 @@ class V2ApprovalsService:
         from backend.services.scopes import FilterSpec
         if not snap:
             return pd.DataFrame(), None
-        eff_date = target_date if target_date else snap.snapshot_date
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        eff_date = target_date
+        if not eff_date and filter_spec and filter_spec.as_of:
+            try:
+                eff_date = date.fromisoformat(filter_spec.as_of)
+            except ValueError:
+                pass
+        if not eff_date:
+            eff_date = snap.snapshot_date
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
@@ -129,19 +136,28 @@ class V2ApprovalsService:
         snap = self._get_snapshot(ctx, eff_as_of)
         if not snap:
             return {"error": "No snapshot found"}
+
+        eff_target_date = None
+        if eff_as_of:
+            try:
+                eff_target_date = date.fromisoformat(eff_as_of)
+            except ValueError:
+                pass
+        if not eff_target_date:
+            eff_target_date = snap.snapshot_date
             
-        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap.snapshot_date)
+        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date)
         
         comp_snap = None
         if eff_compare:
             comp_snap = self._get_snapshot(ctx, eff_compare, base_snap=snap)
-        comp_df, _ = self._get_opps_df(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=comp_snap.snapshot_date if comp_snap else None) if comp_snap else (pd.DataFrame(), None)
+        comp_df, _ = self._get_opps_df(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if comp_snap else (pd.DataFrame(), None)
             
         snap_yest = self._get_snapshot(ctx, "yesterday", base_snap=snap)
-        df_yest, _ = self._get_opps_df(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap_yest.snapshot_date if snap_yest else None) if snap_yest else (pd.DataFrame(), None)
+        df_yest, _ = self._get_opps_df(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if snap_yest else (pd.DataFrame(), None)
         
         snap_lw = self._get_snapshot(ctx, "last_week", base_snap=snap)
-        df_lw, _ = self._get_opps_df(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap_lw.snapshot_date if snap_lw else None) if snap_lw else (pd.DataFrame(), None)
+        df_lw, _ = self._get_opps_df(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if snap_lw else (pd.DataFrame(), None)
         
         total_count = len(df)
         total_acv = _sum(df, "forecast_acv_amount") if not df.empty else 0.0
@@ -260,6 +276,7 @@ class V2ApprovalsService:
             
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
+            "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
             "yesterday_date": snap_yest.snapshot_date.isoformat() if snap_yest else None,
             "lastweek_date": snap_lw.snapshot_date.isoformat() if snap_lw else None,

@@ -91,8 +91,15 @@ class V2BusinessUnitsService:
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
-        eff_date = target_date if target_date else snap.snapshot_date
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        eff_date = target_date
+        if not eff_date and filter_spec and filter_spec.as_of:
+            try:
+                eff_date = date.fromisoformat(filter_spec.as_of)
+            except ValueError:
+                pass
+        if not eff_date:
+            eff_date = snap.snapshot_date
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
@@ -119,7 +126,7 @@ class V2BusinessUnitsService:
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
             fs.as_of = as_of
         if compare:
@@ -130,16 +137,25 @@ class V2BusinessUnitsService:
         snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
+
+        eff_as_of_date = None
+        if fs.as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
             
-        opps, res = self._scoped_opps(snap, filter_spec=fs)
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
         comp = fs.compare if fs.compare in ("yesterday", "last_week") else "yesterday"
         y_snap = self._yesterday_snap(snap)
         lw_snap = self._lastweek_snap(snap)
 
-        y_opps, _ = self._scoped_opps(y_snap, filter_spec=fs, target_date=snap.snapshot_date) if y_snap else ([], None)
-        lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date) if lw_snap else ([], None)
+        y_opps, _ = self._scoped_opps(y_snap, filter_spec=fs, target_date=eff_as_of_date) if y_snap else ([], None)
+        lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=eff_as_of_date) if lw_snap else ([], None)
         y_df = _opps_to_df(y_opps)
         lw_df = _opps_to_df(lw_opps)
 
@@ -259,6 +275,7 @@ class V2BusinessUnitsService:
         target_fp = res.resolved_quarter
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
+            "requested_as_of": fs.as_of or snap.snapshot_date.isoformat(),
             "compare_date": None,
             "yesterday_date": y_snap.snapshot_date.isoformat() if y_snap else None,
             "lastweek_date": lw_snap.snapshot_date.isoformat() if lw_snap else None,
@@ -285,7 +302,7 @@ class V2BusinessUnitsService:
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
             fs.as_of = as_of
         if exclude_deleted_lost:
@@ -328,7 +345,7 @@ class V2BusinessUnitsService:
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
-        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         fs.include_deleted_lost = False
         if as_of:
             fs.as_of = as_of
