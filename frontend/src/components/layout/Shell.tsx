@@ -6,7 +6,6 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import CommandPalette from './CommandPalette'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
-import AssistantDock from '@/components/assistant/AssistantDock'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
 import { formatDate } from '@/utils/format'
@@ -82,7 +81,6 @@ export default function Shell() {
       </div>
       <CommandPalette />
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />
-      <AssistantDock />
     </div>
   )
 }

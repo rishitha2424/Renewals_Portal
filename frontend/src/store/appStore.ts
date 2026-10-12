@@ -67,36 +67,6 @@ interface AppState {
   }
   setFilters: (filters: Partial<AppState['filters']>) => void
   clearFilters: () => void
-
-  // Assistant panel & conversation state
-  assistantOpen: boolean
-  toggleAssistant: () => void
-  setAssistantOpen: (open: boolean) => void
-  assistantMessages: AssistantMessage[]
-  setAssistantMessages: (
-    msgs: AssistantMessage[] | ((prev: AssistantMessage[]) => AssistantMessage[])
-  ) => void
-  clearAssistantMessages: () => void
-}
-
-export interface AssistantMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: string
-  sources?: Array<{ label: string; link: { page: string; params?: Record<string, any> } }>
-  chartData?: {
-    type: 'bar' | 'line'
-    title: string
-    items: Array<{ name?: string; date?: string; value: number; id?: string; acv?: number }>
-  } | null
-  toolsCalled?: Array<{
-    tool: string
-    args: Record<string, any>
-    result: any
-  }>
-  isRefusal?: boolean
-  isDemoMode?: boolean
 }
 
 const DEFAULT_FILTERS = {
@@ -150,18 +120,6 @@ export const useAppStore = create<AppState>()(
       setFilters: (f) =>
         set((s) => ({ filters: { ...s.filters, ...f } })),
       clearFilters: () => set({ filters: DEFAULT_FILTERS }),
-
-      // Assistant
-      assistantOpen: false,
-      toggleAssistant: () => set((s) => ({ assistantOpen: !s.assistantOpen })),
-      setAssistantOpen: (open) => set({ assistantOpen: open }),
-      assistantMessages: [],
-      setAssistantMessages: (msgs) =>
-        set((s) => ({
-          assistantMessages:
-            typeof msgs === 'function' ? msgs(s.assistantMessages) : msgs,
-        })),
-      clearAssistantMessages: () => set({ assistantMessages: [] }),
     }),
     {
       name: 'mobileum-app-v2',
@@ -173,7 +131,6 @@ export const useAppStore = create<AppState>()(
         activeSnapshotId: s.activeSnapshotId,
         compareSnapshotId: s.compareSnapshotId,
         sidebarCollapsed: s.sidebarCollapsed,
-        assistantOpen: s.assistantOpen,
       }),
     }
   )

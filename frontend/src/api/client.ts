@@ -216,8 +216,6 @@ export const askAI = (question: string) =>
 export const getDailyBrief = () =>
   api.get('/ai/daily-brief').then(r => r.data)
 
-export const getPredictiveInsights = () =>
-  api.get('/ai/predictive-insights').then(r => r.data)
 
 export const getAIConfig = () =>
   api.get('/ai/config').then(r => r.data)
@@ -358,8 +356,6 @@ export const downloadReport = async (
   return { filename }
 }
 
-export const getInsights = (snapshotId?: string) =>
-  api.get('/insights', { params: { snapshot_id: snapshotId } }).then(r => r.data)
 
 export default api
 
