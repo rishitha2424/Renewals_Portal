@@ -135,9 +135,10 @@ export default function FilterBar({
   }
 
   if (activeFilters.sales_types.length > 0 && !(activeFilters.sales_types.length === 1 && activeFilters.sales_types[0] === 'Renewals')) {
+    const stLabel = activeFilters.sales_types.includes('all') ? 'All sales types' : activeFilters.sales_types.join(', ')
     chips.push({
       key: 'sales_types',
-      label: `Sales: ${activeFilters.sales_types.join(', ')}`,
+      label: `Sales: ${stLabel}`,
       onRemove: () => setFilters({ sales_types: ['Renewals'] }),
     })
   }
@@ -235,7 +236,7 @@ export default function FilterBar({
             id="filter-sales-type-select"
           >
             <option value="Renewals">Renewals</option>
-            <option value="all">All Opportunities</option>
+            <option value="all">All sales types</option>
             {filterOpts?.sales_types?.filter((st: any) => st.key !== 'Renewals').map((st: any) => (
               <option key={st.key} value={st.key}>
                 {st.label} ({st.count})
