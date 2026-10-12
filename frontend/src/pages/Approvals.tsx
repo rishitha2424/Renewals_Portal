@@ -245,8 +245,7 @@ export default function Approvals() {
         {/* Right: Grid */}
         <div className="xl:col-span-7">
           {(() => {
-            const hasPipelineInApprovals = rowsForGrid.some((r: any) => (r.cells?.['Pipeline']?.count ?? 0) > 0 || (r.cells?.['Pipeline']?.acv ?? 0) > 0) || (colSums?.['Pipeline']?.count ?? 0) > 0
-            const displayCategories = categories.filter((c: string) => c !== 'Pipeline' || hasPipelineInApprovals)
+            const displayCategories = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
             return (
               <CompactGrid
                 title="Status vs. Forecast Category"

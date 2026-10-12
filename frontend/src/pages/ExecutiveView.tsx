@@ -164,8 +164,10 @@ export default function ExecutiveView() {
             <thead>
               <tr style={{ background: '#F1F5F9' }}>
                 <th className="px-4 py-2 text-left font-semibold text-gray-400">Quarter</th>
-                {FORECAST_ORDER.filter(c => c !== 'Blank').map(cat => (
-                  <th key={cat} className="px-4 py-2 text-right font-semibold" style={{ color: FORECAST_COLORS[cat] }}>{cat}</th>
+                {FORECAST_ORDER.map(cat => (
+                  <th key={cat} className="px-4 py-2 text-right font-semibold" style={{ color: FORECAST_COLORS[cat] }}>
+                    {cat === 'Blank' ? 'Not yet proposed' : cat}
+                  </th>
                 ))}
                 <th className="px-4 py-2 text-right font-semibold text-gray-400">Total</th>
               </tr>
@@ -180,7 +182,7 @@ export default function ExecutiveView() {
                 return (
                   <tr key={q} style={{ borderTop: '1px solid #E2E8F0', background: qi % 2 === 0 ? '#fff' : '#F8FAFC' }}>
                     <td className="px-4 py-2 font-semibold text-gray-800">{q}</td>
-                    {FORECAST_ORDER.filter(c => c !== 'Blank').map(cat => (
+                    {FORECAST_ORDER.map(cat => (
                       <td key={cat} className="px-4 py-2 text-right" style={{ color: FORECAST_COLORS[cat] }}>
                         {catMap[cat] ? formatACV(catMap[cat]) : '—'}
                       </td>

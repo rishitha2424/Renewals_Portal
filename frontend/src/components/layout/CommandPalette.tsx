@@ -39,7 +39,6 @@ export default function CommandPalette() {
 
   const COMMANDS: CommandItem[] = [
     { id: 'overview', label: 'Overview', category: 'Navigation', icon: LayoutDashboard, to: '/' },
-    { id: 'pipeline', label: 'Pipeline', category: 'Navigation', icon: TrendingUp, to: '/pipeline' },
     { id: 'expiry', label: 'Expiry Quarters', category: 'Navigation', icon: Calendar, to: '/expiry' },
     { id: 'approvals', label: 'Approvals Status', category: 'Navigation', icon: CheckCircle2, to: '/approvals' },
     { id: 'bu', label: 'Business Units', category: 'Navigation', icon: Building2, to: '/business-units' },
@@ -48,7 +47,6 @@ export default function CommandPalette() {
 
     { id: 'explore', label: 'Data Explorer', category: 'Navigation', icon: Table2, to: '/opportunities' },
     { id: 'history', label: 'History & Snapshots', category: 'Navigation', icon: History, to: '/history' },
-    { id: 'assistant', label: 'AI Assistant', category: 'Navigation', icon: Sparkles, to: '/ai' },
     { id: 'executive', label: 'Executive View (Print)', category: 'Navigation', icon: Printer, to: '/executive' },
     { id: 'upload', label: 'Upload Data', category: 'Navigation', icon: Upload, to: '/upload' },
     { id: 'design', label: 'Design System Review', category: 'Navigation', icon: Palette, to: '/design' },

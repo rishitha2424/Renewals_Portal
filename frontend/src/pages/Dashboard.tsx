@@ -235,8 +235,7 @@ export default function Dashboard() {
   const propRows  = orderRegions(propConf)
   const trendRows = orderRegions(regTrend)
 
-  const showPipelineInTrend = trendRows.some((r: any) => (r.pipeline_acv ?? 0) > 0) || ((regTotals.pipeline_acv ?? 0) > 0)
-  const FC_COLS = ['Closed', 'Commit', 'Best Case', ...(showPipelineInTrend ? ['Pipeline'] : []), 'Blank'] as const
+  const FC_COLS = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'] as const
 
   return (
     <div className="space-y-6 pb-16 max-w-[1600px] mx-auto">
@@ -333,19 +332,17 @@ export default function Dashboard() {
 
       {/* ── SECTION 2 – Category cards in one row ──────────────────────── */}
       {(() => {
-        const pipelineCat = cats['Pipeline'] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
-        const showPipelineCard = (pipelineCat.count ?? 0) > 0
         const categoryCards = [
           { key: 'Closed', label: 'Closed', dataKey: 'Closed' },
           { key: 'Commit', label: 'Commit', dataKey: 'Commit' },
           { key: 'Best Case', label: 'Best Case', dataKey: 'Best Case' },
-          ...(showPipelineCard ? [{ key: 'Pipeline', label: 'Pipeline', dataKey: 'Pipeline' }] : []),
+          { key: 'Pipeline', label: 'Pipeline', dataKey: 'Pipeline' },
           { key: 'Blank', label: 'Not yet proposed', dataKey: 'Blank' },
         ] as const
 
         return (
           <div>
-            <div className={`grid grid-cols-1 sm:grid-cols-2 ${showPipelineCard ? 'lg:grid-cols-5' : 'xl:grid-cols-4'} gap-4`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {categoryCards.map(({ key, label, dataKey }) => {
                 const cat = cats[dataKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
                 const color = FORECAST_COLORS[dataKey] || '#64748b'

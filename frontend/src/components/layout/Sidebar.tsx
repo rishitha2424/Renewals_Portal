@@ -29,13 +29,9 @@ const NAV_ITEMS = [
   { to: '/business-units', icon: Building2, label: 'Business Units' },
   { to: '/regions', icon: Globe2, label: 'Regions' },
   { to: '/delayed', icon: Clock, label: 'Delayed Renewals' },
-  { to: '/pipeline', icon: TrendingUp, label: 'Pipeline' },
   { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
-  { to: '/insights', icon: ShieldAlert, label: 'Insights' },
   { to: '/upload', icon: Upload, label: 'Upload' },
-  { to: '/daily-changes', icon: Activity, label: 'Daily Changes' },
   { to: '/history', icon: History, label: 'History' },
-  { to: '/assistant', icon: Sparkles, label: 'Assistant' },
   { to: '/executive', icon: Printer, label: 'Executive', newTab: true },
 ]
 

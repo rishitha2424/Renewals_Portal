@@ -12,7 +12,6 @@ import {
   Check,
   ChevronDown,
   Loader2,
-  Sparkles,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { getSnapshots, downloadReport } from '@/api/client'
@@ -23,7 +22,6 @@ export default function Topbar() {
   const {
     darkMode,
     toggleDarkMode,
-    toggleAssistant,
     setCommandPaletteOpen,
     activeSnapshotId,
     setActiveSnapshotId,
@@ -302,18 +300,6 @@ export default function Topbar() {
           )}
         </div>
 
-        {/* Assistant Trigger Button */}
-        <button
-          type="button"
-          onClick={toggleAssistant}
-          className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold bg-[var(--bg-secondary)] border border-[var(--border)] transition-all hover:scale-105 focus:outline-none shadow-sm"
-          style={{ color: '#00A3AD' }}
-          id="topbar-assistant-toggle"
-          title="Open Data Assistant (Ctrl+/)"
-        >
-          <Sparkles className="w-4 h-4 text-[#00A3AD]" />
-          <span className="hidden md:inline">Assistant</span>
-        </button>
 
         {/* Theme Toggle */}
         <button

@@ -24,7 +24,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
-const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Blank']
+const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
 const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Blank']
 
 function RegionsContent() {
@@ -535,8 +535,7 @@ function RegionsContent() {
           <div>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Forecast Category</h3>
             {(() => {
-              const hasPipelineInRegions = regions.some((r: any) => (r.cells?.['Pipeline']?.count ?? 0) > 0 || (r.cells?.['Pipeline']?.acv ?? 0) > 0) || (summary?.totals?.categories?.['Pipeline']?.count ?? 0) > 0
-              const displayFc = ['Closed', 'Commit', 'Best Case', ...(hasPipelineInRegions ? ['Pipeline'] : []), 'Blank']
+              const displayFc = ALL_FC
               return (
                 <CompactGrid
                   title="Regions (Forecast Category)"

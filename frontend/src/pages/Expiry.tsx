@@ -180,7 +180,7 @@ export default function Expiry() {
         <div className="space-y-1">
           <CompactGrid
             title={`FY ${fy1} Expiry`}
-            columns={sum.categories.filter((c: string) => c !== 'Pipeline')}
+            columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
             rows={grid1.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
             totals={grid1.totals}
             deltas={deltas1}
@@ -203,7 +203,7 @@ export default function Expiry() {
         <div className="space-y-1">
           <CompactGrid
             title={`FY ${fy2} Expiry`}
-            columns={sum.categories.filter((c: string) => c !== 'Pipeline')}
+            columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
             rows={grid2.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
             totals={grid2.totals}
             deltas={deltas2}
@@ -238,7 +238,7 @@ export default function Expiry() {
                        <span>{acvM(qTot)}</span>
                     </div>
                     <div className="flex w-full h-3 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-                       {sum.categories.filter((c: string) => c !== "Pipeline").map((c: string) => {
+                       {['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'].map((c: string) => {
                          const cVal = r.cells[c]?.acv || 0
                          if (cVal === 0) return null
                          return (

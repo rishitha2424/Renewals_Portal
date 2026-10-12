@@ -3,7 +3,6 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Shell from '@/components/layout/Shell'
 import Dashboard from '@/pages/Dashboard'
-import Pipeline from '@/pages/Pipeline'
 import Expiry from '@/pages/Expiry'
 import ExpiryLegacy from '@/pages/ExpiryLegacy'
 import Approvals from '@/pages/Approvals'
@@ -15,13 +14,10 @@ import RegionsLegacy from '@/pages/RegionsLegacy'
 import Delayed from '@/pages/Delayed'
 import Opportunities from '@/pages/Opportunities'
 import History from '@/pages/History'
-import AIAssistant from '@/pages/AIAssistant'
 import ExecutiveView from '@/pages/ExecutiveView'
 import Upload from '@/pages/Upload'
-import DailyChanges from '@/pages/DailyChanges'
 import LoadingScreen from '@/pages/LoadingScreen'
 import DesignSystem from '@/pages/DesignSystem'
-import Insights from '@/pages/Insights'
 import { useAppStore } from '@/store/appStore'
 
 export default function App() {
@@ -59,15 +55,10 @@ export default function App() {
           <Route path="/regions" element={<Regions />} />
           <Route path="/regions-legacy" element={<RegionsLegacy />} />
           <Route path="/delayed" element={<Delayed />} />
-          <Route path="/pipeline" element={<Pipeline />} />
           <Route path="/opportunities" element={<Opportunities />} />
           <Route path="/explore" element={<Opportunities />} />
-          <Route path="/insights" element={<Insights />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/assistant" element={<AIAssistant />} />
-          <Route path="/ai" element={<AIAssistant />} />
           <Route path="/upload" element={<Upload />} />
-          <Route path="/daily-changes" element={<DailyChanges />} />
+          <Route path="/history" element={<History />} />
           <Route path="/design" element={<DesignSystem />} />
         </Route>
       </Routes>

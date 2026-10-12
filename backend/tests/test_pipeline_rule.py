@@ -85,9 +85,9 @@ def test_pipeline_rule_sample_oct7(tmp_path_factory):
 def test_synthetic_snapshot_zero_pipeline_deals(tmp_path_factory):
     """
     Synthetic snapshot with 0 Pipeline deals:
-    - Pipeline count is 0, ACV is 0
+    - Pipeline is ALWAYS present in categories: count is 0, ACV is 0
     - Total ties out exactly to Closed + Commit + Best Case + Blank
-    - Verifies conditional hiding logic contract
+    - Verifies Pipeline category is always returned and displayed even at 0 (never hidden)
     """
     from backend.tests.test_db_helper import get_test_engine_and_session
     engine, Session = get_test_engine_and_session("syn_zero_pipeline", tmp_path_factory)
@@ -157,6 +157,7 @@ def test_synthetic_snapshot_zero_pipeline_deals(tmp_path_factory):
         assert summary["total"]["acv"] == pytest.approx(300000.00, rel=1e-5)
         
         cats = summary["categories"]
+        assert "Pipeline" in cats
         assert cats["Pipeline"]["count"] == 0
         assert cats["Pipeline"]["acv"] == 0.0
         

@@ -47,10 +47,8 @@ export default function CompactGrid({
   title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', compareDate, yesterdayDate, lastweekDate, heatMode = 'Value'
 }: CompactGridProps) {
   
-  // 1. Hide zero columns and Pipeline category
+  // 1. Keep all columns passed (Pipeline and 0-value columns always shown)
   const activeColumns = columns
-    .filter(c => c !== 'Pipeline')
-    .filter(c => (totals.category[c]?.count || 0) > 0 || (totals.category[c]?.acv || 0) > 0)
 
   // 2. Max value/delta for heatmap
   let maxVal = 0

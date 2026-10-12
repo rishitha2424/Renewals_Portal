@@ -156,13 +156,7 @@ function DelayedContent() {
   )
 
   const buildGrid = (byField: 'by_region' | 'by_bu', clickKey: 'region' | 'bu') => {
-    const hasPipelineInDelayed = (summary[byField] || []).some((row: any) => 
-      (row.categories?.['Pipeline']?.count ?? 0) > 0 || 
-      (row.categories?.['Pipeline']?.acv ?? 0) > 0 ||
-      (row.categories?.['Pipeline']?.delayed_vs_yesterday?.count ?? 0) !== 0 ||
-      (row.categories?.['Pipeline']?.delayed_vs_lastweek?.count ?? 0) !== 0
-    )
-    const categories = ['Commit', 'Best Case', ...(hasPipelineInDelayed ? ['Pipeline'] : []), 'Closed', 'Blank']
+    const categories = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
     const totals = { category: {} as any, grand: { count: 0, acv: 0 } }
     const gridDeltas: any = {}
     

@@ -62,7 +62,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
     return ['All', ...Array.from(vals)].sort()
   }
 
-  const fcOptions = uniqueValues('forecast_category')
+  const fcOptions = ['All', 'Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
   const statusOptions = uniqueValues('approval_status')
   const stageOptions = uniqueValues('stage')
   const regionOptions = uniqueValues('sub_region')
