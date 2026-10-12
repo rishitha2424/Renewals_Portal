@@ -134,18 +134,26 @@ class V2OverviewService:
             .first()
         )
 
-    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+    def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
+        from backend.services.scopes import FilterSpec
         eff_date = target_date if target_date else snap.snapshot_date
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
         q = (
             self.db.query(Opportunity)
             .filter(
                 Opportunity.snapshot_id == snap.id,
-                ScopeService.current_quarter_slice(ScopeService.current_quarter(eff_date))
+                *res.conditions
             )
         )
-        if exclude_deleted:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)  # noqa: E712
-        return q.all()
+        return q.all(), res
+
+    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+        opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
+        return opps
+
 
     def _yesterday_snap(self, snap: UploadSnapshot) -> UploadSnapshot | None:
         from datetime import timedelta
@@ -341,34 +349,36 @@ class V2OverviewService:
         self,
         ctx: UserContext,
         exclude_deleted: bool = False,
-        as_of: str | None = None
+        as_of: str | None = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         """
         Main Overview summary:
-        - Section 1: Total Q4 ACV + count + Δ yesterday + Δ last week
-        - Section 2: 4 category cards (Closed/Commit/BC/Pipeline) + Blank card
-        - Section 3: Slippage to 2027
+        - Section 1: Total ACV + count + Δ yesterday + Δ last week
+        - Section 2: 5 category cards (Closed/Commit/BC/Pipeline/Blank)
+        - Section 3: Slippage
         - Snapshot metadata (date, files, uploaded_at)
         """
-        snap = self._active_snap(as_of)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
         if snap is None:
             return {"error": "no_snapshot"}
 
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
 
         total_count = len(df)
         total_acv   = round(_sum(df, "forecast_acv_amount"), 2) if not df.empty else 0.0
         cats = self._category_summary(df)
 
-        eff_date = snap.snapshot_date
-        if as_of:
-            try:
-                from datetime import date
-                eff_date = date.fromisoformat(as_of)
-            except ValueError:
-                pass
-        target_fp = ScopeService.current_quarter(eff_date)
+        target_fp = res.resolved_quarter
+        data_slice = res.data_slice
 
         import pandas as pd
         _, q_end_date = ScopeService.quarter_bounds(target_fp)
@@ -384,7 +394,7 @@ class V2OverviewService:
         cats_delta_yesterday = None
         slip_delta_yesterday = None
         if yest_snap:
-            y_opps = self._q4_opps(yest_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
+            y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=snap.snapshot_date)
             y_df   = _opps_to_df(y_opps)
             y_total_count = len(y_df)
             y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2) if not y_df.empty else 0.0
@@ -413,7 +423,7 @@ class V2OverviewService:
         cats_delta_lastweek = None
         slip_delta_lastweek = None
         if lw_snap:
-            lw_opps = self._q4_opps(lw_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
+            lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date)
             lw_df   = _opps_to_df(lw_opps)
             lw_total_count = len(lw_df)
             lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2) if not lw_df.empty else 0.0
@@ -454,10 +464,11 @@ class V2OverviewService:
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
             "snapshot_id":      snap.id,
-            "data_slice":       ScopeService.quarter_label(target_fp),
+            "data_slice":       data_slice,
             "data_slice_key":   target_fp,
-            "exclude_deleted":  exclude_deleted,
+            "exclude_deleted":  not fs.include_deleted_lost,
             "other_region_count": other_count,
+            "filters_applied":  res.filters_applied,
             # Section 1
             "total": {
                 "count": total_count,
@@ -488,30 +499,41 @@ class V2OverviewService:
         ctx: UserContext,
         compare: str = "yesterday",
         exclude_deleted: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         """
         Section 4: Forecast Category Movement + Approval Movement.
         compare: 'yesterday' | 'last_week'
         """
-        snap = self._active_snap()
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if compare:
+            fs.compare = compare
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
         if snap is None:
             return {"error": "no_snapshot"}
 
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         today_df = _opps_to_df(opps)
 
-        prev_snap = self._yesterday_snap(snap) if compare == "yesterday" else self._lastweek_snap(snap)
+        comp = fs.compare if fs.compare in ("yesterday", "last_week") else "yesterday"
+        prev_snap = self._yesterday_snap(snap) if comp == "yesterday" else self._lastweek_snap(snap)
         if prev_snap is None:
             return {
-                "compare": compare,
+                "compare": comp,
                 "compare_date": None,
+                "data_slice": res.data_slice,
+                "filters_applied": res.filters_applied,
                 "positive": [], "negative": [], "approval": [],
                 "slippage_to_2027": {"count": 0, "acv": 0.0},
                 "slipped_later_quarter": {"count": 0, "acv": 0.0},
                 "slipped_earlier": {"count": 0, "acv": 0.0},
             }
 
-        prev_opps = self._q4_opps(prev_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
+        prev_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs, target_date=snap.snapshot_date)
         prev_df   = _opps_to_df(prev_opps)
 
         # Get ALL renewals opps for today to see where prev_df deals went
@@ -519,15 +541,17 @@ class V2OverviewService:
             Opportunity.snapshot_id == snap.id,
             ScopeService.is_renewals()
         )
-        if exclude_deleted:
+        if not fs.include_deleted_lost:
             q = q.filter(Opportunity.is_deleted_or_lost == False)
         today_all_df = _opps_to_df(q.all())
 
-        target_fp = ScopeService.current_quarter(snap.snapshot_date)
+        target_fp = res.resolved_quarter
         moves = self._movements(today_df, prev_df, today_all_df, target_fp)
         return {
-            "compare": compare,
+            "compare": comp,
             "compare_date": prev_snap.snapshot_date.isoformat(),
+            "data_slice": res.data_slice,
+            "filters_applied": res.filters_applied,
             **moves,
         }
 
@@ -535,20 +559,26 @@ class V2OverviewService:
         self,
         ctx: UserContext,
         exclude_deleted: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        snap = self._active_snap()
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
         if snap is None:
             return {"error": "no_snapshot"}
 
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
         
         yest_snap = self._yesterday_snap(snap)
-        y_opps = self._q4_opps(yest_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date) if yest_snap else []
+        y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=snap.snapshot_date) if yest_snap else ([], None)
         y_df = _opps_to_df(y_opps)
         
         lw_snap = self._lastweek_snap(snap)
-        lw_opps = self._q4_opps(lw_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date) if lw_snap else []
+        lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date) if lw_snap else ([], None)
         lw_df = _opps_to_df(lw_opps)
 
         regions = list(CANONICAL_REGIONS)
@@ -631,6 +661,8 @@ class V2OverviewService:
         check_passes = abs(regional_sum - total_row["total_acv"]) < 0.01
 
         return {
+            "data_slice": res.data_slice,
+            "filters_applied": res.filters_applied,
             "proposal_confirmation": prop_rows,
             "proposal_confirmation_totals": prop_totals,
             "regional_trend": trend_rows,
@@ -650,8 +682,22 @@ class V2OverviewService:
         compare: str | None = None,
         exclude_deleted: bool = False,
         as_of: str | None = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        snap = self._active_snap(as_of)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+        if category:
+            fs.forecast_categories = [category]
+        if region:
+            fs.regions = [region]
+        if approval_status:
+            fs.approval_statuses = [approval_status]
+
+        snap = self._active_snap(fs.as_of)
         if snap is None:
             return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
 
@@ -695,10 +741,10 @@ class V2OverviewService:
                 "deals": records,
             }
 
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
         if df.empty:
-            return {"count": 0, "acv": 0.0, "filters_applied": filters_applied, "deals": []}
+            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied, "deals": []}
 
         if kind in ("delta_yesterday", "delta_lastweek"):
             prev_snap = self._yesterday_snap(snap) if kind == "delta_yesterday" else self._lastweek_snap(snap)
@@ -840,7 +886,7 @@ class V2OverviewService:
         return {
             "count": len(records),
             "acv": round(sum(r["forecast_acv_amount"] for r in records), 2),
-            "filters_applied": filters_applied,
+            "filters_applied": res.filters_applied,
             "deals": records,
         }
 

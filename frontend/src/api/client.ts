@@ -1,25 +1,21 @@
 import axios from 'axios'
-import { useAppStore } from '../store/appStore'
+import { useAppStore, FilterSpec } from '../store/appStore'
 
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Automatically attach current global scope and include_deleted_lost to analytics/read endpoints.
-// Upload/commit/validate endpoints are body-only — they must NOT receive scope as a query param.
-const SCOPE_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
+// Upload/commit/validate endpoints are body-only — they must NOT receive extra query params.
+const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
 
 api.interceptors.request.use((config) => {
   const url = config.url || ''
-  const isExcluded = SCOPE_EXCLUDED_PATHS.some((p) => url.includes(p))
+  const isExcluded = FILTER_EXCLUDED_PATHS.some((p) => url.includes(p))
   if (isExcluded) return config
 
   const state = useAppStore.getState()
   config.params = config.params || {}
-  if (!config.params.scope && state.scope) {
-    config.params.scope = state.scope
-  }
   if (config.params.include_deleted_lost === undefined && state.includeDeletedLost !== undefined) {
     config.params.include_deleted_lost = state.includeDeletedLost
   }
@@ -104,14 +100,23 @@ export const getHistoryOverview = () =>
 
 // ── V2 Overview (Tab 1) ───────────────────────────────────────────────────────
 
-export const getV2OverviewSummary = (excludeDeleted = false) =>
-  api.get('/v2/overview/summary', { params: { exclude_deleted: excludeDeleted } }).then(r => r.data)
+export const getV2OverviewSummary = (filterSpec?: Partial<FilterSpec>) => {
+  const state = useAppStore.getState()
+  const fs = { ...state.globalFilters, ...filterSpec }
+  return api.get('/v2/overview/summary', { params: fs }).then(r => r.data)
+}
 
-export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yesterday', excludeDeleted = false) =>
-  api.get('/v2/overview/movements', { params: { compare, exclude_deleted: excludeDeleted } }).then(r => r.data)
+export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yesterday', filterSpec?: Partial<FilterSpec>) => {
+  const state = useAppStore.getState()
+  const fs = { ...state.globalFilters, compare, ...filterSpec }
+  return api.get('/v2/overview/movements', { params: fs }).then(r => r.data)
+}
 
-export const getV2RegionalBreakdown = (excludeDeleted = false) =>
-  api.get('/v2/overview/regional-breakdown', { params: { exclude_deleted: excludeDeleted } }).then(r => r.data)
+export const getV2RegionalBreakdown = (filterSpec?: Partial<FilterSpec>) => {
+  const state = useAppStore.getState()
+  const fs = { ...state.globalFilters, ...filterSpec }
+  return api.get('/v2/overview/regional-breakdown', { params: fs }).then(r => r.data)
+}
 
 export const getV2OverviewDeals = (params: {
   category?: string
@@ -121,6 +126,7 @@ export const getV2OverviewDeals = (params: {
   compare?: string
   as_of?: string
   exclude_deleted?: boolean
+  filterSpec?: Partial<FilterSpec>
 } = {}): Promise<{
   count: number
   acv: number
@@ -132,8 +138,12 @@ export const getV2OverviewDeals = (params: {
     net: { count: number; acv: number }
   }
   deals: any[]
-}> =>
-  api.get('/v2/overview/deals', { params }).then(r => r.data)
+}> => {
+  const state = useAppStore.getState()
+  const { filterSpec, ...rest } = params
+  const merged = { ...state.globalFilters, ...filterSpec, ...rest }
+  return api.get('/v2/overview/deals', { params: merged }).then(r => r.data)
+}
 
 
 // ── Opportunities ─────────────────────────────────────────────────────────────
@@ -181,7 +191,6 @@ export const exportOpportunitiesUrl = (filters: OppFilters = {}) => {
   const state = useAppStore.getState()
   const params = new URLSearchParams()
   if (filters.snapshotId) params.append('snapshot_id', filters.snapshotId)
-  if (state.scope) params.append('scope', state.scope)
   if (state.includeDeletedLost) params.append('include_deleted_lost', 'true')
   filters.forecastCategory?.forEach(v => params.append('forecast_category', v))
   filters.approvalStatus?.forEach(v => params.append('approval_status', v))
@@ -204,7 +213,7 @@ export const getOpportunityHistory = (oppId: string) =>
 export const getOpportunityChangelog = (oppId: string) =>
   api.get(`/opportunities/${oppId}/changelog`).then(r => r.data)
 
-export const getFilterOptions = (snapshotId?: string) =>
+export const getOpportunityFilterOptions = (snapshotId?: string) =>
   api.get('/opportunities/filter-options', { params: { snapshot_id: snapshotId } }).then(r => r.data)
 
 
@@ -250,7 +259,6 @@ export async function streamAIChat({
         question,
         conversation,
         session_id: sessionId,
-        scope: state.scope,
         include_deleted_lost: state.includeDeletedLost,
       }),
     })
@@ -321,7 +329,6 @@ export const downloadReport = async (
   const params: Record<string, string> = {}
   if (snapshotId) params.snapshot_id = snapshotId
   if (compareTo) params.compare_to = compareTo
-  if (state.scope) params.scope = state.scope
   if (state.includeDeletedLost) params.include_deleted_lost = 'true'
 
   const response = await api.get(endpoint, {
@@ -365,11 +372,13 @@ export const getV2ExpirySummary = async (params: {
   as_of?: string | null
   compare?: string | null
   exclude_deleted_lost?: boolean
-}) => {
-  const p: any = {}
+  filterSpec?: Partial<FilterSpec>
+} = {}) => {
+  const state = useAppStore.getState()
+  const p: any = { ...state.globalFilters, ...params.filterSpec }
   if (params.as_of) p.as_of = params.as_of
   if (params.compare) p.compare = params.compare
-  p.exclude_deleted_lost = params.exclude_deleted_lost
+  if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/summary', { params: p })
   return res.data
 }
@@ -380,28 +389,44 @@ export const getV2ExpiryDeals = async (params: {
   as_of?: string | null
   exclude_deleted_lost?: boolean
   slippage?: boolean
-}) => {
-  const p: any = {}
+  filterSpec?: Partial<FilterSpec>
+} = {}) => {
+  const state = useAppStore.getState()
+  const p: any = { ...state.globalFilters, ...params.filterSpec }
   if (params.quarter) p.quarter = params.quarter
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
   if (params.slippage !== undefined) p.slippage = params.slippage
-  p.exclude_deleted_lost = params.exclude_deleted_lost
+  if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/deals', { params: p })
   return res.data
 }
 
-export const getApprovalsDistribution = async (as_of: string, compare: string | null = null, exclude_deleted_lost: boolean = false) => {
-  const params: any = { as_of, exclude_deleted_lost }
+export const getApprovalsDistribution = async (as_of?: string, compare: string | null = null, exclude_deleted_lost: boolean = false, filterSpec?: Partial<FilterSpec>) => {
+  const state = useAppStore.getState()
+  const params: any = { ...state.globalFilters, ...filterSpec }
+  if (as_of) params.as_of = as_of
   if (compare) params.compare = compare
+  if (exclude_deleted_lost !== undefined) params.include_deleted_lost = !exclude_deleted_lost
   return api.get('/v2/approvals/distribution', { params }).then(r => r.data)
 }
 
-export const getApprovalsDeals = async (as_of: string, status?: string, category?: string, exclude_deleted_lost: boolean = false, region?: string, business_unit?: string) => {
-  const params: any = { as_of, exclude_deleted_lost }
+export const getApprovalsDeals = async (as_of?: string, status?: string, category?: string, exclude_deleted_lost: boolean = false, region?: string, business_unit?: string, filterSpec?: Partial<FilterSpec>) => {
+  const state = useAppStore.getState()
+  const params: any = { ...state.globalFilters, ...filterSpec }
+  if (as_of) params.as_of = as_of
   if (status) params.status = status
   if (category) params.category = category
   if (region) params.region = region
   if (business_unit) params.business_unit = business_unit
+  if (exclude_deleted_lost !== undefined) params.include_deleted_lost = !exclude_deleted_lost
   return api.get('/v2/approvals/deals', { params }).then(r => r.data)
+}
+
+// ── V2 Filters Options ───────────────────────────────────────────────────
+export const getFilterOptions = async (asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.get('/v2/filters/options', { params })
+  return res.data
 }

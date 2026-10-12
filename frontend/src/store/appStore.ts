@@ -16,7 +16,29 @@ export interface SnapshotItem {
   last_week_is_partial?: boolean
 }
 
-export type ScopeType = 'renewals' | 'all' | 'fy2026' | 'fy2027' | 'q4_2026'
+export interface FilterSpec {
+  as_of?: string | null
+  compare?: string
+  period: string
+  sales_types: string[]
+  regions: string[]
+  business_units: string[]
+  forecast_categories: string[]
+  approval_statuses: string[]
+  include_deleted_lost: boolean
+}
+
+export const DEFAULT_FILTER_SPEC: FilterSpec = {
+  as_of: null,
+  compare: 'yesterday',
+  period: 'current_quarter',
+  sales_types: ['Renewals'],
+  regions: [],
+  business_units: [],
+  forecast_categories: [],
+  approval_statuses: [],
+  include_deleted_lost: true,
+}
 
 interface AppState {
   // Theme (persisted)
@@ -27,9 +49,12 @@ interface AppState {
   sidebarCollapsed: boolean
   toggleSidebarCollapsed: () => void
 
-  // Global Scope & Deleted/Lost filter (persisted)
-  scope: ScopeType
-  setScope: (scope: ScopeType) => void
+  // Global FilterSpec (replaces static scope)
+  globalFilters: FilterSpec
+  setGlobalFilters: (filters: Partial<FilterSpec>) => void
+  resetGlobalFilters: () => void
+
+  // Backwards compatibility helpers
   includeDeletedLost: boolean
   setIncludeDeletedLost: (val: boolean) => void
 
@@ -92,20 +117,37 @@ export const useAppStore = create<AppState>()(
       toggleSidebarCollapsed: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-      scope: 'renewals',
-      setScope: (scope) => set({ scope }),
+      globalFilters: DEFAULT_FILTER_SPEC,
+      setGlobalFilters: (f) =>
+        set((s) => ({
+          globalFilters: { ...s.globalFilters, ...f },
+          includeDeletedLost: f.include_deleted_lost !== undefined ? f.include_deleted_lost : s.includeDeletedLost,
+        })),
+      resetGlobalFilters: () => set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: true }),
 
       includeDeletedLost: true,
-      setIncludeDeletedLost: (includeDeletedLost) => set({ includeDeletedLost }),
+      setIncludeDeletedLost: (includeDeletedLost) =>
+        set((s) => ({
+          includeDeletedLost,
+          globalFilters: { ...s.globalFilters, include_deleted_lost: includeDeletedLost },
+        })),
 
       metricMode: 'Amount',
       setMetricMode: (metricMode) => set({ metricMode }),
 
       activeSnapshotId: null,
-      setActiveSnapshotId: (id) => set({ activeSnapshotId: id }),
+      setActiveSnapshotId: (id) =>
+        set((s) => ({
+          activeSnapshotId: id,
+          globalFilters: { ...s.globalFilters, as_of: id },
+        })),
 
       compareSnapshotId: null,
-      setCompareSnapshotId: (id) => set({ compareSnapshotId: id }),
+      setCompareSnapshotId: (id) =>
+        set((s) => ({
+          compareSnapshotId: id,
+          globalFilters: { ...s.globalFilters, compare: id || 'yesterday' },
+        })),
 
       snapshots: [],
       setSnapshots: (snapshots) => set({ snapshots }),
@@ -125,7 +167,7 @@ export const useAppStore = create<AppState>()(
       name: 'mobileum-app-v2',
       partialize: (s) => ({
         darkMode: s.darkMode,
-        scope: s.scope,
+        globalFilters: s.globalFilters,
         includeDeletedLost: s.includeDeletedLost,
         metricMode: s.metricMode,
         activeSnapshotId: s.activeSnapshotId,

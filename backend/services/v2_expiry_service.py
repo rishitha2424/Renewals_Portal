@@ -43,19 +43,29 @@ class V2ExpiryService:
                     return None
         return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
 
-    def _window_opps(self, snap: UploadSnapshot, quarter: str, exclude_deleted_lost: bool) -> pd.DataFrame:
+    def _window_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False) -> tuple[pd.DataFrame, list[str]]:
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+            
+        # We want to apply all FilterSpec conditions EXCEPT period (since expiry organizes by service expiry year)
+        # We can construct conditions using FilterSpec with period="all_periods"
+        fs_for_expiry = fs.copy()
+        fs_for_expiry.period = "all_periods"
+        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
+        
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
-            ScopeService.expiry_window(quarter)
+            *res.conditions
         )
-        if exclude_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
         
         opps = q.all()
         if not opps:
-            return pd.DataFrame()
+            return pd.DataFrame(), []
             
         data = []
+        years_found = set()
         for o in opps:
             fc = o.forecast_category if o.forecast_category in ALL_FC else "Blank"
             if not o.forecast_category or str(o.forecast_category).strip() == "":
@@ -63,67 +73,76 @@ class V2ExpiryService:
             elif o.forecast_category not in ["Closed", "Commit", "Best Case", "Pipeline"]:
                 fc = "Blank"
                 
+            sep = o.service_expiry_period or "Blank"
+            if sep and "-" in sep:
+                try:
+                    parts = sep.split("-")
+                    if len(parts) == 2 and parts[1].isdigit():
+                        years_found.add(parts[1])
+                except:
+                    pass
+                    
             data.append({
                 "id": o.id,
                 "opportunity_id_18": o.opportunity_id_18,
                 "forecast_category": fc,
                 "forecast_acv_amount": float(o.forecast_acv_amount or 0),
-                "service_expiry_period": o.service_expiry_period or "Blank",
+                "service_expiry_period": sep,
                 "close_date": o.close_date
             })
         
         df = pd.DataFrame(data)
         df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
-        return df
+        sorted_years = sorted(list(years_found))
+        return df, sorted_years
 
     def get_summary(
         self,
         ctx: UserContext,
         as_of: Optional[str] = None,
         compare: Optional[str] = None,
-        exclude_deleted_lost: bool = False
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> dict:
-        snap = self._get_snapshot(ctx, as_of)
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        eff_compare = compare or (filter_spec.compare if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
         if not snap:
             return {"error": "No snapshot found"}
             
+        df, years_found = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost)
+        
+        # If no years found, fallback to current year
         eff_date = snap.snapshot_date
-        if as_of:
-            from datetime import date
-            try: eff_date = date.fromisoformat(as_of)
-            except ValueError: pass
         target_quarter = ScopeService.current_quarter(eff_date)
-        if not target_quarter or "-" not in target_quarter:
-            return {"error": "Invalid current quarter"}
+        _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
+        
+        if not years_found:
+            years_to_use = [current_y_str, str(int(current_y_str) + 1)]
+        elif len(years_found) == 1:
+            years_to_use = [years_found[0], str(int(years_found[0]) + 1)]
+        else:
+            years_to_use = sorted(years_found)
             
-        _, current_y_str = target_quarter.split("-")
-        current_y = int(current_y_str)
-        next_y = current_y + 1
-        
-        df = self._window_opps(snap, target_quarter, exclude_deleted_lost)
-        
         comp_snap = None
-        if compare:
-            comp_snap = self._get_snapshot(ctx, compare)
+        if eff_compare:
+            comp_snap = self._get_snapshot(ctx, eff_compare)
         comp_df = pd.DataFrame()
         if comp_snap:
-            comp_df = self._window_opps(comp_snap, target_quarter, exclude_deleted_lost)
+            comp_df, _ = self._window_opps(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost)
             
         snap_yest = self._get_snapshot(ctx, "yesterday")
-        df_yest = self._window_opps(snap_yest, target_quarter, exclude_deleted_lost) if snap_yest else pd.DataFrame()
+        df_yest, _ = self._window_opps(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost) if snap_yest else (pd.DataFrame(), [])
         
         snap_lw = self._get_snapshot(ctx, "last_week")
-        df_lw = self._window_opps(snap_lw, target_quarter, exclude_deleted_lost) if snap_lw else pd.DataFrame()
-        
-        fy1_label = str(current_y)
-        fy2_label = str(next_y)
+        df_lw, _ = self._window_opps(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost) if snap_lw else (pd.DataFrame(), [])
         
         quarters = []
-        for y in (current_y, next_y):
+        for y_str in years_to_use:
             for q in range(1, 5):
-                key = f"Q{q}-{y}"
+                key = f"Q{q}-{y_str}"
                 label = ScopeService.quarter_label(key)
-                quarters.append({"key": key, "label": label, "fy": str(y)})
+                quarters.append({"key": key, "label": label, "fy": y_str})
                 
         def build_grid(target_df: pd.DataFrame, y_label: str):
             rows = []
@@ -166,18 +185,15 @@ class V2ExpiryService:
                 }
             }
             
-        grid_current = build_grid(df, fy1_label)
-        grid_next = build_grid(df, fy2_label)
-        
-        cgrid_current = build_grid(comp_df, fy1_label) if not comp_df.empty else build_grid(pd.DataFrame(), fy1_label)
-        cgrid_next = build_grid(comp_df, fy2_label) if not comp_df.empty else build_grid(pd.DataFrame(), fy2_label)
-        
-        yest_grid_current = build_grid(df_yest, fy1_label) if not df_yest.empty else build_grid(pd.DataFrame(), fy1_label)
-        yest_grid_next = build_grid(df_yest, fy2_label) if not df_yest.empty else build_grid(pd.DataFrame(), fy2_label)
-        
-        lw_grid_current = build_grid(df_lw, fy1_label) if not df_lw.empty else build_grid(pd.DataFrame(), fy1_label)
-        lw_grid_next = build_grid(df_lw, fy2_label) if not df_lw.empty else build_grid(pd.DataFrame(), fy2_label)
-        
+        grids = {}
+        cgrids = {}
+        yest_grids = {}
+        lw_grids = {}
+        deltas = {}
+        acv_by_year = {}
+        grand_total_count = 0
+        grand_total_acv = 0.0
+
         def compute_deltas(grid, cgrid):
             deltas = {
                 "grand": {
@@ -199,20 +215,27 @@ class V2ExpiryService:
                     "acv": round(r["total"]["acv"] - cr["total"]["acv"], 2)
                 }
             return deltas
+
+        for y_label in years_to_use:
+            g = build_grid(df, y_label)
+            grids[y_label] = g
+            acv_by_year[y_label] = g["totals"]["grand"]
+            grand_total_count += g["totals"]["grand"]["count"]
+            grand_total_acv += g["totals"]["grand"]["acv"]
             
-        deltas_current = {}
-        deltas_next = {}
-        if compare:
-            deltas_current["custom"] = compute_deltas(grid_current, cgrid_current)
-            deltas_next["custom"] = compute_deltas(grid_next, cgrid_next)
-        
-        deltas_current["yesterday"] = compute_deltas(grid_current, yest_grid_current)
-        deltas_current["lastweek"] = compute_deltas(grid_current, lw_grid_current)
-        
-        deltas_next["yesterday"] = compute_deltas(grid_next, yest_grid_next)
-        deltas_next["lastweek"] = compute_deltas(grid_next, lw_grid_next)
-        
-        _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y}")
+            cg = build_grid(comp_df, y_label) if not comp_df.empty else build_grid(pd.DataFrame(), y_label)
+            yg = build_grid(df_yest, y_label) if not df_yest.empty else build_grid(pd.DataFrame(), y_label)
+            lg = build_grid(df_lw, y_label) if not df_lw.empty else build_grid(pd.DataFrame(), y_label)
+            
+            y_deltas = {
+                "yesterday": compute_deltas(g, yg),
+                "lastweek": compute_deltas(g, lg)
+            }
+            if eff_compare:
+                y_deltas["custom"] = compute_deltas(g, cg)
+            deltas[y_label] = y_deltas
+            
+        _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
         slip_df = df[df["close_date"] > fy_end_date] if not df.empty else pd.DataFrame()
         slip_count = len(slip_df)
         slip_acv = _sum(slip_df, "forecast_acv_amount")
@@ -228,37 +251,33 @@ class V2ExpiryService:
                         "acv": round(_sum(q_slip, "forecast_acv_amount"), 2)
                     })
         
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date)
+
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
-            "data_slice": ScopeService.quarter_label(target_quarter),
+            "data_slice": res.label,
             "data_slice_key": target_quarter,
+            "filters_applied": res.filters_applied,
             "fiscal_years": [
-                {"label": fy1_label, "quarters": [{"key": q["key"], "label": q["label"]} for q in quarters if q["fy"] == fy1_label]},
-                {"label": fy2_label, "quarters": [{"key": q["key"], "label": q["label"]} for q in quarters if q["fy"] == fy2_label]}
+                {"label": y_label, "quarters": [{"key": q["key"], "label": q["label"]} for q in quarters if q["fy"] == y_label]}
+                for y_label in years_to_use
             ],
             "categories": ALL_FC,
-            "grids": {
-                fy1_label: grid_current,
-                fy2_label: grid_next
-            },
-            "acv_by_year": {
-                fy1_label: grid_current["totals"]["grand"],
-                fy2_label: grid_next["totals"]["grand"]
-            },
+            "grids": grids,
+            "acv_by_year": acv_by_year,
             "grand_total": {
-                "count": grid_current["totals"]["grand"]["count"] + grid_next["totals"]["grand"]["count"],
-                "acv": round(grid_current["totals"]["grand"]["acv"] + grid_next["totals"]["grand"]["acv"], 2)
+                "count": grand_total_count,
+                "acv": round(grand_total_acv, 2)
             },
             "slippage": {
                 "count": slip_count,
                 "acv": round(slip_acv, 2),
                 "by_quarter": slip_by_quarter
             },
-            "deltas": {
-                fy1_label: deltas_current,
-                fy2_label: deltas_next
-            }
+            "deltas": deltas
         }
         
     def get_deals(
@@ -268,22 +287,30 @@ class V2ExpiryService:
         category: Optional[str] = None,
         as_of: Optional[str] = None,
         exclude_deleted_lost: bool = False,
-        slippage: bool = False
+        slippage: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> list[dict]:
-        snap = self._get_snapshot(ctx, as_of)
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
         if not snap:
             return []
             
-        target_quarter = ScopeService.current_quarter(snap.snapshot_date)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+        fs_for_expiry = fs.copy()
+        fs_for_expiry.period = "all_periods"
+        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
+        
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
-            ScopeService.expiry_window(target_quarter)
+            *res.conditions
         )
-        if exclude_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
             
         if slippage:
-            _, current_y_str = target_quarter.split("-")
+            target_quarter = ScopeService.current_quarter(snap.snapshot_date)
+            _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
             _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
             q = q.filter(Opportunity.close_date > fy_end_date)
 

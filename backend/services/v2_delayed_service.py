@@ -90,9 +90,38 @@ class V2DelayedService:
     def _get_opps(self, snap: UploadSnapshot) -> list[Opportunity]:
         return self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
     
-    def _slice_renewals(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty: return df
-        return df[(df["sales_type"] == "Renewals")] # Deleted/Lost included by default
+    def _filter_df(self, df: pd.DataFrame, filter_spec: Optional[ScopeService.FilterSpec] = None) -> pd.DataFrame:
+        if df.empty:
+            return df
+        res_df = df
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec or FilterSpec()
+        
+        # sales_types
+        if fs.sales_types:
+            res_df = res_df[res_df["sales_type"].isin(fs.sales_types)]
+        # include_deleted_lost
+        if not fs.include_deleted_lost:
+            res_df = res_df[~res_df["is_deleted_or_lost"]]
+        # regions
+        if fs.regions:
+            res_df = res_df[res_df["region"].isin(fs.regions) | res_df["sub_region"].isin(fs.regions)]
+        # business_units
+        if fs.business_units:
+            res_df = res_df[res_df["business_unit"].isin(fs.business_units) | res_df["business_unit_primary"].isin(fs.business_units)]
+        # forecast_categories
+        if fs.forecast_categories:
+            norm_cats = ["Blank" if c in ("Not yet proposed", "Blank", "") else c for c in fs.forecast_categories]
+            res_df = res_df[res_df["forecast_category"].isin(norm_cats)]
+        # approval_statuses
+        if fs.approval_statuses:
+            norm_apps = ["Blank" if a in ("Not submitted", "Blank", "") else a for a in fs.approval_statuses]
+            res_df = res_df[res_df["approval_status"].isin(norm_apps)]
+            
+        return res_df
+
+    def _slice_renewals(self, df: pd.DataFrame, filter_spec: Optional[ScopeService.FilterSpec] = None) -> pd.DataFrame:
+        return self._filter_df(df, filter_spec)
 
     def _get_dataframes(self, as_of: str | None, compare: str):
         t_snap = self._active_snap(as_of)
@@ -123,15 +152,15 @@ class V2DelayedService:
             "t_df": t_df, "y_df": y_df, "w_df": w_df, "p_df": y_df if compare != "last_week" else w_df
         }
 
-    def _compute_delayed_and_overdue(self, data: dict):
+    def _compute_delayed_and_overdue(self, data: dict, filter_spec: Optional[ScopeService.FilterSpec] = None):
         t_snap = data["t_snap"]
         t_df = data["t_df"]
         y_df = data["y_df"]
         w_df = data["w_df"]
         
-        t_ren = self._slice_renewals(t_df)
-        y_ren = self._slice_renewals(y_df)
-        w_ren = self._slice_renewals(w_df)
+        t_ren = self._slice_renewals(t_df, filter_spec)
+        y_ren = self._slice_renewals(y_df, filter_spec)
+        w_ren = self._slice_renewals(w_df, filter_spec)
         
         target_q_str = ScopeService.current_quarter(t_snap.snapshot_date)
         target_parsed = _parse_fp(target_q_str)
@@ -225,17 +254,22 @@ class V2DelayedService:
         
         return overdue_df, delayed_y, delayed_w
 
-    def get_summary(self, as_of: str | None, compare: str | None) -> dict:
-        data = self._get_dataframes(as_of, compare)
+    def get_summary(self, as_of: str | None = None, compare: str | None = None, filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        eff_compare = compare or (filter_spec.compare if filter_spec else "yesterday")
+        data = self._get_dataframes(eff_as_of, eff_compare)
         if not data: return {"error": "No data"}
         
         t_snap = data["t_snap"]
-        target_q_str = ScopeService.current_quarter(t_snap.snapshot_date)
-        target_q_label = ScopeService.quarter_label(target_q_str)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
+        target_q_str = res.period if res.period.startswith("Q") and "-" in res.period else ScopeService.current_quarter(t_snap.snapshot_date)
+        target_q_label = res.label
         
-        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data)
+        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=fs)
         
-        delayed_df = delayed_y if compare != "last_week" else delayed_w
+        delayed_df = delayed_y if eff_compare != "last_week" else delayed_w
         
         # Exclude "Lost/removed" from delayed totals
         delayed_active = delayed_df[delayed_df["reason"] != "Lost/removed"] if not delayed_df.empty else pd.DataFrame()
@@ -264,8 +298,8 @@ class V2DelayedService:
             }
 
         def _aggregate_by(col: str):
-            res = []
-            if delayed_active.empty: return res
+            res_agg = []
+            if delayed_active.empty: return res_agg
             for val in delayed_active[col].unique():
                 d = delayed_active[delayed_active[col] == val]
                 d_y = d_act_y[d_act_y[col] == val] if not d_act_y.empty else pd.DataFrame()
@@ -283,7 +317,7 @@ class V2DelayedService:
                         **_get_deltas(dy_cat, dw_cat)
                     }
                     
-                res.append({
+                res_agg.append({
                     "label": val,
                     "count": len(d),
                     "acv": d["forecast_acv_amount"].sum(),
@@ -292,7 +326,7 @@ class V2DelayedService:
                     "categories": cats,
                     **_get_deltas(d_y, d_w)
                 })
-            return sorted(res, key=lambda x: x["acv"], reverse=True)
+            return sorted(res_agg, key=lambda x: x["acv"], reverse=True)
 
         overdue_y = overdue_df[overdue_df["overdue_yesterday"]] if not overdue_df.empty else pd.DataFrame()
         overdue_w = overdue_df[overdue_df["overdue_lastweek"]] if not overdue_df.empty else pd.DataFrame()
@@ -303,6 +337,7 @@ class V2DelayedService:
         return {
             "data_slice": target_q_label,
             "data_slice_key": target_q_str,
+            "filters_applied": res.filters_applied,
             "snapshot_date": t_snap.snapshot_date.isoformat(),
             "compare_date": data["p_snap"].snapshot_date.isoformat(),
             "yesterday_date": data["y_snap"].snapshot_date.isoformat(),
@@ -345,12 +380,14 @@ class V2DelayedService:
             "top_deals": delayed_active.sort_values(by="forecast_acv_amount", ascending=False).head(10).fillna("").to_dict("records") if not delayed_active.empty else []
         }
 
-    def get_deals(self, as_of: str | None, compare: str | None, kind: str, region: str | None, category: str | None, status: str | None, bu: str | None) -> dict:
-        data = self._get_dataframes(as_of, compare)
+    def get_deals(self, as_of: str | None, compare: str | None, kind: str, region: str | None, category: str | None, status: str | None, bu: str | None, filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        eff_compare = compare or (filter_spec.compare if filter_spec else "yesterday")
+        data = self._get_dataframes(eff_as_of, eff_compare)
         if not data: return {"count": 0, "acv": 0.0, "deals": []}
         
-        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data)
-        delayed_df = delayed_y if compare != "last_week" else delayed_w
+        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=filter_spec)
+        delayed_df = delayed_y if eff_compare != "last_week" else delayed_w
         
         df = pd.DataFrame()
         if kind == "overdue":

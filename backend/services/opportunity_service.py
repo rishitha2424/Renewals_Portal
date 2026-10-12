@@ -43,6 +43,7 @@ class OpportunityService:
         search: str | None = None,
         scope: str = "all",
         include_deleted_lost: bool = True,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ):
         snap = self._analytics._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -50,20 +51,23 @@ class OpportunityService:
 
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
 
-        if not include_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
+        if filter_spec:
+            res = ScopeService.resolve(filter_spec, snapshot=snap, as_of_date=snap.snapshot_date)
+            q = q.filter(*res.conditions)
+        else:
+            if not include_deleted_lost:
+                q = q.filter(Opportunity.is_deleted_or_lost == False)
 
-        s = (scope or "renewals").lower()
-        if s == "renewals":
-            q = q.filter(ScopeService.is_renewals())
-        elif s == "fy2026":
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2026", "Q2-2026", "Q3-2026", "Q4-2026"]))
-        elif s == "fy2027":
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2027", "Q2-2027", "Q3-2027", "Q4-2027"]))
-        elif s == "q4_2026":
-            q = q.filter(ScopeService.current_quarter_slice(ScopeService.current_quarter(snap.snapshot_date)))
-        elif s == "all":
-            pass
+            s = (scope or "renewals").lower()
+            if s == "renewals":
+                q = q.filter(ScopeService.is_renewals())
+            elif s == "all":
+                pass
+            else:
+                # Fallback to resolve as period
+                fs = ScopeService.FilterSpec(period=s)
+                res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date)
+                q = q.filter(*res.conditions)
 
         if forecast_category:
             q = q.filter(Opportunity.forecast_category.in_(forecast_category))
@@ -124,6 +128,7 @@ class OpportunityService:
         page_size: int = DEFAULT_PAGE_SIZE,
         scope: str = "all",
         include_deleted_lost: bool = True,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         q, snap = self._build_filtered_query(
             ctx,
@@ -140,6 +145,7 @@ class OpportunityService:
             search=search,
             scope=scope,
             include_deleted_lost=include_deleted_lost,
+            filter_spec=filter_spec,
         )
         if q is None:
             return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}

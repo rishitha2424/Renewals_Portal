@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import pandas as pd
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, Any
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -95,18 +95,26 @@ class V2RegionsService:
     def _snap_by_date(self, d: date) -> UploadSnapshot | None:
         return self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == d).first()
 
-    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+    def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
+        from backend.services.scopes import FilterSpec
         eff_date = target_date if target_date else snap.snapshot_date
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
         q = (
             self.db.query(Opportunity)
             .filter(
                 Opportunity.snapshot_id == snap.id,
-                ScopeService.current_quarter_slice(ScopeService.current_quarter(eff_date))
+                *res.conditions
             )
         )
-        if exclude_deleted:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
-        return q.all()
+        return q.all(), res
+
+    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+        opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
+        return opps
+
 
     def _yesterday_snap(self, snap: UploadSnapshot) -> UploadSnapshot | None:
         return (
@@ -125,25 +133,30 @@ class V2RegionsService:
             .first()
         )
 
-    def get_summary(self, ctx: UserContext, as_of: Optional[str] = None, compare: Optional[str] = None, exclude_deleted_lost: bool = False) -> dict:
-        snap = self._active_snap(as_of)
+    def get_summary(self, ctx: UserContext, as_of: Optional[str] = None, compare: Optional[str] = None, exclude_deleted_lost: bool = False, filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if compare:
+            fs.compare = compare
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
 
-        eff_date = snap.snapshot_date
-        if as_of:
-            try: eff_date = date.fromisoformat(as_of)
-            except ValueError: pass
-        target_fp = ScopeService.current_quarter(eff_date)
-
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost, target_date=eff_date)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
 
         y_snap = self._yesterday_snap(snap)
         lw_snap = self._lastweek_snap(snap)
 
-        y_df = _opps_to_df(self._q4_opps(y_snap, exclude_deleted=exclude_deleted_lost, target_date=eff_date)) if y_snap else pd.DataFrame()
-        lw_df = _opps_to_df(self._q4_opps(lw_snap, exclude_deleted=exclude_deleted_lost, target_date=eff_date)) if lw_snap else pd.DataFrame()
+        y_opps, _ = self._scoped_opps(y_snap, filter_spec=fs, target_date=snap.snapshot_date) if y_snap else ([], None)
+        lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date) if lw_snap else ([], None)
+        y_df = _opps_to_df(y_opps)
+        lw_df = _opps_to_df(lw_opps)
 
         grand_count = len(df)
         grand_acv = float(df["forecast_acv_amount"].sum()) if not df.empty else 0.0
@@ -227,8 +240,9 @@ class V2RegionsService:
             "requested_as_of": as_of,
             "yesterday_date": y_snap.snapshot_date.isoformat() if y_snap else None,
             "lastweek_date": lw_snap.snapshot_date.isoformat() if lw_snap else None,
-            "data_slice": ScopeService.quarter_label(target_fp),
-            "data_slice_key": target_fp,
+            "data_slice": res.data_slice,
+            "data_slice_key": res.resolved_quarter,
+            "filters_applied": res.filters_applied,
             "total": {
                 "count": grand_count,
                 "acv": round(grand_acv, 2),
@@ -385,27 +399,20 @@ class V2RegionsService:
             "slipped_out": {"count": len(slip_list), "acv": round(sum(d["forecast_acv_amount"] for d in slip_list), 2), "deals": slip_list}
         }
 
-    def get_deals(self, ctx: UserContext, region: str = "", category: str = "", status: str = "", bu: str = "", as_of: str = "") -> dict:
-        snap = self._active_snap(as_of)
+    def get_deals(self, ctx: UserContext, region: str = "", category: str = "", status: str = "", bu: str = "", as_of: str = "", filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of: fs.as_of = as_of
+        if region: fs.regions = [region]
+        if category: fs.forecast_categories = [category]
+        if status: fs.approval_statuses = [status]
+        if bu: fs.business_units = [bu]
+
+        snap = self._active_snap(fs.as_of)
         if not snap: return {"error": "no_snapshot"}
-        
-        eff_date = snap.snapshot_date
-        if as_of:
-            try: eff_date = date.fromisoformat(as_of)
-            except ValueError: pass
             
-        opps = self._q4_opps(snap, target_date=eff_date)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
-        
-        if not df.empty:
-            if region:
-                df = df[df["region"] == region]
-            if category:
-                df = df[df["forecast_category"] == category]
-            if status:
-                df = df[df["approval_status"] == status]
-            if bu:
-                df = df[df["business_unit"] == bu]
                 
         deals = df.to_dict("records") if not df.empty else []
         for d in deals:
@@ -413,7 +420,7 @@ class V2RegionsService:
         return {
             "count": len(deals),
             "acv": round(float(df["forecast_acv_amount"].sum()) if not df.empty else 0.0, 2),
-            "filters_applied": {"region": region, "category": category, "status": status, "bu": bu},
+            "filters_applied": res.filters_applied,
             "deals": deals
         }
 

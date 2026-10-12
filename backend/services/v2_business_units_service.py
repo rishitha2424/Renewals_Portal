@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, Any
 import pandas as pd
 from datetime import date
 from sqlalchemy.orm import Session
@@ -87,38 +89,59 @@ class V2BusinessUnitsService:
             if s: return s
         return None
 
-    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+    def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
+        from backend.services.scopes import FilterSpec
         eff_date = target_date if target_date else snap.snapshot_date
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if exclude_deleted:
+            fs.include_deleted_lost = False
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
         q = (
             self.db.query(Opportunity)
             .filter(
                 Opportunity.snapshot_id == snap.id,
-                ScopeService.current_quarter_slice(ScopeService.current_quarter(eff_date))
+                *res.conditions
             )
         )
-        if exclude_deleted:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
-        return q.all()
+        return q.all(), res
+
+    def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
+        opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
+        return opps
+
 
     def get_summary(
         self,
         ctx: UserContext,
         as_of: str = None,
         compare: str = None,
-        exclude_deleted_lost: bool = False
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        snap = self._active_snap(as_of)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if compare:
+            fs.compare = compare
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
             
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
 
+        comp = fs.compare if fs.compare in ("yesterday", "last_week") else "yesterday"
         y_snap = self._yesterday_snap(snap)
         lw_snap = self._lastweek_snap(snap)
 
-        y_df = _opps_to_df(self._q4_opps(y_snap, exclude_deleted=exclude_deleted_lost, target_date=snap.snapshot_date)) if y_snap else pd.DataFrame()
-        lw_df = _opps_to_df(self._q4_opps(lw_snap, exclude_deleted=exclude_deleted_lost, target_date=snap.snapshot_date)) if lw_snap else pd.DataFrame()
+        y_opps, _ = self._scoped_opps(y_snap, filter_spec=fs, target_date=snap.snapshot_date) if y_snap else ([], None)
+        lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date) if lw_snap else ([], None)
+        y_df = _opps_to_df(y_opps)
+        lw_df = _opps_to_df(lw_opps)
 
         def _get_bu_totals(df_in: pd.DataFrame) -> dict:
             if df_in.empty: return {}
@@ -233,22 +256,15 @@ class V2BusinessUnitsService:
                 "delta_lastweek": _get_grand_delta(fc, df, lw_df),
             }
 
-        eff_date = snap.snapshot_date
-        if as_of:
-            from datetime import date
-            try: eff_date = date.fromisoformat(as_of)
-            except ValueError: pass
-        target_fp = ScopeService.current_quarter(eff_date)
-        y, q = _parse_fp(target_fp)
-        fy_year = y + 1 if q >= 3 else y
-        
+        target_fp = res.resolved_quarter
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "compare_date": None,
             "yesterday_date": y_snap.snapshot_date.isoformat() if y_snap else None,
             "lastweek_date": lw_snap.snapshot_date.isoformat() if lw_snap else None,
-            "data_slice": ScopeService.quarter_label(target_fp),
+            "data_slice": res.data_slice,
             "data_slice_key": target_fp,
+            "filters_applied": res.filters_applied,
             "total": {
                 "count": grand_count,
                 "acv": round(grand_acv, 2)
@@ -265,42 +281,41 @@ class V2BusinessUnitsService:
         category: str = None,
         status: str = None,
         as_of: str = None,
-        exclude_deleted_lost: bool = False
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        snap = self._active_snap(as_of)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+        if bu and bu != "All":
+            fs.business_units = [bu]
+        if category:
+            fs.forecast_categories = [category]
+        if status:
+            fs.approval_statuses = [status]
+
+        snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
             
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost)
+        opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
         
         if df.empty:
-            return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
+            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied, "deals": []}
 
-        if bu:
-            df = df[df["business_unit"] == bu]
-        if category:
-            df = df[df["forecast_category"] == category]
-        if status:
-            if status == "Blank":
-                df = df[df["approval_status"] == ""]
-            else:
-                df = df[df["approval_status"] == status]
-                
         df = df.sort_values("forecast_acv_amount", ascending=False)
         deals = df.to_dict(orient="records")
-        # serialize date
         for d in deals:
             if d["close_date"]: d["close_date"] = d["close_date"].isoformat()
             
         return {
             "count": len(deals),
             "acv": round(float(df["forecast_acv_amount"].sum()) if not df.empty else 0.0, 2),
-            "filters_applied": {
-                "bu": bu,
-                "category": category,
-                "status": status
-            },
+            "filters_applied": res.filters_applied,
             "deals": deals
         }
         
@@ -309,21 +324,26 @@ class V2BusinessUnitsService:
         ctx: UserContext,
         bu: str = None,
         limit: int = 10,
-        as_of: str = None
+        as_of: str = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        # Excludes deleted/lost by default for top opps
-        snap = self._active_snap(as_of)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
+        fs.include_deleted_lost = False
+        if as_of:
+            fs.as_of = as_of
+        if bu and bu != "All":
+            fs.business_units = [bu]
+
+        snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
             
-        opps = self._q4_opps(snap, exclude_deleted=True)
+        opps, _ = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
         
         if df.empty:
             return {"deals": []}
-            
-        if bu and bu != "All":
-            df = df[df["business_unit"] == bu]
             
         df = df.sort_values("forecast_acv_amount", ascending=False).head(limit)
         deals = df.to_dict(orient="records")

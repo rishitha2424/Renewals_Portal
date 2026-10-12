@@ -19,6 +19,7 @@ import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import EmptyState from '@/components/ui/EmptyState'
 import DealListModal from '@/components/common/DealListModal'
+import FilterBar from '@/components/common/FilterBar'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -163,27 +164,29 @@ export default function Dashboard() {
 
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
+  const { globalFilters } = useAppStore()
+
   const { data: summary, isLoading: sumLoading, refetch: refetchSum } = useQuery({
-    queryKey: ['v2-summary'],
-    queryFn: () => getV2OverviewSummary(),
+    queryKey: ['v2-summary', globalFilters],
+    queryFn: () => getV2OverviewSummary(globalFilters),
   })
 
   const { data: movYesterday, isLoading: movYLoading, refetch: refetchMovY } = useQuery({
-    queryKey: ['v2-movements-yesterday'],
-    queryFn: () => getV2OverviewMovements('yesterday'),
+    queryKey: ['v2-movements-yesterday', globalFilters],
+    queryFn: () => getV2OverviewMovements('yesterday', globalFilters),
   })
 
   const { data: movLastWeek, isLoading: movLWLoading, refetch: refetchMovLW } = useQuery({
-    queryKey: ['v2-movements-lastweek'],
-    queryFn: () => getV2OverviewMovements('last_week'),
+    queryKey: ['v2-movements-lastweek', globalFilters],
+    queryFn: () => getV2OverviewMovements('last_week', globalFilters),
   })
 
   const movements = movCompare === 'yesterday' ? movYesterday : movLastWeek
   const movLoading = movCompare === 'yesterday' ? movYLoading : movLWLoading
 
   const { data: regional, isLoading: regLoading, refetch: refetchReg } = useQuery({
-    queryKey: ['v2-regional'],
-    queryFn: () => getV2RegionalBreakdown(),
+    queryKey: ['v2-regional', globalFilters],
+    queryFn: () => getV2RegionalBreakdown(globalFilters),
   })
 
   const isLoading = sumLoading || movYLoading || movLWLoading || regLoading
@@ -247,7 +250,7 @@ export default function Dashboard() {
             <h1 className="font-display font-extrabold text-2xl md:text-3xl tracking-tight text-[var(--text-primary)]">
               Renewals Overview
             </h1>
-            <Pill color="teal">Q4 FY2026</Pill>
+            <Pill color="teal">{summary?.data_slice || 'Overview'}</Pill>
           </div>
           {summary?.snapshot_date && (
             <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -270,6 +273,11 @@ export default function Dashboard() {
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-500' : ''}`} /> Refresh
           </button>
         </div>
+      </div>
+
+      {/* Local Page Filter Strip */}
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+        <FilterBar isPageOverride={false} />
       </div>
 
       {/* ── SECTION 0 – Regional notice banner ──────────────────────────────── */}

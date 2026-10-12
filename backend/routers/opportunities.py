@@ -5,6 +5,8 @@ from typing import Optional, List
 from backend.database import get_db
 from backend.services.context import UserContext, get_user_context
 from backend.services.opportunity_service import OpportunityService
+from backend.services.scopes import FilterSpec
+from backend.routers.deps import get_filter_spec
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
 
@@ -31,7 +33,8 @@ def list_opportunities(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     scope: str = Query("renewals"),
-    include_deleted_lost: bool = Query(False),
+    include_deleted_lost: bool = Query(True),
+    filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: OpportunityService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
@@ -54,6 +57,7 @@ def list_opportunities(
         page_size=page_size,
         scope=scope,
         include_deleted_lost=include_deleted_lost,
+        filter_spec=filter_spec,
     )
 
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
+import { useAppStore } from '@/store/appStore'
 
 interface Deal {
   id: string
@@ -158,7 +159,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
     setSelectedGroup('All')
     setSearch('')
   }
-  
+
   const hasActiveFilters = 
     filterFC !== (initialFilters?.forecast_category || 'All') ||
     filterStatus !== (initialFilters?.approval_status || 'All') ||
@@ -168,9 +169,25 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
     filterOwner !== (initialFilters?.owner || 'All') ||
     selectedGroup !== 'All' ||
     search !== ''
-    
+
+  const { globalFilters } = useAppStore()
+
   const activeChips = []
-  if (selectedGroup !== 'All') activeChips.push({ label: 'Group', value: selectedGroup === 'added' ? 'Added to Q4' : selectedGroup === 'left' ? 'Left Q4' : 'Amount changed', onRemove: () => setSelectedGroup('All') })
+  // Inherited active global filters
+  if (globalFilters.period && globalFilters.period !== 'current_quarter') {
+    activeChips.push({ label: 'Period', value: globalFilters.period })
+  }
+  if (globalFilters.sales_types?.length > 0 && !(globalFilters.sales_types.length === 1 && globalFilters.sales_types[0] === 'Renewals')) {
+    activeChips.push({ label: 'Sales Type', value: globalFilters.sales_types.join(', ') })
+  }
+  if (!globalFilters.include_deleted_lost) {
+    activeChips.push({ label: 'Deleted/Lost', value: 'Excluded' })
+  }
+  globalFilters.regions?.forEach(r => activeChips.push({ label: 'Region Filter', value: r }))
+  globalFilters.business_units?.forEach(bu => activeChips.push({ label: 'BU Filter', value: bu }))
+
+  // Local modal filters
+  if (selectedGroup !== 'All') activeChips.push({ label: 'Group', value: selectedGroup === 'added' ? 'Added' : selectedGroup === 'left' ? 'Left' : 'Amount changed', onRemove: () => setSelectedGroup('All') })
   if (filterFC !== 'All') activeChips.push({ label: 'Category', value: filterFC, onRemove: () => setFilterFC('All') })
   if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus, onRemove: () => setFilterStatus('All') })
   if (filterStage !== 'All') activeChips.push({ label: 'Stage', value: filterStage, onRemove: () => setFilterStage('All') })

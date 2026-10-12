@@ -17,6 +17,7 @@ import { useAppStore } from '@/store/appStore'
 import { getSnapshots, downloadReport } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
+import FilterBar from '@/components/common/FilterBar'
 
 export default function Topbar() {
   const {
@@ -29,8 +30,6 @@ export default function Topbar() {
     setCompareSnapshotId,
     snapshots,
     setSnapshots,
-    scope,
-    setScope,
     includeDeletedLost,
     setIncludeDeletedLost,
   } = useAppStore()
@@ -112,48 +111,15 @@ export default function Topbar() {
 
   return (
     <header className="h-16 flex items-center justify-between px-6 border-b flex-shrink-0 bg-[var(--bg-card)] border-[var(--border)] shadow-sm z-20">
-      {/* Left: Mobileum Logo & Command Palette Quick Search */}
-      <div className="flex items-center gap-4">
-
-
-        {/* Global Scope Selector */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs shadow-sm">
-          <span className="font-semibold text-teal-600 dark:text-teal-400">Scope:</span>
-          <select
-            value={scope}
-            onChange={(e) => setScope(e.target.value as any)}
-            className="bg-transparent font-bold text-[var(--text-primary)] outline-none cursor-pointer text-xs"
-            id="topbar-scope-select"
-          >
-            <option value="renewals">Renewals (Default)</option>
-            <option value="all">All Opportunities</option>
-            <option value="fy2026">Fiscal 2026</option>
-            <option value="fy2027">Fiscal 2027</option>
-            <option value="q4_2026">Fiscal Q4</option>
-          </select>
-        </div>
-
-        {/* Include Deleted & Lost Checkbox */}
-        <label
-          className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none px-2 py-1 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors border border-transparent hover:border-[var(--border)]"
-          title="Toggle inclusion of Deleted and Lost pipeline opportunities"
-        >
-          <input
-            type="checkbox"
-            checked={includeDeletedLost}
-            onChange={(e) => setIncludeDeletedLost(e.target.checked)}
-            className="rounded border-[var(--border)] text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
-            id="topbar-include-deleted-lost"
-          />
-          <span className="text-[11px] font-medium hidden lg:inline">Include Deleted & Lost</span>
-          <span className="text-[11px] font-medium lg:hidden">Del/Lost</span>
-        </label>
+      {/* Left: Global Filter Bar */}
+      <div className="flex items-center gap-4 flex-1">
+        <FilterBar />
 
         {/* Search trigger */}
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-all shadow-sm focus:outline-none"
+          className="hidden 2xl:flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-all shadow-sm focus:outline-none"
           id="topbar-search-btn"
         >
           <Search className="w-3.5 h-3.5 text-teal-500" />

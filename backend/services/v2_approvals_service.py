@@ -69,20 +69,25 @@ class V2ApprovalsService:
                     return None
         return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
 
-    def _get_opps_df(self, snap: UploadSnapshot, quarter: str, exclude_deleted_lost: bool) -> pd.DataFrame:
+    def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
+        from backend.services.scopes import FilterSpec
         if not snap:
-            return pd.DataFrame()
-        q = self.db.query(Opportunity).filter(
-            Opportunity.snapshot_id == snap.id,
-            Opportunity.sales_type == "Renewals",
-            Opportunity.fiscal_period == quarter
-        )
+            return pd.DataFrame(), None
+        eff_date = target_date if target_date else snap.snapshot_date
+        fs = filter_spec.copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
-        
+            fs.include_deleted_lost = False
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
+        q = (
+            self.db.query(Opportunity)
+            .filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.conditions
+            )
+        )
         opps = q.all()
         if not opps:
-            return pd.DataFrame()
+            return pd.DataFrame(), res
             
         data = []
         for o in opps:
@@ -104,45 +109,39 @@ class V2ApprovalsService:
             })
         
         df = pd.DataFrame(data)
-        # Overview does not dedup, we shouldn't either unless specified. But we'll drop duplicates to be safe like before.
-        # Wait, if I drop duplicates, I might lose rows. Let me check if the Overview test passed without dedup.
-        # The user requested EXACT MATCH to Overview numbers. So do not drop duplicates!
-        # Actually, let's keep drop duplicates to match "deduped by opportunity_id_18" from Overview docstring.
         df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
-        return df
+        return df, res
+
+    def _get_opps_df(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
+        return self._scoped_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=target_date)
+
 
     def get_distribution(
         self,
         ctx: UserContext,
         as_of: Optional[str] = None,
         compare: Optional[str] = None,
-        exclude_deleted_lost: bool = False
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> dict:
-        snap = self._get_snapshot(ctx, as_of)
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        eff_compare = compare or (filter_spec.compare if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
         if not snap:
             return {"error": "No snapshot found"}
             
-        eff_date = snap.snapshot_date
-        if as_of:
-            from datetime import date
-            try: eff_date = date.fromisoformat(as_of)
-            except ValueError: pass
-        target_quarter = ScopeService.current_quarter(eff_date)
-        if not target_quarter:
-            return {"error": "Invalid current quarter"}
-            
-        df = self._get_opps_df(snap, target_quarter, exclude_deleted_lost)
+        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap.snapshot_date)
         
         comp_snap = None
-        if compare:
-            comp_snap = self._get_snapshot(ctx, compare, base_snap=snap)
-        comp_df = self._get_opps_df(comp_snap, target_quarter, exclude_deleted_lost) if comp_snap else pd.DataFrame()
+        if eff_compare:
+            comp_snap = self._get_snapshot(ctx, eff_compare, base_snap=snap)
+        comp_df, _ = self._get_opps_df(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=comp_snap.snapshot_date if comp_snap else None) if comp_snap else (pd.DataFrame(), None)
             
         snap_yest = self._get_snapshot(ctx, "yesterday", base_snap=snap)
-        df_yest = self._get_opps_df(snap_yest, target_quarter, exclude_deleted_lost) if snap_yest else pd.DataFrame()
+        df_yest, _ = self._get_opps_df(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap_yest.snapshot_date if snap_yest else None) if snap_yest else (pd.DataFrame(), None)
         
         snap_lw = self._get_snapshot(ctx, "last_week", base_snap=snap)
-        df_lw = self._get_opps_df(snap_lw, target_quarter, exclude_deleted_lost) if snap_lw else pd.DataFrame()
+        df_lw, _ = self._get_opps_df(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap_lw.snapshot_date if snap_lw else None) if snap_lw else (pd.DataFrame(), None)
         
         total_count = len(df)
         total_acv = _sum(df, "forecast_acv_amount") if not df.empty else 0.0
@@ -264,8 +263,9 @@ class V2ApprovalsService:
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
             "yesterday_date": snap_yest.snapshot_date.isoformat() if snap_yest else None,
             "lastweek_date": snap_lw.snapshot_date.isoformat() if snap_lw else None,
-            "data_slice": ScopeService.quarter_label(target_quarter),
-            "data_slice_key": target_quarter,
+            "data_slice": res.label if res else ScopeService.quarter_label(ScopeService.current_quarter(snap.snapshot_date)),
+            "data_slice_key": res.period if res else ScopeService.current_quarter(snap.snapshot_date),
+            "filters_applied": res.filters_applied if res else {},
             "total": {
                 "count": total_count,
                 "acv": round(total_acv, 2),
@@ -297,18 +297,19 @@ class V2ApprovalsService:
         as_of: Optional[str] = None,
         exclude_deleted_lost: bool = False,
         region: Optional[str] = None,
-        business_unit: Optional[str] = None
+        business_unit: Optional[str] = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> dict:
-        snap = self._get_snapshot(ctx, as_of)
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
         if not snap:
             return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
             
-        target_quarter = ScopeService.current_quarter(snap.snapshot_date)
-        df = self._get_opps_df(snap, target_quarter, exclude_deleted_lost)
+        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap.snapshot_date)
         if df.empty:
-            return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
+            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied if res else {}, "deals": []}
             
-        filters_applied = {}
+        filters_applied = dict(res.filters_applied) if res else {}
         if status:
             df = df[df["approval_status"] == status]
             filters_applied["status"] = status
