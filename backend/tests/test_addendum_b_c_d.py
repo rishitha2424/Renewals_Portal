@@ -28,6 +28,9 @@ def client_and_db(tmp_path_factory):
     from backend.tests.test_db_helper import get_test_engine_and_session
     engine, Session = get_test_engine_and_session("test_addenda_bcd", tmp_path_factory)
 
+    from backend.services.context import require_admin_context
+    app.dependency_overrides.pop(require_admin_context, None)
+
     def _override():
         db = Session()
         try:
