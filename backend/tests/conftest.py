@@ -73,3 +73,4 @@ def seeded_session(db_session):
             svc.ingest_comparison_tool(ADMIN_CONTEXT, COMPARISON_FILE, snap)
     db_session.commit()
     return db_session
+

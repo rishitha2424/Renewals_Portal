@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Body
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Body, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from datetime import date
@@ -7,10 +7,10 @@ import shutil, tempfile
 from pathlib import Path
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, get_user_context, require_admin_context
 from backend.services.ingest_service import IngestService, compute_previous_working_day
 from backend.services.analytics_service import AnalyticsService
-from backend.models.snapshot import UploadSnapshot, UploadedFile
+from backend.models.snapshot import UploadSnapshot, UploadedFile, SnapshotCheck
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -32,6 +32,12 @@ def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             "source_file_comparison": s.source_file_comparison,
             "last_week_source": s.last_week_source,
             "last_week_is_partial": s.last_week_is_partial,
+            "source_checks": {
+                "total": len(s.checks),
+                "passed": sum(1 for c in s.checks if c.status == "pass"),
+                "failed": sum(1 for c in s.checks if c.status == "fail"),
+                "badge": "red" if any(c.status == "fail" for c in s.checks) else ("green" if len(s.checks) > 0 else "none"),
+            },
             "files": [
                 {
                     "slot": f.file_slot,
@@ -68,6 +74,12 @@ def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             "last_week_source": s.last_week_source or "real_snapshot",
             "last_week_is_partial": s.last_week_is_partial,
             "status": "success",
+            "source_checks": {
+                "total": len(s.checks),
+                "passed": sum(1 for c in s.checks if c.status == "pass"),
+                "failed": sum(1 for c in s.checks if c.status == "fail"),
+                "badge": "red" if any(c.status == "fail" for c in s.checks) else ("green" if len(s.checks) > 0 else "none"),
+            },
             "files": [
                 {
                     "slot": f.file_slot,
@@ -115,18 +127,74 @@ def get_snapshot(snapshot_id: str, db: Session = Depends(get_db), ctx: UserConte
     }
 
 
+@router.get("/{snapshot_id}/checks")
+def get_snapshot_checks(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Return all source reconciliation checks for this snapshot."""
+    checks = db.query(SnapshotCheck).filter(SnapshotCheck.snapshot_id == snapshot_id).all()
+    passed = sum(1 for c in checks if c.status == "pass")
+    failed = sum(1 for c in checks if c.status == "fail")
+    badge = "red" if failed > 0 else ("green" if len(checks) > 0 else "none")
+    return {
+        "snapshot_id": snapshot_id,
+        "badge": badge,
+        "total_checks": len(checks),
+        "passed_checks": passed,
+        "failed_checks": failed,
+        "items": [
+            {
+                "id": c.id,
+                "workbook": c.workbook_name,
+                "sheet": c.sheet_name,
+                "cell_or_row": c.cell_or_row,
+                "metric": c.metric_name,
+                "excel_value": c.excel_value,
+                "website_value": c.website_value,
+                "diff": c.diff_value,
+                "status": c.status,
+            }
+            for c in checks
+        ],
+    }
+
+
+@router.delete("/{snapshot_id}")
+def delete_snapshot(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Admin-only deletion of a snapshot."""
+    snap = db.query(UploadSnapshot).filter(UploadSnapshot.id == snapshot_id).first()
+    if not snap:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    
+    snap_date = snap.snapshot_date.isoformat()
+    db.delete(snap)
+    db.commit()
+    return {"status": "ok", "deleted_snapshot_id": snapshot_id, "snapshot_date": snap_date}
+
+
 @router.post("/validate")
-def validate_upload(
+async def validate_upload(
+    request: Request,
     data_as_of_date: str = Form(...),
     yesterday_date: Optional[str] = Form(None),
-    comparison_tool: UploadFile = File(...),
+    comparison_tool: Optional[UploadFile] = File(None),
     fiscal_2026: Optional[UploadFile] = File(None),
     fiscal_2027: Optional[UploadFile] = File(None),
     fiscal_q4: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Validate uploaded files, compute preview metrics and reconciliation warnings. Does NOT save to database."""
+    """
+    Validate uploaded files, compute preview metrics and reconciliation warnings.
+    Supports fixed slots as well as arbitrary dynamic files (Addendum C).
+    Admin-only (Addendum D).
+    """
     try:
         as_of = date.fromisoformat(data_as_of_date)
     except ValueError:
@@ -144,35 +212,47 @@ def validate_upload(
     tmp = Path(tmpdir)
     files_dict: dict[str, Path] = {}
 
-    ct_path = tmp / comparison_tool.filename
-    with ct_path.open("wb") as f:
-        shutil.copyfileobj(comparison_tool.file, f)
-    files_dict["comparison_tool"] = ct_path
-
-    if fiscal_2026:
-        f26_path = tmp / fiscal_2026.filename
-        with f26_path.open("wb") as f:
-            shutil.copyfileobj(fiscal_2026.file, f)
-        files_dict["fiscal_2026"] = f26_path
-
-    if fiscal_2027:
-        f27_path = tmp / fiscal_2027.filename
-        with f27_path.open("wb") as f:
-            shutil.copyfileobj(fiscal_2027.file, f)
-        files_dict["fiscal_2027"] = f27_path
-
-    if fiscal_q4:
-        fq4_path = tmp / fiscal_q4.filename
-        with fq4_path.open("wb") as f:
-            shutil.copyfileobj(fiscal_q4.file, f)
-        files_dict["fiscal_q4"] = fq4_path
-
-    svc = IngestService(db)
     try:
+        # Collect all form files (both standard slot names and any dynamic uploads)
+        uploaded_files_list: list[tuple[str, UploadFile]] = []
+        for name, u_file in [
+            ("comparison_tool", comparison_tool),
+            ("fiscal_2026", fiscal_2026),
+            ("fiscal_2027", fiscal_2027),
+            ("fiscal_q4", fiscal_q4),
+        ]:
+            if u_file is not None and getattr(u_file, "filename", None):
+                uploaded_files_list.append((name, u_file))
+
+        try:
+            form = await request.form()
+            items_to_check = form.multi_items() if hasattr(form, "multi_items") else form.items()
+            for field_name, value in items_to_check:
+                if hasattr(value, "filename") and getattr(value, "filename", None):
+                    if not any(getattr(f[1], "filename", None) == value.filename for f in uploaded_files_list):
+                        uploaded_files_list.append((field_name, value))
+        except Exception as exc:
+            log.warning("Form parsing exception: %s", exc)
+
+        if not uploaded_files_list:
+            raise HTTPException(status_code=422, detail="No files were uploaded.")
+
+        # Save files to disk and detect their content-based slot
+        for field_name, u_file in uploaded_files_list:
+            f_path = tmp / u_file.filename
+            with f_path.open("wb") as f:
+                shutil.copyfileobj(u_file.file, f)
+
+            from backend.utils.excel_parser import detect_file_slot
+            detected_slot, _ = detect_file_slot(f_path)
+            # Use detected content slot or fallback to field_name
+            slot_key = detected_slot if detected_slot != "unknown" else field_name
+            files_dict[slot_key] = f_path
+
+        svc = IngestService(db)
         result = svc.validate_upload(ctx, files_dict, as_of, yest)
         return result
     finally:
-        # Clean up temporary uploaded files after validate extracts dataframe payloads
         try:
             shutil.rmtree(tmpdir, ignore_errors=True)
         except Exception:
@@ -185,9 +265,9 @@ def commit_upload(
     replace: bool = Body(False, embed=True),
     make_active: Optional[bool] = Body(None, embed=True),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Atomic commit of previously validated upload session."""
+    """Atomic commit of previously validated upload session. Admin-only (Addendum D)."""
     svc = IngestService(db)
     try:
         snap = svc.commit_upload(ctx, session_id, replace=replace, make_active=make_active)
@@ -213,9 +293,9 @@ async def upload_files_legacy(
     renewals_summary: UploadFile | None = File(None),
     comparison_tool: UploadFile | None = File(None),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Legacy upload endpoint preserved for backward compatibility."""
+    """Legacy upload endpoint preserved for backward compatibility. Admin-only (Addendum D)."""
     if renewals_summary is None and comparison_tool is None:
         raise HTTPException(status_code=422, detail="At least one file is required.")
 

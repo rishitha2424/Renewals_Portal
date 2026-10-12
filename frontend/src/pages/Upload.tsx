@@ -24,11 +24,12 @@ import {
   Square,
   Repeat,
 } from 'lucide-react'
-import { validateUpload, commitUpload, getUploadHistory } from '@/api/client'
+import { validateUpload, commitUpload, getUploadHistory, getSnapshotChecks, deleteSnapshot } from '@/api/client'
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
+import { useAppStore } from '@/store/appStore'
 
-export type FileSlot = 'comparison_tool' | 'fiscal_2026' | 'fiscal_2027' | 'fiscal_q4'
+export type FileSlot = 'comparison_tool' | 'fiscal_2026' | 'fiscal_2027' | 'fiscal_q4' | string
 
 interface UploadSlotState {
   file: File | null
@@ -134,6 +135,14 @@ export default function Upload() {
   const [previewData, setPreviewData] = useState<any>(null)
   const [isCommitting, setIsCommitting] = useState(false)
   
+  // Admin state from appStore (Addendum D)
+  const { isAdmin } = useAppStore()
+
+  // Reconciliation checks modal state (Addendum B)
+  const [selectedHistoryCheckSnap, setSelectedHistoryCheckSnap] = useState<any | null>(null)
+  const [checksModalData, setChecksModalData] = useState<any[] | null>(null)
+  const [loadingChecks, setLoadingChecks] = useState(false)
+
   // Backfill and replace safety states
   const [makeActiveChecked, setMakeActiveChecked] = useState(true)
   const [userConfirmReplace, setUserConfirmReplace] = useState(false)
@@ -466,6 +475,21 @@ export default function Upload() {
         })}
       </div>
 
+      {/* Admin Notice if not logged in */}
+      {!isAdmin && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <span>
+              <strong>Admin Authentication Required:</strong> You are in read-only mode. Uploading, replacing, and committing snapshots requires an Admin token.
+            </span>
+          </div>
+          <span className="font-semibold text-amber-700 dark:text-amber-400">
+            Sign in via the top-bar Admin button
+          </span>
+        </div>
+      )}
+
       {/* Validate & Preview Action Button */}
       <div className="flex items-center justify-between card p-4 border border-[var(--border)]">
         <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
@@ -477,9 +501,10 @@ export default function Upload() {
         <button
           type="button"
           onClick={handleValidate}
-          disabled={!slots.comparison_tool.file || isValidating || isCommitting}
+          disabled={!slots.comparison_tool.file || isValidating || isCommitting || !isAdmin}
           className="px-5 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0 transition-all"
           id="validate-preview-btn"
+          title={!isAdmin ? 'Admin sign-in required' : undefined}
         >
           {isValidating ? (
             <>
@@ -489,7 +514,7 @@ export default function Upload() {
           ) : (
             <>
               <ShieldCheck className="w-4 h-4" />
-              Validate & Preview
+              {!isAdmin ? 'Admin Required to Validate' : 'Validate & Preview'}
             </>
           )}
         </button>
@@ -690,6 +715,90 @@ export default function Upload() {
               </div>
             )}
 
+            {/* Schema Drift Warnings (Addendum C) */}
+            {previewData.schema_drift_warnings && previewData.schema_drift_warnings.length > 0 && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 space-y-2 text-xs">
+                <div className="font-bold flex items-center gap-1.5 text-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Schema Drift Detected (Both Ways):
+                </div>
+                <ul className="list-disc list-inside space-y-1 pl-1">
+                  {previewData.schema_drift_warnings.map((w: string, idx: number) => (
+                    <li key={idx} className="font-mono text-[11px]">{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Source Reconciliation Checks (Addendum B) */}
+            {previewData.source_checks && (
+              <div className="p-4 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                        previewData.source_checks.badge === 'green'
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                          : previewData.source_checks.badge === 'red'
+                          ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Source Check: {previewData.source_checks.badge === 'green' ? 'All Match' : `${previewData.source_checks.failed} Mismatch(es)`} ({previewData.source_checks.passed}/{previewData.source_checks.total})
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)]">
+                      Reconciled live against Excel's own control sheets
+                    </span>
+                  </div>
+                </div>
+
+                {previewData.source_checks.items && previewData.source_checks.items.length > 0 && (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)] max-h-60 overflow-y-auto">
+                    <table className="w-full text-[11px] text-left">
+                      <thead className="bg-[var(--bg-card)] text-[var(--text-muted)] font-semibold border-b border-[var(--border-subtle)] sticky top-0">
+                        <tr>
+                          <th className="py-2 px-2.5">Status</th>
+                          <th className="py-2 px-2.5">Workbook</th>
+                          <th className="py-2 px-2.5">Sheet</th>
+                          <th className="py-2 px-2.5">Cell / Row</th>
+                          <th className="py-2 px-2.5">Metric</th>
+                          <th className="py-2 px-2.5 text-right">Excel Value</th>
+                          <th className="py-2 px-2.5 text-right">Website Value</th>
+                          <th className="py-2 px-2.5 text-right">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-subtle)]">
+                        {previewData.source_checks.items.map((chk: any, idx: number) => (
+                          <tr
+                            key={idx}
+                            className={chk.status === 'fail' ? 'bg-rose-500/10 font-bold' : 'hover:bg-[var(--bg-card)]/50'}
+                          >
+                            <td className="py-1.5 px-2.5">
+                              {chk.status === 'pass' ? (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">MATCH</span>
+                              ) : (
+                                <span className="text-rose-600 dark:text-rose-400 font-bold">MISMATCH</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2.5 text-[var(--text-secondary)]">{chk.workbook_name}</td>
+                            <td className="py-1.5 px-2.5 font-medium">{chk.sheet_name}</td>
+                            <td className="py-1.5 px-2.5 font-mono text-[10px]">{chk.cell_or_row}</td>
+                            <td className="py-1.5 px-2.5">{chk.metric_name}</td>
+                            <td className="py-1.5 px-2.5 text-right font-mono font-semibold">{chk.excel_value}</td>
+                            <td className="py-1.5 px-2.5 text-right font-mono font-semibold">{chk.website_value}</td>
+                            <td className="py-1.5 px-2.5 text-right font-mono">
+                              {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : '0.00'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* General Warnings & Reconciliation Notices */}
             {previewData.warnings && previewData.warnings.length > 0 && (
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-1.5 text-xs">
@@ -781,6 +890,7 @@ export default function Upload() {
                 <th className="py-2.5 px-3">Yesterday Date</th>
                 <th className="py-2.5 px-3">Active Deals</th>
                 <th className="py-2.5 px-3">Raw Deals</th>
+                <th className="py-2.5 px-3">Source Checks</th>
                 <th className="py-2.5 px-3">Last Week Source</th>
                 <th className="py-2.5 px-3">Uploaded At</th>
               </tr>
@@ -788,7 +898,7 @@ export default function Upload() {
             <tbody className="divide-y divide-[var(--border)]">
               {uploadHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-[var(--text-muted)]">
+                  <td colSpan={7} className="py-6 text-center text-[var(--text-muted)]">
                     No historical snapshots recorded yet.
                   </td>
                 </tr>
@@ -813,6 +923,40 @@ export default function Upload() {
                       {formatNumber(h.row_count)}
                     </td>
                     <td className="py-2.5 px-3">
+                      {h.source_checks ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSelectedHistoryCheckSnap(h)
+                            setLoadingChecks(true)
+                            try {
+                              const res = await getSnapshotChecks(h.id)
+                              setChecksModalData(res.checks || [])
+                            } catch {
+                              setChecksModalData([])
+                            } finally {
+                              setLoadingChecks(false)
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
+                            h.source_checks.badge === 'green'
+                              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                              : h.source_checks.badge === 'red'
+                              ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
+                              : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                          }`}
+                          title="Click to view full reconciliation details"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          {h.source_checks.badge === 'green'
+                            ? `Pass (${h.source_checks.passed})`
+                            : `${h.source_checks.failed} Fail`}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3">
                       {h.last_week_source === 'real_snapshot' ? (
                         <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
                           Stored Snapshot (-7d)
@@ -833,6 +977,97 @@ export default function Upload() {
           </table>
         </div>
       </div>
+
+      {/* Reconciliation Details Modal */}
+      {selectedHistoryCheckSnap && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedHistoryCheckSnap(null)}
+        >
+          <div
+            className="card p-6 border border-[var(--border)] max-w-4xl w-full max-h-[80vh] flex flex-col space-y-4 shadow-2xl bg-[var(--bg-card)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div>
+                <h3 className="font-black text-base text-[var(--text-primary)] flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-teal-500" />
+                  Excel Source Reconciliation Checks — {selectedHistoryCheckSnap.snapshot_date}
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Comparison between database aggregations and control summary sheets in the uploaded workbook.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryCheckSnap(null)}
+                className="p-1 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {loadingChecks ? (
+                <div className="py-12 flex items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
+                  <RefreshCw className="w-4 h-4 animate-spin text-teal-500" />
+                  Loading reconciliation checks...
+                </div>
+              ) : !checksModalData || checksModalData.length === 0 ? (
+                <p className="text-center py-10 text-xs text-[var(--text-muted)]">
+                  No detailed check records found for this snapshot.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-semibold border-b border-[var(--border)] sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Workbook</th>
+                        <th className="py-2.5 px-3">Sheet</th>
+                        <th className="py-2.5 px-3">Cell / Row</th>
+                        <th className="py-2.5 px-3">Metric</th>
+                        <th className="py-2.5 px-3 text-right">Excel Value</th>
+                        <th className="py-2.5 px-3 text-right">Website Value</th>
+                        <th className="py-2.5 px-3 text-right">Diff</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border)]">
+                      {checksModalData.map((chk: any) => (
+                        <tr
+                          key={chk.id}
+                          className={chk.status === 'fail' ? 'bg-rose-500/10 font-bold' : 'hover:bg-[var(--bg-secondary)]/50'}
+                        >
+                          <td className="py-2 px-3">
+                            {chk.status === 'pass' ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                MATCH
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                                MISMATCH
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-[var(--text-secondary)]">{chk.workbook_name}</td>
+                          <td className="py-2 px-3 font-semibold">{chk.sheet_name}</td>
+                          <td className="py-2 px-3 font-mono text-[11px]">{chk.cell_or_row}</td>
+                          <td className="py-2 px-3">{chk.metric_name}</td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold">{chk.excel_value}</td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold">{chk.website_value}</td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : '0.00'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

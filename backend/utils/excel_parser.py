@@ -150,14 +150,19 @@ def available_sheets(path: Path) -> list[str]:
 
 REAL_SLOT_NAMES: dict[str, str] = {
     "comparison_tool": "Renewal Comparison Tool",
-    "fiscal_2026": "Renewals Summary - Fiscal 2026",
-    "fiscal_2027": "Renewals Summary - Fiscal 2027",
-    "fiscal_q4": "Renewals Summary - Fiscal Q4",
 }
 
 
 def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, str]:
-    """Detect slot by CONTENT and sheet signature, returning canonical slot key and descriptive real name."""
+    """
+    Detect slot by CONTENT and sheet signature dynamically (Addendum C: lifetime-proof).
+    - If today & yesterday sheets are present: Renewal Comparison Tool ('comparison_tool')
+    - If today_data sheet is present: Renewals Summary file.
+      Reads Fiscal Period and Closing Year from Today_Data to derive a generic slot id:
+      renewals_summary:<covered_period>
+      and a human-readable title built from the data:
+      e.g. "Renewals Summary - FY2026" or "Renewals Summary - Q4 FY26"
+    """
     try:
         xf = xf or _open(path)
         sheet_names = xf.sheet_names
@@ -166,7 +171,7 @@ def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, s
         return "unknown", f"Cannot open Excel file: {exc}"
 
     if "today" in sheet_names_lower and "yesterday" in sheet_names_lower:
-        return "comparison_tool", "Renewal Comparison Tool (today & yesterday sheets present)"
+        return "comparison_tool", "Renewal Comparison Tool"
 
     today_data_sheet = sheet_names_lower.get("today_data")
     if today_data_sheet:
@@ -177,20 +182,51 @@ def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, s
             cols_to_read = [c for c in (fp_col, cy_col) if c]
             if cols_to_read:
                 df_full = xf.parse(today_data_sheet, usecols=cols_to_read, dtype=str)
-                if fp_col:
-                    vals_fp = df_full[fp_col].dropna().astype(str).str.strip().unique()
-                    if len(vals_fp) == 1 and vals_fp[0] == "Q4-2026":
-                        return "fiscal_q4", "Renewals Summary - Fiscal Q4 (all Fiscal Period = Q4-2026)"
+                fp_vals = (
+                    sorted([str(x).strip() for x in df_full[fp_col].dropna().unique() if str(x).strip()])
+                    if fp_col else []
+                )
+                cy_vals = (
+                    sorted([str(x).replace(".0", "").strip() for x in df_full[cy_col].dropna().unique() if str(x).strip()])
+                    if cy_col else []
+                )
+
+                # 1. Single fiscal period (e.g. Q4-2026, Q2-2027)
+                if len(fp_vals) == 1 and re.match(r"Q[1-4]-\d{4}", fp_vals[0], re.IGNORECASE):
+                    q_name = fp_vals[0].upper()
+                    m = re.match(r"Q([1-4])-(\d{4})", q_name)
+                    if m:
+                        title = f"Renewals Summary - Q{m.group(1)} FY{m.group(2)[-2:]}"
+                    else:
+                        title = f"Renewals Summary - {q_name}"
+                    return f"renewals_summary:{q_name}", title
+
+                # 2. Single closing year / fiscal year (e.g. 2027)
+                if len(cy_vals) == 1 and re.match(r"^\d{4}$", cy_vals[0]):
+                    yr = cy_vals[0]
+                    return f"renewals_summary:FY{yr}", f"Renewals Summary - FY{yr}"
+
+                # 3. Dominant closing year (e.g. FY2026 where >=80% of rows are 2026)
                 if cy_col:
-                    vals_cy = (
-                        df_full[cy_col].dropna().astype(str)
-                        .str.replace(r"\.0$", "", regex=True).str.strip().unique()
-                    )
-                    if len(vals_cy) == 1 and vals_cy[0] == "2027":
-                        return "fiscal_2027", "Renewals Summary - Fiscal 2027 (all Closing Year = 2027)"
-            return "fiscal_2026", "Renewals Summary - Fiscal 2026 (Renewals scope)"
-        except Exception:
-            return "fiscal_2026", "Renewals Summary - Fiscal 2026 (defaulted from sheet layout)"
+                    cy_series = df_full[cy_col].dropna().astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+                    if not cy_series.empty:
+                        vc = cy_series.value_counts()
+                        top_yr = str(vc.index[0])
+                        top_ratio = vc.iloc[0] / len(cy_series)
+                        if top_ratio >= 0.8 and re.match(r"^\d{4}$", top_yr):
+                            return f"renewals_summary:FY{top_yr}", f"Renewals Summary - FY{top_yr}"
+
+                # 4. Multi-period / multi-year fallback
+                if fp_vals:
+                    summary_scope = ",".join(fp_vals[:3])
+                    return f"renewals_summary:{summary_scope}", f"Renewals Summary - {summary_scope}"
+                elif cy_vals:
+                    summary_scope = f"FY{min(cy_vals)}-FY{max(cy_vals)}"
+                    return f"renewals_summary:{summary_scope}", f"Renewals Summary - {summary_scope}"
+
+            return "renewals_summary:all", "Renewals Summary - All"
+        except Exception as exc:
+            return "renewals_summary:default", f"Renewals Summary ({exc})"
 
     return "unknown", f"Unrecognized sheet structure: {sheet_names[:5]}"
 
@@ -225,8 +261,26 @@ def detect_suggested_snapshot_date(path: Path, xf: pd.ExcelFile | None = None) -
     return None
 
 
-COMPARISON_NEEDED = ["today", "yesterday", "finalchangereport"]
-SUMMARY_NEEDED = ["today_data", "yesterday_data", "lastweek_data", "approvalstatus_summary"]
+COMPARISON_NEEDED = [
+    "today",
+    "yesterday",
+    "finalchangereport",
+    "todayforecastsummary",
+    "yesterdayforecastsummary",
+    "forecastmovementsummary",
+    "forecastchanges",
+    "approvalstatuschanges",
+]
+SUMMARY_NEEDED = [
+    "today_data",
+    "yesterday_data",
+    "lastweek_data",
+    "approvalstatus_summary",
+    "today_expiry",
+    "expiry_final",
+    "approvalstatus_bu_acv",
+    "top 10 region summary",
+]
 
 
 def parse_comparison_tool(path: Path, xf: pd.ExcelFile | None = None) -> dict[str, pd.DataFrame]:

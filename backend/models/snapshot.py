@@ -54,6 +54,9 @@ class UploadSnapshot(Base):
     daily_summaries: Mapped[list["DailySummary"]] = relationship(  # noqa: F821
         "DailySummary", back_populates="snapshot", cascade="all, delete-orphan"
     )
+    checks: Mapped[list["SnapshotCheck"]] = relationship(
+        "SnapshotCheck", back_populates="snapshot", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<UploadSnapshot {self.label} {self.snapshot_date}>"
@@ -73,4 +76,23 @@ class UploadedFile(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     snapshot: Mapped["UploadSnapshot"] = relationship("UploadSnapshot", back_populates="uploaded_files")
+
+
+class SnapshotCheck(Base):
+    __tablename__ = "snapshot_checks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    snapshot_id: Mapped[str] = mapped_column(String(36), ForeignKey("upload_snapshots.id", ondelete="CASCADE"), index=True)
+    workbook_name: Mapped[str] = mapped_column(String(256))
+    sheet_name: Mapped[str] = mapped_column(String(128))
+    cell_or_row: Mapped[str] = mapped_column(String(128))
+    metric_name: Mapped[str] = mapped_column(String(128))
+    excel_value: Mapped[str] = mapped_column(String(256))
+    website_value: Mapped[str] = mapped_column(String(256))
+    diff_value: Mapped[str] = mapped_column(String(256))
+    status: Mapped[str] = mapped_column(String(32), index=True)  # pass | fail | warning
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    snapshot: Mapped["UploadSnapshot"] = relationship("UploadSnapshot", back_populates="checks")
+
 

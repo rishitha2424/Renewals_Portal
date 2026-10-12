@@ -18,6 +18,7 @@ import { getSnapshots, downloadReport } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import FilterBar from '@/components/common/FilterBar'
+import AdminAuthModal from '@/components/common/AdminAuthModal'
 
 export default function Topbar() {
   const {
@@ -266,6 +267,9 @@ export default function Topbar() {
           )}
         </div>
 
+
+        {/* Admin Sign In (Addendum D) */}
+        <AdminAuthModal />
 
         {/* Theme Toggle */}
         <button

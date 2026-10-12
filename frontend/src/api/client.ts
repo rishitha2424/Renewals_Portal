@@ -10,11 +10,16 @@ const api = axios.create({
 const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
 
 api.interceptors.request.use((config) => {
+  const state = useAppStore.getState()
+  if (state.adminToken) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${state.adminToken}`
+  }
+
   const url = config.url || ''
   const isExcluded = FILTER_EXCLUDED_PATHS.some((p) => url.includes(p))
   if (isExcluded) return config
 
-  const state = useAppStore.getState()
   config.params = config.params || {}
   if (config.params.include_deleted_lost === undefined && state.includeDeletedLost !== undefined) {
     config.params.include_deleted_lost = state.includeDeletedLost
@@ -40,6 +45,21 @@ export const validateUpload = (form: FormData) =>
 
 export const commitUpload = (sessionId: string, replace = false, makeActive?: boolean) =>
   api.post('/snapshots/commit', { session_id: sessionId, replace, make_active: makeActive }).then(r => r.data)
+
+export const getSnapshotChecks = (snapshotId: string) =>
+  api.get(`/snapshots/${snapshotId}/checks`).then(r => r.data)
+
+export const deleteSnapshot = (snapshotId: string) =>
+  api.delete(`/snapshots/${snapshotId}`).then(r => r.data)
+
+export const adminLogin = (password: string) =>
+  api.post('/admin/login', { password }).then(r => r.data)
+
+export const adminLogout = () =>
+  api.post('/admin/logout').then(r => r.data)
+
+export const getAdminStatus = () =>
+  api.get('/admin/status').then(r => r.data)
 
 export const uploadFiles = (form: FormData) =>
   api.post('/snapshots/upload', form, {

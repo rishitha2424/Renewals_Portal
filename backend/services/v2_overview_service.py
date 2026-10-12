@@ -178,16 +178,29 @@ class V2OverviewService:
     # ── core aggregation helpers ──────────────────────────────────────────────
 
     def _category_summary(self, df: pd.DataFrame) -> dict:
-        """Count + ACV per forecast category including Blank."""
-        if df.empty:
-            return {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}
-        result = {}
+        """Count + ACV per forecast category including Blank and any dynamic/new categories (Addendum C)."""
+        result = {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}
+        if df.empty or "forecast_category" not in df.columns:
+            return result
+        
+        # Standard ALL_FC
         for fc in ALL_FC:
             sub = df[df["forecast_category"] == fc]
             result[fc] = {
                 "count": len(sub),
                 "acv": round(_sum(sub, "forecast_acv_amount"), 2),
             }
+        
+        # Dynamic / new categories (Addendum C: new category gets its own entry/card)
+        all_unique = df["forecast_category"].dropna().unique()
+        for cat in all_unique:
+            cat_str = str(cat).strip()
+            if cat_str and cat_str not in result:
+                sub = df[df["forecast_category"] == cat_str]
+                result[cat_str] = {
+                    "count": len(sub),
+                    "acv": round(_sum(sub, "forecast_acv_amount"), 2),
+                }
         return result
 
     def _movements(
@@ -398,7 +411,11 @@ class V2OverviewService:
 
         import pandas as pd
         _, q_end_date = ScopeService.quarter_bounds(target_fp)
-        slip_df = df[pd.to_datetime(df["close_date"]).dt.date > q_end_date] if not df.empty else pd.DataFrame()
+        if not df.empty and "close_date" in df.columns:
+            cd_dates = pd.to_datetime(df["close_date"], errors="coerce")
+            slip_df = df[cd_dates > pd.Timestamp(q_end_date)]
+        else:
+            slip_df = pd.DataFrame()
         slippage = {
             "count": len(slip_df),
             "acv": round(_sum(slip_df, "forecast_acv_amount"), 2) if not slip_df.empty else 0.0,
@@ -493,14 +510,14 @@ class V2OverviewService:
                 "delta_yesterday": delta_yesterday,
                 "delta_lastweek":  delta_lastweek,
             },
-            # Section 2 — category cards
+            # Section 2 — category cards (standard ALL_FC + any dynamic new categories)
             "categories": {
                 fc: {
                     **cats[fc],
-                    "delta_yesterday": cats_delta_yesterday[fc] if cats_delta_yesterday else None,
-                    "delta_lastweek":  cats_delta_lastweek[fc] if cats_delta_lastweek else None,
+                    "delta_yesterday": cats_delta_yesterday.get(fc) if cats_delta_yesterday else None,
+                    "delta_lastweek":  cats_delta_lastweek.get(fc) if cats_delta_lastweek else None,
                 }
-                for fc in ALL_FC
+                for fc in cats.keys()
             },
             # Section 3 — slippage
             "slippage_to_2027": {
@@ -509,6 +526,12 @@ class V2OverviewService:
                 "delta_lastweek":  slip_delta_lastweek,
             },
             "proposal_confirmation_totals": prop_totals,
+            "source_checks": {
+                "total": len(snap.checks),
+                "passed": sum(1 for c in snap.checks if c.status == "pass"),
+                "failed": sum(1 for c in snap.checks if c.status == "fail"),
+                "badge": "red" if any(c.status == "fail" for c in snap.checks) else ("green" if len(snap.checks) > 0 else "none"),
+            },
         }
 
     def get_movements(

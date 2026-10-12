@@ -251,6 +251,21 @@ export default function Dashboard() {
               Renewals Overview
             </h1>
             <Pill color="teal">{summary?.data_slice || 'Overview'}</Pill>
+            {summary?.source_checks && (
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                  summary.source_checks.badge === 'green'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                    : summary.source_checks.badge === 'red'
+                    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                }`}
+                title={`${summary.source_checks.passed}/${summary.source_checks.total} control checks matched Excel summary sheets`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Source check: {summary.source_checks.badge === 'green' ? `yes (${summary.source_checks.passed} checks)` : `${summary.source_checks.failed} mismatches`}
+              </span>
+            )}
           </div>
           {summary?.snapshot_date && (
             <p className="text-xs text-[var(--text-muted)] mt-1">

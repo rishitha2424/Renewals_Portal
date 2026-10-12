@@ -66,6 +66,11 @@ interface AppState {
   activeSnapshotId: string | null
   setActiveSnapshotId: (id: string | null) => void
 
+  // Admin Auth State (in-memory only - Addendum D)
+  isAdmin: boolean
+  adminToken: string | null
+  setIsAdmin: (isAdmin: boolean, token?: string | null) => void
+
   // Compare snapshot ("Compare with")
   compareSnapshotId: string | null
   setCompareSnapshotId: (id: string | null) => void
@@ -141,6 +146,10 @@ export const useAppStore = create<AppState>()(
           activeSnapshotId: id,
           globalFilters: { ...s.globalFilters, as_of: id },
         })),
+
+      isAdmin: false,
+      adminToken: null,
+      setIsAdmin: (isAdmin, token = null) => set({ isAdmin, adminToken: token }),
 
       compareSnapshotId: null,
       setCompareSnapshotId: (id) =>

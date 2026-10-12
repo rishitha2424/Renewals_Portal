@@ -35,4 +35,9 @@ def get_test_engine_and_session(test_name: str, tmp_path_factory=None):
         alembic_cfg.set_main_option("sqlalchemy.url", test_db_url)
         command.stamp(alembic_cfg, "head")
     Session = sessionmaker(bind=engine)
+    if not test_name.startswith("test_addenda"):
+        from backend.services.context import require_admin_context, ADMIN_CONTEXT
+        from backend.main import app
+        app.dependency_overrides[require_admin_context] = lambda: ADMIN_CONTEXT
     return engine, Session
+

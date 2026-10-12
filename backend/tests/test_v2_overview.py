@@ -90,7 +90,8 @@ def client_and_db(tmp_path_factory):
     slots = {}
     for fp in sorted(sample.glob("*.xlsx")):
         slots[detect_file_slot(fp)[0]] = fp
-    assert set(slots) == {"comparison_tool", "fiscal_2026", "fiscal_2027", "fiscal_q4"}, set(slots)
+    assert "comparison_tool" in slots
+    assert len([s for s in slots if s.startswith("renewals_summary:")]) == 3, set(slots)
 
     with TestClient(app) as client:
         # Validate

@@ -16,11 +16,12 @@ import pandas as pd
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.models.snapshot import UploadSnapshot, UploadedFile
+from backend.models.snapshot import UploadSnapshot, UploadedFile, SnapshotCheck
 from backend.models.opportunity import Opportunity
 from backend.models.daily_summary import DailySummary
 from backend.models.change_log import ChangeLog, ForecastMovementLog
 from backend.services.context import UserContext
+from backend.services.reconciliation import ReconciliationEngine
 from backend.utils.excel_parser import (
     detect_file_slot,
     compute_file_sha256,
@@ -45,8 +46,22 @@ from backend.utils.normalise import (
 
 log = logging.getLogger(__name__)
 
-# Temporary in-memory cache for validated upload sessions
 _UPLOAD_SESSIONS: dict[str, dict[str, Any]] = {}
+
+def detect_schema_drift(current_cols: list[str] | set[str], previous_cols: list[str] | set[str]) -> list[str]:
+    """Detect schema drift both ways: new columns appeared or known columns disappeared."""
+    curr = set(current_cols)
+    prev = set(previous_cols)
+    new_cols = curr - prev
+    lost_cols = prev - curr
+    warnings: list[str] = []
+    if new_cols:
+        for c in sorted(new_cols):
+            warnings.append(f"Schema drift: New column '{c}' detected.")
+    if lost_cols:
+        for c in sorted(lost_cols):
+            warnings.append(f"Schema drift: Known column '{c}' disappeared versus previous snapshot.")
+    return warnings
 
 def _get_sessions_storage_dir() -> Path:
     from backend.config import settings, ROOT_DIR
@@ -394,16 +409,16 @@ class IngestService:
                 "files": file_metadata,
             }
 
-        # 4. Parse Summary Workbooks for last-week bootstrap only
+        # 4. Parse Summary Workbooks (Addendum C: dynamic for any number of summary files)
         summary_dfs: dict[str, dict[str, pd.DataFrame]] = {}
-        for slot in ["fiscal_2026", "fiscal_2027", "fiscal_q4"]:
-            slot_path = files_dict.get(slot)
-            if slot_path and slot_path.exists():
-                try:
-                    s_sheets = parse_summary_workbook(slot_path, xf_cache.get(slot))
-                    summary_dfs[slot] = s_sheets
-                except Exception as exc:
-                    warnings.append(f"Warning reading {slot_path.name}: {exc}")
+        for slot, slot_path in files_dict.items():
+            if slot == "comparison_tool" or not slot_path or not slot_path.exists():
+                continue
+            try:
+                s_sheets = parse_summary_workbook(slot_path, xf_cache.get(slot))
+                summary_dfs[slot] = s_sheets
+            except Exception as exc:
+                warnings.append(f"Warning reading {slot_path.name}: {exc}")
 
         # 5. Compute Scope Metrics
         from backend.services.scopes import ScopeService
@@ -450,12 +465,24 @@ class IngestService:
             },
         }
 
+        # Two-way Schema Drift Detection (Addendum C: new columns and disappeared columns)
+        schema_drift_warnings: list[str] = []
         prev_snap = (
             self.db.query(UploadSnapshot)
             .filter(UploadSnapshot.snapshot_date < data_as_of)
             .order_by(UploadSnapshot.snapshot_date.desc())
             .first()
         )
+        if prev_snap:
+            # Check extra_attributes of an opportunity from previous snapshot
+            prev_opp = self.db.query(Opportunity).filter(Opportunity.snapshot_id == prev_snap.id).first()
+            if prev_opp and prev_opp.extra_attributes:
+                prev_cols = set(prev_opp.extra_attributes.keys())
+                curr_cols = set(today_raw.columns) if today_raw is not None else set()
+                drift_msgs = detect_schema_drift(curr_cols, prev_cols)
+                warnings.extend(drift_msgs)
+                schema_drift_warnings.extend(drift_msgs)
+
         if prev_snap and prev_snap.row_count > 0:
             diff_pct = abs(len(today_mapped) - prev_snap.row_count) / prev_snap.row_count * 100
             if diff_pct > 5.0:
@@ -466,6 +493,34 @@ class IngestService:
         # 6. Reconcile FinalChangeReport
         fcr = comp_sheets.get("finalchangereport")
         fcr_count = len(fcr) if fcr is not None and not fcr.empty else None
+
+        # 7. Pre-compute Source Reconciliation Checks (Addendum B)
+        reconciler = ReconciliationEngine()
+        y_mapped = _map_columns(yesterday_raw) if yesterday_raw is not None and not yesterday_raw.empty else None
+        preview_checks = reconciler.run_all_checks(
+            snapshot_id="preview",
+            files_dict=files_dict,
+            comp_sheets=comp_sheets,
+            summary_dfs=summary_dfs,
+            today_mapped=today_mapped,
+            yesterday_mapped=y_mapped,
+        )
+        checks_pass_count = sum(1 for c in preview_checks if c.status == "pass")
+        checks_fail_count = sum(1 for c in preview_checks if c.status == "fail")
+        checks_badge = "red" if checks_fail_count > 0 else "green"
+        checks_preview_data = [
+            {
+                "workbook": c.workbook_name,
+                "sheet": c.sheet_name,
+                "cell_or_row": c.cell_or_row,
+                "metric": c.metric_name,
+                "excel_value": c.excel_value,
+                "website_value": c.website_value,
+                "diff": c.diff_value,
+                "status": c.status,
+            }
+            for c in preview_checks
+        ]
 
         # Cross-checks
         if scopes_summary["all"]["raw_count"] == 0:
@@ -511,6 +566,14 @@ class IngestService:
             "errors": errors,
             "can_commit": can_commit,
             "fcr_changes_count": fcr_count,
+            "schema_drift_warnings": schema_drift_warnings,
+            "source_checks": {
+                "badge": checks_badge,
+                "total_checks": len(preview_checks),
+                "passed_checks": checks_pass_count,
+                "failed_checks": checks_fail_count,
+                "items": checks_preview_data,
+            },
         }
 
     # ------------------------------------------------------------------
@@ -741,6 +804,24 @@ class IngestService:
 
         if yesterday_raw is not None and not yesterday_raw.empty:
             self._compute_yesterday_changelog(snap, yesterday_raw)
+
+        # Persist Source Reconciliation Checks (Addendum B)
+        try:
+            self.db.query(SnapshotCheck).filter(SnapshotCheck.snapshot_id == snap.id).delete()
+            reconciler = ReconciliationEngine()
+            y_mapped = _map_columns(yesterday_raw) if yesterday_raw is not None and not yesterday_raw.empty else None
+            checks = reconciler.run_all_checks(
+                snapshot_id=snap.id,
+                files_dict=session_data.get("files_dict", {}),
+                comp_sheets=session_data.get("comp_sheets", {}),
+                summary_dfs=summary_dfs,
+                today_mapped=today_mapped,
+                yesterday_mapped=y_mapped,
+            )
+            for c in checks:
+                self.db.add(c)
+        except Exception as exc:
+            log.warning("Could not persist source reconciliation checks for snapshot %s: %s", snap.id, exc)
 
         try:
             self.db.commit()

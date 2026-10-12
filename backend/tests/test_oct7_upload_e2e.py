@@ -57,14 +57,23 @@ def _slot_files():
     return out
 
 
+from backend.services.context import sign_admin_token
+
 @pytest.fixture(scope="module")
-def validated(client_and_db):
+def admin_headers():
+    token = sign_admin_token()
+    return {"Authorization": f"Bearer {token}"}
+
+@pytest.fixture(scope="module")
+def validated(client_and_db, admin_headers):
     client, _ = client_and_db
     slots = _slot_files()
-    assert set(slots) == {"comparison_tool", "fiscal_2026", "fiscal_2027", "fiscal_q4"}, f"detected: {set(slots)}"
+    assert "comparison_tool" in slots
+    renewals_summary_slots = [s for s in slots if s.startswith("renewals_summary:")]
+    assert len(renewals_summary_slots) == 3, f"Expected 3 renewals-summary slots, got: {list(slots.keys())}"
     handles = {s: (p.name, p.open("rb"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") for s, p in slots.items()}
     try:
-        r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"}, files=handles)
+        r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"}, files=handles, headers=admin_headers)
     finally:
         for _, fh, _ in handles.values():
             fh.close()
@@ -74,7 +83,21 @@ def validated(client_and_db):
 
 def test_slots_detected_by_content():
     slots = _slot_files()
-    assert set(slots) == {"comparison_tool", "fiscal_2026", "fiscal_2027", "fiscal_q4"}
+    # 1. Exactly one comparison_tool
+    comp_slots = [s for s in slots if s == "comparison_tool"]
+    assert len(comp_slots) == 1, f"Expected exactly 1 comparison_tool, got: {comp_slots}"
+
+    # 2. Exactly three renewals-summary files detected on sample_oct7
+    summary_slots = [s for s in slots if s.startswith("renewals_summary:")]
+    assert len(summary_slots) == 3, f"Expected exactly 3 renewals-summary files, got: {summary_slots}"
+
+    # 3. For each, the covered period read from the data (state what you read):
+    # - renewals_summary:FY2026 covers FY2026 (closing year 2026 read from Today_Data)
+    # - renewals_summary:FY2027 covers FY2027 (closing year 2027 read from Today_Data)
+    # - renewals_summary:Q4-2026 covers Q4-2026 (fiscal period Q4-2026 read from Today_Data)
+    assert "renewals_summary:FY2026" in summary_slots
+    assert "renewals_summary:FY2027" in summary_slots
+    assert "renewals_summary:Q4-2026" in summary_slots
 
 
 
@@ -90,9 +113,9 @@ def test_yesterday_is_previous_working_day(validated):
     assert validated["fcr_changes_count"] == 59
 
 
-def test_commit_and_dashboard_numbers(client_and_db, validated):
+def test_commit_and_dashboard_numbers(client_and_db, validated, admin_headers):
     client, Session = client_and_db
-    r = client.post("/api/snapshots/commit", json={"session_id": validated["session_id"], "replace": False})
+    r = client.post("/api/snapshots/commit", json={"session_id": validated["session_id"], "replace": False}, headers=admin_headers)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["row_count"] == 3093 and body["active_row_count"] == 2814
@@ -154,18 +177,18 @@ def test_yesterday_and_last_week_are_tagged_by_scope(db_session):
         assert with_st == total
         assert with_fp == total
 
-def test_same_files_again_ask_to_replace(client_and_db, validated):
+def test_same_files_again_ask_to_replace(client_and_db, validated, admin_headers):
     client, _ = client_and_db
     slots = _slot_files()
     handles = {s: (p.name, p.open("rb"), "application/octet-stream") for s, p in slots.items()}
     try:
-        r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"}, files=handles)
+        r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"}, files=handles, headers=admin_headers)
     finally:
         for _, fh, _ in handles.values():
             fh.close()
     j = r.json()
     assert j["snapshot_exists"] is True
-    c = client.post("/api/snapshots/commit", json={"session_id": j["session_id"], "replace": False})
+    c = client.post("/api/snapshots/commit", json={"session_id": j["session_id"], "replace": False}, headers=admin_headers)
     assert c.status_code == 409
 
 

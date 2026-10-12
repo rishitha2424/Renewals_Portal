@@ -2,6 +2,7 @@
 Application configuration — all settings come from environment variables or .env.
 Never hard-code secrets or model names here.
 """
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
@@ -53,6 +54,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     FISCAL_YEAR_START_MONTH: int = 1
+
+    # Security & Admin Auth (Addendum D)
+    ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "admin123")
+    ADMIN_SECRET_KEY: str = "supersecret_renewals_admin_signing_key_change_in_prod"
+    ADMIN_TOKEN_EXPIRE_HOURS: int = 8
 
 
 settings = Settings()

@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
-from backend.routers import snapshots, analytics, opportunities, ai, export, insights, health
+from backend.routers import snapshots, analytics, opportunities, ai, export, insights, health, admin_auth
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters
 
 logging.basicConfig(
@@ -68,6 +68,8 @@ app.include_router(ai.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(insights.router, prefix="/api")
 app.include_router(health.router)
+app.include_router(admin_auth.router, prefix="/api")
+app.include_router(admin_auth.router)
 app.include_router(v2_overview.router)
 app.include_router(v2_expiry.router)
 app.include_router(v2_approvals.router)
