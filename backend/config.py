@@ -23,12 +23,18 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_url(self) -> str:
-        """Ensure standard postgres:// or postgresql:// URLs use psycopg v3 dialect."""
+        """Ensure standard postgres:// or postgresql:// URLs use an available psycopg dialect."""
         url = self.DATABASE_URL
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
         elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql+psycopg2://"):
+            try:
+                import psycopg2  # noqa: F401
+            except ImportError:
+                # Fall back to psycopg (v3) if psycopg2 binary is not installed in the environment
+                url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
         return url
 
     # AI provider (stub by default; swap to "gemini" or "openai" via .env)

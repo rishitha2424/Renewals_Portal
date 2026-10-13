@@ -456,3 +456,9 @@ export const getFilterOptions = async (asOf?: string | null) => {
   const res = await api.get('/v2/filters/options', { params })
   return res.data
 }
+
+// ── Health ───────────────────────────────────────────────────────────────
+export const getHealth = async () => {
+  const res = await api.get('/health')
+  return res.data
+}

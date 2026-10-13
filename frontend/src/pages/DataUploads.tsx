@@ -37,6 +37,7 @@ import {
   deleteSnapshot,
   setActiveSnapshot,
   getSnapshot,
+  getHealth,
 } from '@/api/client'
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
@@ -104,6 +105,12 @@ export default function DataUploads() {
   const { data: uploadHistory = [], refetch: refetchHistory, isLoading: loadingHistory } = useQuery({
     queryKey: ['uploadHistory'],
     queryFn: getUploadHistory,
+  })
+
+  const { data: healthData } = useQuery({
+    queryKey: ['appHealth'],
+    queryFn: getHealth,
+    staleTime: 30000,
   })
 
   const [dateFilter, setDateFilter] = useState('')
@@ -1334,6 +1341,25 @@ export default function DataUploads() {
           </div>
         </section>
       )}
+
+      {/* Database Connection Footer Line */}
+      <div className="pt-2 pb-6 flex items-center justify-center">
+        <p className="text-xs font-medium text-[var(--text-muted)] flex items-center gap-1.5">
+          <Database className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
+          <span>
+            Database:{' '}
+            {healthData?.database?.dialect
+              ? healthData.database.dialect.toLowerCase().includes('postgres')
+                ? 'PostgreSQL'
+                : 'SQLite'
+              : 'PostgreSQL'}{' '}
+            ·{' '}
+            <span className={healthData?.database?.connected !== false ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'}>
+              {healthData?.database?.connected !== false ? 'connected' : 'disconnected'}
+            </span>
+          </span>
+        </p>
+      </div>
 
       {/* ── MODAL: Source Reconciliation Details ──────────────────────────────── */}
       {selectedHistoryCheckSnap && (

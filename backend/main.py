@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
         log.info("Applying database migrations (alembic upgrade head)...")
         command.upgrade(alembic_cfg, "head")
         log.info("Database migrations applied successfully.")
+        migrations_status = "migrations at head"
     except Exception as e:
         log.error("Alembic upgrade failed on startup: %s", e)
         if is_postgres:
@@ -42,6 +43,23 @@ async def lifespan(app: FastAPI):
             log.warning("Falling back to Base.metadata.create_all on SQLite (%s)...", e)
             from backend.database import Base
             Base.metadata.create_all(bind=engine)
+            migrations_status = "fallback to create_all"
+
+    # Startup log: on boot, log one line such as Database: postgresql @ localhost:5432/renewals (migrations at head).
+    try:
+        from urllib.parse import urlparse
+        db_url_parsed = urlparse(settings.DATABASE_URL)
+        if dialect == "sqlite":
+            db_target = db_url_parsed.path or settings.DATABASE_URL.replace("sqlite:///", "")
+            log.info(f"Database: sqlite @ {db_target} ({migrations_status})")
+        else:
+            host = db_url_parsed.hostname or "localhost"
+            port = db_url_parsed.port or 5432
+            dbname = db_url_parsed.path.lstrip("/")
+            log.info(f"Database: {dialect} @ {host}:{port}/{dbname} ({migrations_status})")
+    except Exception as log_err:
+        log.info(f"Database: {dialect} ({migrations_status})")
+
     yield
     log.info("Shutting down.")
 
@@ -90,6 +108,7 @@ app.include_router(insights.router)
 # Top-level direct routes matching specification
 from fastapi import Query, Form, File, UploadFile, Depends, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from backend.database import get_db
 from backend.services.context import UserContext, get_user_context
 
@@ -115,8 +134,50 @@ def snapshots_direct(db: Session = Depends(get_db), ctx: UserContext = Depends(g
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "version": settings.APP_VERSION}
+def health(db: Session = Depends(get_db)):
+    dialect = "unknown"
+    db_name = "unknown"
+    connected = False
+    migration_head = False
+
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(settings.DATABASE_URL)
+        dialect = getattr(db.bind.dialect, "name", "unknown")
+        db_name = parsed.path.lstrip("/") if parsed.path else ("local" if dialect == "sqlite" else "unknown")
+        
+        # Test connection
+        db.execute(text("SELECT 1"))
+        connected = True
+
+        # Check migration head
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        from alembic.runtime.migration import MigrationContext
+        from pathlib import Path
+
+        alembic_ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        if alembic_ini_path.exists():
+            alembic_cfg = Config(str(alembic_ini_path))
+            script = ScriptDirectory.from_config(alembic_cfg)
+            head_rev = script.get_current_head()
+            conn = db.connection()
+            ctx = MigrationContext.configure(conn)
+            current_rev = ctx.get_current_revision()
+            migration_head = (current_rev == head_rev)
+    except Exception:
+        connected = False
+
+    return {
+        "status": "ok" if connected else "error",
+        "version": settings.APP_VERSION,
+        "database": {
+            "dialect": dialect,
+            "name": db_name,
+            "connected": connected,
+            "migration_head": migration_head,
+        },
+    }
 
 
 # Serve frontend static files in production (when dist/ exists)
