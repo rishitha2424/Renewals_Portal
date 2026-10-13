@@ -213,10 +213,6 @@ function RegionsContent() {
         <MetricToggle />
       </div>
 
-      {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
-        <FilterBar isPageOverride={false} />
-      </div>
 
       {unmapped?.count > 0 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">

@@ -84,12 +84,13 @@ export function Drawer({
             transition={{ duration: 0.16, ease: 'easeOut' }}
             className={clsx(
               'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-elevation flex flex-col h-full',
+              position === 'right' ? 'rounded-l-2xl' : 'rounded-r-2xl',
               effectiveWidth,
               position === 'right' ? 'ml-auto' : 'mr-auto'
             )}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+            <div className={clsx("flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]", position === 'right' ? 'rounded-tl-2xl' : 'rounded-tr-2xl')}>
               <div>
                 {title && (
                   <h3 className="font-semibold text-base text-[var(--text-primary)]">
@@ -105,7 +106,7 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-sm flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none"
+                className="w-8 h-8 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none"
               >
                 <X className="w-4 h-4" strokeWidth={1.75} />
               </button>

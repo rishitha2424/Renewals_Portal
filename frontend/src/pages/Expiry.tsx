@@ -120,10 +120,6 @@ export default function Expiry() {
         </div>
       </div>
 
-      {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
-        <FilterBar isPageOverride={false} />
-      </div>
 
       {/* Grand Total & Slippage KPI Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

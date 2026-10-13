@@ -237,10 +237,6 @@ function BusinessUnitsContent() {
         </div>
       </div>
 
-      {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
-        <FilterBar isPageOverride={false} />
-      </div>
 
       {/* KPI Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

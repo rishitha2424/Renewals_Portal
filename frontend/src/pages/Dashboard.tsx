@@ -290,10 +290,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
-        <FilterBar isPageOverride={false} />
-      </div>
 
       {/* ── SECTION 0 – Regional notice banner ──────────────────────────────── */}
       {otherCount > 0 && (

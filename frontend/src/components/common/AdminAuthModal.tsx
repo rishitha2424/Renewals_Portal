@@ -81,12 +81,12 @@ export default function AdminAuthModal() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl p-6 relative overflow-hidden"
+              className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl p-6 relative overflow-hidden"
             >
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="absolute right-4 top-4 p-1 rounded-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
+                className="absolute right-4 top-4 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -116,7 +116,7 @@ export default function AdminAuthModal() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter administrator password..."
-                      className="w-full px-3 py-2 rounded-sm text-xs bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-[#00A3AD] transition-colors font-mono"
+                      className="w-full px-3 py-2 rounded-md text-xs bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-[#00A3AD] transition-colors font-mono"
                       autoFocus
                       required
                       id="admin-password-input"
@@ -125,7 +125,7 @@ export default function AdminAuthModal() {
                 </div>
 
                 {error && (
-                  <div className="p-2.5 rounded-sm bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium flex items-center gap-2">
+                  <div className="p-2.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium flex items-center gap-2">
                     <X className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
                     <span>{error}</span>
                   </div>
@@ -135,14 +135,14 @@ export default function AdminAuthModal() {
                   <button
                     type="button"
                     onClick={() => setIsOpen(false)}
-                    className="px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-sm transition-colors border border-transparent"
+                    className="px-3.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-md transition-colors border border-transparent"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-sm bg-[#12284C] hover:bg-[#1B365D] text-white font-medium text-xs transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-[#12284C] hover:bg-[#1B365D] text-white font-medium text-xs transition-colors disabled:opacity-50"
                     id="admin-submit-login-btn"
                   >
                     {loading && <Loader2 className="w-3 h-3 animate-spin" />}

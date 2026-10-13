@@ -1,7 +1,7 @@
 /**
  * Design tokens — single source of truth for "Mobileum Horizon".
  * Strict professional enterprise theme: navy #12284C, teal #00A3AD accent,
- * cool-grey scale, zero gradients, 6px/8px/12px radii, WCAG AA contrast.
+ * cool-grey scale, zero gradients, 6px/8px/12px/16px radii, WCAG AA contrast.
  */
 
 export const colors = {
@@ -52,14 +52,15 @@ export const colors = {
 
 export const shadows = {
   none: 'none',
-  card: '0 1px 2px rgba(0, 0, 0, 0.04)',
-  elevation: '0 4px 16px rgba(0, 0, 0, 0.12)',
+  card: '0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.08)',
+  elevation: '0 4px 16px rgba(16, 24, 40, 0.12)',
 } as const
 
 export const radius = {
-  control: '6px', // buttons, inputs, chips, badges
-  card: '8px',    // cards, tables, panels
-  modal: '12px',  // modals, dialogs, drawers
+  badge: '6px',   // badges and delta chips
+  control: '8px', // buttons, inputs, selects
+  card: '12px',   // cards, tables, panels (rounded-xl)
+  modal: '16px',  // modals and drawers
   full: '9999px', // circular avatars, spinners only
 } as const
 
@@ -95,4 +96,3 @@ export const APPROVAL_ORDER = ['Approved', 'Approved - 2nd', 'Pending Approval',
 
 export type ForecastCategory = typeof FORECAST_ORDER[number]
 export type ApprovalStatus = typeof APPROVAL_ORDER[number]
-

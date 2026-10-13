@@ -70,13 +70,15 @@ export default function Shell() {
           </div>
         )}
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6">
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
-                  <footer className="mt-8 text-center text-xs text-slate-400 font-medium py-4">
-            Mobileum Horizon · Renewals Intelligence Platform · Data as of {asOf}
-          </footer>
+        <main className="flex-1 overflow-y-auto">
+          <div className="w-full max-w-[1440px] mx-auto p-6 xl:p-8">
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+            <footer className="mt-8 text-center text-xs text-slate-400 font-medium py-4">
+              Mobileum Horizon · Renewals Intelligence Platform · Data as of {asOf}
+            </footer>
+          </div>
         </main>
       </div>
       <CommandPalette />

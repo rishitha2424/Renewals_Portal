@@ -179,10 +179,6 @@ export default function Approvals() {
         <MetricToggle />
       </div>
 
-      {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
-        <FilterBar isPageOverride={false} />
-      </div>
 
       {/* Slim Stat Chips */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

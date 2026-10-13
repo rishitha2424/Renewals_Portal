@@ -405,7 +405,7 @@ export default function DataUploads() {
     previewData?.suggested_date && previewData.suggested_date !== dataAsOf
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-16">
+    <div className="space-y-6 w-full pb-12">
       {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[var(--border)]">
@@ -1342,7 +1342,7 @@ export default function DataUploads() {
           onClick={() => setSelectedHistoryCheckSnap(null)}
         >
           <div
-            className="card p-6 border border-[var(--border)] max-w-4xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-lg overflow-hidden relative"
+            className="card p-6 border border-[var(--border)] max-w-4xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
             
@@ -1434,7 +1434,7 @@ export default function DataUploads() {
           onClick={() => setDetailSnapshot(null)}
         >
           <div
-            className="card p-6 border border-[var(--border)] max-w-lg w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-lg overflow-hidden relative"
+            className="card p-6 border border-[var(--border)] max-w-lg w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
             
@@ -1510,7 +1510,7 @@ export default function DataUploads() {
           onClick={() => setSnapshotToDelete(null)}
         >
           <div
-            className="card p-6 border border-rose-500/30 max-w-md w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-lg overflow-hidden relative"
+            className="card p-6 border border-rose-500/30 max-w-md w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
             
