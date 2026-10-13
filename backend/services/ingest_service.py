@@ -622,12 +622,16 @@ class IngestService:
             ).delete()
             snap = existing
             snap.yesterday_date = yesterday_date
+            if today_raw is not None and hasattr(today_raw, "columns"):
+                snap.column_order = [str(c) for c in today_raw.columns]
         else:
+            cols_order = [str(c) for c in today_raw.columns] if today_raw is not None and hasattr(today_raw, "columns") else None
             snap = UploadSnapshot(
                 label="Today",
                 snapshot_date=data_as_of,
                 yesterday_date=yesterday_date,
                 uploaded_by=getattr(ctx, "user_id", "system") or "system",
+                column_order=cols_order,
             )
             self.db.add(snap)
             self.db.flush()
@@ -1055,6 +1059,8 @@ class IngestService:
                 snap.is_active_today = True
 
         if not today_df.empty:
+            if hasattr(today_df, "columns"):
+                snap.column_order = [str(c) for c in today_df.columns]
             mapped_df = _map_columns(today_df)
             raw_rows_dict = today_df.to_dict(orient="records")
             self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).delete()

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Calendar,
@@ -11,6 +12,7 @@ import {
   Check,
   Save,
   Trash2,
+  Info,
 } from 'lucide-react'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
 import { getFilterOptions } from '@/api/client'
@@ -176,6 +178,20 @@ export default function FilterBar({
   })
 
   const hasActiveOverrides = chips.length > 0 || (isPageOverride && Boolean(localFilters))
+
+  const location = useLocation()
+  const isExplorer = location.pathname.startsWith('/opportunities') || location.pathname.startsWith('/explore')
+
+  if (isExplorer && !isPageOverride) {
+    return (
+      <div className={`flex items-center gap-2 py-1 text-xs text-[var(--text-muted)] ${className}`} id="filter-bar-explorer-scope-note">
+        <Info className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+        <span className="font-medium text-[var(--text-secondary)]">
+          Showing the full Excel sheet. Use the filters below.
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>

@@ -457,8 +457,48 @@ export const getFilterOptions = async (asOf?: string | null) => {
   return res.data
 }
 
+// ── V2 Data Explorer ───────────────────────────────────────────────────
+export const getExplorerColumns = async (asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.get('/v2/explorer/columns', { params })
+  return res.data
+}
+
+export const getExplorerRows = async (payload: any, asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.post('/v2/explorer/rows', payload, { params })
+  return res.data
+}
+
+export const exportExplorerData = async (payload: any, asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.post('/v2/explorer/export', payload, {
+    params,
+    responseType: 'blob',
+  })
+  return res
+}
+
+export const getExplorerReconcile = async (asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.get('/v2/explorer/reconcile', { params })
+  return res.data
+}
+
+export const getExplorerQuickFilters = async (asOf?: string | null) => {
+  const params: any = {}
+  if (asOf) params.as_of = asOf
+  const res = await api.get('/v2/explorer/quick-filters', { params })
+  return res.data
+}
+
 // ── Health ───────────────────────────────────────────────────────────────
 export const getHealth = async () => {
   const res = await api.get('/health')
   return res.data
 }
+

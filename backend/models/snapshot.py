@@ -5,7 +5,8 @@ One snapshot per snapshot_date; both workbooks attach to the same row.
 import uuid
 from datetime import datetime, date, timezone
 
-from sqlalchemy import String, DateTime, Date, Integer, Boolean, Enum, ForeignKey
+from sqlalchemy import String, DateTime, Date, Integer, Boolean, Enum, ForeignKey, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -33,6 +34,7 @@ class UploadSnapshot(Base):
     yesterday_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_week_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_week_is_partial: Mapped[bool] = mapped_column(Boolean, default=False)
+    column_order: Mapped[list[str] | None] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
     # Relationships
     uploaded_files: Mapped[list["UploadedFile"]] = relationship(
