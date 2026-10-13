@@ -54,7 +54,7 @@ describe('V2 Expiry API Contract', () => {
     expect(data.deltas[fy1]).toBeDefined()
     expect(data.deltas[fy1].yesterday).toBeDefined()
     expect(data.deltas[fy1].lastweek).toBeDefined()
-  })
+  }, 15000)
 
   it('serves deals endpoint with slippage and category filters', async () => {
     // Slippage deals

@@ -405,33 +405,33 @@ export default function DataUploads() {
     previewData?.suggested_date && previewData.suggested_date !== dataAsOf
 
   return (
-    <div className="space-y-10 max-w-7xl mx-auto pb-16">
+    <div className="space-y-8 max-w-7xl mx-auto pb-16">
       {/* ── Page Header ──────────────────────────────────────────────────────── */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[var(--border)]">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-teal-500/20 via-cyan-500/15 to-indigo-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-sm">
               <UploadIcon className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-[var(--text-primary)] tracking-tight font-display">
-                Data Uploads &amp; Snapshot Management
+              <h1 className="text-3xl font-black text-[var(--text-primary)] tracking-tight font-display">
+                Data Uploads
               </h1>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              <p className="text-xs text-[var(--text-muted)] mt-1 font-medium">
                 Ingest daily workbook sets, verify control balances, and audit historical snapshot states.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {isAdmin ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                <ShieldCheck className="w-4 h-4" />
-                Administrator Mode
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-sm">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Administrator Mode Active
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
-                <Lock className="w-3.5 h-3.5" />
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25 shadow-sm">
+                <Lock className="w-3.5 h-3.5 text-amber-500" />
                 Read-Only Viewer
               </span>
             )}
@@ -445,28 +445,28 @@ export default function DataUploads() {
       ───────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+          <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2 font-display">
             <Layers className="w-4 h-4 text-teal-500" />
             1. Ingestion &amp; File Upload Panel
           </h2>
         </div>
 
         {!isAdmin ? (
-          <div className="card p-6 border border-amber-500/30 bg-amber-500/5 rounded-2xl flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 flex-shrink-0">
+          <div className="card-premium p-6 border-l-4 border-l-amber-500 bg-[var(--bg-card)] rounded-2xl flex items-center gap-4.5">
+            <div className="p-3.5 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex-shrink-0">
               <Lock className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200 font-display">
                 Uploads are restricted to the administrator
               </h3>
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+              <p className="text-xs text-[var(--text-muted)] mt-1">
                 Viewing historical records and reconciliation sheets is open to all members. To ingest new data or replace existing snapshots, please authenticate as an administrator via the top navigation bar.
               </p>
             </div>
           </div>
         ) : (
-          <div className="card p-6 border border-[var(--border)] bg-[var(--bg-card)] shadow-sm space-y-6">
+          <div className="card-premium p-6 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm space-y-6">
             {/* Date Configuration Strip */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
@@ -741,13 +741,13 @@ export default function DataUploads() {
             id="upload-preview-container"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+              <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2 font-display">
                 <FileCheck2 className="w-4 h-4 text-teal-500" />
                 2. Validation Preview &amp; Control Balance Reconciliation
               </h2>
             </div>
 
-            <div className="card p-6 border-2 border-teal-500/30 bg-[var(--bg-card)] shadow-lg space-y-6">
+            <div className="card-premium p-6 border-2 border-teal-500/30 bg-[var(--bg-card)] shadow-lg space-y-6">
               {/* Preview Header & Date / Quarter Summary */}
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-[var(--border)] gap-4">
                 <div>
@@ -1004,7 +1004,7 @@ export default function DataUploads() {
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+            <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2 font-display">
               <Clock className="w-4 h-4 text-teal-500" />
               3. Snapshot History Table
             </h2>
@@ -1015,21 +1015,21 @@ export default function DataUploads() {
 
           {/* Filter & Sort Controls */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs">
               <Filter className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               <input
                 type="text"
                 placeholder="Filter by date..."
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="bg-transparent border-none outline-none text-xs w-28 text-[var(--text-primary)]"
+                className="bg-transparent border-none outline-none text-xs w-28 text-[var(--text-primary)] font-medium"
               />
             </div>
 
             <button
               type="button"
               onClick={() => setSortDirection((d) => (d === 'desc' ? 'asc' : 'desc'))}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shadow-sm"
             >
               <ArrowUpDown className="w-3.5 h-3.5" />
               <span>{sortDirection === 'desc' ? 'Newest First' : 'Oldest First'}</span>
@@ -1038,7 +1038,7 @@ export default function DataUploads() {
             <button
               type="button"
               onClick={() => refetchHistory()}
-              className="p-2 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              className="p-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shadow-sm"
               title="Refresh list"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -1046,7 +1046,7 @@ export default function DataUploads() {
           </div>
         </div>
 
-        <div className="card p-0 border border-[var(--border)] bg-[var(--bg-card)] rounded-2xl overflow-hidden shadow-sm">
+        <div className="card-premium p-0 border border-[var(--border)] bg-[var(--bg-card)] rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left" id="snapshot-history-table">
               <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-bold border-b border-[var(--border)] uppercase tracking-wider text-[10px]">
@@ -1254,16 +1254,16 @@ export default function DataUploads() {
       {coverageData && (
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+            <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2 font-display">
               <Calendar className="w-4 h-4 text-teal-500" />
               4. Working-Day Ingestion Coverage &amp; Resolution Strip
             </h2>
-            <span className="text-xs text-[var(--text-muted)]">
+            <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-500/10 px-2.5 py-1 rounded-full border border-teal-500/20">
               {coverageData.presentWorkingDays} of {coverageData.totalWorkingDays} working days captured
             </span>
           </div>
 
-          <div className="card p-6 border border-[var(--border)] bg-[var(--bg-card)] rounded-2xl shadow-sm space-y-5">
+          <div className="card-premium p-6 border border-[var(--border)] bg-[var(--bg-card)] rounded-2xl shadow-sm space-y-5">
             {/* Calendar Working Day Tiles Strip */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2.5">
@@ -1338,16 +1338,17 @@ export default function DataUploads() {
       {/* ── MODAL: Source Reconciliation Details ──────────────────────────────── */}
       {selectedHistoryCheckSnap && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
           onClick={() => setSelectedHistoryCheckSnap(null)}
         >
           <div
-            className="card p-6 border border-[var(--border)] max-w-4xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl"
+            className="card-premium p-6 border border-[var(--border)] max-w-4xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 via-cyan-400 to-indigo-500" />
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3.5">
               <div>
-                <h3 className="font-black text-base text-[var(--text-primary)] flex items-center gap-2">
+                <h3 className="font-display font-black text-base text-[var(--text-primary)] flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-teal-500" />
                   Excel Source Reconciliation Checks — {selectedHistoryCheckSnap.snapshot_date}
                 </h3>
@@ -1358,7 +1359,7 @@ export default function DataUploads() {
               <button
                 type="button"
                 onClick={() => setSelectedHistoryCheckSnap(null)}
-                className="p-1 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="p-1.5 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1377,7 +1378,7 @@ export default function DataUploads() {
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-semibold border-b border-[var(--border)] sticky top-0">
+                    <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-bold uppercase tracking-wider text-[10px] border-b border-[var(--border)] sticky top-0">
                       <tr>
                         <th className="py-2.5 px-3">Status</th>
                         <th className="py-2.5 px-3">Workbook</th>
@@ -1397,16 +1398,16 @@ export default function DataUploads() {
                         >
                           <td className="py-2 px-3">
                             {chk.status === 'pass' ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                                 MATCH
                               </span>
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/10 text-rose-600 dark:text-rose-400">
                                 MISMATCH
                               </span>
                             )}
                           </td>
-                          <td className="py-2 px-3 text-[var(--text-secondary)]">{chk.workbook || chk.workbook_name}</td>
+                          <td className="py-2 px-3 text-[var(--text-secondary)] font-medium">{chk.workbook || chk.workbook_name}</td>
                           <td className="py-2 px-3 font-semibold">{chk.sheet || chk.sheet_name}</td>
                           <td className="py-2 px-3 font-mono text-[11px]">{chk.cell_or_row}</td>
                           <td className="py-2 px-3">{chk.metric || chk.metric_name}</td>
@@ -1429,16 +1430,17 @@ export default function DataUploads() {
       {/* ── MODAL: Snapshot Details (Accessible to Everyone) ───────────────────── */}
       {detailSnapshot && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
           onClick={() => setDetailSnapshot(null)}
         >
           <div
-            className="card p-6 border border-[var(--border)] max-w-lg w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl"
+            className="card-premium p-6 border border-[var(--border)] max-w-lg w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 via-cyan-400 to-indigo-500" />
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3.5">
               <div>
-                <h3 className="font-black text-base text-[var(--text-primary)] flex items-center gap-2">
+                <h3 className="font-display font-black text-base text-[var(--text-primary)] flex items-center gap-2">
                   <Database className="w-5 h-5 text-teal-500" />
                   Snapshot Details — {detailSnapshot.snapshot_date}
                 </h3>
@@ -1447,40 +1449,40 @@ export default function DataUploads() {
               <button
                 type="button"
                 onClick={() => setDetailSnapshot(null)}
-                className="p-1 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="p-1.5 rounded-xl hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
               >
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2.5 text-xs">
-              <div className="flex justify-between py-1 border-b border-[var(--border-subtle)]">
+              <div className="flex justify-between py-1.5 border-b border-[var(--border-subtle)]">
                 <span className="text-[var(--text-muted)]">Snapshot ID:</span>
                 <span className="font-mono text-[11px] text-[var(--text-primary)]">{detailSnapshot.id}</span>
               </div>
-              <div className="flex justify-between py-1 border-b border-[var(--border-subtle)]">
+              <div className="flex justify-between py-1.5 border-b border-[var(--border-subtle)]">
                 <span className="text-[var(--text-muted)]">Uploaded At:</span>
                 <span className="font-semibold text-[var(--text-primary)]">
                   {new Date(detailSnapshot.uploaded_at).toLocaleString()}
                 </span>
               </div>
-              <div className="flex justify-between py-1 border-b border-[var(--border-subtle)]">
+              <div className="flex justify-between py-1.5 border-b border-[var(--border-subtle)]">
                 <span className="text-[var(--text-muted)]">Active Opportunities:</span>
                 <span className="font-mono font-bold text-teal-600 dark:text-teal-400">
                   {formatNumber(detailSnapshot.active_row_count)}
                 </span>
               </div>
-              <div className="flex justify-between py-1 border-b border-[var(--border-subtle)]">
+              <div className="flex justify-between py-1.5 border-b border-[var(--border-subtle)]">
                 <span className="text-[var(--text-muted)]">Raw Ingested Rows:</span>
                 <span className="font-mono text-[var(--text-primary)]">
                   {formatNumber(detailSnapshot.row_count)}
                 </span>
               </div>
-              <div className="flex justify-between py-1 border-b border-[var(--border-subtle)]">
+              <div className="flex justify-between py-1.5 border-b border-[var(--border-subtle)]">
                 <span className="text-[var(--text-muted)]">Previous Working Day:</span>
-                <span className="text-[var(--text-primary)]">{detailSnapshot.yesterday_date ?? 'None'}</span>
+                <span className="text-[var(--text-primary)] font-semibold">{detailSnapshot.yesterday_date ?? 'None'}</span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between py-1.5">
                 <span className="text-[var(--text-muted)]">Currently Active Today:</span>
                 <span className="font-bold text-[var(--text-primary)]">
                   {detailSnapshot.is_active_today ? 'Yes' : 'No'}
@@ -1488,11 +1490,11 @@ export default function DataUploads() {
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-3 border-t border-[var(--border-subtle)] flex justify-end">
               <button
                 type="button"
                 onClick={() => setDetailSnapshot(null)}
-                className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-bold text-[var(--text-primary)] border border-[var(--border)]"
+                className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-bold text-[var(--text-primary)] border border-[var(--border)] transition-colors"
               >
                 Close
               </button>
@@ -1504,26 +1506,27 @@ export default function DataUploads() {
       {/* ── MODAL: Delete Snapshot Confirmation (Admin Only) ─────────────────── */}
       {snapshotToDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
           onClick={() => setSnapshotToDelete(null)}
         >
           <div
-            className="card p-6 border border-rose-500/30 max-w-md w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl"
+            className="card-premium p-6 border border-rose-500/30 max-w-md w-full space-y-4 shadow-2xl bg-[var(--bg-card)] rounded-2xl overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-amber-500 to-rose-600" />
             <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
-              <div className="p-2.5 rounded-xl bg-rose-500/10">
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20">
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-black text-base text-[var(--text-primary)]">
+                <h3 className="font-display font-black text-base text-[var(--text-primary)]">
                   Confirm Snapshot Deletion
                 </h3>
                 <p className="text-xs text-[var(--text-muted)]">This action is permanent and cannot be undone.</p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-rose-500/5 border border-rose-500/20 text-xs text-[var(--text-secondary)] space-y-2">
+            <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 text-xs text-[var(--text-secondary)] space-y-2">
               <p>You are about to permanently remove the snapshot for:</p>
               <ul className="list-disc list-inside space-y-1 font-semibold text-[var(--text-primary)]">
                 <li>Date: <span className="font-mono">{snapshotToDelete.snapshot_date}</span></li>
@@ -1532,12 +1535,12 @@ export default function DataUploads() {
               </ul>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border-subtle)]">
               <button
                 type="button"
                 onClick={() => setSnapshotToDelete(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-semibold text-[var(--text-primary)] border border-[var(--border)]"
+                className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-semibold text-[var(--text-primary)] border border-[var(--border)] transition-colors"
               >
                 Cancel
               </button>
@@ -1545,7 +1548,7 @@ export default function DataUploads() {
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5"
               >
                 {isDeleting ? (
                   <>

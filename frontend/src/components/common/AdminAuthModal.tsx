@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Lock, LogIn, LogOut, ShieldCheck, X, Loader2 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { adminLogin, adminLogout } from '@/api/client'
@@ -72,72 +73,94 @@ export default function AdminAuthModal() {
       )}
 
       {/* Admin Sign-In Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl p-6 relative">
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="absolute right-4 top-4 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+      <AnimatePresence>
+        {isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className="card-premium w-full max-w-md bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl p-7 relative overflow-hidden"
             >
-              <X className="w-4 h-4" />
-            </button>
+              {/* Subtle top accent gradient */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 via-cyan-400 to-indigo-500" />
 
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-[var(--text-primary)]">Admin Authentication</h3>
-                <p className="text-[11px] text-[var(--text-muted)]">Uploads & backfills require admin credentials</p>
-              </div>
-            </div>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="absolute right-4 top-4 p-1.5 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5">
-                  Admin Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter ADMIN_PASSWORD..."
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                  autoFocus
-                  required
-                  id="admin-password-input"
-                />
-              </div>
-
-              {error && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs">
-                  {error}
+              <div className="flex items-center gap-3.5 mb-5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-teal-500/20 flex items-center justify-center text-amber-500 border border-amber-500/30 shadow-inner">
+                  <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-amber-500 text-white font-semibold text-xs hover:bg-amber-600 transition-colors disabled:opacity-50"
-                  id="admin-submit-login-btn"
-                >
-                  {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Sign In</span>
-                </button>
+                <div>
+                  <h3 className="font-display font-black text-base text-[var(--text-primary)] tracking-tight">
+                    Administrator Authentication
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Authorized access for data ingestion, replacing snapshots &amp; setting baselines
+                  </p>
+                </div>
               </div>
-            </form>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                    Admin Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter administrator password..."
+                      className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all font-mono"
+                      autoFocus
+                      required
+                      id="admin-password-input"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium flex items-center gap-2"
+                  >
+                    <X className="w-4 h-4 flex-shrink-0 text-rose-500" />
+                    <span>{error}</span>
+                  </motion.div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border-subtle)]">
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white font-bold text-xs shadow-md shadow-teal-500/20 hover:shadow-teal-500/30 transition-all disabled:opacity-50"
+                    id="admin-submit-login-btn"
+                  >
+                    {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Authenticate as Administrator</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </>
   )
 }
