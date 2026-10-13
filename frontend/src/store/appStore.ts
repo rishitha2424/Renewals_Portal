@@ -125,7 +125,7 @@ export const useAppStore = create<AppState>()(
       globalFilters: DEFAULT_FILTER_SPEC,
       setGlobalFilters: (f) =>
         set((s) => ({
-          globalFilters: { ...s.globalFilters, ...f },
+          globalFilters: { ...s.globalFilters, ...f, sales_types: ['Renewals'] },
           includeDeletedLost: f.include_deleted_lost !== undefined ? f.include_deleted_lost : s.includeDeletedLost,
         })),
       resetGlobalFilters: () => set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: true }),
