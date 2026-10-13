@@ -48,10 +48,10 @@ def admin_login(body: LoginRequest, request: Request, response: Response):
     """
     client_ip = request.client.host if request.client else "127.0.0.1"
 
-    if not settings.ADMIN_PASSWORD:
+    if not settings.is_admin_configured:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access is disabled: ADMIN_PASSWORD environment variable is not set.",
+            detail="Admin access is disabled: Admin authentication is not configured (ADMIN_PASSWORD or ADMIN_SECRET_KEY missing/unset).",
         )
 
     # 1. Rate-limit check
@@ -81,7 +81,7 @@ def admin_login(body: LoginRequest, request: Request, response: Response):
         max_age=settings.ADMIN_TOKEN_EXPIRE_HOURS * 3600,
         httponly=True,
         samesite="lax",
-        secure=False,  # Can be True in HTTPS production
+        secure=settings.is_cookie_secure,
     )
 
     log.info("Admin successfully signed in from IP %s", client_ip)
@@ -92,9 +92,9 @@ def admin_login(body: LoginRequest, request: Request, response: Response):
     )
 
 
-@router.post("/logout")
-def admin_logout(response: Response):
-    """Clear admin cookie."""
+@router.post("/logout", dependencies=[Depends(require_admin_context)])
+def admin_logout(response: Response, ctx: UserContext = Depends(require_admin_context)):
+    """Clear admin cookie. Admin-only."""
     response.delete_cookie("admin_token")
     return {"status": "logged_out"}
 
@@ -103,7 +103,7 @@ def admin_logout(response: Response):
 def admin_status(ctx: UserContext = Depends(get_user_context)):
     """Check current admin session state without credentials."""
     is_admin = ctx.is_admin
-    configured = bool(settings.ADMIN_PASSWORD)
+    configured = bool(settings.is_admin_configured)
     return {
         "is_admin": is_admin,
         "is_configured": configured,

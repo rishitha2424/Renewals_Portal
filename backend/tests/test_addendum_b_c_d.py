@@ -18,13 +18,24 @@ from backend.utils.excel_parser import detect_file_slot, parse_comparison_tool, 
 SAMPLE_DIR = Path(os.environ.get("RENEWALS_SAMPLE_DIR", Path(__file__).resolve().parents[2] / "data" / "sample_oct7"))
 FILES = sorted(SAMPLE_DIR.glob("*.xlsx")) if SAMPLE_DIR.exists() else []
 
+@pytest.fixture(scope="module", autouse=True)
+def setup_admin_env():
+    from backend.config import settings
+    old_pw = settings.ADMIN_PASSWORD
+    old_key = settings.ADMIN_SECRET_KEY
+    settings.ADMIN_PASSWORD = "test-admin-secret-password-xyz"
+    settings.ADMIN_SECRET_KEY = "test-secret-key-32bytes-hex-dummy-value"
+    yield
+    settings.ADMIN_PASSWORD = old_pw
+    settings.ADMIN_SECRET_KEY = old_key
+
 @pytest.fixture(scope="module")
-def admin_headers():
+def admin_headers(setup_admin_env):
     token = sign_admin_token()
     return {"Authorization": f"Bearer {token}"}
 
 @pytest.fixture(scope="module")
-def client_and_db(tmp_path_factory):
+def client_and_db(tmp_path_factory, setup_admin_env):
     from backend.tests.test_db_helper import get_test_engine_and_session
     engine, Session = get_test_engine_and_session("test_addenda_bcd", tmp_path_factory)
 
@@ -238,12 +249,30 @@ def test_addendum_c_unknown_region_and_new_forecast_category(client_and_db, admi
 # ADDENDUM D: ADMIN-ONLY MUTATING ROUTES & AUTH SECURITY
 # ==============================================================================
 
+def get_all_mutating_routes():
+    """Discover all POST, PUT, PATCH, DELETE routes from app."""
+    routes = []
+    for inc in app.routes:
+        if hasattr(inc, "original_router") and hasattr(inc, "include_context"):
+            prefix = inc.include_context.prefix or ""
+            for r in inc.original_router.routes:
+                if hasattr(r, "methods"):
+                    for m in r.methods:
+                        if m in {"POST", "PUT", "PATCH", "DELETE"}:
+                            routes.append((m, f"{prefix}{r.path}"))
+        elif hasattr(inc, "methods"):
+            for m in inc.methods:
+                if m in {"POST", "PUT", "PATCH", "DELETE"}:
+                    routes.append((m, getattr(inc, "path", "")))
+    return sorted(list(set(routes)))
+
+
 def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
     """
     Every mutating route must return 401 without an Authorization header,
-    403 with an invalid token, and succeed (or pass auth) with a valid token.
+    403 with an invalid token, and 403 with an expired token.
     Public read routes stay 200 without token.
-    Password must NEVER appear in responses, logs, or test output.
+    Discovers all mutating routes dynamically from app.routes.
     """
     client, _ = client_and_db
 
@@ -254,47 +283,113 @@ def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
     r_public_v2 = client.get("/api/v2/overview/summary")
     assert r_public_v2.status_code == 200
 
-    # Mutating routes to test:
-    # POST /api/snapshots/validate
-    # POST /api/snapshots/commit
-    # POST /api/snapshots/upload
-    # DELETE /api/snapshots/{id}
-    # POST /api/admin/logout
+    mutating_routes = get_all_mutating_routes()
+    # Exempt non-admin auth routes (login/logout) and read-style AI assistant queries
+    exempt_paths = {"/api/admin/login", "/admin/login", "/api/ai/ask", "/ai/ask", "/api/ai/chat/stream", "/ai/chat/stream"}
+    write_routes = [(m, p) for m, p in mutating_routes if p not in exempt_paths]
 
-    # A) Without auth header -> 401
-    r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"})
-    assert r.status_code == 401, f"Expected 401 for unauthenticated validate, got {r.status_code}"
+    assert len(write_routes) >= 4, f"Expected at least 4 write routes, found {len(write_routes)}"
 
-    r = client.post("/api/snapshots/commit", json={"session_id": "dummy"})
-    assert r.status_code == 401, f"Expected 401 for unauthenticated commit, got {r.status_code}"
+    # Generate an expired token
+    import time, json, base64, hmac, hashlib
+    from backend.config import settings
 
-    r = client.post("/api/snapshots/upload", data={"data_as_of_date": "2026-10-07"})
-    assert r.status_code == 401, f"Expected 401 for unauthenticated upload, got {r.status_code}"
+    payload_expired = {
+        "sub": "admin",
+        "role": "admin",
+        "exp": int(time.time()) - 3600,  # 1 hour ago
+        "iat": int(time.time()) - 7200,
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload_expired).encode("utf-8")).decode("utf-8").rstrip("=")
+    key = settings.ADMIN_SECRET_KEY.encode("utf-8")
+    sig = hmac.new(key, payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode("utf-8").rstrip("=")
+    expired_token = f"{payload_b64}.{sig_b64}"
 
-    r = client.delete("/api/snapshots/fake-id")
-    assert r.status_code == 401, f"Expected 401 for unauthenticated delete, got {r.status_code}"
-
-    # B) With invalid token -> 403
     bad_headers = {"Authorization": "Bearer bad-token-12345"}
-    r = client.post("/api/snapshots/validate", data={"data_as_of_date": "2026-10-07"}, headers=bad_headers)
-    assert r.status_code == 403, f"Expected 403 for invalid token, got {r.status_code}"
+    expired_headers = {"Authorization": f"Bearer {expired_token}"}
 
-    r = client.post("/api/snapshots/commit", json={"session_id": "dummy"}, headers=bad_headers)
-    assert r.status_code == 403, f"Expected 403 for invalid token, got {r.status_code}"
+    for method, path in write_routes:
+        test_path = path.replace("{snapshot_id}", "fake-snapshot-id-123")
 
-    r = client.delete("/api/snapshots/fake-id", headers=bad_headers)
-    assert r.status_code == 403, f"Expected 403 for invalid token, got {r.status_code}"
+        # 1. Without auth header -> 401
+        r_no_auth = client.request(method, test_path)
+        assert r_no_auth.status_code == 401, f"{method} {path} expected 401 unauthenticated, got {r_no_auth.status_code}"
 
-    # C) Admin Login endpoint (constant time, rate limiting)
-    # Valid login
-    admin_pw = os.environ.get("ADMIN_PASSWORD", "admin123")
-    r_login = client.post("/api/admin/login", json={"password": admin_pw})
-    assert r_login.status_code == 200
-    login_body = r_login.json()
-    assert "token" in login_body
-    # Password must never appear in response
-    assert admin_pw not in str(login_body)
+        # 2. With invalid token -> 403
+        r_bad = client.request(method, test_path, headers=bad_headers)
+        assert r_bad.status_code == 403, f"{method} {path} expected 403 with bad token, got {r_bad.status_code}"
 
-    # Invalid password login
-    r_fail = client.post("/api/admin/login", json={"password": "wrong-password"})
-    assert r_fail.status_code == 401
+        # 3. With expired token -> 403
+        r_exp = client.request(method, test_path, headers=expired_headers)
+        assert r_exp.status_code == 403, f"{method} {path} expected 403 with expired token, got {r_exp.status_code}"
+
+        # 4. With valid admin token -> passes auth (status != 401 and != 403)
+        r_valid = client.request(method, test_path, headers=admin_headers)
+        assert r_valid.status_code not in (401, 403), f"{method} {path} failed auth with valid token: {r_valid.status_code}"
+
+
+def test_addendum_d_unconfigured_admin_blocks_writes(client_and_db):
+    """
+    If ADMIN_PASSWORD or ADMIN_SECRET_KEY is unset or default,
+    write routes return 403 and /api/admin/status reports is_configured=False.
+    """
+    client, _ = client_and_db
+    from backend.config import settings
+
+    orig_pw = settings.ADMIN_PASSWORD
+    orig_key = settings.ADMIN_SECRET_KEY
+    try:
+        # Case 1: Empty password
+        settings.ADMIN_PASSWORD = ""
+        r_stat = client.get("/api/admin/status")
+        assert r_stat.status_code == 200
+        assert r_stat.json()["is_configured"] is False
+
+        r_val = client.post("/api/snapshots/validate")
+        assert r_val.status_code == 403
+        assert "not configured" in r_val.json()["detail"].lower()
+
+        # Case 2: Placeholder secret key
+        settings.ADMIN_PASSWORD = "my-secret-password"
+        settings.ADMIN_SECRET_KEY = "supersecret_renewals_admin_signing_key_change_in_prod"
+        r_stat2 = client.get("/api/admin/status")
+        assert r_stat2.json()["is_configured"] is False
+
+        r_val2 = client.post("/api/snapshots/validate")
+        assert r_val2.status_code == 403
+        assert "not configured" in r_val2.json()["detail"].lower()
+    finally:
+        settings.ADMIN_PASSWORD = orig_pw
+        settings.ADMIN_SECRET_KEY = orig_key
+
+
+def test_addendum_d_password_never_logged_or_returned(client_and_db, caplog):
+    """
+    Password must NEVER appear in logs or HTTP responses,
+    both during failed attempts and successful logins.
+    """
+    import logging
+    client, _ = client_and_db
+    from backend.config import settings
+
+    secret_pw = settings.ADMIN_PASSWORD
+
+    with caplog.at_level(logging.DEBUG):
+        # 1. Failed login attempt
+        r_fail = client.post("/api/admin/login", json={"password": "wrong-password-attempt"})
+        assert r_fail.status_code == 401
+        assert secret_pw not in r_fail.text
+        assert "wrong-password-attempt" not in caplog.text
+        assert secret_pw not in caplog.text
+
+        caplog.clear()
+
+        # 2. Successful login attempt
+        r_ok = client.post("/api/admin/login", json={"password": secret_pw})
+        assert r_ok.status_code == 200
+        body = r_ok.json()
+        assert "token" in body
+        assert secret_pw not in r_ok.text
+        assert secret_pw not in caplog.text
+

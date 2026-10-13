@@ -161,7 +161,7 @@ def get_snapshot_checks(
     }
 
 
-@router.delete("/{snapshot_id}")
+@router.delete("/{snapshot_id}", dependencies=[Depends(require_admin_context)])
 def delete_snapshot(
     snapshot_id: str,
     db: Session = Depends(get_db),
@@ -178,7 +178,7 @@ def delete_snapshot(
     return {"status": "ok", "deleted_snapshot_id": snapshot_id, "snapshot_date": snap_date}
 
 
-@router.post("/validate")
+@router.post("/validate", dependencies=[Depends(require_admin_context)])
 async def validate_upload(
     request: Request,
     data_as_of_date: str = Form(...),
@@ -259,7 +259,7 @@ async def validate_upload(
             pass
 
 
-@router.post("/commit")
+@router.post("/commit", dependencies=[Depends(require_admin_context)])
 def commit_upload(
     session_id: str = Body(..., embed=True),
     replace: bool = Body(False, embed=True),
@@ -286,7 +286,7 @@ def commit_upload(
         raise HTTPException(status_code=400, detail=msg)
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(require_admin_context)])
 async def upload_files_legacy(
     snapshot_date: str = Form(...),
     label: str = Form("Today"),

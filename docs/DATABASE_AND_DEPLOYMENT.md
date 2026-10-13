@@ -149,3 +149,36 @@ docker compose up --build -d
 docker compose ps
 ```
 The application is served at `http://localhost`, with Nginx reverse-proxying `/api` requests to the FastAPI backend and serving static assets for the React frontend.
+
+---
+
+## 7. Admin Authentication & Production Security (Addendum D)
+
+All mutating endpoints (`/api/snapshots/validate`, `/commit`, `/upload`, `DELETE /snapshots/{id}`, and direct routes) are strictly gated behind administrator credentials. Public read routes remain open for analytics consumption.
+
+### Security Configurations in `.env`:
+
+```bash
+# 1. Administrator Password (Mandatory for write routes)
+# If unset or empty, all write operations fail-safe with 403 Forbidden.
+ADMIN_PASSWORD=your_strong_admin_password_here
+
+# 2. Cryptographic Token Signing Key (Mandatory)
+# Generate with:
+# python -c "import secrets; print(secrets.token_hex(32))"
+ADMIN_SECRET_KEY=4a92f80c653d9e82103f5b7a19283746c0b9a8f7e6d5c4b3a291807f6e5d4c3b
+
+# 3. Environment & Cookie Security
+# When ENVIRONMENT=production, cookies default to Secure (HTTPS only).
+ENVIRONMENT=production
+
+# Explicit override for cookie Secure flag (set to true behind HTTPS reverse proxy):
+COOKIE_SECURE=true
+```
+
+### Production HTTPS Requirements:
+- When hosted on a VM or cloud environment, **HTTPS is strictly required**.
+- Nginx or your cloud load balancer must terminate TLS and forward requests with `X-Forwarded-Proto: https`.
+- `COOKIE_SECURE=true` ensures the `admin_token` HttpOnly cookie is never transmitted over unencrypted plaintext HTTP connections.
+- If `ADMIN_PASSWORD` or `ADMIN_SECRET_KEY` is missing or contains placeholder values, `/api/admin/status` reports `is_configured: false`, and all mutating routes immediately return `403 Forbidden ("Write operations disabled: Admin authentication is not configured")`.
+

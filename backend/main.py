@@ -112,24 +112,6 @@ def snapshots_direct(db: Session = Depends(get_db), ctx: UserContext = Depends(g
     from backend.routers.snapshots import list_snapshots
     return list_snapshots(db=db, ctx=ctx)
 
-@app.post("/upload", tags=["snapshots"])
-async def upload_direct(
-    snapshot_date: str = Form(...),
-    label: str = Form("Today"),
-    renewals_summary: UploadFile | None = File(None),
-    comparison_tool: UploadFile | None = File(None),
-    db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
-):
-    from backend.routers.snapshots import upload_files
-    return await upload_files(
-        snapshot_date=snapshot_date,
-        label=label,
-        renewals_summary=renewals_summary,
-        comparison_tool=comparison_tool,
-        db=db,
-        ctx=ctx,
-    )
 
 
 @app.get("/api/health")

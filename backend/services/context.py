@@ -136,10 +136,10 @@ def get_user_context(request: Request) -> UserContext:
 
 def require_admin_context(request: Request) -> UserContext:
     """Enforce admin authentication for mutating endpoints."""
-    if not settings.ADMIN_PASSWORD:
+    if not settings.is_admin_configured:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Write operations disabled: ADMIN_PASSWORD environment variable is not configured.",
+            detail="Write operations disabled: Admin authentication is not configured (ADMIN_PASSWORD or ADMIN_SECRET_KEY missing/unset).",
         )
 
     token = get_token_from_request(request)

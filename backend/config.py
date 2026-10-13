@@ -3,6 +3,7 @@ Application configuration — all settings come from environment variables or .e
 Never hard-code secrets or model names here.
 """
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
@@ -56,9 +57,28 @@ class Settings(BaseSettings):
     FISCAL_YEAR_START_MONTH: int = 1
 
     # Security & Admin Auth (Addendum D)
-    ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "admin123")
-    ADMIN_SECRET_KEY: str = "supersecret_renewals_admin_signing_key_change_in_prod"
+    ENVIRONMENT: str = "development"
+    ADMIN_PASSWORD: str = ""
+    ADMIN_SECRET_KEY: str = ""
+    COOKIE_SECURE: Optional[bool] = None
     ADMIN_TOKEN_EXPIRE_HOURS: int = 8
+
+    @property
+    def is_cookie_secure(self) -> bool:
+        if self.COOKIE_SECURE is not None:
+            return self.COOKIE_SECURE
+        return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def is_admin_configured(self) -> bool:
+        disallowed_keys = {
+            "",
+            "supersecret_renewals_admin_signing_key_change_in_prod",
+            "change_this_to_a_long_random_secret_in_production",
+        }
+        return bool(self.ADMIN_PASSWORD and self.ADMIN_PASSWORD.strip()) and bool(
+            self.ADMIN_SECRET_KEY and self.ADMIN_SECRET_KEY.strip() and self.ADMIN_SECRET_KEY.strip() not in disallowed_keys
+        )
 
 
 settings = Settings()
