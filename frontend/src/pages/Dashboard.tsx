@@ -305,16 +305,16 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ── SECTION 1 – Total Renewal Q4 ACV Value ──────────────────────────── */}
+      {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
       <div className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div
             className="cursor-pointer group"
-            onClick={() => openDealsQuery(`Total Renewal Q4 Deals (${total.count} Contracts · ${formatCurrency(total.acv)})`, {})}
-            title="Click to view all Q4 deals"
+            onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count} Contracts · ${formatCurrency(total.acv)})`, {})}
+            title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
           >
             <p className="text-xs font-semibold text-[var(--text-muted)] group-hover:text-[var(--brand-teal)] uppercase tracking-wider mb-2 transition-colors">
-              Total Renewal Q4 ACV Value
+              Total Renewal {summary?.data_slice || 'ACV'} ACV Value
             </p>
             <div className="flex items-baseline gap-3">
               {sumLoading
@@ -326,7 +326,7 @@ export default function Dashboard() {
                 )}
               <Pill color="teal"><Users className="w-3 h-3" />{total.count} Contracts</Pill>
             </div>
-            <p className="text-[11px] text-[var(--text-muted)] mt-2">Fiscal Period = Q4 2026 · Click to view all {total.count} contracts</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-2">Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count} contracts</p>
           </div>
           <div className="flex gap-3 flex-wrap">
             {[
@@ -796,7 +796,7 @@ export default function Dashboard() {
           }`}>
             <CheckCircle2 className="w-3.5 h-3.5" />
             {regional.total_acv_check_passes
-              ? 'Regional Trend Total matches Overview Total Renewal Q4 ACV \u2713'
+              ? `Regional Trend Total matches Overview Total Renewal ${summary?.data_slice || ''} ACV \u2713`
               : '\u26a0 Regional Trend Total does NOT match — check for unmapped regions'}
           </div>
         )}

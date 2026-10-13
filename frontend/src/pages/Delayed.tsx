@@ -28,7 +28,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
 function DelayedContent() {
-  const { activeSnapshotId } = useAppStore()
+  const { activeSnapshotId, globalFilters } = useAppStore()
   const metricMode = (useAppStore((s: any) => s.metricMode) || 'Amount') as MetricMode
 
   const [compare, setCompare] = useState<'yesterday' | 'last_week'>('yesterday')
@@ -39,20 +39,20 @@ function DelayedContent() {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
   const { data: summary, isLoading, error } = useQuery({
-    queryKey: ['v2-delayed-summary', activeSnapshotId, compare],
+    queryKey: ['v2-delayed-summary', activeSnapshotId, compare, globalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/summary', {
-        params: { as_of: activeSnapshotId ?? undefined, compare },
+        params: { as_of: activeSnapshotId ?? undefined, compare, ...globalFilters },
       })
       return res.data
     },
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['v2-delayed-deals', activeSnapshotId, compare, modalFilters],
+    queryKey: ['v2-delayed-deals', activeSnapshotId, compare, globalFilters, modalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/deals', {
-        params: { as_of: activeSnapshotId ?? undefined, compare, ...modalFilters },
+        params: { as_of: activeSnapshotId ?? undefined, compare, ...globalFilters, ...modalFilters },
       })
       return res.data
     },

@@ -259,13 +259,13 @@ async def validate_upload(
     fiscal_2027: Optional[UploadFile] = File(None),
     fiscal_q4: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
+    ctx: UserContext = Depends(require_admin_context),
 ):
     """
     Validate uploaded files, compute preview metrics and reconciliation warnings.
     Supports fixed slots as well as arbitrary dynamic files (Addendum C).
     Admin-only (Addendum D).
     """
-    ctx = require_admin_context(request)
     if not data_as_of_date:
         raise HTTPException(status_code=422, detail="data_as_of_date is required")
     try:
