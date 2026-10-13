@@ -449,6 +449,28 @@ export const getApprovalsDeals = async (as_of?: string, status?: string, categor
   return api.get('/v2/approvals/deals', { params }).then(r => r.data)
 }
 
+// ── V2 Regions, BU, Delayed ─────────────────────────────────────────────
+export const getV2RegionsSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
+  const state = useAppStore.getState()
+  const p: any = { ...state.globalFilters, ...params }
+  const res = await api.get('/v2/regions/summary', { params: p })
+  return res.data
+}
+
+export const getV2BusinessUnitsSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
+  const state = useAppStore.getState()
+  const p: any = { ...state.globalFilters, ...params }
+  const res = await api.get('/v2/business-units/summary', { params: p })
+  return res.data
+}
+
+export const getV2DelayedSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
+  const state = useAppStore.getState()
+  const p: any = { ...state.globalFilters, ...params }
+  const res = await api.get('/v2/delayed/summary', { params: p })
+  return res.data
+}
+
 // ── V2 Filters Options ───────────────────────────────────────────────────
 export const getFilterOptions = async (asOf?: string | null) => {
   const params: any = {}
