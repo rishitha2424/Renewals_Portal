@@ -135,15 +135,6 @@ export default function FilterBar({
     })
   }
 
-  if (activeFilters.sales_types.length > 0 && !(activeFilters.sales_types.length === 1 && activeFilters.sales_types[0] === 'Renewals')) {
-    const stLabel = activeFilters.sales_types.includes('all') ? 'All sales types' : activeFilters.sales_types.join(', ')
-    chips.push({
-      key: 'sales_types',
-      label: `Sales: ${stLabel}`,
-      onRemove: () => setFilters({ sales_types: ['Renewals'] }),
-    })
-  }
-
   if (!activeFilters.include_deleted_lost) {
     chips.push({
       key: 'include_deleted_lost',
@@ -223,33 +214,6 @@ export default function FilterBar({
               {filterOpts?.fiscal_years?.map((fy: any) => (
                 <option key={fy.key} value={fy.key}>
                   {fy.label} ({fy.count})
-                </option>
-              ))}
-            </select>
-          </ControlChip>
-        </div>
-
-        {/* 2. Sales Type Dropdown */}
-        <div className="relative inline-flex items-center">
-          <ControlChip
-            as="div"
-            label="Sales:"
-            hasChevron={true}
-          >
-            <select
-              value={activeFilters.sales_types.length === 1 ? activeFilters.sales_types[0] : 'all'}
-              onChange={(e) => {
-                const val = e.target.value
-                setFilters({ sales_types: val === 'all' ? ['all'] : [val] })
-              }}
-              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
-              id="filter-sales-type-select"
-            >
-              <option value="Renewals">Renewals</option>
-              <option value="all">All sales types</option>
-              {filterOpts?.sales_types?.filter((st: any) => st.key !== 'Renewals').map((st: any) => (
-                <option key={st.key} value={st.key}>
-                  {st.label} ({st.count})
                 </option>
               ))}
             </select>

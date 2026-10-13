@@ -17,6 +17,9 @@ from backend.database import get_db
 from backend.services.ingest_service import _UPLOAD_SESSIONS
 
 
+from backend.services.context import require_admin_context, ADMIN_CONTEXT
+
+
 @pytest.fixture
 def client(seeded_session, db_engine):
     Session = sessionmaker(bind=db_engine)
@@ -27,6 +30,7 @@ def client(seeded_session, db_engine):
         finally:
             db.close()
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[require_admin_context] = lambda: ADMIN_CONTEXT
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
