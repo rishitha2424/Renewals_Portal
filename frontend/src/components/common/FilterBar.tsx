@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
 import { getFilterOptions } from '@/api/client'
+import ControlChip from '@/components/ui/ControlChip'
 
 interface FilterBarProps {
   isPageOverride?: boolean
@@ -188,73 +189,83 @@ export default function FilterBar({
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
       {/* Top Filter Bar Controls */}
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
         {/* Page Override Badge if applicable */}
         {isPageOverride && (
-          <span className="px-2 py-0.5 rounded-sm text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+          <span className="h-9 px-3 rounded-md text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 inline-flex items-center">
             Page Override
           </span>
         )}
 
         {/* 1. Period Dropdown */}
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)]">
-          <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
-          <span className="font-medium text-[var(--text-muted)] text-[11px]">Period:</span>
-          <select
-            value={activeFilters.period}
-            onChange={(e) => setFilters({ period: e.target.value })}
-            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
-            id="filter-period-select"
+        <div className="relative inline-flex items-center">
+          <ControlChip
+            as="div"
+            icon={<Calendar className="w-3.5 h-3.5 flex-shrink-0" />}
+            label="Period:"
+            hasChevron={true}
           >
-            <option value="current_quarter">Current Quarter (Default)</option>
-            <option value="previous_quarter">Previous Quarter</option>
-            <option value="next_quarter">Next Quarter</option>
-            <option value="all_periods">All Periods</option>
-            {filterOpts?.quarters?.map((q: any) => (
-              <option key={q.key} value={q.key}>
-                {q.label} ({q.count})
-              </option>
-            ))}
-            {filterOpts?.fiscal_years?.map((fy: any) => (
-              <option key={fy.key} value={fy.key}>
-                {fy.label} ({fy.count})
-              </option>
-            ))}
-          </select>
+            <select
+              value={activeFilters.period}
+              onChange={(e) => setFilters({ period: e.target.value })}
+              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
+              id="filter-period-select"
+            >
+              <option value="current_quarter">Current Quarter (Default)</option>
+              <option value="previous_quarter">Previous Quarter</option>
+              <option value="next_quarter">Next Quarter</option>
+              <option value="all_periods">All Periods</option>
+              {filterOpts?.quarters?.map((q: any) => (
+                <option key={q.key} value={q.key}>
+                  {q.label} ({q.count})
+                </option>
+              ))}
+              {filterOpts?.fiscal_years?.map((fy: any) => (
+                <option key={fy.key} value={fy.key}>
+                  {fy.label} ({fy.count})
+                </option>
+              ))}
+            </select>
+          </ControlChip>
         </div>
 
         {/* 2. Sales Type Dropdown */}
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)]">
-          <span className="font-medium text-[var(--text-muted)] text-[11px]">Sales:</span>
-          <select
-            value={activeFilters.sales_types.length === 1 ? activeFilters.sales_types[0] : 'all'}
-            onChange={(e) => {
-              const val = e.target.value
-              setFilters({ sales_types: val === 'all' ? ['all'] : [val] })
-            }}
-            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
-            id="filter-sales-type-select"
+        <div className="relative inline-flex items-center">
+          <ControlChip
+            as="div"
+            label="Sales:"
+            hasChevron={true}
           >
-            <option value="Renewals">Renewals</option>
-            <option value="all">All sales types</option>
-            {filterOpts?.sales_types?.filter((st: any) => st.key !== 'Renewals').map((st: any) => (
-              <option key={st.key} value={st.key}>
-                {st.label} ({st.count})
-              </option>
-            ))}
-          </select>
+            <select
+              value={activeFilters.sales_types.length === 1 ? activeFilters.sales_types[0] : 'all'}
+              onChange={(e) => {
+                const val = e.target.value
+                setFilters({ sales_types: val === 'all' ? ['all'] : [val] })
+              }}
+              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
+              id="filter-sales-type-select"
+            >
+              <option value="Renewals">Renewals</option>
+              <option value="all">All sales types</option>
+              {filterOpts?.sales_types?.filter((st: any) => st.key !== 'Renewals').map((st: any) => (
+                <option key={st.key} value={st.key}>
+                  {st.label} ({st.count})
+                </option>
+              ))}
+            </select>
+          </ControlChip>
         </div>
 
         {/* 3. Include Deleted & Lost Checkbox */}
         <label
-          className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] cursor-pointer hover:bg-[var(--bg-card)] transition-colors select-none"
+          className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] cursor-pointer transition-colors inline-flex items-center gap-2 select-none"
           title="Toggle inclusion of Deleted and Lost pipeline opportunities"
         >
           <input
             type="checkbox"
             checked={activeFilters.include_deleted_lost}
             onChange={(e) => setFilters({ include_deleted_lost: e.target.checked })}
-            className="rounded-sm border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5"
+            className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
             id="filter-include-deleted-lost"
           />
           <span className="font-medium text-[var(--text-primary)] text-xs">Include Deleted & Lost</span>
@@ -265,23 +276,23 @@ export default function FilterBar({
           <button
             type="button"
             onClick={() => setMoreOpen(!moreOpen)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors"
+            className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none"
             id="filter-more-btn"
           >
-            <Filter className="w-3.5 h-3.5 text-[#00A3AD]" />
+            <Filter className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
             <span>More Filters</span>
             {(activeFilters.regions.length > 0 ||
               activeFilters.business_units.length > 0 ||
               activeFilters.forecast_categories.length > 0 ||
               activeFilters.approval_statuses.length > 0) && (
-              <span className="px-1.5 py-0.2 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold">
+              <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold leading-none">
                 {activeFilters.regions.length +
                   activeFilters.business_units.length +
                   activeFilters.forecast_categories.length +
                   activeFilters.approval_statuses.length}
               </span>
             )}
-            <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
           </button>
 
           {moreOpen && (
@@ -409,12 +420,12 @@ export default function FilterBar({
           <button
             type="button"
             onClick={() => setViewsOpen(!viewsOpen)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors"
+            className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none"
             id="filter-saved-views-btn"
           >
-            <Bookmark className="w-3.5 h-3.5 text-[#00A3AD]" />
+            <Bookmark className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
             <span>Saved Views</span>
-            <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
           </button>
 
           {viewsOpen && (
@@ -426,13 +437,13 @@ export default function FilterBar({
                   placeholder="View name..."
                   value={newViewName}
                   onChange={(e) => setNewViewName(e.target.value)}
-                  className="px-2 py-1 rounded-sm border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)]"
+                  className="px-2 py-1 rounded-md border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)]"
                 />
                 <button
                   type="button"
                   onClick={handleSaveView}
                   disabled={!newViewName.trim()}
-                  className="px-2 py-1 rounded-sm bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50"
+                  className="px-2.5 py-1 rounded-md bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
                 </button>
@@ -444,7 +455,7 @@ export default function FilterBar({
                     <div
                       key={v.id}
                       onClick={() => handleApplyView(v.filters)}
-                      className="flex items-center justify-between px-2 py-1.5 rounded-sm hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
+                      className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
                     >
                       <span className="font-medium text-[var(--text-primary)] truncate">{v.name}</span>
                       <button
@@ -473,10 +484,10 @@ export default function FilterBar({
                 resetGlobalFilters()
               }
             }}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors font-medium"
+            className="h-9 px-3 rounded-md border border-rose-500/20 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors font-medium inline-flex items-center gap-1.5 focus:outline-none"
             id="filter-reset-btn"
           >
-            <RotateCcw className="w-3 h-3" />
+            <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset</span>
           </button>
         )}

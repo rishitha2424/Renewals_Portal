@@ -269,13 +269,14 @@ function DelayedContent() {
         title="Delayed Renewals"
         subtitle={`Renewals in ${summary.data_slice} that have slipped, pushed out, or are overdue.`}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <MetricToggle />
-            <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
+            <div className="h-9 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
               <button
+                type="button"
                 onClick={() => setCompare('yesterday')}
                 className={clsx(
-                  'px-3 py-1 rounded-sm transition-colors',
+                  'h-full px-3 rounded-sm transition-colors flex items-center justify-center',
                   compare === 'yesterday'
                     ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -284,9 +285,10 @@ function DelayedContent() {
                 vs Yesterday
               </button>
               <button
+                type="button"
                 onClick={() => setCompare('last_week')}
                 className={clsx(
-                  'px-3 py-1 rounded-sm transition-colors',
+                  'h-full px-3 rounded-sm transition-colors flex items-center justify-center',
                   compare === 'last_week'
                     ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'

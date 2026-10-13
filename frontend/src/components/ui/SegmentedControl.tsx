@@ -25,21 +25,21 @@ export function SegmentedControl<T extends string = string>({
   className,
 }: SegmentedControlProps<T>) {
   const sizeClasses = {
-    sm: 'p-0.5 text-xs',
-    md: 'p-1 text-sm',
-    lg: 'p-1.5 text-base',
+    sm: 'h-9 p-0.5 text-xs',
+    md: 'h-9 p-0.5 text-xs',
+    lg: 'p-1 text-sm',
   }[size]
 
   const itemPadding = {
-    sm: 'px-2.5 py-1',
-    md: 'px-3.5 py-1.5',
+    sm: 'h-full px-2.5',
+    md: 'h-full px-3',
     lg: 'px-4 py-2',
   }[size]
 
   return (
     <div
       className={clsx(
-        'inline-flex items-center rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] p-1 relative',
+        'inline-flex items-center rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] relative',
         sizeClasses,
         className
       )}

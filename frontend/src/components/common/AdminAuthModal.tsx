@@ -43,17 +43,17 @@ export default function AdminAuthModal() {
   return (
     <>
       {isAdmin ? (
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Admin</span>
+        <div className="h-9 px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
+          <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="hidden xl:inline">Admin</span>
           <button
             type="button"
             onClick={handleLogout}
             title="Sign out as administrator"
-            className="ml-1 hover:text-red-500 transition-colors"
+            className="ml-1 hover:text-red-500 transition-colors p-0.5 rounded"
             id="admin-sign-out-btn"
           >
-            <LogOut className="w-3 h-3" />
+            <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>
       ) : (
@@ -63,12 +63,12 @@ export default function AdminAuthModal() {
             setError(null)
             setIsOpen(true)
           }}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-sm bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          className="h-9 px-3 rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0 focus:outline-none"
           id="admin-sign-in-btn"
-          title="Sign in as administrator to upload or manage snapshots"
+          title="Admin sign in"
         >
-          <Lock className="w-3.5 h-3.5 text-amber-500" />
-          <span>Admin sign in</span>
+          <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <span className="hidden xl:inline">Admin sign in</span>
         </button>
       )}
 

@@ -241,12 +241,12 @@ export default function Dashboard() {
   const FC_COLS = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'] as const
 
   return (
-    <div className="space-y-6 pb-16 max-w-[1600px] mx-auto">
+    <div className="space-y-6 pb-16 w-full">
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="font-extrabold text-2xl md:text-3xl tracking-tight text-[var(--text-primary)]">
               Renewals Overview
             </h1>
@@ -273,17 +273,17 @@ export default function Dashboard() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button" onClick={() => navigate('/data-uploads')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-teal-500/10 hover:bg-teal-500/20 text-xs font-semibold text-teal-600 dark:text-teal-400 transition-all shadow-sm"
+            className="h-9 px-3 rounded-md border border-[var(--border)] bg-teal-500/10 hover:bg-teal-500/20 text-xs font-semibold text-teal-600 dark:text-teal-400 transition-colors inline-flex items-center gap-1.5 focus:outline-none"
             id="overview-upload-data-btn"
           >
             <Upload className="w-3.5 h-3.5" /> Upload Excel
           </button>
           <button
             type="button" onClick={refetchAll}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] hover:bg-[var(--bg-secondary)] text-xs font-semibold text-[var(--text-muted)] transition-all shadow-sm"
+            className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-card)] hover:bg-[var(--bg-secondary)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 focus:outline-none"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-teal-500' : ''}`} /> Refresh
           </button>

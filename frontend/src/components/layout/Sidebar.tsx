@@ -43,8 +43,8 @@ export default function Sidebar() {
       }}
     >
       {/* Brand Header */}
-      <div className="flex items-center gap-3 px-3.5 h-12 border-b border-white/10 flex-shrink-0">
-        <div className="w-7 h-7 rounded-sm overflow-hidden flex-shrink-0 bg-white/10 p-0.5 flex items-center justify-center">
+      <div className="flex items-center gap-3 px-3.5 h-14 border-b border-white/10 flex-shrink-0">
+        <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
           <img
             src="/assets/logo.png"
             alt="Mobileum"
@@ -52,11 +52,11 @@ export default function Sidebar() {
           />
         </div>
         {!sidebarCollapsed && (
-          <div className="overflow-hidden whitespace-nowrap leading-tight">
-            <p className="text-white font-semibold text-sm tracking-tight">
+          <div className="overflow-hidden whitespace-nowrap leading-tight flex flex-col justify-center">
+            <p className="text-white font-semibold text-sm tracking-tight leading-none mb-1">
               Horizon
             </p>
-            <p className="text-slate-400 text-[11px] font-normal tracking-tight">
+            <p className="text-slate-400 text-[11px] font-normal tracking-tight leading-none">
               Renewals intelligence
             </p>
           </div>
@@ -108,11 +108,11 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom Footer: Collapse toggle */}
-      <div className="p-2 border-t border-white/10 flex-shrink-0">
+      <div className="p-3 border-t border-white/10 flex-shrink-0">
         <button
           type="button"
           onClick={toggleSidebarCollapsed}
-          className="w-full flex items-center justify-center gap-2 py-1.5 rounded-sm text-slate-400 hover:text-white hover:bg-white/5 text-xs transition-colors"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-md text-slate-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors focus:outline-none"
           title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed ? (
