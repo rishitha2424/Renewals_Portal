@@ -1,41 +1,35 @@
 /**
  * Design tokens — single source of truth for "Mobileum Horizon".
- * Incorporates brand navy #12284C, teal #00A3AD, violet #8080FF, and blue-to-cyan gradient.
+ * Strict professional enterprise theme: navy #12284C, teal #00A3AD accent,
+ * cool-grey scale, zero gradients, 6px/8px/12px radii, WCAG AA contrast.
  */
 
 export const colors = {
   // Brand palette
-  navy: '#12284C',
-  navyLight: '#1B3B6F',
-  navyDark: '#0A172C',
-  navyDeep: '#050D19',
+  navy: {
+    DEFAULT: '#12284C',
+    light: '#1B3B6F',
+    dark: '#0A172C',
+    deep: '#050D19',
+  },
 
-  teal: '#00A3AD',
-  tealLight: '#00C4D0',
-  tealDark: '#007A82',
-
-  violet: '#8080FF',
-  violetLight: '#A3A3FF',
-  violetDark: '#5E5EE6',
-
-  cyan: '#00D2DF',
-  blue: '#0052CC',
+  teal: {
+    DEFAULT: '#00A3AD',
+    light: '#00C4D0',
+    dark: '#007A82',
+  },
 
   // Status & semantic colors
-  success: '#10B981',
-  successLight: '#34D399',
-  warning: '#F59E0B',
-  warningLight: '#FBBF24',
-  danger: '#EF4444',
-  dangerLight: '#F87171',
-  info: '#3B82F6',
+  success: '#15803D',
+  warning: '#D97706',
+  danger: '#B91C1C',
+  info: '#1D4ED8',
 
   // Light theme surface & text
   light: {
     bgPrimary: '#F8FAFC',
     bgSecondary: '#F1F5F9',
     bgCard: '#FFFFFF',
-    bgCardGlass: 'rgba(255, 255, 255, 0.82)',
     border: '#E2E8F0',
     borderSubtle: '#EDF2F7',
     textPrimary: '#0F172A',
@@ -43,76 +37,57 @@ export const colors = {
     textMuted: '#64748B',
   },
 
-  // Dark theme surface & text
+  // Dark theme surface & text (WCAG AA compliant: muted #8A9BB5 >= 4.5:1 against #0B111E / #111A2E)
   dark: {
-    bgPrimary: '#081220',
-    bgSecondary: '#0B192C',
-    bgCard: '#0F213A',
-    bgCardGlass: 'rgba(15, 33, 58, 0.85)',
-    border: '#1E3A60',
-    borderSubtle: '#142944',
+    bgPrimary: '#0B111E',
+    bgSecondary: '#18233C',
+    bgCard: '#111A2E',
+    border: '#223252',
+    borderSubtle: '#18253E',
     textPrimary: '#F8FAFC',
     textSecondary: '#CBD5E1',
-    textMuted: '#94A3B8',
+    textMuted: '#8A9BB5',
   },
 } as const
 
-export const gradients = {
-  logoGradient: 'linear-gradient(135deg, #0052CC 0%, #00A3AD 50%, #00D2DF 100%)',
-  brand: 'linear-gradient(135deg, #12284C 0%, #00A3AD 60%, #8080FF 100%)',
-  tealViolet: 'linear-gradient(90deg, #00A3AD 0%, #8080FF 100%)',
-  hero: 'linear-gradient(145deg, #12284C 0%, #15335D 50%, #0A1B33 100%)',
-  glassLight: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.6) 100%)',
-  glassDark: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%)',
-  accentSubtle: 'linear-gradient(90deg, rgba(0, 163, 173, 0.12) 0%, rgba(128, 128, 255, 0.12) 100%)',
-} as const
-
 export const shadows = {
-  sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
-  cardLight: '0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(18, 40, 76, 0.06)',
-  cardDark: '0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06)',
-  cardHover: '0 12px 32px rgba(0, 163, 173, 0.18)',
-  glass: '0 8px 32px 0 rgba(0, 163, 173, 0.12)',
-  glowTeal: '0 0 24px rgba(0, 163, 173, 0.35)',
-  glowViolet: '0 0 24px rgba(128, 128, 255, 0.35)',
+  none: 'none',
+  card: '0 1px 2px rgba(0, 0, 0, 0.04)',
+  elevation: '0 4px 16px rgba(0, 0, 0, 0.12)',
 } as const
 
 export const radius = {
-  sm: '6px',
-  md: '10px',
-  lg: '16px',
-  xl: '22px',
-  full: '9999px',
+  control: '6px', // buttons, inputs, chips, badges
+  card: '8px',    // cards, tables, panels
+  modal: '12px',  // modals, dialogs, drawers
+  full: '9999px', // circular avatars, spinners only
 } as const
 
 export const typography = {
-  fontUi: 'Inter, system-ui, sans-serif',
-  fontDisplay: '"Plus Jakarta Sans", Sora, system-ui, sans-serif',
+  fontUi: 'Inter, system-ui, -apple-system, sans-serif',
 } as const
 
 export const motionTokens = {
-  transitionFast: 0.15,
-  transitionNormal: 0.25,
-  transitionSmooth: 0.4,
-  springDefault: { type: 'spring', damping: 26, stiffness: 320 } as const,
+  duration: 0.14,
+  ease: 'easeOut',
 } as const
 
-/** Forecast category → colourblind-safe canonical colours */
+/** Forecast category → colour-blind safe flat palette */
 export const FORECAST_COLORS: Record<string, string> = {
-  Closed: '#10B981',     // emerald green
-  Commit: '#00A3AD',     // brand teal
-  'Best Case': '#F59E0B', // amber
-  Pipeline: '#8080FF',   // brand violet
-  Blank: '#94A3B8',      // slate
+  Closed: '#0E7490',      // deep teal
+  Commit: '#1D4ED8',      // navy blue
+  'Best Case': '#3B82F6',  // mid blue
+  Pipeline: '#D97706',    // amber
+  Blank: '#64748B',       // cool grey
 }
 
-/** Approval status → brand colours */
+/** Approval status → flat palette */
 export const APPROVAL_COLORS: Record<string, string> = {
-  Approved: '#10B981',
+  Approved: '#16A34A',
   'Approved - 2nd': '#00A3AD',
-  'Pending Approval': '#F59E0B',
-  Rejected: '#EF4444',
-  Blank: '#94A3B8',
+  'Pending Approval': '#D97706',
+  Rejected: '#DC2626',
+  Blank: '#64748B',
 }
 
 export const FORECAST_ORDER = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'] as const
@@ -120,3 +95,4 @@ export const APPROVAL_ORDER = ['Approved', 'Approved - 2nd', 'Pending Approval',
 
 export type ForecastCategory = typeof FORECAST_ORDER[number]
 export type ApprovalStatus = typeof APPROVAL_ORDER[number]
+

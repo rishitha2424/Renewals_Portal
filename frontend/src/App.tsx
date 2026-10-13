@@ -15,11 +15,35 @@ import LoadingScreen from '@/pages/LoadingScreen'
 import { useAppStore } from '@/store/appStore'
 
 export default function App() {
-  const darkMode = useAppStore(s => s.darkMode)
+  const { darkMode } = useAppStore()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
+
+  // Dynamic titles based on path
+  useEffect(() => {
+    const handleTitle = () => {
+      const path = window.location.pathname
+      const titleMap: Record<string, string> = {
+        '/': 'Overview — Mobileum Horizon',
+        '/expiry': 'Expiry — Mobileum Horizon',
+        '/approvals': 'Approvals — Mobileum Horizon',
+        '/business-units': 'Business Units — Mobileum Horizon',
+        '/bu': 'Business Units — Mobileum Horizon',
+        '/regions': 'Regions — Mobileum Horizon',
+        '/delayed': 'Delayed Renewals — Mobileum Horizon',
+        '/opportunities': 'Data Explorer — Mobileum Horizon',
+        '/explore': 'Data Explorer — Mobileum Horizon',
+        '/data-uploads': 'Data Uploads — Mobileum Horizon',
+        '/executive': 'Executive View — Mobileum Horizon',
+      }
+      document.title = titleMap[path] || 'Mobileum Horizon'
+    }
+    handleTitle()
+    window.addEventListener('popstate', handleTitle)
+    return () => window.removeEventListener('popstate', handleTitle)
+  }, [])
 
   return (
     <BrowserRouter>

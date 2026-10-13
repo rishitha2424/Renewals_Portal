@@ -112,7 +112,7 @@ export default function ExecutiveView() {
           { label: 'Commit ACV', value: formatACV(kpis?.commit_acv), color: '#F59E0B' },
           { label: 'Closed ACV', value: formatACV(kpis?.closed_acv), color: '#22C55E' },
         ].map(kpi => (
-          <div key={kpi.label} className="rounded-2xl p-4 border border-gray-100" style={{ background: '#F8FAFC' }}>
+          <div key={kpi.label} className="rounded-md p-4 border border-gray-100" style={{ background: '#F8FAFC' }}>
             <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">{kpi.label}</p>
             <p className="text-2xl font-black mt-1" style={{ color: kpi.color }}>{kpi.value}</p>
           </div>
@@ -120,7 +120,7 @@ export default function ExecutiveView() {
       </div>
 
       {/* Approval status table */}
-      <div className="mb-6 rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="mb-6 rounded-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100" style={{ background: '#F8FAFC' }}>
           <h2 className="font-bold text-sm" style={{ color: '#12284C' }}>Approval Status Summary</h2>
         </div>
@@ -155,7 +155,7 @@ export default function ExecutiveView() {
       </div>
 
       {/* Expiry × Forecast pivot */}
-      <div className="mb-6 rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="mb-6 rounded-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100" style={{ background: '#F8FAFC' }}>
           <h2 className="font-bold text-sm" style={{ color: '#12284C' }}>Expiry Quarter × Forecast Category</h2>
         </div>
@@ -197,7 +197,7 @@ export default function ExecutiveView() {
       </div>
 
       {/* Top regions */}
-      <div className="rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="rounded-md border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100" style={{ background: '#F8FAFC' }}>
           <h2 className="font-bold text-sm" style={{ color: '#12284C' }}>Top 10 Regions by ACV</h2>
         </div>

@@ -139,7 +139,7 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: idx * 0.05 }}
       whileHover={{ y: -3 }}
-      className="card-premium p-4 md:p-5 relative overflow-hidden flex flex-col justify-between group shadow-sm hover:shadow-md transition-all"
+      className="card p-4 md:p-5 relative overflow-hidden flex flex-col justify-between group shadow-sm hover:shadow-md transition-all"
     >
       {/* Top accent line */}
       <div
@@ -167,7 +167,7 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
         </div>
 
         {/* Big formatted number */}
-        <p className="font-display font-extrabold text-2xl lg:text-3xl tracking-tight text-[var(--text-primary)] tabular-nums my-1">
+        <p className="font-extrabold text-2xl lg:text-3xl tracking-tight text-[var(--text-primary)] tabular-nums my-1">
           {formattedVal}
         </p>
       </div>
@@ -225,7 +225,7 @@ export default function OverviewKpiStrip({
     return (
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="card-premium p-4 space-y-3">
+          <div key={i} className="card p-4 space-y-3">
             <Skeleton variant="text" width="60%" height="12px" />
             <Skeleton variant="text" width="85%" height="28px" />
             <Skeleton variant="text" width="70%" height="10px" />

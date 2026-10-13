@@ -111,38 +111,38 @@ export default function Topbar() {
   }
 
   return (
-    <header className="h-16 flex items-center justify-between px-6 border-b flex-shrink-0 bg-[var(--bg-card)] border-[var(--border)] shadow-sm z-20">
+    <header className="h-12 flex items-center justify-between px-4 border-b flex-shrink-0 bg-[var(--bg-card)] border-[var(--border)] z-20">
       {/* Left: Global Filter Bar */}
-      <div className="flex items-center gap-4 flex-1">
+      <div className="flex items-center gap-3 flex-1">
         <FilterBar />
 
         {/* Search trigger */}
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="hidden 2xl:flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-all shadow-sm focus:outline-none"
+          className="hidden 2xl:flex items-center gap-2 px-2.5 py-1 rounded-sm text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors focus:outline-none"
           id="topbar-search-btn"
         >
-          <Search className="w-3.5 h-3.5 text-teal-500" />
+          <Search className="w-3.5 h-3.5 text-[#00A3AD]" />
           <span>Search...</span>
-          <kbd className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)]">
+          <kbd className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)]">
             ⌘K
           </kbd>
         </button>
       </div>
 
       {/* Right: Date Pickers, Compare Selector, Download Menu, Theme Toggle */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
         {/* "View as of" Date Picker */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs shadow-sm">
-          <Calendar className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-          <span className="font-medium text-[var(--text-muted)] hidden md:inline">
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-xs">
+          <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+          <span className="font-medium text-[var(--text-muted)] hidden md:inline text-[11px]">
             As of:
           </span>
           <select
             value={activeSnap?.id ?? ''}
             onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-            className="bg-transparent font-semibold text-[var(--text-primary)] outline-none cursor-pointer text-xs"
+            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
             id="topbar-view-as-of-select"
           >
             {isLoading && <option>Loading dates...</option>}
@@ -155,15 +155,15 @@ export default function Topbar() {
         </div>
 
         {/* "Compare with" Selector */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs shadow-sm whitespace-nowrap" title={getCompareLabel()}>
-          <GitCompare className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
-          <span className="font-medium text-[var(--text-muted)] hidden md:inline">
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-xs whitespace-nowrap" title={getCompareLabel()}>
+          <GitCompare className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+          <span className="font-medium text-[var(--text-muted)] hidden md:inline text-[11px]">
             vs:
           </span>
           <select
             value={compareSnapshotId ?? ''}
             onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-            className="bg-transparent font-semibold text-[var(--text-primary)] outline-none cursor-pointer text-xs"
+            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
             id="topbar-compare-with-select"
           >
             {snapshots
@@ -178,7 +178,7 @@ export default function Topbar() {
               })}
           </select>
           {compareSnap && (
-            <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium hidden 2xl:inline ml-1">
+            <span className="text-[10px] text-[var(--text-muted)] font-medium hidden 2xl:inline ml-1">
               ({getCompareLabel()})
             </span>
           )}
@@ -190,7 +190,7 @@ export default function Topbar() {
             type="button"
             disabled={!!downloadingFormat}
             onClick={() => setDownloadOpen(!downloadOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-teal-500 to-teal-600 text-white hover:from-teal-600 hover:to-teal-700 shadow-sm transition-all focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
             id="topbar-download-btn"
           >
             {downloadingFormat ? (
@@ -209,13 +209,13 @@ export default function Topbar() {
           </button>
 
           {downloadOpen && (
-            <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-50 divide-y divide-[var(--border-subtle)]">
-              <div className="py-1">
+            <div className="absolute right-0 mt-1 w-60 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-lg p-1 z-50 divide-y divide-[var(--border)]">
+              <div className="py-0.5">
                 <button
                   type="button"
                   disabled={!!downloadingFormat}
                   onClick={() => handleDownload('pptx')}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   id="topbar-download-pptx-btn"
                 >
                   {downloadingFormat === 'pptx' ? (
@@ -224,10 +224,10 @@ export default function Topbar() {
                     <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
                   )}
                   <div className="flex-1">
-                    <p className="font-semibold flex items-center justify-between">
+                    <p className="font-medium flex items-center justify-between">
                       PowerPoint (.pptx)
                       {downloadingFormat === 'pptx' && (
-                        <span className="text-[10px] text-amber-500 font-medium">Generating...</span>
+                        <span className="text-[10px] text-amber-500">Generating...</span>
                       )}
                     </p>
                     <p className="text-[10px] text-[var(--text-muted)]">
@@ -237,24 +237,24 @@ export default function Topbar() {
                 </button>
               </div>
 
-              <div className="py-1">
+              <div className="py-0.5">
                 <button
                   type="button"
                   disabled={!!downloadingFormat}
                   onClick={() => handleDownload('xlsx')}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   id="topbar-download-excel-btn"
                 >
                   {downloadingFormat === 'xlsx' ? (
-                    <Loader2 className="w-4 h-4 text-emerald-500 animate-spin flex-shrink-0" />
+                    <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
                   ) : (
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                   )}
                   <div className="flex-1">
-                    <p className="font-semibold flex items-center justify-between">
+                    <p className="font-medium flex items-center justify-between">
                       Excel (.xlsx)
                       {downloadingFormat === 'xlsx' && (
-                        <span className="text-[10px] text-emerald-500 font-medium">Generating...</span>
+                        <span className="text-[10px] text-emerald-600">Generating...</span>
                       )}
                     </p>
                     <p className="text-[10px] text-[var(--text-muted)]">
@@ -267,7 +267,6 @@ export default function Topbar() {
           )}
         </div>
 
-
         {/* Admin Sign In (Addendum D) */}
         <AdminAuthModal />
 
@@ -275,14 +274,14 @@ export default function Topbar() {
         <button
           type="button"
           onClick={toggleDarkMode}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] transition-all hover:scale-105 focus:outline-none shadow-sm"
+          className="w-8 h-8 rounded-sm flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors focus:outline-none"
           id="topbar-theme-toggle"
           title={darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
         >
           {darkMode ? (
-            <Sun className="w-4 h-4 text-amber-400" />
+            <Sun className="w-3.5 h-3.5 text-amber-400" />
           ) : (
-            <Moon className="w-4 h-4 text-indigo-600" />
+            <Moon className="w-3.5 h-3.5 text-slate-600" />
           )}
         </button>
       </div>

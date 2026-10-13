@@ -73,7 +73,7 @@ export function SegmentedControl<T extends string = string>({
               {option.badge != null && (
                 <span
                   className={clsx(
-                    'text-[10px] px-1.5 py-0.2 rounded-full tabular-nums',
+                    'text-[10px] px-1.5 py-0.2 rounded-sm tabular-nums',
                     isSelected
                       ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold'
                       : 'bg-black/5 dark:bg-white/5 text-[var(--text-muted)]'

@@ -30,8 +30,8 @@ export default function BiggestMovers({
 }: BiggestMoversProps) {
   if (loading) {
     return (
-      <div className="card-premium p-6">
-        <h2 className="font-display font-bold text-lg text-[var(--text-primary)] mb-4">
+      <div className="card p-6">
+        <h2 className="font-bold text-lg text-[var(--text-primary)] mb-4">
           Biggest ACV Movers
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -74,15 +74,15 @@ export default function BiggestMovers({
   }
 
   return (
-    <div className="card-premium p-6">
+    <div className="card p-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="font-display font-bold text-lg text-[var(--text-primary)]">
+            <h2 className="font-bold text-lg text-[var(--text-primary)]">
               Biggest ACV Movers
             </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+            <span className="text-xs px-2.5 py-0.5 rounded-sm font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
               Top 10
             </span>
           </div>
@@ -112,7 +112,7 @@ export default function BiggestMovers({
                 transition={{ duration: 0.3, delay: idx * 0.04 }}
                 whileHover={{ y: -2 }}
                 onClick={() => onSelectOpportunity?.(m.opportunity_id_18)}
-                className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500/50 hover:bg-[var(--bg-card)] transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+                className="p-4 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500/50 hover:bg-[var(--bg-card)] transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
               >
                 {/* Top: Name, Account, and Tag */}
                 <div>
@@ -127,7 +127,7 @@ export default function BiggestMovers({
                     </div>
 
                     <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex-shrink-0 ${conf.bg} ${conf.text} ${conf.border}`}
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-sm text-[11px] font-bold border flex-shrink-0 ${conf.bg} ${conf.text} ${conf.border}`}
                     >
                       {conf.icon}
                       {m.tag}
@@ -178,7 +178,7 @@ export default function BiggestMovers({
 
                   <div className="flex items-center gap-2">
                     <span
-                      className={`font-display font-extrabold text-xs md:text-sm tabular-nums ${
+                      className={` font-extrabold text-xs md:text-sm tabular-nums ${
                         m.acv_diff >= 0
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-amber-600 dark:text-amber-400'

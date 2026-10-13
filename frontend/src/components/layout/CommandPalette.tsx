@@ -113,7 +113,7 @@ export default function CommandPalette() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60"
             onClick={() => setCommandPaletteOpen(false)}
           />
 
@@ -123,7 +123,7 @@ export default function CommandPalette() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -16 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="relative z-10 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-[var(--bg-card)] border border-[var(--border)]"
+            className="relative z-10 w-full max-w-lg rounded-md overflow-hidden shadow-2xl bg-[var(--bg-card)] border border-[var(--border)]"
           >
             {/* Search Input Bar */}
             <div className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30">

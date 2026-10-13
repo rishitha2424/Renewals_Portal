@@ -39,7 +39,7 @@ function DeltaBadge({ val, label }: { val: number | null | undefined; label?: st
   if (val == null) return null
   const up = val >= 0
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-sm ${
       up ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
          : 'bg-red-500/10 text-red-700 dark:text-red-400'
     }`}>
@@ -53,7 +53,7 @@ function AcvDelta({ val }: { val: number | null | undefined }) {
   if (val == null) return null
   const up = val >= 0
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-sm ${
       up ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
          : 'bg-red-500/10 text-red-700 dark:text-red-400'
     }`}>
@@ -70,7 +70,7 @@ function Pill({ children, color = 'teal' }: { children: React.ReactNode; color?:
     slate: 'bg-slate-200/70 dark:bg-slate-700/40 text-slate-600 dark:text-slate-400 border border-slate-300/40 dark:border-slate-600/40',
   }
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${cls[color] ?? cls.teal}`}>
+    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-sm ${cls[color] ?? cls.teal}`}>
       {children}
     </span>
   )
@@ -89,11 +89,11 @@ function DealModal({ title, deals, onSelectOpp, onClose }: {
       >
         <motion.div
           initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-          className="card-premium w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+          className="card w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-            <h3 className="font-display font-bold text-sm">{title}</h3>
+            <h3 className="font-bold text-sm">{title}</h3>
             <button onClick={onClose}><X className="w-4 h-4 text-[var(--text-muted)]" /></button>
           </div>
           <div className="overflow-y-auto flex-1">
@@ -247,13 +247,13 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-display font-extrabold text-2xl md:text-3xl tracking-tight text-[var(--text-primary)]">
+            <h1 className="font-extrabold text-2xl md:text-3xl tracking-tight text-[var(--text-primary)]">
               Renewals Overview
             </h1>
             <Pill color="teal">{summary?.data_slice || 'Overview'}</Pill>
             {summary?.source_checks && (
               <span
-                className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full border ${
+                className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-sm border ${
                   summary.source_checks.badge === 'green'
                     ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                     : summary.source_checks.badge === 'red'
@@ -291,7 +291,7 @@ export default function Dashboard() {
       </div>
 
       {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
         <FilterBar isPageOverride={false} />
       </div>
 
@@ -310,7 +310,7 @@ export default function Dashboard() {
       )}
 
       {/* ── SECTION 1 – Total Renewal Q4 ACV Value ──────────────────────────── */}
-      <div className="card-premium p-6">
+      <div className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div
             className="cursor-pointer group"
@@ -324,7 +324,7 @@ export default function Dashboard() {
               {sumLoading
                 ? <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
                 : (
-                  <span className="font-display font-extrabold text-4xl md:text-5xl text-gradient-brand tabular-nums group-hover:underline">
+                  <span className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums group-hover:underline">
                     ${(total.acv / 1_000_000).toFixed(2)}M
                   </span>
                 )}
@@ -339,7 +339,7 @@ export default function Dashboard() {
             ].map(({ label, delta, kind }) => (
               <div
                 key={label}
-                className="card-premium px-4 py-3 min-w-[145px] cursor-pointer hover:border-[var(--brand-teal)] transition-all"
+                className="card px-4 py-3 min-w-[145px] cursor-pointer hover:border-[var(--brand-teal)] transition-all"
                 onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count} deals · ${acvM(delta.acv)})`, { kind })}
                 title={`Click to view deals with changes ${label}`}
               >
@@ -374,7 +374,7 @@ export default function Dashboard() {
                   <motion.div
                     key={key}
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="card-premium p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
+                    className="card p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
                     style={{ borderTop: `3px solid ${color}` }}
                     onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: dataKey }, { forecast_category: dataKey })}
                     title={`Click to view ${label} deals`}
@@ -386,7 +386,7 @@ export default function Dashboard() {
                       </div>
                       {sumLoading
                         ? <div className="h-8 w-28 skeleton-shimmer rounded" />
-                        : <span className="font-display font-extrabold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
+                        : <span className="font-extrabold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
                       
                       <hr className="border-[var(--border-subtle)]" />
                       
@@ -416,7 +416,7 @@ export default function Dashboard() {
       })()}
 
       {/* ── SECTION 3 – Slippage to Next Year (Movement-based) ─────────────── */}
-      <div className="card-premium p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
+      <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -443,7 +443,7 @@ export default function Dashboard() {
                       </span>
                       <Pill color="amber"><AlertTriangle className="w-3 h-3" />{ySlip.count} deals</Pill>
                     </div>
-                    <div className="font-display font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
+                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
                       {acvM(ySlip.acv)}
                     </div>
                   </div>
@@ -466,7 +466,7 @@ export default function Dashboard() {
                       </span>
                       <Pill color="amber"><AlertTriangle className="w-3 h-3" />{lwSlip.count} deals</Pill>
                     </div>
-                    <div className="font-display font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
+                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
                       {acvM(lwSlip.acv)}
                     </div>
                   </div>
@@ -484,11 +484,11 @@ export default function Dashboard() {
 
 
       {/* ── SECTION 4 – Forecast Category & Approval Movement ───────────────── */}
-      <div className="card-premium p-6 space-y-5">
+      <div className="card p-6 space-y-5">
         {/* Block header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="font-display font-bold text-base text-[var(--text-primary)]">
+            <h2 className="font-bold text-base text-[var(--text-primary)]">
               Forecast Category &amp; Approval Movement
             </h2>
             {cats['Closed'] != null && (
@@ -685,10 +685,10 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION 6 – Proposal Confirmation ───────────────────────────────── */}
-      <div className="card-premium p-6 space-y-4">
+      <div className="card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-display font-bold text-base text-[var(--text-primary)]">Proposal Confirmation</h2>
+            <h2 className="font-bold text-base text-[var(--text-primary)]">Proposal Confirmation</h2>
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Unit: Opportunity Count (#)</p>
           </div>
           <Globe2 className="w-5 h-5 text-[var(--text-muted)]" />
@@ -731,10 +731,10 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION 7 – Regional Trend ───────────────────────────────────────── */}
-      <div className="card-premium p-6 space-y-4">
+      <div className="card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-display font-bold text-base text-[var(--text-primary)]">Regional Trend</h2>
+            <h2 className="font-bold text-base text-[var(--text-primary)]">Regional Trend</h2>
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5">ACV values in $M</p>
           </div>
           <BarChart3 className="w-5 h-5 text-[var(--text-muted)]" />

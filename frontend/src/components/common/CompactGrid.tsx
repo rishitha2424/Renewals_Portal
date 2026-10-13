@@ -121,9 +121,9 @@ export default function CompactGrid({
   }
 
   return (
-    <div className="card-premium overflow-hidden border border-[var(--border)]">
+    <div className="card overflow-hidden border border-[var(--border)]">
       <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-        <h3 className="font-display font-semibold text-sm">{title}</h3>
+        <h3 className="font-semibold text-sm">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px] whitespace-nowrap">

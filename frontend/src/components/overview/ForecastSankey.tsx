@@ -216,15 +216,15 @@ export default function ForecastSankey({
   const totalMoveACV = flows.reduce((sum, f) => sum + f.acv, 0)
 
   return (
-    <div className="card-premium p-6 relative">
+    <div className="card p-6 relative">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="font-display font-bold text-lg text-[var(--text-primary)]">
+            <h2 className="font-bold text-lg text-[var(--text-primary)]">
               Forecast Category Movement
             </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+            <span className="text-xs px-2.5 py-0.5 rounded-sm font-semibold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
               Sankey
             </span>
           </div>
@@ -237,7 +237,7 @@ export default function ForecastSankey({
           <p className="text-xs font-semibold text-[var(--text-muted)] uppercase">
             Total Shifts
           </p>
-          <p className="font-display font-bold text-sm text-teal-600 dark:text-teal-400 tabular-nums">
+          <p className="font-bold text-sm text-teal-600 dark:text-teal-400 tabular-nums">
             {formatCount(totalMoves)} deals ({formatACV(totalMoveACV)})
           </p>
         </div>
@@ -268,7 +268,7 @@ export default function ForecastSankey({
                     top: Math.max(hoveredFlow.y - 45, 10),
                     pointerEvents: 'none',
                   }}
-                  className="z-30 px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl text-xs backdrop-blur-md"
+                  className="z-30 px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl text-xs"
                 >
                   <p className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                     <span>{hoveredFlow.from}</span>
@@ -345,7 +345,7 @@ export default function ForecastSankey({
                       {opp.account_name || 'N/A'}
                     </p>
                   </div>
-                  <p className="font-display font-bold text-xs text-teal-600 dark:text-teal-400 tabular-nums flex-shrink-0">
+                  <p className="font-bold text-xs text-teal-600 dark:text-teal-400 tabular-nums flex-shrink-0">
                     {formatACV(opp.acv ?? 0)}
                   </p>
                 </div>

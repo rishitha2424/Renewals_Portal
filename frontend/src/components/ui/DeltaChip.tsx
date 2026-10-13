@@ -39,13 +39,13 @@ export default function DeltaChip({
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1 font-semibold rounded-full select-none tabular-nums transition-colors',
+        'inline-flex items-center gap-1 font-medium rounded-sm select-none tabular-nums transition-colors',
         sizeClasses,
         isZero
           ? 'text-[var(--text-muted)] bg-[var(--border)]'
           : positive
-          ? 'delta-positive text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
-          : 'delta-negative text-rose-600 dark:text-rose-400 bg-rose-500/10',
+          ? 'text-green-700 dark:text-green-400 bg-green-500/10'
+          : 'text-red-700 dark:text-red-400 bg-red-500/10',
         className
       )}
     >

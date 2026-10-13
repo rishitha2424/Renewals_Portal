@@ -204,7 +204,7 @@ function BusinessUnitsContent() {
               <Building2 className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-black font-display tracking-tight text-[var(--text-primary)]">
+              <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
                 Business Units
               </h1>
               <div className="flex items-center gap-2 mt-1">
@@ -238,7 +238,7 @@ function BusinessUnitsContent() {
       </div>
 
       {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
         <FilterBar isPageOverride={false} />
       </div>
 
@@ -246,7 +246,7 @@ function BusinessUnitsContent() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="p-3.5 border-l-4 border-l-indigo-500">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Total Value</div>
-          <div className="text-xl font-black font-display text-[var(--text-primary)] mt-1">{formatACV(total.acv)}</div>
+          <div className="text-xl font-black text-[var(--text-primary)] mt-1">{formatACV(total.acv)}</div>
           <div className="text-xs text-[var(--text-secondary)] mt-1 font-medium">{formatCount(total.count)} deals</div>
           <div className="flex gap-2 text-[10px] mt-2">
             <span>Yday: {deltaSpan(totals.grand.delta_yesterday, false)}</span>
@@ -255,12 +255,12 @@ function BusinessUnitsContent() {
         </Card>
         <Card className="p-3.5 border-l-4 border-l-violet-500">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Business Units</div>
-          <div className="text-xl font-black font-display text-[var(--text-primary)] mt-1">{numBUs}</div>
+          <div className="text-xl font-black text-[var(--text-primary)] mt-1">{numBUs}</div>
           <div className="text-xs text-[var(--text-secondary)] mt-1 font-medium">active in {data_slice}</div>
         </Card>
         <Card className="p-3.5 border-l-4 border-l-pink-500">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Largest BU</div>
-          <div className="text-xl font-black font-display text-[var(--text-primary)] mt-1 truncate">{largestBu?.bu || '-'}</div>
+          <div className="text-xl font-black text-[var(--text-primary)] mt-1 truncate">{largestBu?.bu || '-'}</div>
           <div className="text-xs text-[var(--text-secondary)] mt-1 font-medium">{largestBuPct}% of total ACV</div>
           <div className="flex gap-2 text-[10px] mt-2">
             <span>Yday: {deltaSpan(largestBu?.delta_yesterday, false)}</span>
@@ -269,7 +269,7 @@ function BusinessUnitsContent() {
         </Card>
         <Card className="p-3.5 border-l-4 border-l-sky-500">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Commit Coverage</div>
-          <div className="text-xl font-black font-display text-[var(--text-primary)] mt-1">{commitCov}%</div>
+          <div className="text-xl font-black text-[var(--text-primary)] mt-1">{commitCov}%</div>
           <div className="text-xs text-[var(--text-secondary)] mt-1 font-medium">Commit / Total ACV</div>
           <div className="flex gap-2 text-[10px] mt-2">
             <span>Yday: {deltaSpan(totals.categories['Commit']?.delta_yesterday, false)}</span>
@@ -302,7 +302,7 @@ function BusinessUnitsContent() {
         <Card className="xl:col-span-4 p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-[var(--text-primary)] font-display">
+              <h3 className="text-sm font-bold text-[var(--text-primary)]">
                 BU Share of Total ACV
               </h3>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
@@ -412,7 +412,7 @@ function BusinessUnitsContent() {
         <div className="flex gap-2 overflow-x-auto pb-3 mb-2 scrollbar-thin">
           <button
             onClick={() => setTopBuFilter('All')}
-            className={`px-3 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors border ${topBuFilter === 'All' ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' : 'bg-[var(--bg-muted)] text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card)]'}`}
+            className={`px-3 py-1 text-[11px] font-medium rounded-sm whitespace-nowrap transition-colors border ${topBuFilter === 'All' ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' : 'bg-[var(--bg-muted)] text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card)]'}`}
           >
             All Units
           </button>
@@ -420,7 +420,7 @@ function BusinessUnitsContent() {
             <button
               key={r.bu}
               onClick={() => setTopBuFilter(r.bu)}
-              className={`px-3 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors border ${topBuFilter === r.bu ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' : 'bg-[var(--bg-muted)] text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card)]'}`}
+              className={`px-3 py-1 text-[11px] font-medium rounded-sm whitespace-nowrap transition-colors border ${topBuFilter === r.bu ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' : 'bg-[var(--bg-muted)] text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-card)]'}`}
             >
               {r.bu}
             </button>
@@ -455,7 +455,7 @@ function BusinessUnitsContent() {
                     <td className="py-2 px-3 text-[var(--text-secondary)] truncate max-w-[150px]">{d.account_name}</td>
                     <td className="py-2 px-3 text-right font-medium text-[var(--text-primary)]">{formatACV(d.forecast_acv_amount)}</td>
                     <td className="py-2 px-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: `${catColors[d.forecast_category] || '#ccc'}20`, color: catColors[d.forecast_category] || '#ccc' }}>
+                      <span className="px-2 py-0.5 rounded-sm text-[10px] font-medium" style={{ backgroundColor: `${catColors[d.forecast_category] || '#ccc'}20`, color: catColors[d.forecast_category] || '#ccc' }}>
                         {d.forecast_category}
                       </span>
                     </td>

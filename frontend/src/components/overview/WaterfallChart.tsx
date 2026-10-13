@@ -71,8 +71,8 @@ export default function WaterfallChart({
 
   if (loading || !data) {
     return (
-      <div className="card-premium p-6 h-96 flex items-center justify-center">
-        <div className="skeleton-shimmer w-full h-full rounded-2xl" />
+      <div className="card p-6 h-96 flex items-center justify-center">
+        <div className="skeleton-shimmer w-full h-full rounded-md" />
       </div>
     )
   }
@@ -164,15 +164,15 @@ export default function WaterfallChart({
   const maxScale = Math.max(start, end, stepInc, stepNew) * 1.08 || 1
 
   return (
-    <div className="card-premium p-6">
+    <div className="card p-6">
       {/* Header with Title and Reconciled Badge */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="font-display font-bold text-lg text-[var(--text-primary)]">
+            <h2 className="font-bold text-lg text-[var(--text-primary)]">
               ACV Movement Waterfall
             </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+            <span className="text-xs px-2.5 py-0.5 rounded-sm font-semibold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
               Interactive
             </span>
           </div>
@@ -263,13 +263,13 @@ export default function WaterfallChart({
                   }}
                 >
                   {/* Subtle glass reflection highlight */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/20 pointer-events-none" />
+                  <div className="absolute inset-0 pointer-events-none" />
                 </div>
               </div>
 
               {/* Amount Label above / below */}
               <div className="mt-2 text-center">
-                <span className="font-display font-bold text-xs md:text-sm text-[var(--text-primary)] tabular-nums block">
+                <span className="font-bold text-xs md:text-sm text-[var(--text-primary)] tabular-nums block">
                   {stage.type === 'negative' && stage.amount > 0 ? '-' : ''}
                   {formatACV(stage.amount)}
                 </span>
@@ -339,7 +339,7 @@ export default function WaterfallChart({
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-display font-bold text-xs text-[var(--text-primary)] tabular-nums">
+                    <p className="font-bold text-xs text-[var(--text-primary)] tabular-nums">
                       {formatACV(o.new_acv ?? o.acv ?? 0)}
                     </p>
                     {hasDiff && (

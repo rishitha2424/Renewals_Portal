@@ -158,7 +158,7 @@ export default function OpportunitiesListDrawer({
             </div>
           ) : (
             <table className="w-full text-left border-collapse text-xs">
-              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800/90 backdrop-blur-sm z-10 border-b border-slate-200 dark:border-white/10 select-none">
+              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800/90 z-10 border-b border-slate-200 dark:border-white/10 select-none">
                 <tr>
                   <th
                     onClick={() => handleSort('opportunity_name')}

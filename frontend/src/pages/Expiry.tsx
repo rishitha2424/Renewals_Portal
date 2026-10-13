@@ -104,7 +104,7 @@ export default function Expiry() {
     >
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-black tracking-tight text-[var(--text-primary)]">Expiry</h1>
+          <h1 className="text-3xl font-black tracking-tight text-[var(--text-primary)]">Expiry</h1>
           <p className="text-[var(--text-muted)] mt-1 text-sm font-medium">
             As of {formatDate(sum.snapshot_date)} {sum.compare_date && ` vs ${formatDate(sum.compare_date)}`}
           </p>
@@ -121,7 +121,7 @@ export default function Expiry() {
       </div>
 
       {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
         <FilterBar isPageOverride={false} />
       </div>
 
@@ -140,7 +140,7 @@ export default function Expiry() {
                 {grandTotal.count} deals
               </span>
             </div>
-            <div className="text-3xl font-black font-display text-[var(--text-primary)] mt-2">
+            <div className="text-3xl font-black text-[var(--text-primary)] mt-2">
               {formatCurrency(grandTotal.acv)}
             </div>
           </div>
@@ -171,7 +171,7 @@ export default function Expiry() {
                 {sum.slippage?.count ?? 0} deals
               </span>
             </div>
-            <div className="text-3xl font-black font-display text-amber-600 dark:text-amber-400 mt-2">
+            <div className="text-3xl font-black text-amber-600 dark:text-amber-400 mt-2">
               {formatCurrency(sum.slippage?.acv ?? 0)}
             </div>
           </div>
@@ -217,7 +217,7 @@ export default function Expiry() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-4 text-[var(--text-primary)]">
              <BarChart2 className="w-5 h-5 text-indigo-500" />
-             <h3 className="font-bold font-display">Expiry Profile</h3>
+             <h3 className="font-bold">Expiry Profile</h3>
           </div>
           <div className="flex-1 flex flex-col justify-end gap-3 min-h-[160px]">
              {grid1?.rows?.map((r: any) => {
@@ -247,7 +247,7 @@ export default function Expiry() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-4 text-[var(--text-primary)]">
              <Activity className="w-5 h-5 text-emerald-500" />
-             <h3 className="font-bold font-display">Closure Progress</h3>
+             <h3 className="font-bold">Closure Progress</h3>
           </div>
           <div className="flex-1 flex flex-col justify-end gap-3 min-h-[160px]">
              {grid1?.rows?.map((r: any) => {
@@ -275,7 +275,7 @@ export default function Expiry() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
              <TrendingUp className="w-5 h-5 text-sky-500" />
-             <h3 className="font-bold font-display">What Changed Today</h3>
+             <h3 className="font-bold">What Changed Today</h3>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
              <p className="text-[var(--text-muted)] text-[11px] italic">Showing significant movements since yesterday...</p>
@@ -293,7 +293,7 @@ export default function Expiry() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
              <ListTodo className="w-5 h-5 text-amber-500" />
-             <h3 className="font-bold font-display">Largest Open</h3>
+             <h3 className="font-bold">Largest Open</h3>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
              <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors">

@@ -71,9 +71,9 @@ export function Drawer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.14 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/50"
           />
 
           {/* Drawer Panel */}
@@ -81,18 +81,18 @@ export function Drawer({
             initial={{ x: slideX }}
             animate={{ x: 0 }}
             exit={{ x: slideX }}
-            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
             className={clsx(
-              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full',
+              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-elevation flex flex-col h-full',
               effectiveWidth,
               position === 'right' ? 'ml-auto' : 'mr-auto'
             )}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]/40">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
               <div>
                 {title && (
-                  <h3 className="font-display font-bold text-lg text-[var(--text-primary)]">
+                  <h3 className="font-semibold text-base text-[var(--text-primary)]">
                     {title}
                   </h3>
                 )}
@@ -105,9 +105,9 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors focus:outline-none"
+                className="w-8 h-8 rounded-sm flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" strokeWidth={1.75} />
               </button>
             </div>
 

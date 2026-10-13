@@ -61,7 +61,7 @@ export function Badge({
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1.5 rounded-full font-semibold tracking-wide border select-none transition-colors tabular-nums',
+        'inline-flex items-center gap-1.5 rounded-sm font-medium border select-none transition-colors tabular-nums',
         variant === 'outline'
           ? 'bg-transparent text-[var(--text-secondary)] border-[var(--border)]'
           : undefined,

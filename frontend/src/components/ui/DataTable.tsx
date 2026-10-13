@@ -69,7 +69,7 @@ export function DataTable<T extends Record<string, any>>({
   return (
     <div
       className={clsx(
-        'relative rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] shadow-sm overflow-hidden flex flex-col',
+        'relative rounded-md border border-[var(--border)] bg-[var(--bg-card)] shadow-sm overflow-hidden flex flex-col',
         className
       )}
     >

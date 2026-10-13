@@ -199,50 +199,51 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
         onClick={onClose}
       >
         <motion.div
-          initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-          className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-2xl overflow-hidden border border-[var(--border)]"
+          initial={{ scale: 0.97, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 12 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-[var(--bg-primary)] rounded-lg shadow-xl overflow-hidden border border-[var(--border)]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-[var(--border)] gap-4 bg-[var(--bg-secondary)]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-[var(--border)] gap-3 bg-[var(--bg-secondary)]">
             <div>
-              <h3 className="font-display font-black text-xl text-[var(--text-primary)] flex items-center gap-2">
+              <h3 className="font-semibold text-base text-[var(--text-primary)] flex items-center gap-2">
                 {title}
               </h3>
-              <p className="text-[var(--text-muted)] text-sm mt-1 font-medium">
-                Showing {formatNumber(filteredDeals.length)} deals · <span className="font-bold text-[var(--primary)]">{formatCurrency(totalAcv)}</span>
+              <p className="text-[var(--text-muted)] text-xs mt-0.5 font-normal">
+                Showing {formatNumber(filteredDeals.length)} deals · <span className="font-semibold text-[var(--text-primary)] tabular-nums">{formatCurrency(totalAcv)}</span>
               </p>
               {deltaGroups && (
-                <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 px-2.5 py-1 rounded-md">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-teal-700 dark:text-teal-300 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-sm tabular-nums">
                     Net: {deltaGroups.net.count >= 0 ? `+${deltaGroups.net.count}` : deltaGroups.net.count} deals / {deltaGroups.net.acv >= 0 ? `+$${(deltaGroups.net.acv / 1000).toFixed(1)}K` : `-$${(Math.abs(deltaGroups.net.acv) / 1000).toFixed(1)}K`} ({formatCurrency(deltaGroups.net.acv)})
                   </span>
-                  <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-0.5 text-xs font-semibold">
+                  <div className="inline-flex rounded-sm border border-[var(--border)] bg-[var(--bg-primary)] p-0.5 text-xs font-medium">
                     <button
                       onClick={() => setSelectedGroup('All')}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'All' ? 'bg-[var(--brand-teal)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                      className={`px-2 py-0.5 rounded-sm transition-colors ${selectedGroup === 'All' ? 'bg-[#12284C] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                     >
                       All ({deals.length})
                     </button>
                     <button
                       onClick={() => setSelectedGroup('added')}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'added' ? 'bg-emerald-600 text-white' : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700'}`}
+                      className={`px-2 py-0.5 rounded-sm transition-colors ${selectedGroup === 'added' ? 'bg-emerald-600 text-white' : 'text-emerald-700 dark:text-emerald-300 hover:text-emerald-800'}`}
                     >
                       Added to Q4 ({deltaGroups.added.count})
                     </button>
                     <button
                       onClick={() => setSelectedGroup('left')}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'left' ? 'bg-rose-600 text-white' : 'text-rose-600 dark:text-rose-400 hover:text-rose-700'}`}
+                      className={`px-2 py-0.5 rounded-sm transition-colors ${selectedGroup === 'left' ? 'bg-rose-600 text-white' : 'text-rose-700 dark:text-rose-300 hover:text-rose-800'}`}
                     >
                       Left Q4 – moved or lost ({deltaGroups.left.count})
                     </button>
                     <button
                       onClick={() => setSelectedGroup('amount_changed')}
-                      className={`px-2.5 py-1 rounded-md transition-colors ${selectedGroup === 'amount_changed' ? 'bg-amber-600 text-white' : 'text-amber-600 dark:text-amber-400 hover:text-amber-700'}`}
+                      className={`px-2 py-0.5 rounded-sm transition-colors ${selectedGroup === 'amount_changed' ? 'bg-amber-600 text-white' : 'text-amber-700 dark:text-amber-300 hover:text-amber-800'}`}
                     >
                       Amount changed ({deltaGroups.amount_changed.count})
                     </button>
@@ -250,61 +251,60 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                 </div>
               )}
               {activeChips.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
+                <div className="flex flex-wrap gap-1.5 mt-2">
                   {activeChips.map(chip => (
-                    <div key={chip.label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--bg-primary)] border border-[var(--border)] text-[10px] font-bold text-[var(--text-primary)]">
-                      <span className="text-[var(--text-muted)] font-medium">{chip.label}:</span> {chip.value}
-                      <button onClick={chip.onRemove} className="text-[var(--text-muted)] hover:text-[var(--primary)]"><X className="w-3 h-3" /></button>
+                    <div key={chip.label} className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-[var(--bg-primary)] border border-[var(--border)] text-[11px] font-medium text-[var(--text-primary)]">
+                      <span className="text-[var(--text-muted)]">{chip.label}:</span> {chip.value}
+                      <button onClick={chip.onRemove} className="text-[var(--text-muted)] hover:text-red-500"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button 
                 onClick={handleExport}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-xs font-semibold hover:bg-[var(--bg-secondary)] hover:border-[var(--primary)] transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-primary)] text-xs font-medium hover:bg-[var(--bg-secondary)] transition-colors"
               >
                 <Download className="w-3.5 h-3.5" /> Export CSV
-
               </button>
-              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-[var(--bg-primary)] text-[var(--text-muted)] transition-colors">
-                <X className="w-5 h-5" />
+              <button onClick={onClose} className="p-1 rounded-sm hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           {/* Filters Area */}
-          <div className="p-4 border-b border-[var(--border)] bg-[var(--bg-primary)] flex flex-wrap gap-3 items-center">
+          <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-primary)] flex flex-wrap gap-2 items-center">
             <div className="relative flex-grow min-w-[200px] max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
               <input 
                 type="text" 
                 placeholder="Search deals..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-sm bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg focus:outline-none focus:border-[var(--primary)] text-[var(--text-primary)] transition-colors"
+                className="w-full pl-8 pr-3 py-1 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-sm focus:outline-none focus:border-[#00A3AD] text-[var(--text-primary)] transition-colors"
               />
             </div>
             
-            <select value={filterFC} onChange={e => setFilterFC(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
+            <select value={filterFC} onChange={e => setFilterFC(e.target.value)} className="text-xs py-1 px-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {fcOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Categories' : getForecastCategoryLabel(o)}</option>)}
             </select>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1 px-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : getApprovalStatusLabel(o)}</option>)}
             </select>
-            <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
+            <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1 px-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {stageOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Stages' : o}</option>)}
             </select>
-            <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
+            <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} className="text-xs py-1 px-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {regionOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Regions' : o}</option>)}
             </select>
-            <select value={filterBU} onChange={e => setFilterBU(e.target.value)} className="text-xs py-1.5 pl-2 pr-6 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none">
+            <select value={filterBU} onChange={e => setFilterBU(e.target.value)} className="text-xs py-1 px-2 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {buOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All BUs' : o}</option>)}
             </select>
             
             {(hasActiveFilters) && (
-              <button onClick={clearFilters} className="flex items-center gap-1.5 text-xs text-[var(--primary)] font-semibold hover:underline ml-auto whitespace-nowrap">
+              <button onClick={clearFilters} className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 font-medium hover:underline ml-auto whitespace-nowrap">
                 <FilterX className="w-3.5 h-3.5" /> Reset filters
               </button>
             )}
@@ -313,29 +313,29 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
           {/* Table */}
           <div className="overflow-y-auto flex-1 bg-[var(--bg-primary)]">
             {filteredDeals.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-                <div className="w-16 h-16 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center mb-4">
-                  <Search className="w-8 h-8 text-[var(--text-muted)] opacity-50" />
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="w-12 h-12 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] flex items-center justify-center mb-3">
+                  <Search className="w-5 h-5 text-[var(--text-muted)] opacity-60" />
                 </div>
-                <h4 className="text-base font-bold text-[var(--text-primary)] mb-1">No deals found</h4>
-                <p className="text-sm text-[var(--text-muted)] max-w-sm">Try adjusting your filters or search query to find what you're looking for.</p>
+                <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">No deals found</h4>
+                <p className="text-xs text-[var(--text-muted)] max-w-sm">Try adjusting your filters or search query to find what you're looking for.</p>
               </div>
             ) : (
               <table className="w-full text-xs text-left whitespace-nowrap">
-                <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] shadow-sm z-10">
+                <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] z-10">
                   <tr>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('opportunity_name')}>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('opportunity_name')}>
                       <div className="flex items-center gap-1">Opportunity {sortField === 'opportunity_name' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)]">Account / BU</th>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)] text-right cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('forecast_acv_amount')}>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Account / BU</th>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-right cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('forecast_acv_amount')}>
                       <div className="flex items-center justify-end gap-1">ACV {sortField === 'forecast_acv_amount' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('close_date')}>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('close_date')}>
                       <div className="flex items-center gap-1">Close Date {sortField === 'close_date' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)] text-center">Category</th>
-                    <th className="px-4 py-3 font-semibold text-[var(--text-muted)] text-center">Status</th>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Category</th>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
@@ -348,37 +348,37 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                         onClose()
                       }}
                     >
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-[var(--text-primary)] max-w-xs truncate" title={d.opportunity_name || d.opportunity_id_18}>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-[var(--text-primary)] max-w-xs truncate" title={d.opportunity_name || d.opportunity_id_18}>
                           {d.opportunity_name || d.opportunity_id_18}
                         </div>
-                        <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{d.opportunity_id_18}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] mt-0.5 font-mono">{d.opportunity_id_18}</div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-[var(--text-primary)] max-w-[150px] truncate" title={d.account_name}>{d.account_name || '—'}</div>
+                      <td className="px-3 py-2">
+                        <div className="font-normal text-[var(--text-primary)] max-w-[150px] truncate" title={d.account_name}>{d.account_name || '—'}</div>
                         <div className="text-[10px] text-[var(--text-muted)] mt-0.5 max-w-[150px] truncate">{d.business_unit_primary || '—'}</div>
                       </td>
-                      <td className="px-4 py-3 text-right font-black text-[var(--text-primary)]">
+                      <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)] tabular-nums">
                         {formatCurrency(d.forecast_acv_amount)}
                       </td>
-                      <td className="px-4 py-3 text-[var(--text-secondary)] font-medium">
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="inline-block px-2.5 py-1 rounded-full text-[10px] font-bold"
+                      <td className="px-3 py-2 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium"
                           style={{
-                            backgroundColor: `${FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#cbd5e1'}25`,
+                            backgroundColor: `${FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#cbd5e1'}20`,
                             color: FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#64748b'
                           }}
                         >
                           {getForecastCategoryLabel(d.forecast_category)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                          d.approval_status === 'Approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' :
-                          d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
-                          'bg-slate-500/10 text-slate-600 border-slate-500/20'
+                      <td className="px-3 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium border ${
+                          d.approval_status === 'Approved' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' :
+                          d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' :
+                          'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
                         }`}>
                           {getApprovalStatusLabel(d.approval_status)}
                         </span>

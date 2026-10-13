@@ -314,7 +314,7 @@ export default function Opportunities() {
       {/* Page Title & Top Actions Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
-          <h1 className="text-2xl font-black font-display text-[var(--text-primary)]">
+          <h1 className="text-2xl font-black text-[var(--text-primary)]">
             Explore Opportunities
           </h1>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -345,7 +345,7 @@ export default function Opportunities() {
                   initial={{ opacity: 0, scale: 0.95, y: 5 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                  className="absolute right-0 mt-2 w-56 p-3 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl z-50 space-y-1.5"
+                  className="absolute right-0 mt-2 w-56 p-3 rounded-md bg-[var(--bg-card)] border border-[var(--border)] shadow-xl z-50 space-y-1.5"
                 >
                   <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
                     Visible Columns
@@ -416,9 +416,9 @@ export default function Opportunities() {
           return (
             <div
               key={view.id}
-              className={`flex items-center gap-1 pl-3 pr-2 py-1 rounded-full text-xs font-semibold transition-all border ${
+              className={`flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-sm text-xs font-medium transition-colors border ${
                 isActive
-                  ? 'bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-500 shadow-sm ring-1 ring-teal-500/30'
+                  ? 'bg-[#12284C] text-white border-[#12284C]'
                   : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -455,7 +455,7 @@ export default function Opportunities() {
         <button
           type="button"
           onClick={() => setShowSaveViewModal(true)}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 border border-dashed border-teal-500/40 transition-colors"
+          className="flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 border border-dashed border-teal-500/40 transition-colors"
         >
           <Plus className="w-3 h-3" />
           Save View
@@ -465,7 +465,7 @@ export default function Opportunities() {
       {/* Save View Modal Modal */}
       {showSaveViewModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl max-w-sm w-full space-y-3">
+          <div className="p-5 rounded-md bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl max-w-sm w-full space-y-3">
             <h3 className="font-bold text-sm text-[var(--text-primary)]">
               Save Current Filters as View
             </h3>
@@ -617,7 +617,7 @@ export default function Opportunities() {
                             setFilters({ forecastCategory: next })
                             setPage(1)
                           }}
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
+                          className={`px-2 py-0.5 rounded-sm text-[11px] font-semibold border transition-all ${
                             isSel
                               ? 'bg-teal-500 text-white border-teal-500'
                               : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)]'
@@ -648,7 +648,7 @@ export default function Opportunities() {
                             setFilters({ approvalStatus: next })
                             setPage(1)
                           }}
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
+                          className={`px-2 py-0.5 rounded-sm text-[11px] font-semibold border transition-all ${
                             isSel
                               ? 'bg-violet-600 text-white border-violet-600'
                               : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-secondary)]'
@@ -752,7 +752,7 @@ export default function Opportunities() {
       </div>
 
       {/* Main Opportunities Table */}
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
+      <div className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left border-collapse">
             <thead>
@@ -943,7 +943,7 @@ export default function Opportunities() {
                       </td>
                     )}
                     {visibleCols.includes('forecast_acv_amount') && (
-                      <td className="py-2.5 px-3.5 text-right font-display font-extrabold text-[var(--text-primary)] tabular-nums whitespace-nowrap">
+                      <td className="py-2.5 px-3.5 text-right font-extrabold text-[var(--text-primary)] tabular-nums whitespace-nowrap">
                         {formatACV(opp.forecast_acv_amount ?? 0)}
                       </td>
                     )}

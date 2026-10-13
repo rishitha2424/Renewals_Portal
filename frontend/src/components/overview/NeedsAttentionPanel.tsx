@@ -58,8 +58,8 @@ export default function NeedsAttentionPanel({
 
   if (loading) {
     return (
-      <div className="card-premium p-6">
-        <h2 className="font-display font-bold text-lg text-[var(--text-primary)] mb-4">
+      <div className="card p-6">
+        <h2 className="font-bold text-lg text-[var(--text-primary)] mb-4">
           Needs Attention
         </h2>
         <div className="space-y-3">
@@ -146,16 +146,16 @@ export default function NeedsAttentionPanel({
   }
 
   return (
-    <div className="card-premium p-6">
+    <div className="card p-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="font-display font-bold text-lg text-[var(--text-primary)]">
+            <h2 className="font-bold text-lg text-[var(--text-primary)]">
               Needs Attention
             </h2>
             <span
-              className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+              className={`text-xs px-2.5 py-0.5 rounded-sm font-bold border ${
                 totalUnique > 0
                   ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
                   : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
@@ -213,7 +213,7 @@ export default function NeedsAttentionPanel({
             >
               <span>{tab.label}</span>
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full tabular-nums font-bold ${
+                className={`text-[10px] px-1.5 py-0.2 rounded-sm tabular-nums font-bold ${
                   isActive ? 'bg-white/25 text-white' : 'bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)]'
                 }`}
               >
@@ -249,7 +249,7 @@ export default function NeedsAttentionPanel({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.25, delay: idx * 0.02 }}
                 onClick={() => onSelectOpportunity?.(item.opportunity_id_18)}
-                className="p-3.5 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500/50 hover:bg-[var(--bg-card)] transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3"
+                className="p-3.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500/50 hover:bg-[var(--bg-card)] transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3"
               >
                 {/* Left: Tag, Name & Details */}
                 <div className="flex items-start gap-3 min-w-0">
@@ -264,7 +264,7 @@ export default function NeedsAttentionPanel({
                         {item.opportunity_name || item.opportunity_id_18}
                       </p>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${conf.bg} ${conf.text} ${conf.border}`}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-sm border ${conf.bg} ${conf.text} ${conf.border}`}
                       >
                         {item.attention_label || conf.label}
                       </span>
@@ -287,7 +287,7 @@ export default function NeedsAttentionPanel({
                   </div>
 
                   <div className="text-right">
-                    <p className="font-display font-bold text-xs md:text-sm text-[var(--text-primary)] tabular-nums">
+                    <p className="font-bold text-xs md:text-sm text-[var(--text-primary)] tabular-nums">
                       {formatACV(item.acv)}
                     </p>
                     {item.acv_diff != null && (

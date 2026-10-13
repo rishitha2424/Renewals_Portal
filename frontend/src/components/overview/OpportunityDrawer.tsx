@@ -74,7 +74,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       ) : (
         <div className="space-y-6">
           {/* Key Metric Summary Header */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#12284C]/5 via-[#00A3AD]/5 to-[#8080FF]/5 dark:from-[#12284C]/25 dark:via-[#00A3AD]/10 dark:to-[#8080FF]/15 border border-[var(--border)] shadow-sm">
+          <div className="p-4 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)]">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
                 <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
@@ -88,7 +88,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                 <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                   Forecast ACV
                 </p>
-                <p className="font-display font-black text-xl text-teal-600 dark:text-teal-400 tabular-nums">
+                <p className="font-black text-xl text-teal-600 dark:text-teal-400 tabular-nums">
                   {formatACV(opp.forecast_acv_amount ?? 0)}
                 </p>
               </div>
@@ -99,12 +99,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
               <ForecastBadge category={opp.forecast_category ?? 'Blank'} />
               <ApprovalBadge status={opp.approval_status ?? 'Blank'} />
               {opp.service_expiry_period && (
-                <span className="px-2.5 py-0.5 rounded-full font-medium bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
+                <span className="px-2.5 py-0.5 rounded-sm font-medium bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
                   Expires: {opp.service_expiry_period}
                 </span>
               )}
               {opp.probability_pct != null && (
-                <span className="px-2.5 py-0.5 rounded-full font-medium bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
+                <span className="px-2.5 py-0.5 rounded-sm font-medium bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
                   Prob: {opp.probability_pct}%
                 </span>
               )}
@@ -113,12 +113,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
 
           {/* Deal Risk Score & "Why is this risky?" Breakdown */}
           {opp.risk_score !== undefined && (
-            <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-3">
+            <div className="p-4 rounded-md bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div
                     className={clsx(
-                      'w-9 h-9 rounded-xl flex items-center justify-center font-extrabold text-sm font-display shadow-sm',
+                      'w-9 h-9 rounded-xl flex items-center justify-center font-extrabold text-sm  shadow-sm',
                       opp.risk_score >= 65
                         ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
                         : opp.risk_score >= 35
@@ -139,7 +139,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                 </div>
                 <span
                   className={clsx(
-                    'text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wide',
+                    'text-xs px-2.5 py-1 rounded-sm font-bold uppercase tracking-wide',
                     opp.risk_score >= 65
                       ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20'
                       : opp.risk_score >= 35
@@ -293,7 +293,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                                 {formatDate(step.snapshot_date)}
                               </span>
                             </div>
-                            <span className="font-display font-bold text-sm text-[var(--text-primary)] tabular-nums">
+                            <span className="font-bold text-sm text-[var(--text-primary)] tabular-nums">
                               {formatACV(step.forecast_acv_amount ?? 0)}
                             </span>
                           </div>

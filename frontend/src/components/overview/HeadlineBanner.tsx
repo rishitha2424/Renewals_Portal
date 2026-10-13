@@ -23,39 +23,27 @@ export default function HeadlineBanner({
 }: HeadlineBannerProps) {
   if (loading) {
     return (
-      <div className="rounded-3xl p-7 relative overflow-hidden bg-gradient-to-r from-[#12284C] via-[#0D3B66] to-[#00A3AD] animate-pulse h-48 border border-white/10" />
+      <div className="rounded-md p-6 bg-[#12284C] animate-pulse h-36 border border-[var(--border)]" />
     )
   }
 
   const defaultText = `ACV is tracking firmly since ${compareLabel}. View category transitions and waterfall breakdown below.`
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="relative rounded-3xl p-6 md:p-8 overflow-hidden shadow-xl border border-white/15"
-      style={{
-        background:
-          'linear-gradient(135deg, #12284C 0%, #0D3559 38%, #03697A 75%, #00A3AD 100%)',
-      }}
+    <div
+      className="relative rounded-md p-5 md:p-6 overflow-hidden border border-[#1B365D] bg-[#12284C] text-white"
     >
-      {/* Ambient background glow & glass highlights */}
-      <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-cyan-400/20 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-[#8080FF]/25 blur-3xl pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent pointer-events-none" />
-
       <div className="relative z-10 max-w-5xl">
         {/* Subtle executive badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-4 shadow-sm">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-100">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-white/10 border border-white/15 mb-3">
+          <Sparkles className="w-3 h-3 text-[#00A3AD]" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-200">
             Executive Shift Summary
           </span>
         </div>
 
         {/* Dynamic hero headline sentence */}
-        <h1 className="font-display font-extrabold text-2xl md:text-3xl lg:text-4xl text-white tracking-tight leading-snug md:leading-tight drop-shadow-sm">
+        <h1 className="font-semibold text-lg md:text-xl text-white tracking-tight leading-snug">
           {headlineText || defaultText}
         </h1>
 
@@ -73,7 +61,7 @@ export default function HeadlineBanner({
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.15 + idx * 0.08 }}
-                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 transition-all text-xs text-white/95 shadow-sm"
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 transition-all text-xs text-white/95 shadow-sm"
                 >
                   {isPositive && <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />}
                   {isWarning && <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />}
@@ -90,6 +78,6 @@ export default function HeadlineBanner({
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   )
 }

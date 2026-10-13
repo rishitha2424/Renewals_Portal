@@ -103,9 +103,9 @@ export default function KpiTile({
 
   if (loading) {
     return (
-      <div className="card-premium p-5 space-y-3">
+      <div className="card p-4 space-y-3">
         <div className="skeleton-shimmer h-3.5 w-24" />
-        <div className="skeleton-shimmer h-9 w-36" />
+        <div className="skeleton-shimmer h-8 w-36" />
         <div className="skeleton-shimmer h-3 w-28" />
       </div>
     )
@@ -114,52 +114,35 @@ export default function KpiTile({
   const isPositive = delta != null && delta >= 0
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: 'easeOut' }}
-      whileHover={{ y: -2 }}
-      className="card-premium p-5 relative overflow-hidden group"
-    >
-      {/* Top accent glow line */}
-      <div
-        className="absolute top-0 left-0 right-0 h-[2px]"
-        style={{
-          background: `linear-gradient(90deg, ${accent} 0%, rgba(128,128,255,0.6) 50%, transparent 100%)`,
-        }}
-      />
-
-      {/* Header with label, icon & sparkline */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] truncate">
+    <div className="card p-4 relative overflow-hidden">
+      {/* Header with label & sparkline */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <p className="text-xs font-medium text-[var(--text-muted)] truncate">
           {label}
         </p>
         <div className="flex items-center gap-2 flex-shrink-0">
           <MiniSparkline data={sparkData} color={accent} />
           {icon && (
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center opacity-80 group-hover:opacity-100 transition-opacity"
-              style={{ background: `${accent}18`, color: accent }}
-            >
+            <div className="text-[var(--text-muted)]">
               {icon}
             </div>
           )}
         </div>
       </div>
 
-      {/* Value with display font and tabular numerals */}
-      <p className="font-display font-extrabold text-3xl tracking-tight tabular-nums text-[var(--text-primary)]">
+      {/* Value: 24px semibold with tabular numerals */}
+      <p className="font-semibold text-2xl tracking-tight tabular-nums text-[var(--text-primary)]">
         {display()}
       </p>
 
-      {/* Delta chip: Green up / Orange down */}
-      <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+      {/* Delta chip: Green up / Red down, 6px radius */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
         {delta != null && (
           <div
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums border ${
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs font-medium tabular-nums border ${
               isPositive
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20'
+                : 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20'
             }`}
           >
             <span>{isPositive ? '▲' : '▼'}</span>
@@ -177,10 +160,10 @@ export default function KpiTile({
       </div>
 
       {caption && (
-        <p className="mt-2 text-[11px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] pt-1.5 leading-snug">
+        <p className="mt-2 text-xs text-[var(--text-muted)] border-t border-[var(--border-subtle)] pt-1.5 leading-snug">
           {caption}
         </p>
       )}
-    </motion.div>
+    </div>
   )
 }

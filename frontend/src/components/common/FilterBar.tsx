@@ -188,22 +188,22 @@ export default function FilterBar({
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
       {/* Top Filter Bar Controls */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {/* Page Override Badge if applicable */}
         {isPageOverride && (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+          <span className="px-2 py-0.5 rounded-sm text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
             Page Override
           </span>
         )}
 
         {/* 1. Period Dropdown */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm">
-          <Calendar className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-          <span className="font-medium text-[var(--text-muted)]">Period:</span>
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)]">
+          <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+          <span className="font-medium text-[var(--text-muted)] text-[11px]">Period:</span>
           <select
             value={activeFilters.period}
             onChange={(e) => setFilters({ period: e.target.value })}
-            className="bg-transparent font-semibold text-[var(--text-primary)] outline-none cursor-pointer text-xs"
+            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
             id="filter-period-select"
           >
             <option value="current_quarter">Current Quarter (Default)</option>
@@ -224,15 +224,15 @@ export default function FilterBar({
         </div>
 
         {/* 2. Sales Type Dropdown */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm">
-          <span className="font-medium text-[var(--text-muted)]">Sales:</span>
+        <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)]">
+          <span className="font-medium text-[var(--text-muted)] text-[11px]">Sales:</span>
           <select
             value={activeFilters.sales_types.length === 1 ? activeFilters.sales_types[0] : 'all'}
             onChange={(e) => {
               const val = e.target.value
               setFilters({ sales_types: val === 'all' ? ['all'] : [val] })
             }}
-            className="bg-transparent font-semibold text-[var(--text-primary)] outline-none cursor-pointer text-xs"
+            className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs"
             id="filter-sales-type-select"
           >
             <option value="Renewals">Renewals</option>
@@ -247,17 +247,17 @@ export default function FilterBar({
 
         {/* 3. Include Deleted & Lost Checkbox */}
         <label
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm cursor-pointer hover:bg-[var(--bg-card)] transition-colors select-none"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] cursor-pointer hover:bg-[var(--bg-card)] transition-colors select-none"
           title="Toggle inclusion of Deleted and Lost pipeline opportunities"
         >
           <input
             type="checkbox"
             checked={activeFilters.include_deleted_lost}
             onChange={(e) => setFilters({ include_deleted_lost: e.target.checked })}
-            className="rounded border-[var(--border)] text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
+            className="rounded-sm border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5"
             id="filter-include-deleted-lost"
           />
-          <span className="font-medium text-[var(--text-primary)]">Include Deleted & Lost</span>
+          <span className="font-medium text-[var(--text-primary)] text-xs">Include Deleted & Lost</span>
         </label>
 
         {/* 4. "More Filters" Popover */}
@@ -265,16 +265,16 @@ export default function FilterBar({
           <button
             type="button"
             onClick={() => setMoreOpen(!moreOpen)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-semibold shadow-sm hover:bg-[var(--bg-card)] transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors"
             id="filter-more-btn"
           >
-            <Filter className="w-3.5 h-3.5 text-teal-500" />
+            <Filter className="w-3.5 h-3.5 text-[#00A3AD]" />
             <span>More Filters</span>
             {(activeFilters.regions.length > 0 ||
               activeFilters.business_units.length > 0 ||
               activeFilters.forecast_categories.length > 0 ||
               activeFilters.approval_statuses.length > 0) && (
-              <span className="w-4 h-4 rounded-full bg-teal-500 text-white flex items-center justify-center text-[10px]">
+              <span className="px-1.5 py-0.2 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold">
                 {activeFilters.regions.length +
                   activeFilters.business_units.length +
                   activeFilters.forecast_categories.length +
@@ -285,9 +285,9 @@ export default function FilterBar({
           </button>
 
           {moreOpen && (
-            <div className="absolute left-0 mt-2 w-80 md:w-96 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl p-4 z-50 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+            <div className="absolute left-0 mt-1 w-80 md:w-96 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
-                <span className="font-bold text-sm text-[var(--text-primary)]">Filter Dimensions</span>
+                <span className="font-semibold text-xs text-[var(--text-primary)]">Filter Dimensions</span>
                 <button
                   type="button"
                   onClick={() => setMoreOpen(false)}
@@ -299,10 +299,10 @@ export default function FilterBar({
 
               {/* Regions Multi-Select */}
               <div>
-                <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
                   Regions
                 </label>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 border rounded-xl border-[var(--border)] bg-[var(--bg-secondary)]">
+                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
                   {filterOpts?.regions?.map((r: any) => {
                     const sel = activeFilters.regions.includes(r.key)
                     return (
@@ -310,9 +310,9 @@ export default function FilterBar({
                         key={r.key}
                         type="button"
                         onClick={() => toggleArrayFilter('regions', r.key)}
-                        className={`px-2 py-0.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
                           sel
-                            ? 'bg-teal-500 text-white border-teal-600'
+                            ? 'bg-[#12284C] text-white border-[#12284C]'
                             : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
@@ -325,10 +325,10 @@ export default function FilterBar({
 
               {/* Business Units Multi-Select */}
               <div>
-                <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
                   Business Units
                 </label>
-                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 border rounded-xl border-[var(--border)] bg-[var(--bg-secondary)]">
+                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
                   {filterOpts?.business_units?.map((bu: any) => {
                     const sel = activeFilters.business_units.includes(bu.key)
                     return (
@@ -336,9 +336,9 @@ export default function FilterBar({
                         key={bu.key}
                         type="button"
                         onClick={() => toggleArrayFilter('business_units', bu.key)}
-                        className={`px-2 py-0.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
                           sel
-                            ? 'bg-teal-500 text-white border-teal-600'
+                            ? 'bg-[#12284C] text-white border-[#12284C]'
                             : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
@@ -351,10 +351,10 @@ export default function FilterBar({
 
               {/* Forecast Categories (5 Canonical) */}
               <div>
-                <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
                   Forecast Categories
                 </label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {filterOpts?.forecast_categories?.map((fc: any) => {
                     const sel = activeFilters.forecast_categories.includes(fc.key)
                     return (
@@ -362,9 +362,9 @@ export default function FilterBar({
                         key={fc.key}
                         type="button"
                         onClick={() => toggleArrayFilter('forecast_categories', fc.key)}
-                        className={`px-2 py-0.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
                           sel
-                            ? 'bg-teal-500 text-white border-teal-600'
+                            ? 'bg-[#12284C] text-white border-[#12284C]'
                             : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
@@ -377,10 +377,10 @@ export default function FilterBar({
 
               {/* Approval Statuses */}
               <div>
-                <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
                   Approval Statuses
                 </label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {filterOpts?.approval_statuses?.map((st: any) => {
                     const sel = activeFilters.approval_statuses.includes(st.key)
                     return (
@@ -388,9 +388,9 @@ export default function FilterBar({
                         key={st.key}
                         type="button"
                         onClick={() => toggleArrayFilter('approval_statuses', st.key)}
-                        className={`px-2 py-0.5 rounded-lg text-xs font-medium border transition-colors ${
+                        className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
                           sel
-                            ? 'bg-teal-500 text-white border-teal-600'
+                            ? 'bg-[#12284C] text-white border-[#12284C]'
                             : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
@@ -409,30 +409,30 @@ export default function FilterBar({
           <button
             type="button"
             onClick={() => setViewsOpen(!viewsOpen)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-semibold shadow-sm hover:bg-[var(--bg-card)] transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors"
             id="filter-saved-views-btn"
           >
-            <Bookmark className="w-3.5 h-3.5 text-teal-500" />
+            <Bookmark className="w-3.5 h-3.5 text-[#00A3AD]" />
             <span>Saved Views</span>
             <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
           </button>
 
           {viewsOpen && (
-            <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2">
-              <span className="font-bold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
+            <div className="absolute left-0 mt-1 w-64 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2">
+              <span className="font-semibold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
               <div className="flex gap-1.5">
                 <input
                   type="text"
                   placeholder="View name..."
                   value={newViewName}
                   onChange={(e) => setNewViewName(e.target.value)}
-                  className="px-2 py-1 rounded-lg border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)]"
+                  className="px-2 py-1 rounded-sm border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)]"
                 />
                 <button
                   type="button"
                   onClick={handleSaveView}
                   disabled={!newViewName.trim()}
-                  className="px-2 py-1 rounded-lg bg-teal-500 text-white text-xs font-semibold hover:bg-teal-600 disabled:opacity-50"
+                  className="px-2 py-1 rounded-sm bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
                 </button>
@@ -444,7 +444,7 @@ export default function FilterBar({
                     <div
                       key={v.id}
                       onClick={() => handleApplyView(v.filters)}
-                      className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
+                      className="flex items-center justify-between px-2 py-1.5 rounded-sm hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
                     >
                       <span className="font-medium text-[var(--text-primary)] truncate">{v.name}</span>
                       <button
@@ -473,7 +473,7 @@ export default function FilterBar({
                 resetGlobalFilters()
               }
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors font-semibold"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-sm border border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors font-medium"
             id="filter-reset-btn"
           >
             <RotateCcw className="w-3 h-3" />
@@ -488,7 +488,7 @@ export default function FilterBar({
           {chips.map((chip) => (
             <span
               key={chip.key}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20 font-medium"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs bg-[var(--bg-secondary)] text-[var(--text-secondary)] border border-[var(--border)] font-medium"
             >
               <span>{chip.label}</span>
               <button

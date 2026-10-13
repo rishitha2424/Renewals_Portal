@@ -24,14 +24,14 @@ export function EmptyState({
   return (
     <div
       className={clsx(
-        'flex flex-col items-center justify-center p-8 text-center rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-secondary)]/30',
+        'flex flex-col items-center justify-center p-8 text-center rounded-md border border-[var(--border)] bg-[var(--bg-card)]',
         className
       )}
     >
-      <div className="w-14 h-14 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-3.5 shadow-sm border border-teal-500/20">
-        {icon || <FolderSearch className="w-7 h-7" />}
+      <div className="text-[var(--text-muted)] mb-3">
+        {icon || <FolderSearch className="w-6 h-6" strokeWidth={1.75} />}
       </div>
-      <h4 className="font-display font-bold text-base text-[var(--text-primary)]">
+      <h4 className="font-semibold text-sm text-[var(--text-primary)]">
         {title}
       </h4>
       {description && (
@@ -44,10 +44,10 @@ export function EmptyState({
           type="button"
           onClick={action.onClick}
           className={clsx(
-            'mt-4 px-4 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none shadow-sm',
+            'mt-4 px-3.5 py-1.5 rounded-sm text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--brand-teal)]',
             action.variant === 'secondary'
-              ? 'bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-secondary)]'
-              : 'bg-gradient-to-r from-teal-500 to-teal-600 text-white hover:from-teal-600 hover:to-teal-700 shadow-teal-500/20'
+              ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-card)]'
+              : 'bg-[var(--brand-navy)] text-white hover:bg-slate-800'
           )}
         >
           {action.label}

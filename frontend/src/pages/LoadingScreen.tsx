@@ -31,9 +31,9 @@ export default function LoadingScreen() {
         <motion.div
           animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
           transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-teal-500/30 to-violet-500/30 blur-lg"
+          className="absolute -inset-4 rounded-md blur-lg"
         />
-        <div className="relative w-24 h-24 rounded-2xl bg-white/10 backdrop-blur-md p-3.5 border border-white/20 shadow-2xl flex items-center justify-center">
+        <div className="relative w-24 h-24 rounded-md bg-white/10 p-3.5 border border-white/20 shadow-2xl flex items-center justify-center">
           <img
             src="/assets/logo.png"
             alt="Mobileum"
@@ -49,7 +49,7 @@ export default function LoadingScreen() {
         transition={{ delay: 0.3, duration: 0.5 }}
         className="text-center z-10"
       >
-        <h1 className="font-display font-extrabold text-3xl md:text-4xl text-white tracking-tight mb-2">
+        <h1 className="font-extrabold text-3xl md:text-4xl text-white tracking-tight mb-2">
           Mobileum Horizon
         </h1>
         <p className="text-sm font-semibold tracking-wider uppercase text-teal-400">

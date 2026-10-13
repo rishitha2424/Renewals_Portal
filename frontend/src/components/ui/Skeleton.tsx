@@ -15,10 +15,10 @@ export function Skeleton({
   height,
 }: SkeletonProps) {
   const variantStyles = {
-    text: 'h-4 w-full rounded-md',
+    text: 'h-4 w-full rounded-sm',
     circular: 'rounded-full flex-shrink-0',
-    rectangular: 'rounded-xl w-full',
-    card: 'rounded-2xl w-full h-32',
+    rectangular: 'rounded-md w-full',
+    card: 'rounded-md w-full h-32',
   }[variant]
 
   const inlineStyles: React.CSSProperties = {}
@@ -27,7 +27,7 @@ export function Skeleton({
 
   return (
     <div
-      className={clsx('skeleton-shimmer', variantStyles, className)}
+      className={clsx('skeleton-shimmer animate-pulse', variantStyles, className)}
       style={inlineStyles}
     />
   )
@@ -35,9 +35,9 @@ export function Skeleton({
 
 export function SkeletonCard({ rows = 3 }: { rows?: number }) {
   return (
-    <div className="card-premium p-5 space-y-3.5">
+    <div className="card p-4 space-y-3">
       <Skeleton className="h-4 w-32" />
-      <Skeleton className="h-8 w-44" />
+      <Skeleton className="h-7 w-44" />
       <div className="space-y-2 pt-2">
         {Array.from({ length: rows }).map((_, i) => (
           <Skeleton
@@ -52,12 +52,12 @@ export function SkeletonCard({ rows = 3 }: { rows?: number }) {
 
 export function SkeletonChart() {
   return (
-    <div className="card-premium p-5">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-4">
         <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-6 w-24 rounded-full" />
+        <Skeleton className="h-5 w-24 rounded-sm" />
       </div>
-      <Skeleton className="h-64 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-md" />
     </div>
   )
 }

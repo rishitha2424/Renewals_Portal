@@ -43,7 +43,7 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
   }
 
   return (
-    <div className="card-premium px-4 py-3 flex items-center justify-between border border-[var(--border)] transition-transform hover:scale-[1.02]">
+    <div className="card px-4 py-3 flex items-center justify-between border border-[var(--border)] transition-transform hover:scale-[1.02]">
       <div className="flex items-center gap-3">
         <div className={`p-2 rounded-xl ${label === 'Approved' ? 'bg-emerald-500/10 text-emerald-500' : label === 'Pending' ? 'bg-amber-500/10 text-amber-500' : label === 'Blank' ? 'bg-slate-500/10 text-slate-500' : 'bg-[var(--primary)]/10 text-[var(--primary)]'}`}>
           <Icon className="w-5 h-5" />
@@ -169,7 +169,7 @@ export default function Approvals() {
     >
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-black text-[var(--text-primary)] tracking-tight">Approval Funnel</h1>
+          <h1 className="text-3xl font-black text-[var(--text-primary)] tracking-tight">Approval Funnel</h1>
           <p className="text-[var(--text-muted)] mt-1 flex items-center gap-2 text-sm font-medium">
             <span className="px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)]">{data_slice}</span>
             <span className="px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)]">{data_slice_key}</span>
@@ -180,7 +180,7 @@ export default function Approvals() {
       </div>
 
       {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
         <FilterBar isPageOverride={false} />
       </div>
 
@@ -196,7 +196,7 @@ export default function Approvals() {
         
         {/* Left: Donut Chart */}
         <Card className="xl:col-span-5 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
-           <h2 className="text-sm font-display font-bold text-[var(--text-primary)] mb-4 cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>Status Share</h2>
+           <h2 className="text-sm font-bold text-[var(--text-primary)] mb-4 cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>Status Share</h2>
            <div className="flex flex-col sm:flex-row items-center gap-6">
              <div className="relative w-40 h-40 flex-shrink-0 flex items-center justify-center cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>
                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
@@ -223,7 +223,7 @@ export default function Approvals() {
                </svg>
                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{metricMode === 'Count' ? 'Deals' : 'ACV'}</span>
-                 <span className="text-xl font-black font-display text-[var(--text-primary)] tabular-nums">{metricMode === 'Count' ? formatNumber(total?.count ?? 0) : acvM(total?.acv ?? 0)}</span>
+                 <span className="text-xl font-black text-[var(--text-primary)] tabular-nums">{metricMode === 'Count' ? formatNumber(total?.count ?? 0) : acvM(total?.acv ?? 0)}</span>
                </div>
              </div>
              
@@ -275,7 +275,7 @@ export default function Approvals() {
           <div className="flex items-center justify-between mb-3 text-[var(--text-primary)]">
              <div className="flex items-center gap-2">
                <Activity className="w-5 h-5 text-emerald-500" />
-               <h3 className="font-bold font-display">Recent Movements</h3>
+               <h3 className="font-bold">Recent Movements</h3>
              </div>
              {!compareSnapshotId && (
                <div className="flex bg-[var(--bg-secondary)] rounded-lg p-0.5 border border-[var(--border)]">
@@ -322,7 +322,7 @@ export default function Approvals() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
              <Clock className="w-5 h-5 text-amber-500" />
-             <h3 className="font-bold font-display">Submitted, waiting for approval</h3>
+             <h3 className="font-bold">Submitted, waiting for approval</h3>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
              <p className="text-[var(--text-muted)] text-[11px] italic cursor-pointer hover:underline" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>All {pending_deals?.length || 0} pending deals...</p>
@@ -347,7 +347,7 @@ export default function Approvals() {
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
              <AlertOctagon className="w-5 h-5 text-rose-500" />
-             <h3 className="font-bold font-display">Not Submitted</h3>
+             <h3 className="font-bold">Not Submitted</h3>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
              <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Blank status...</p>

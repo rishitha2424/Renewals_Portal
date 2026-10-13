@@ -214,7 +214,7 @@ function RegionsContent() {
       </div>
 
       {/* Local Page Filter Strip */}
-      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-sm">
+      <div className="p-3 bg-[var(--bg-card)] border border-[var(--border)] rounded-md shadow-sm">
         <FilterBar isPageOverride={false} />
       </div>
 
@@ -308,7 +308,7 @@ function RegionsContent() {
       </div>
 
       {selectedRegion !== 'All' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm animate-in fade-in slide-in-from-top-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm animate-in fade-in slide-in-">
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <Globe2 className="w-5 h-5 text-blue-500" />
