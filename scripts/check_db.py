@@ -81,7 +81,12 @@ def check_alembic(engine):
 
 
 def main():
-    raw_url = os.environ.get("DATABASE_URL") or settings.DATABASE_URL
+    import argparse
+    parser = argparse.ArgumentParser(description="Check database connectivity and status.")
+    parser.add_argument("--url", default=None, help="Database URL to check (defaults to DATABASE_URL)")
+    args, _ = parser.parse_known_args()
+
+    raw_url = args.url or os.environ.get("DATABASE_URL") or settings.DATABASE_URL
     info = sanitize_url(raw_url)
 
     # 1. Print connection metadata (never print password)
@@ -92,7 +97,14 @@ def main():
     print(f"Database: {info['database']}{user_str}")
 
     # 2. Connect and test
-    target_url = settings.sqlalchemy_database_url
+    if args.url or os.environ.get("DATABASE_URL"):
+        target_url = raw_url
+        if target_url.startswith("postgres://"):
+            target_url = target_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif target_url.startswith("postgresql://") and not target_url.startswith("postgresql+"):
+            target_url = target_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    else:
+        target_url = settings.sqlalchemy_database_url
     engine_kwargs = {"pool_pre_ping": True}
     if info["dialect"] == "sqlite":
         engine_kwargs["connect_args"] = {"check_same_thread": False}
