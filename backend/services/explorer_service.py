@@ -753,15 +753,25 @@ class ExplorerService:
         )
         sales_types = [{"name": r[0] or "Blank", "count": r[1]} for r in st_rows]
 
-        # Fiscal periods with deal counts
+        # Fiscal periods with deal counts (sorted chronologically by year, then quarter)
         fp_rows = (
             self.db.query(Opportunity.fiscal_period, func.count(Opportunity.id))
             .filter(Opportunity.snapshot_id == snap.id)
             .group_by(Opportunity.fiscal_period)
-            .order_by(Opportunity.fiscal_period.asc())
             .all()
         )
-        fiscal_periods = [{"name": r[0] or "Blank", "count": r[1]} for r in fp_rows if r[0]]
+        def _fp_sort_key(r):
+            name = r[0] or ""
+            # e.g. Q1-2026 -> year 2026, quarter 1
+            m = re.match(r"^Q([1-4])-(\d{4})$", name, re.IGNORECASE)
+            if m:
+                q_num = int(m.group(1))
+                y_num = int(m.group(2))
+                return (y_num, q_num, name)
+            return (9999, 99, name)
+
+        sorted_fp_rows = sorted(fp_rows, key=_fp_sort_key)
+        fiscal_periods = [{"name": r[0] or "Blank", "count": r[1]} for r in sorted_fp_rows if r[0]]
 
         # Forecast categories with deal counts
         fc_rows = (

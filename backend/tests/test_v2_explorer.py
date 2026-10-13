@@ -211,10 +211,37 @@ def test_quick_filters_endpoint(client_and_db):
     r = client.get("/v2/explorer/quick-filters?as_of=2026-10-07")
     assert r.status_code == 200
     data = r.json()
+
+    # 1. Sales types sum to 3,093
     st_names = [s["name"] for s in data["sales_types"]]
-    assert "Renewals" in st_names
-    assert "Upsell" in st_names
-    assert "Cross sell" in st_names
-    assert "New Logo" in st_names
+    assert set(st_names) == {"Renewals", "Upsell", "Cross sell", "New Logo"}
+    assert sum(s["count"] for s in data["sales_types"]) == 3093
+
+    # 2. Fiscal periods contains every distinct fiscal period in the Oct 7 data, including Q4-2026,
+    # and they sum to 3,093
     fps = [f["name"] for f in data["fiscal_periods"]]
     assert "Q4-2026" in fps
+    assert len(fps) == 16
+    assert fps == [
+        'Q1-2026', 'Q2-2026', 'Q3-2026', 'Q4-2026',
+        'Q1-2027', 'Q2-2027', 'Q3-2027', 'Q4-2027',
+        'Q1-2028', 'Q2-2028', 'Q3-2028', 'Q4-2028',
+        'Q1-2029', 'Q4-2029', 'Q3-2031', 'Q4-2035'
+    ]
+    assert sum(f["count"] for f in data["fiscal_periods"]) == 3093
+
+    # 3. Forecast categories sum to 3,093
+    fc_names = [f["name"] for f in data["forecast_categories"]]
+    assert "Closed" in fc_names and "Pipeline" in fc_names and "Commit" in fc_names and "Best Case" in fc_names
+    assert sum(f["count"] for f in data["forecast_categories"]) == 3093
+
+    # 4. Regions sum to 3,093
+    assert len(data["regions"]) == 9
+    assert sum(r["count"] for r in data["regions"]) == 3093
+
+    # 5. Business units sum to 3,093
+    assert len(data["business_units"]) == 16
+    assert sum(b["count"] for b in data["business_units"]) == 3093
+
+    # 6. Approval statuses sum to 3,093
+    assert sum(a["count"] for a in data["approval_statuses"]) == 3093
