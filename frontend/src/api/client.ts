@@ -482,9 +482,13 @@ export const exportExplorerData = async (payload: any, asOf?: string | null) => 
   return res
 }
 
-export const getExplorerReconcile = async (asOf?: string | null) => {
+export const getExplorerReconcile = async (asOf?: string | null, payload?: any) => {
   const params: any = {}
   if (asOf) params.as_of = asOf
+  if (payload) {
+    const res = await api.post('/v2/explorer/reconcile', payload, { params })
+    return res.data
+  }
   const res = await api.get('/v2/explorer/reconcile', { params })
   return res.data
 }

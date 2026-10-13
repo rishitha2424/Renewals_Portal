@@ -284,8 +284,22 @@ def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
     assert r_public_v2.status_code == 200
 
     mutating_routes = get_all_mutating_routes()
-    # Exempt non-admin auth routes (login/logout) and read-style AI assistant queries
-    exempt_paths = {"/api/admin/login", "/admin/login", "/api/ai/ask", "/ai/ask", "/api/ai/chat/stream", "/ai/chat/stream"}
+    # Exempt non-admin auth routes (login/logout), read-style AI assistant queries,
+    # and Explorer query/export routes (Explorer prompt explicitly states: "Admin is not required for reading or exporting.")
+    exempt_paths = {
+        "/api/admin/login",
+        "/admin/login",
+        "/api/ai/ask",
+        "/ai/ask",
+        "/api/ai/chat/stream",
+        "/ai/chat/stream",
+        "/v2/explorer/rows",
+        "/api/v2/explorer/rows",
+        "/v2/explorer/export",
+        "/api/v2/explorer/export",
+        "/v2/explorer/reconcile",
+        "/api/v2/explorer/reconcile",
+    }
     write_routes = [(m, p) for m, p in mutating_routes if p not in exempt_paths]
 
     assert len(write_routes) >= 4, f"Expected at least 4 write routes, found {len(write_routes)}"

@@ -176,16 +176,33 @@ def test_export_csv_and_xlsx_match_filter_and_order(client_and_db):
 def test_reconcile_endpoint(client_and_db):
     client, Session, snap_id = client_and_db
 
+    # 1. Whole snapshot reconciliation
     r = client.get("/v2/explorer/reconcile?as_of=2026-10-07")
     assert r.status_code == 200
     data = r.json()
-    assert data["scope"] == "Renewals"
-    assert data["total_rows"] == 1212
-    assert abs(data["total_acv"] - 115634387.11) < 0.1
+    assert data["scope"] == "Whole Snapshot"
+    assert data["total_rows"] == 3093
+    assert abs(data["total_acv"] - 451999230.24) < 1.0
+
     cats = data["forecast_categories"]
-    assert "Closed" in cats and cats["Closed"]["count"] == 653
-    assert "Commit" in cats and cats["Commit"]["count"] == 355
-    assert "Best Case" in cats and cats["Best Case"]["count"] == 110
+    assert cats["Pipeline"]["count"] == 538
+    assert abs(cats["Pipeline"]["acv"] - 97099728.36) < 1.0
+    assert cats["Blank"]["count"] == 280
+    assert cats["Commit"]["count"] == 479
+    assert cats["Best Case"]["count"] == 537
+    assert cats["Closed"]["count"] == 1259
+
+    # 2. Reconcile with current filter (Renewals + Q4-2026)
+    flist = [
+        {"column": "Sales Type", "operator": "equals", "value": "Renewals"},
+        {"column": "Fiscal Period", "operator": "equals", "value": "Q4-2026"},
+    ]
+    r_filt = client.post("/v2/explorer/reconcile?as_of=2026-10-07", json={"filters": flist})
+    assert r_filt.status_code == 200
+    d_filt = r_filt.json()
+    assert d_filt["current_filter"] is not None
+    assert d_filt["current_filter"]["total_rows"] == 348
+    assert abs(d_filt["current_filter"]["total_acv"] - 40068990.09) < 1.0
 
 
 def test_quick_filters_endpoint(client_and_db):

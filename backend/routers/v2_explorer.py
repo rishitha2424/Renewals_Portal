@@ -111,15 +111,45 @@ def export_explorer_data(
 
 
 @router.get("/reconcile")
-def reconcile_explorer(
+def reconcile_explorer_get(
     as_of: Optional[str] = Query(None),
+    sales_types: Optional[List[str]] = Query(None),
+    period: Optional[str] = Query(None),
+    include_deleted_lost: bool = Query(True),
     db: Session = Depends(get_db),
 ):
     svc = ExplorerService(db)
     snap = svc.resolve_snapshot(as_of)
     if not snap:
         raise HTTPException(status_code=404, detail="No snapshot found.")
-    return svc.reconcile_renewals(snap)
+    filter_spec = None
+    if sales_types or period or not include_deleted_lost:
+        from backend.services.context import FilterSpec
+        filter_spec = FilterSpec(
+            sales_types=sales_types or [],
+            period=period or "all_periods",
+            include_deleted_lost=include_deleted_lost,
+        )
+    return svc.reconcile_snapshot(snap, filter_spec=filter_spec)
+
+
+@router.post("/reconcile")
+def reconcile_explorer_post(
+    payload: Optional[ExplorerRowsRequest] = None,
+    as_of: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    svc = ExplorerService(db)
+    resolved_as_of = as_of or (payload.filter_spec.as_of if payload and payload.filter_spec else None)
+    snap = svc.resolve_snapshot(resolved_as_of)
+    if not snap:
+        raise HTTPException(status_code=404, detail="No snapshot found.")
+    return svc.reconcile_snapshot(
+        snap,
+        filter_spec=payload.filter_spec if payload else None,
+        filters=payload.filters if payload else None,
+        or_filters=payload.or_filters if payload else None,
+    )
 
 
 @router.get("/quick-filters")
