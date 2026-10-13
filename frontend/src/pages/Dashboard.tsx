@@ -275,7 +275,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            type="button" onClick={() => navigate('/upload')}
+            type="button" onClick={() => navigate('/data-uploads')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-teal-500/10 hover:bg-teal-500/20 text-xs font-semibold text-teal-600 dark:text-teal-400 transition-all shadow-sm"
             id="overview-upload-data-btn"
           >

@@ -171,7 +171,7 @@ def detect_file_slot(path: Path, xf: pd.ExcelFile | None = None) -> tuple[str, s
         return "unknown", f"Cannot open Excel file: {exc}"
 
     if "today" in sheet_names_lower and "yesterday" in sheet_names_lower:
-        return "comparison_tool", "Renewal Comparison Tool"
+        return "comparison_tool", "Renewal Comparison Tool (Today & Yesterday)"
 
     today_data_sheet = sheet_names_lower.get("today_data")
     if today_data_sheet:

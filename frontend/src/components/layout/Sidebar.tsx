@@ -30,8 +30,7 @@ const NAV_ITEMS = [
   { to: '/regions', icon: Globe2, label: 'Regions' },
   { to: '/delayed', icon: Clock, label: 'Delayed Renewals' },
   { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
-  { to: '/upload', icon: Upload, label: 'Upload' },
-  { to: '/history', icon: History, label: 'History' },
+  { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
   { to: '/executive', icon: Printer, label: 'Executive', newTab: true },
 ]
 

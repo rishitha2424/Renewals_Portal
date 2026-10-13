@@ -32,6 +32,9 @@ api.interceptors.request.use((config) => {
 export const getSnapshots = () =>
   api.get('/snapshots').then(r => r.data)
 
+export const getSnapshot = (snapshotId: string) =>
+  api.get(`/snapshots/${snapshotId}`).then(r => r.data)
+
 export const getActiveSnapshot = () =>
   api.get('/snapshots/active').then(r => r.data)
 
@@ -51,6 +54,9 @@ export const getSnapshotChecks = (snapshotId: string) =>
 
 export const deleteSnapshot = (snapshotId: string) =>
   api.delete(`/snapshots/${snapshotId}`).then(r => r.data)
+
+export const setActiveSnapshot = (snapshotId: string) =>
+  api.post(`/snapshots/${snapshotId}/set-active`).then(r => r.data)
 
 export const adminLogin = (password: string) =>
   api.post('/admin/login', { password }).then(r => r.data)

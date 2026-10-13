@@ -161,21 +161,25 @@ EXPECTED_LASTWEEK = {
 }
 
 
-def test_yesterday_and_last_week_are_tagged_by_scope(db_session):
+def test_yesterday_and_last_week_are_tagged_by_scope(client_and_db):
     from backend.models.opportunity import Opportunity
     from backend.models.snapshot import UploadSnapshot
-    
-    yest_snap = db_session.query(UploadSnapshot).filter(UploadSnapshot.label == "Yesterday").first()
-    lw_snap = db_session.query(UploadSnapshot).filter(UploadSnapshot.label == "Last Week (Partial)").first()
-    
-    for s in (yest_snap, lw_snap):
-        if not s: continue
-        total = db_session.query(Opportunity).filter(Opportunity.snapshot_id == s.id).count()
-        with_st = db_session.query(Opportunity).filter(Opportunity.snapshot_id == s.id, Opportunity.sales_type.isnot(None)).count()
-        with_fp = db_session.query(Opportunity).filter(Opportunity.snapshot_id == s.id, Opportunity.fiscal_period.isnot(None)).count()
-        assert total > 0
-        assert with_st == total
-        assert with_fp == total
+    _, Session = client_and_db
+    db = Session()
+    try:
+        yest_snap = db.query(UploadSnapshot).filter(UploadSnapshot.label == "Yesterday").first()
+        lw_snap = db.query(UploadSnapshot).filter(UploadSnapshot.label == "Last Week (Partial)").first()
+        
+        for s in (yest_snap, lw_snap):
+            if not s: continue
+            total = db.query(Opportunity).filter(Opportunity.snapshot_id == s.id).count()
+            with_st = db.query(Opportunity).filter(Opportunity.snapshot_id == s.id, Opportunity.sales_type.isnot(None)).count()
+            with_fp = db.query(Opportunity).filter(Opportunity.snapshot_id == s.id, Opportunity.fiscal_period.isnot(None)).count()
+            assert total > 0
+            assert with_st == total
+            assert with_fp == total
+    finally:
+        db.close()
 
 def test_same_files_again_ask_to_replace(client_and_db, validated, admin_headers):
     client, _ = client_and_db

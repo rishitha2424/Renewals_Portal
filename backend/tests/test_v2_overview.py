@@ -93,19 +93,23 @@ def client_and_db(tmp_path_factory):
     assert "comparison_tool" in slots
     assert len([s for s in slots if s.startswith("renewals_summary:")]) == 3, set(slots)
 
+    from backend.services.context import sign_admin_token
+    token = sign_admin_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
     with TestClient(app) as client:
         # Validate
         files = [(slot, (fp.name, open(fp, "rb"),
                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                  for slot, fp in slots.items()]
         data = {"data_as_of_date": "2026-10-07", "yesterday_date": "2026-10-06"}
-        vr = client.post("/api/snapshots/validate", data=data, files=files)
+        vr = client.post("/api/snapshots/validate", data=data, files=files, headers=headers)
         assert vr.status_code == 200, vr.text
         session_id = vr.json()["session_id"]
 
         # Commit
         cr = client.post("/api/snapshots/commit",
-                         json={"session_id": session_id, "replace": False})
+                         json={"session_id": session_id, "replace": False}, headers=headers)
         assert cr.status_code == 200, cr.text
 
         yield client, Session

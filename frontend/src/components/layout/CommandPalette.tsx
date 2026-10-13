@@ -46,10 +46,8 @@ export default function CommandPalette() {
     { id: 'delayed', label: 'Delayed Renewals', category: 'Navigation', icon: Clock, to: '/delayed' },
 
     { id: 'explore', label: 'Data Explorer', category: 'Navigation', icon: Table2, to: '/opportunities' },
-    { id: 'history', label: 'History & Snapshots', category: 'Navigation', icon: History, to: '/history' },
+    { id: 'data-uploads', label: 'Data Uploads & History', category: 'Navigation', icon: Upload, to: '/data-uploads' },
     { id: 'executive', label: 'Executive View (Print)', category: 'Navigation', icon: Printer, to: '/executive' },
-    { id: 'upload', label: 'Upload Data', category: 'Navigation', icon: Upload, to: '/upload' },
-    { id: 'design', label: 'Design System Review', category: 'Navigation', icon: Palette, to: '/design' },
     {
       id: 'theme',
       label: darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme',

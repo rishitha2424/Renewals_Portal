@@ -322,14 +322,20 @@ class V2ExpiryService:
             *res.conditions
         )
             
+        target_quarter = ScopeService.current_quarter(snap.snapshot_date)
+        _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
+        next_y_str = str(int(current_y_str) + 1)
+        default_grid_quarters = [f"Q{q}-{y}" for y in [current_y_str, next_y_str] for q in range(1, 5)]
+
         if slippage:
-            target_quarter = ScopeService.current_quarter(snap.snapshot_date)
-            _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
             _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-            q = q.filter(Opportunity.close_date > fy_end_date)
+            q = q.filter(Opportunity.close_date > fy_end_date, Opportunity.service_expiry_period.in_(default_grid_quarters))
 
         if quarter:
             q = q.filter(Opportunity.service_expiry_period == quarter)
+        elif not slippage:
+            # Default Expiry window: current FY + next FY
+            q = q.filter(Opportunity.service_expiry_period.in_(default_grid_quarters))
         if category:
             if category == "Blank":
                 q = q.filter(or_(Opportunity.forecast_category == None, Opportunity.forecast_category == "", ~Opportunity.forecast_category.in_(["Closed", "Commit", "Best Case", "Pipeline"])))

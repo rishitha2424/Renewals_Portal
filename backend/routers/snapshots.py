@@ -18,8 +18,31 @@ router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 @router.get("")
 def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get_user_context)):
     snaps = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).all()
-    return [
-        {
+    results = []
+    for s in snaps:
+        # Compute Q-slice deals and ACV (Renewals in fiscal period matching snapshot's quarter)
+        from backend.services.scopes import ScopeService
+        from backend.models.opportunity import Opportunity
+        from sqlalchemy import func
+        quarter_str = ScopeService.quarter_of(s.snapshot_date)
+        q_label = ScopeService.quarter_label(quarter_str)
+
+        q_agg = (
+            db.query(
+                func.count(Opportunity.id),
+                func.sum(Opportunity.forecast_acv_amount),
+            )
+            .filter(
+                Opportunity.snapshot_id == s.id,
+                Opportunity.fiscal_period == quarter_str,
+                Opportunity.sales_type == "Renewals",
+            )
+            .first()
+        )
+        q_deals = int(q_agg[0] or 0)
+        q_acv = float(q_agg[1] or 0.0)
+
+        results.append({
             "id": s.id,
             "label": s.label,
             "snapshot_date": s.snapshot_date.isoformat(),
@@ -32,6 +55,9 @@ def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             "source_file_comparison": s.source_file_comparison,
             "last_week_source": s.last_week_source,
             "last_week_is_partial": s.last_week_is_partial,
+            "q_slice_label": q_label,
+            "q_slice_deals": q_deals,
+            "q_slice_acv": q_acv,
             "source_checks": {
                 "total": len(s.checks),
                 "passed": sum(1 for c in s.checks if c.status == "pass"),
@@ -47,22 +73,42 @@ def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get
                 }
                 for f in s.uploaded_files
             ],
-        }
-        for s in snaps
-    ]
+        })
+    return results
 
 
 @router.get("/history")
 def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get_user_context)):
-    """Return last 10 uploads formatted for history displays."""
+    """Return all uploads formatted for history displays."""
     snaps = (
         db.query(UploadSnapshot)
         .order_by(UploadSnapshot.snapshot_date.desc())
-        .limit(10)
         .all()
     )
-    return [
-        {
+    from backend.services.scopes import ScopeService
+    from backend.models.opportunity import Opportunity
+    from sqlalchemy import func
+
+    results = []
+    for s in snaps:
+        quarter_str = ScopeService.quarter_of(s.snapshot_date)
+        q_label = ScopeService.quarter_label(quarter_str)
+        q_agg = (
+            db.query(
+                func.count(Opportunity.id),
+                func.sum(Opportunity.forecast_acv_amount),
+            )
+            .filter(
+                Opportunity.snapshot_id == s.id,
+                Opportunity.fiscal_period == quarter_str,
+                Opportunity.sales_type == "Renewals",
+            )
+            .first()
+        )
+        q_deals = int(q_agg[0] or 0)
+        q_acv = float(q_agg[1] or 0.0)
+
+        results.append({
             "id": s.id,
             "label": s.label,
             "snapshot_date": s.snapshot_date.isoformat(),
@@ -73,6 +119,9 @@ def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             "is_active_today": s.is_active_today,
             "last_week_source": s.last_week_source or "real_snapshot",
             "last_week_is_partial": s.last_week_is_partial,
+            "q_slice_label": q_label,
+            "q_slice_deals": q_deals,
+            "q_slice_acv": q_acv,
             "status": "success",
             "source_checks": {
                 "total": len(s.checks),
@@ -89,9 +138,8 @@ def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get
                 }
                 for f in s.uploaded_files
             ],
-        }
-        for s in snaps
-    ]
+        })
+    return results
 
 
 @router.get("/active")
@@ -178,23 +226,48 @@ def delete_snapshot(
     return {"status": "ok", "deleted_snapshot_id": snapshot_id, "snapshot_date": snap_date}
 
 
-@router.post("/validate", dependencies=[Depends(require_admin_context)])
+@router.post("/{snapshot_id}/set-active", dependencies=[Depends(require_admin_context)])
+def set_active_snapshot_endpoint(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Admin-only action to mark a specific snapshot as active."""
+    target_snap = db.query(UploadSnapshot).filter(UploadSnapshot.id == snapshot_id).first()
+    if not target_snap:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    
+    # Mark all others as inactive
+    db.query(UploadSnapshot).filter(UploadSnapshot.id != snapshot_id).update({"is_active_today": False})
+    target_snap.is_active_today = True
+    db.commit()
+    return {
+        "status": "ok",
+        "active_snapshot_id": target_snap.id,
+        "snapshot_date": target_snap.snapshot_date.isoformat(),
+        "is_active_today": True,
+    }
+
+
+@router.post("/validate")
 async def validate_upload(
     request: Request,
-    data_as_of_date: str = Form(...),
+    data_as_of_date: Optional[str] = Form(None),
     yesterday_date: Optional[str] = Form(None),
     comparison_tool: Optional[UploadFile] = File(None),
     fiscal_2026: Optional[UploadFile] = File(None),
     fiscal_2027: Optional[UploadFile] = File(None),
     fiscal_q4: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(require_admin_context),
 ):
     """
     Validate uploaded files, compute preview metrics and reconciliation warnings.
     Supports fixed slots as well as arbitrary dynamic files (Addendum C).
     Admin-only (Addendum D).
     """
+    ctx = require_admin_context(request)
+    if not data_as_of_date:
+        raise HTTPException(status_code=422, detail="data_as_of_date is required")
     try:
         as_of = date.fromisoformat(data_as_of_date)
     except ValueError:

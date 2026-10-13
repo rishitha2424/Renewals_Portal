@@ -23,6 +23,19 @@ from sqlalchemy.pool import StaticPool
 import os
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_admin_auth():
+    old_pw = settings.ADMIN_PASSWORD
+    old_key = settings.ADMIN_SECRET_KEY
+    if not settings.ADMIN_PASSWORD:
+        settings.ADMIN_PASSWORD = "test-admin-secret-password-xyz"
+    if not settings.ADMIN_SECRET_KEY:
+        settings.ADMIN_SECRET_KEY = "test-secret-key-32bytes-hex-dummy-value"
+    yield
+    settings.ADMIN_PASSWORD = old_pw
+    settings.ADMIN_SECRET_KEY = old_key
+
+
 @pytest.fixture(scope="session")
 def db_engine():
     test_db_url = os.environ.get("TEST_DATABASE_URL")
