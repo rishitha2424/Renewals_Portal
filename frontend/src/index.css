@@ -153,15 +153,20 @@
 
 /* Print styles for Executive View */
 @media print {
-  .no-print {
+  .no-print,
+  aside,
+  header {
     display: none !important;
   }
   .print-only {
     display: block !important;
   }
-  body {
+  body, main {
     background: white !important;
     color: black !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
   .card {
     box-shadow: none !important;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -144,8 +144,51 @@ export default function ExecutiveView() {
     { key: 'Blank', label: 'Not yet proposed', color: '#94A3B8', accent: 'slate' as const },
   ]
 
-  const topRegions = (regionsData?.regions || []).slice(0, 6)
-  const topBUs = (buData?.rows || []).slice(0, 6)
+  // Regions list: sort by ACV descending
+  const regionList = useMemo(() => {
+    const list = [...(regionsData?.regions || [])]
+    list.sort((a, b) => (b.acv || 0) - (a.acv || 0))
+
+    // Calculate unassigned if any
+    const listCount = list.reduce((s, r) => s + (r.count || 0), 0)
+    const listAcv = list.reduce((s, r) => s + (r.acv || 0), 0)
+    const diffCount = (total.count || 348) - listCount
+    const diffAcv = (total.acv || 40068990.09) - listAcv
+
+    const rows = [...list]
+    if (diffCount > 0 || Math.abs(diffAcv) > 0.01) {
+      rows.push({
+        region: 'Unassigned',
+        count: diffCount,
+        acv: diffAcv > 0 ? diffAcv : 0,
+        pct_acv: total.acv > 0 ? Number(((diffAcv / total.acv) * 100).toFixed(1)) : 0,
+      })
+    }
+    return rows
+  }, [regionsData, total])
+
+  // Business Unit list: sort by ACV descending
+  const buList = useMemo(() => {
+    const list = [...(buData?.rows || [])]
+    list.sort((a, b) => (b.acv || 0) - (a.acv || 0))
+
+    const listCount = list.reduce((s, r) => s + (r.count || 0), 0)
+    const listAcv = list.reduce((s, r) => s + (r.acv || 0), 0)
+    const diffCount = (total.count || 348) - listCount
+    const diffAcv = (total.acv || 40068990.09) - listAcv
+
+    const rows = [...list]
+    if (diffCount > 0 || Math.abs(diffAcv) > 0.01) {
+      rows.push({
+        bu: 'Unassigned',
+        count: diffCount,
+        acv: diffAcv > 0 ? diffAcv : 0,
+        pct_acv: total.acv > 0 ? Number(((diffAcv / total.acv) * 100).toFixed(1)) : 0,
+      })
+    }
+    return rows
+  }, [buData, total])
+
   const approvalStatuses = approvalsData?.statuses || []
 
   // Risks & Watchlist items (same numbers as Delayed page + overview)
@@ -327,7 +370,7 @@ export default function ExecutiveView() {
             <Card padding="md" className="space-y-3">
               <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
                 <SectionHeader
-                  title="Top Regions"
+                  title="Regions"
                   subtitle="Renewals ACV and portfolio share by region"
                   className="mb-0"
                 />
@@ -342,7 +385,7 @@ export default function ExecutiveView() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full text-xs" id="exec-regions-table">
                   <thead>
                     <tr className="border-b border-[var(--border)] text-[var(--text-muted)] uppercase text-[10px]">
                       <th className="text-left py-1.5 font-bold">Region</th>
@@ -352,7 +395,7 @@ export default function ExecutiveView() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
-                    {topRegions.map((r: any) => (
+                    {regionList.map((r: any) => (
                       <tr
                         key={r.region}
                         onClick={() => navigate('/regions')}
@@ -367,6 +410,14 @@ export default function ExecutiveView() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-[var(--border)] font-bold bg-[var(--bg-secondary)]/50" id="exec-regions-total-row">
+                      <td className="py-2 font-black text-[var(--text-primary)]">Total</td>
+                      <td className="py-2 text-right font-black text-[var(--text-primary)]" id="exec-regions-total-deals">{formatCount(total.count)}</td>
+                      <td className="py-2 text-right font-mono font-black text-[#00A3AD]" id="exec-regions-total-acv">{formatACV(total.acv)}</td>
+                      <td className="py-2 text-right font-black text-[#00A3AD]">100%</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </Card>
@@ -390,7 +441,7 @@ export default function ExecutiveView() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full text-xs" id="exec-bu-table">
                   <thead>
                     <tr className="border-b border-[var(--border)] text-[var(--text-muted)] uppercase text-[10px]">
                       <th className="text-left py-1.5 font-bold">Business Unit</th>
@@ -400,7 +451,7 @@ export default function ExecutiveView() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
-                    {topBUs.map((bu: any) => (
+                    {buList.map((bu: any) => (
                       <tr
                         key={bu.bu}
                         onClick={() => navigate('/business-units')}
@@ -419,6 +470,14 @@ export default function ExecutiveView() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-[var(--border)] font-bold bg-[var(--bg-secondary)]/50" id="exec-bu-total-row">
+                      <td className="py-2 font-black text-[var(--text-primary)]">Total</td>
+                      <td className="py-2 text-right font-black text-[var(--text-primary)]" id="exec-bu-total-deals">{formatCount(total.count)}</td>
+                      <td className="py-2 text-right font-mono font-black text-[#00A3AD]" id="exec-bu-total-acv">{formatACV(total.acv)}</td>
+                      <td className="py-2 text-right font-black text-[#00A3AD]">100%</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </Card>

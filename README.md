@@ -1,13 +1,13 @@
 # Mobileum Horizon
 
-> Internal web app that replaces the daily PowerPoint for the renewals pipeline.
+> Enterprise renewals pipeline intelligence platform replacing manual spreadsheets with real-time analytics, automated Excel reconciliation, and executive reporting.
 
 ---
 
 ## Quick Start (Windows)
 
 ```powershell
-# One command — installs everything, seeds DB, starts both servers
+# One command — installs dependencies, migrates database, and starts servers
 .\start.ps1
 ```
 
@@ -15,14 +15,42 @@ Then open **http://localhost:5173** in your browser.
 
 ---
 
-## Manual Start (two terminals)
+## Database Support & Setup (SQLite & PostgreSQL)
+
+Mobileum Horizon supports both **SQLite** (default for local zero-config development) and **PostgreSQL** (production & high-performance analytics).
+
+### 1. SQLite (Default)
+By default in `.env`:
+```env
+DATABASE_URL=sqlite:///./renewals.db
+```
+Startup will automatically run Alembic migrations on boot or create all tables.
+
+### 2. PostgreSQL
+To run on PostgreSQL:
+1. Ensure PostgreSQL 14+ is running locally or remotely:
+```powershell
+# Example local Postgres connection string
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/renewals
+```
+2. Apply migrations:
+```powershell
+alembic upgrade head
+```
+3. Run automated tests against an isolated ephemeral PostgreSQL instance:
+```powershell
+python scripts/run_tests_on_postgres.py
+```
+
+---
+
+## Manual Start (Two Terminals)
 
 **Terminal 1 — Backend**
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r backend\requirements.txt
-python -m backend.seed          # first run only
 uvicorn backend.main:app --reload --port 8000
 ```
 
@@ -33,22 +61,28 @@ npm install
 npm run dev
 ```
 
-**Troubleshooting: Port already in use**
-If you get `[Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000)`, it means an older uvicorn backend is still running. You can kill it in PowerShell with:
-```powershell
-Get-NetTCPConnection -LocalPort 8000 | Stop-Process
-```
-
 ---
 
-## Run Tests
+## Running the Test Suites
 
+### Backend Unit & Integration Tests (SQLite & Postgres)
 ```powershell
-.venv\Scripts\activate
+# Run backend pytest suite on SQLite
 pytest backend/tests/ -v
+
+# Run backend test suite on PostgreSQL
+python scripts/run_tests_on_postgres.py
 ```
 
-Tests assert the Oct 5 reference numbers (ACV $120.51M, 3,086 rows, all approval counts, all forecast category counts) computed from the real Excel files.
+### Frontend Contract & Unit Tests
+```powershell
+cd frontend
+# Run vitest suite
+npm test
+
+# Build production bundle
+npm run build
+```
 
 ---
 

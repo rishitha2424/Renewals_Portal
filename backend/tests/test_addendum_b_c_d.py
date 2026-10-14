@@ -289,6 +289,8 @@ def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
     exempt_paths = {
         "/api/admin/login",
         "/admin/login",
+        "/api/admin/logout",
+        "/admin/logout",
         "/api/ai/ask",
         "/ai/ask",
         "/api/ai/chat/stream",
@@ -406,4 +408,33 @@ def test_addendum_d_password_never_logged_or_returned(client_and_db, caplog):
         assert "token" in body
         assert secret_pw not in r_ok.text
         assert secret_pw not in caplog.text
+
+
+def test_addendum_d_logout_without_or_invalid_token(client_and_db):
+    """
+    Prompt D hardening:
+    Admin logout must work without a token.
+    Wrong or expired token should return 200 and clear the cookie.
+    """
+    client, _ = client_and_db
+
+    # 1. Logout without any token/cookie
+    r_no_token = client.post("/api/admin/logout")
+    assert r_no_token.status_code == 200
+    assert r_no_token.json() == {"status": "logged_out"}
+    assert 'admin_token=""' in r_no_token.headers.get("set-cookie", "")
+
+    # 2. Logout with invalid token header
+    r_bad_header = client.post(
+        "/api/admin/logout",
+        headers={"Authorization": "Bearer invalid-or-expired-token-12345"}
+    )
+    assert r_bad_header.status_code == 200
+    assert r_bad_header.json() == {"status": "logged_out"}
+
+    # 3. Logout with bad cookie
+    client.cookies.set("admin_token", "bogus_expired_token")
+    r_bad_cookie = client.post("/api/admin/logout")
+    assert r_bad_cookie.status_code == 200
+    assert r_bad_cookie.json() == {"status": "logged_out"}
 

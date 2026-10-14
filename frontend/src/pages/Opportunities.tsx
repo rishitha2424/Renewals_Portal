@@ -20,6 +20,7 @@ import {
   Columns,
   Loader2,
   ChevronDown,
+  ChevronUp,
   SlidersHorizontal,
 } from 'lucide-react'
 import {
@@ -162,6 +163,9 @@ export default function Opportunities() {
   const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false)
   const [drawerSearchQuery, setDrawerSearchQuery] = useState<string>('')
   const [isExporting, setIsExporting] = useState<boolean>(false)
+  // Quick filters collapse toggle (starts collapsed once any filter is active)
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState<boolean>(false)
+  const prevActiveRef = useRef<boolean>(false)
 
   // Search queries for quick-filter groups with > 12 items
   const [buFilterSearch, setBuFilterSearch] = useState<string>('')
@@ -278,6 +282,14 @@ export default function Opportunities() {
     selectedBUs.length +
     filters.length +
     (!includeDeletedLost ? 1 : 0)
+
+  // Starts collapsed once any filter is active
+  useEffect(() => {
+    if (activeChipsCount > 0 && !prevActiveRef.current) {
+      setIsFiltersCollapsed(true)
+    }
+    prevActiveRef.current = activeChipsCount > 0
+  }, [activeChipsCount])
 
   // Column picker helpers
   const handleToggleCol = (colName: string) => {
@@ -542,235 +554,278 @@ export default function Opportunities() {
 
       {/* ── Quick Filter Row (Chips with Row Counts) ─────────────────────── */}
       <Card padding="sm" className="space-y-3">
-        {/* Row 1: Sales Type & Include Deleted/Lost */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-            Sales Type:
-          </span>
-          <div className="flex flex-wrap gap-1.5 items-center">
-            {(quickFiltersData?.sales_types || []).map((st: any) => {
-              const active = selectedSalesTypes.includes(st.name)
-              return (
-                <button
-                  key={st.name}
-                  type="button"
-                  onClick={() => toggleQuickFilter(selectedSalesTypes, setSelectedSalesTypes, st.name)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
-                    active
-                      ? 'bg-[#12284C] text-white border-[#12284C] shadow-sm'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                  }`}
-                  id={`quick-filter-st-${st.name.replace(/\s+/g, '-').toLowerCase()}`}
-                >
-                  {st.name} <span className="opacity-70 ml-1">({st.count})</span>
-                </button>
-              )
-            })}
+        {/* Quick Filters Header & Collapse Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+              Quick Filters
+            </span>
+            {activeChipsCount > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#00A3AD]/10 text-[#00A3AD] border border-[#00A3AD]/20">
+                {activeChipsCount} active
+              </span>
+            )}
           </div>
-
-          <div className="h-4 w-px bg-[var(--border)] mx-1 hidden sm:block" />
-
-          {/* Include Deleted & Lost toggle (ON by default) */}
-          <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] select-none">
-            <input
-              type="checkbox"
-              checked={includeDeletedLost}
-              onChange={(e) => {
-                setIncludeDeletedLost(e.target.checked)
-                setPage(1)
-              }}
-              className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-              id="explorer-toggle-deleted-lost"
-            />
-            <span>Include Deleted & Lost</span>
-          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFiltersCollapsed((prev) => !prev)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              id="explorer-collapse-filters-toggle"
+            >
+              {isFiltersCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Expand filters</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Collapse filters</span>
+                </>
+              )}
+            </button>
+            {activeChipsCount > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllFilters}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-md font-medium transition-colors"
+                id="explorer-clear-all-filters-btn"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Row 2: Fiscal Period Chips (All periods, chronologically sorted, search if >12) */}
-        {quickFiltersData?.fiscal_periods && quickFiltersData.fiscal_periods.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-[var(--border)]">
-            <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-              Period:
-            </span>
-            {quickFiltersData.fiscal_periods.length > 12 && (
-              <input
-                type="text"
-                placeholder="Search period..."
-                value={periodFilterSearch}
-                onChange={(e) => setPeriodFilterSearch(e.target.value)}
-                className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-28 focus:outline-none"
-              />
-            )}
-            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-              {quickFiltersData.fiscal_periods
-                .filter((fp: any) =>
-                  !periodFilterSearch || fp.name.toLowerCase().includes(periodFilterSearch.toLowerCase())
-                )
-                .map((fp: any) => {
-                  const active = selectedFiscalPeriods.includes(fp.name)
+        {/* Quick Filter Body (Hidden if collapsed) */}
+        {!isFiltersCollapsed && (
+          <div className="space-y-3 pt-1 border-t border-[var(--border)]">
+            {/* Row 1: Sales Type & Include Deleted/Lost */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                Sales Type:
+              </span>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {(quickFiltersData?.sales_types || []).map((st: any) => {
+                  const active = selectedSalesTypes.includes(st.name)
                   return (
                     <button
-                      key={fp.name}
+                      key={st.name}
                       type="button"
-                      onClick={() =>
-                        toggleQuickFilter(selectedFiscalPeriods, setSelectedFiscalPeriods, fp.name)
-                      }
-                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                      onClick={() => toggleQuickFilter(selectedSalesTypes, setSelectedSalesTypes, st.name)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
                         active
-                          ? 'bg-[#00A3AD] text-white border-[#00A3AD]'
+                          ? 'bg-[#12284C] text-white border-[#12284C] shadow-sm'
                           : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
                       }`}
-                      id={`quick-filter-period-${fp.name.toLowerCase()}`}
+                      id={`quick-filter-st-${st.name.replace(/\s+/g, '-').toLowerCase()}`}
                     >
-                      {fp.name} <span className="opacity-70 ml-0.5">({fp.count})</span>
+                      {st.name} <span className="opacity-70 ml-1">({st.count})</span>
                     </button>
                   )
                 })}
+              </div>
+
+              <div className="h-4 w-px bg-[var(--border)] mx-1 hidden sm:block" />
+
+              {/* Include Deleted & Lost toggle (ON by default) */}
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] select-none">
+                <input
+                  type="checkbox"
+                  checked={includeDeletedLost}
+                  onChange={(e) => {
+                    setIncludeDeletedLost(e.target.checked)
+                    setPage(1)
+                  }}
+                  className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                  id="explorer-toggle-deleted-lost"
+                />
+                <span>Include Deleted & Lost</span>
+              </label>
+            </div>
+
+            {/* Row 2: Fiscal Period Chips (All periods, chronologically sorted, search if >12) */}
+            {quickFiltersData?.fiscal_periods && quickFiltersData.fiscal_periods.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-[var(--border)]">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Period:
+                </span>
+                {quickFiltersData.fiscal_periods.length > 12 && (
+                  <input
+                    type="text"
+                    placeholder="Search period..."
+                    value={periodFilterSearch}
+                    onChange={(e) => setPeriodFilterSearch(e.target.value)}
+                    className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-28 focus:outline-none"
+                  />
+                )}
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {quickFiltersData.fiscal_periods
+                    .filter((fp: any) =>
+                      !periodFilterSearch || fp.name.toLowerCase().includes(periodFilterSearch.toLowerCase())
+                    )
+                    .map((fp: any) => {
+                      const active = selectedFiscalPeriods.includes(fp.name)
+                      return (
+                        <button
+                          key={fp.name}
+                          type="button"
+                          onClick={() =>
+                            toggleQuickFilter(selectedFiscalPeriods, setSelectedFiscalPeriods, fp.name)
+                          }
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                            active
+                              ? 'bg-[#00A3AD] text-white border-[#00A3AD]'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                          }`}
+                          id={`quick-filter-period-${fp.name.toLowerCase()}`}
+                        >
+                          {fp.name} <span className="opacity-70 ml-0.5">({fp.count})</span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Row 3: Forecast Category & Approval Status */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs pt-1 border-t border-[var(--border)]">
+              {/* Forecast Categories */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Forecast:
+                </span>
+                {(quickFiltersData?.forecast_categories || []).map((fc: any) => {
+                  const active = selectedForecastCats.includes(fc.name)
+                  return (
+                    <button
+                      key={fc.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedForecastCats, setSelectedForecastCats, fc.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-[#12284C] text-white border-[#12284C]'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-fc-${fc.name.toLowerCase()}`}
+                    >
+                      {fc.name} ({fc.count})
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Approval Status */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Approval:
+                </span>
+                {(quickFiltersData?.approval_statuses || []).map((app: any) => {
+                  const active = selectedApprovals.includes(app.name)
+                  return (
+                    <button
+                      key={app.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedApprovals, setSelectedApprovals, app.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-app-${app.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      {app.name} ({app.count})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Row 4: Region */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-[var(--border)]">
+              <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                Region:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {(quickFiltersData?.regions || []).map((reg: any) => {
+                  const active = selectedRegions.includes(reg.name)
+                  return (
+                    <button
+                      key={reg.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedRegions, setSelectedRegions, reg.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-[#12284C] text-white border-[#12284C]'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-reg-${reg.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      {reg.name} ({reg.count})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Row 5: Business Unit */}
+            <div className="space-y-1 pt-1 border-t border-[var(--border)]">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  BU:
+                </span>
+                {(quickFiltersData?.business_units || []).length > 12 && (
+                  <input
+                    type="text"
+                    placeholder="Search BU..."
+                    value={buFilterSearch}
+                    onChange={(e) => setBuFilterSearch(e.target.value)}
+                    className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-24 focus:outline-none"
+                  />
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {(quickFiltersData?.business_units || [])
+                    .filter((bu: any) =>
+                      !buFilterSearch || bu.name.toLowerCase().includes(buFilterSearch.toLowerCase())
+                    )
+                    .map((bu: any) => {
+                      const active = selectedBUs.includes(bu.name)
+                      return (
+                        <button
+                          key={bu.name}
+                          type="button"
+                          onClick={() =>
+                            toggleQuickFilter(selectedBUs, setSelectedBUs, bu.name)
+                          }
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                            active
+                              ? 'bg-purple-600 text-white border-purple-600'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                          }`}
+                          id={`quick-filter-bu-${bu.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                        >
+                          {bu.name} ({bu.count})
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+              <p className="text-[10px] text-[var(--text-muted)] italic pl-[76px]">
+                As stored in the Excel
+              </p>
             </div>
           </div>
         )}
-
-        {/* Row 3: Forecast Category & Approval Status */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs pt-1 border-t border-[var(--border)]">
-          {/* Forecast Categories */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-              Forecast:
-            </span>
-            {(quickFiltersData?.forecast_categories || []).map((fc: any) => {
-              const active = selectedForecastCats.includes(fc.name)
-              return (
-                <button
-                  key={fc.name}
-                  type="button"
-                  onClick={() =>
-                    toggleQuickFilter(selectedForecastCats, setSelectedForecastCats, fc.name)
-                  }
-                  className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                    active
-                      ? 'bg-[#12284C] text-white border-[#12284C]'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                  }`}
-                  id={`quick-filter-fc-${fc.name.toLowerCase()}`}
-                >
-                  {fc.name} ({fc.count})
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Approval Status */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-              Approval:
-            </span>
-            {(quickFiltersData?.approval_statuses || []).map((app: any) => {
-              const active = selectedApprovals.includes(app.name)
-              return (
-                <button
-                  key={app.name}
-                  type="button"
-                  onClick={() =>
-                    toggleQuickFilter(selectedApprovals, setSelectedApprovals, app.name)
-                  }
-                  className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                    active
-                      ? 'bg-amber-600 text-white border-amber-600'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                  }`}
-                  id={`quick-filter-app-${app.name.toLowerCase().replace(/\s+/g, '-')}`}
-                >
-                  {app.name} ({app.count})
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Row 4: Region */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-[var(--border)]">
-          <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-            Region:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {(quickFiltersData?.regions || []).map((reg: any) => {
-              const active = selectedRegions.includes(reg.name)
-              return (
-                <button
-                  key={reg.name}
-                  type="button"
-                  onClick={() =>
-                    toggleQuickFilter(selectedRegions, setSelectedRegions, reg.name)
-                  }
-                  className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                    active
-                      ? 'bg-[#12284C] text-white border-[#12284C]'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                  }`}
-                  id={`quick-filter-reg-${reg.name.toLowerCase().replace(/\s+/g, '-')}`}
-                >
-                  {reg.name} ({reg.count})
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Row 5: Business Unit */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-[var(--border)]">
-          <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
-            BU:
-          </span>
-          {(quickFiltersData?.business_units || []).length > 12 && (
-            <input
-              type="text"
-              placeholder="Search BU..."
-              value={buFilterSearch}
-              onChange={(e) => setBuFilterSearch(e.target.value)}
-              className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-24 focus:outline-none"
-            />
-          )}
-          <div className="flex flex-wrap gap-1.5">
-            {(quickFiltersData?.business_units || [])
-              .filter((bu: any) =>
-                !buFilterSearch || bu.name.toLowerCase().includes(buFilterSearch.toLowerCase())
-              )
-              .map((bu: any) => {
-                const active = selectedBUs.includes(bu.name)
-                return (
-                  <button
-                    key={bu.name}
-                    type="button"
-                    onClick={() =>
-                      toggleQuickFilter(selectedBUs, setSelectedBUs, bu.name)
-                    }
-                    className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                      active
-                        ? 'bg-purple-600 text-white border-purple-600'
-                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                    }`}
-                    id={`quick-filter-bu-${bu.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                  >
-                    {bu.name} ({bu.count})
-                  </button>
-                )
-              })}
-          </div>
-        </div>
-
-          {/* Reset All Filters button */}
-          {activeChipsCount > 0 && (
-            <button
-              type="button"
-              onClick={handleClearAllFilters}
-              className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-md font-medium transition-colors"
-              id="explorer-clear-all-filters-btn"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset Filters</span>
-            </button>
-          )}
       </Card>
+
 
       {/* ── Filter Builder Popover / Panel ───────────────────────────────── */}
       {showFilterBuilder && (

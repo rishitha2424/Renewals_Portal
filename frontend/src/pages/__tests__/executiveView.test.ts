@@ -59,4 +59,36 @@ describe('Executive View Contract & Exact Metric Tests', () => {
     },
     20000
   )
+
+  it('Region and Business Unit totals equal the headline (348 deals / $40,068,990.09)', async () => {
+    const baseReg = 'http://localhost:8000/api/v2/regions/summary?compare=yesterday'
+    const baseBU = 'http://localhost:8000/api/v2/business-units/summary?compare=yesterday'
+
+    const [resReg, resBU] = await Promise.all([axios.get(baseReg), axios.get(baseBU)])
+    expect(resReg.status).toBe(200)
+    expect(resBU.status).toBe(200)
+
+    // Regions total
+    const regTotal = resReg.data.total
+    expect(regTotal.count).toBe(348)
+    expect(regTotal.acv).toBeCloseTo(40068990.09, 2)
+
+    // Sum of all regions in list
+    const regListSumCount = resReg.data.regions.reduce((s: number, r: any) => s + r.count, 0)
+    const regListSumAcv = resReg.data.regions.reduce((s: number, r: any) => s + r.acv, 0)
+    expect(regListSumCount).toBe(348)
+    expect(regListSumAcv).toBeCloseTo(40068990.09, 2)
+
+    // Business Units total
+    const buTotal = resBU.data.total
+    expect(buTotal.count).toBe(348)
+    expect(buTotal.acv).toBeCloseTo(40068990.09, 2)
+
+    // Sum of all BUs in list
+    const buListSumCount = resBU.data.rows.reduce((s: number, r: any) => s + r.count, 0)
+    const buListSumAcv = resBU.data.rows.reduce((s: number, r: any) => s + r.acv, 0)
+    expect(buListSumCount).toBe(348)
+    expect(buListSumAcv).toBeCloseTo(40068990.09, 2)
+  })
 })
+

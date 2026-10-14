@@ -92,9 +92,9 @@ def admin_login(body: LoginRequest, request: Request, response: Response):
     )
 
 
-@router.post("/logout", dependencies=[Depends(require_admin_context)])
-def admin_logout(response: Response, ctx: UserContext = Depends(require_admin_context)):
-    """Clear admin cookie. Admin-only."""
+@router.post("/logout")
+def admin_logout(response: Response):
+    """Clear admin cookie. Works without a valid token, clearing cookie and returning 200."""
     response.delete_cookie("admin_token")
     return {"status": "logged_out"}
 

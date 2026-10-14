@@ -25,7 +25,7 @@ const NAV_ITEMS = [
   { to: '/delayed', icon: Clock, label: 'Delayed Renewals' },
   { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
   { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
-  { to: '/executive', icon: Printer, label: 'Executive', newTab: true },
+  { to: '/executive', icon: Printer, label: 'Executive' },
 ]
 
 export default function Sidebar() {
@@ -65,7 +65,7 @@ export default function Sidebar() {
 
       {/* Nav List */}
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden">
-        {NAV_ITEMS.map(({ to, icon: Icon, label, newTab }) => {
+        {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
           const isHash = to.includes('#')
           const basePath = to.split('#')[0]
           const hash = to.split('#')[1]
@@ -77,7 +77,6 @@ export default function Sidebar() {
             <NavLink
               key={to}
               to={to}
-              target={newTab ? '_blank' : undefined}
               title={sidebarCollapsed ? label : undefined}
               className={clsx(
                 'flex items-center gap-3 px-2.5 py-2 rounded-sm text-xs font-medium transition-colors group relative',
