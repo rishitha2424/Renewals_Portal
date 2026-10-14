@@ -392,10 +392,10 @@ function RegionsContent() {
                   {movementsData.new_to_slice.count > 0 && (
                     <div 
                       className="flex justify-between items-center p-3 rounded-lg bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 cursor-pointer transition-colors border border-transparent hover:border-green-200 dark:hover:border-green-900/30 text-green-700 dark:text-green-400"
-                      onClick={() => handleDrill(`New to slice`, { region: selectedRegion, deals: movementsData.new_to_slice.deals })}
+                      onClick={() => handleDrill(`Newly In-Scope`, { region: selectedRegion, deals: movementsData.new_to_slice.deals })}
                     >
                       <div className="text-sm font-medium flex items-center gap-2">
-                        <ArrowUpRight className="w-4 h-4" /> New to slice
+                        <ArrowUpRight className="w-4 h-4" /> Newly In-Scope
                       </div>
                       <div className="text-sm font-bold">
                         {metricMode === 'Count' ? formatCount(movementsData.new_to_slice.count) : metricMode === 'Amount' ? formatACV(movementsData.new_to_slice.acv) : `${formatCount(movementsData.new_to_slice.count)} · ${formatACV(movementsData.new_to_slice.acv)}`}

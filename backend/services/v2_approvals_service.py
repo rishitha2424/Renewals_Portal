@@ -238,7 +238,7 @@ class V2ApprovalsService:
                     suffixes=("_prev", "_curr")
                 )
                 changed = merged[merged["approval_status_prev"] != merged["approval_status_curr"]].copy()
-                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("New to slice")
+                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("Newly In-Scope")
                 changed["approval_status_curr"] = changed["approval_status_curr"].fillna("Blank")
                 
                 grouped = changed.groupby(["approval_status_prev", "approval_status_curr"], dropna=False).agg(

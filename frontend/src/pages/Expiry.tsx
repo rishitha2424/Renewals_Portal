@@ -14,6 +14,7 @@ import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
 import SummaryLine from '@/components/common/SummaryLine'
 import DealListModal from '@/components/common/DealListModal'
+import { MovementsSummary } from '@/components/common/MovementsSummary'
 import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
 import clsx from 'clsx'
@@ -35,6 +36,7 @@ export default function Expiry() {
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
   const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean }>({ quarter: null, category: null })
+  const [drillDeals, setDrillDeals] = useState<any[] | null>(null)
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
 
@@ -69,7 +71,7 @@ export default function Expiry() {
   const { data: openDealsData } = useQuery({
     queryKey: ['v2ExpiryOpenDeals', activeSnapshotId, includeDeletedLost],
     queryFn: () => getV2OverviewDeals({
-      as_of: activeSnapshotId,
+      as_of: activeSnapshotId || undefined,
       exclude_deleted: !includeDeletedLost,
       filterSpec: {
         forecast_categories: ['Commit', 'Best Case', 'Pipeline'],
@@ -121,6 +123,7 @@ export default function Expiry() {
   }
 
   const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false) => {
+    setDrillDeals(null)
     setModalParams({ quarter, category, slippage: isSlippage })
     setModalTitle(title)
     setModalOpen(true)
@@ -404,12 +407,27 @@ export default function Expiry() {
         </Card>
       </div>
 
+      {/* Shared Movement Section */}
+      <Card className="p-6 mt-8">
+        <MovementsSummary
+          movements={movementsData}
+          onSelectDeals={(title, deals) => {
+            setModalTitle(title)
+            setDrillDeals(deals)
+            setModalOpen(true)
+          }}
+        />
+      </Card>
+
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={dealsData || []}
+          deals={drillDeals || dealsData || []}
           onSelectOpp={setSelectedOppId}
-          onClose={() => setModalOpen(false)}
+          onClose={() => {
+            setModalOpen(false)
+            setDrillDeals(null)
+          }}
         />
       )}
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />
