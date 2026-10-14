@@ -16,6 +16,8 @@ import { formatACV, formatCount } from '@/utils/format'
 import Card from '@/components/ui/Card'
 import SectionHeader from '@/components/ui/SectionHeader'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
@@ -38,7 +40,7 @@ function DelayedContent() {
   const [modalFilters, setModalFilters] = useState<any>({})
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
-  const { data: summary, isLoading, error } = useQuery({
+  const { data: summary, isLoading, error, refetch } = useQuery({
     queryKey: ['v2-delayed-summary', activeSnapshotId, compare, globalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/summary', {
@@ -59,6 +61,14 @@ function DelayedContent() {
     enabled: modalOpen,
   })
 
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
+  }
+
+  if (error || summary?.error) {
+    return <PageErrorState message={summary?.error || error?.toString() || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -68,16 +78,8 @@ function DelayedContent() {
     )
   }
 
-  if (error || summary?.error) {
-    return (
-      <div>
-        <Card className="p-8 text-center text-red-500">
-          <AlertCircle className="w-12 h-12 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold mb-2">Could not load Delayed data</h2>
-          <p className="text-sm opacity-80">{summary?.error || 'Server error'}</p>
-        </Card>
-      </div>
-    )
+  if (!summary || !summary.total) {
+    return <PageNoSnapshotState />
   }
 
   const handleDrill = (title: string, filters: any = {}) => {
