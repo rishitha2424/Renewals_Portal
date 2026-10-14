@@ -203,3 +203,104 @@ def test_top_opportunities(client_and_db):
     if len(deals) > 1:
         assert "TPG - Roaming Platform Managed Service" in deals[1]["opportunity_name"]
         assert deals[1]["forecast_acv_amount"] == pytest.approx(858986.59, abs=ACV_ABS)
+
+
+def test_bu_deals_equal_heatmap_cells_oct7(client_and_db):
+    """
+    Verify for every cell, row total, column total and grand total,
+    the /deals endpoint count and ACV match the heatmap numbers exactly.
+    Multi-value BUs ('Roaming; Security') must be treated as their own row consistently.
+    """
+    client, _ = client_and_db
+    sum_res = client.get("/api/v2/business-units/summary?as_of=2026-10-07").json()
+    
+    # Grand total
+    grand_deals = client.get("/api/v2/business-units/deals?as_of=2026-10-07").json()
+    assert grand_deals["count"] == sum_res["total"]["count"]
+    assert grand_deals["acv"] == pytest.approx(sum_res["total"]["acv"], abs=ACV_ABS)
+
+    # Multi-value BU check
+    bu_names = [r["bu"] for r in sum_res["rows"]]
+    assert "Roaming; Security" in bu_names
+
+    # Every BU and cell
+    for r in sum_res["rows"]:
+        bu = r["bu"]
+        # Row total
+        row_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "as_of": "2026-10-07"}).json()
+        assert row_deals["count"] == r["count"]
+        assert row_deals["acv"] == pytest.approx(r["acv"], abs=ACV_ABS)
+
+        # Each category cell
+        for fc, cell in r["cells"].items():
+            cell_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "category": fc, "as_of": "2026-10-07"}).json()
+            assert cell_deals["count"] == cell["count"]
+            assert cell_deals["acv"] == pytest.approx(cell["acv"], abs=ACV_ABS)
+
+    # Column totals
+    for fc, cat_tot in sum_res["totals"]["categories"].items():
+        cat_deals = client.get("/api/v2/business-units/deals", params={"category": fc, "as_of": "2026-10-07"}).json()
+        assert cat_deals["count"] == cat_tot["count"]
+        assert cat_deals["acv"] == pytest.approx(cat_tot["acv"], abs=ACV_ABS)
+
+
+def test_bu_deals_equal_heatmap_cells_oct14(client_and_db):
+    """
+    Backend test that, for every BU x category cell in the Oct 14 fixture,
+    the deals endpoint count and ACV equal the heatmap numbers exactly.
+    Multi-value BUs ('Roaming; Security') must be treated as their own row consistently.
+    """
+    client, db = client_and_db
+    
+    # Ensure there is a snapshot for 2026-10-14 in the test database
+    snap = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == date(2026, 10, 14)).first()
+    if not snap:
+        existing = db.query(UploadSnapshot).first()
+        if existing:
+            snap = UploadSnapshot(
+                snapshot_date=date(2026, 10, 14),
+                label="Oct 14 Fixture",
+                is_active_today=True
+            )
+            db.add(snap)
+            db.commit()
+            db.refresh(snap)
+            from backend.models.opportunity import Opportunity
+            opps = db.query(Opportunity).filter(Opportunity.snapshot_id == existing.id).all()
+            for o in opps:
+                attrs = {k: v for k, v in o.__dict__.items() if not k.startswith('_') and k != 'id'}
+                attrs['snapshot_id'] = snap.id
+                db.add(Opportunity(**attrs))
+            db.commit()
+
+    sum_res = client.get("/api/v2/business-units/summary?as_of=2026-10-14").json()
+    assert sum_res["total"]["count"] > 0
+
+    # Grand total
+    grand_deals = client.get("/api/v2/business-units/deals?as_of=2026-10-14").json()
+    assert grand_deals["count"] == sum_res["total"]["count"]
+    assert grand_deals["acv"] == pytest.approx(sum_res["total"]["acv"], abs=ACV_ABS)
+
+    # Multi-value BU check
+    bu_names = [r["bu"] for r in sum_res["rows"]]
+    assert "Roaming; Security" in bu_names
+
+    # Every BU and cell
+    for r in sum_res["rows"]:
+        bu = r["bu"]
+        row_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "as_of": "2026-10-14"}).json()
+        assert row_deals["count"] == r["count"]
+        assert row_deals["acv"] == pytest.approx(r["acv"], abs=ACV_ABS)
+
+        for fc, cell in r["cells"].items():
+            cell_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "category": fc, "as_of": "2026-10-14"}).json()
+            assert cell_deals["count"] == cell["count"]
+            assert cell_deals["acv"] == pytest.approx(cell["acv"], abs=ACV_ABS)
+
+    # Column totals
+    for fc, cat_tot in sum_res["totals"]["categories"].items():
+        cat_deals = client.get("/api/v2/business-units/deals", params={"category": fc, "as_of": "2026-10-14"}).json()
+        assert cat_deals["count"] == cat_tot["count"]
+        assert cat_deals["acv"] == pytest.approx(cat_tot["acv"], abs=ACV_ABS)
+
+

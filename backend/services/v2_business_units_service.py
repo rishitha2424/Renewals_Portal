@@ -23,7 +23,7 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     records = []
     for o in opps:
         fc = (o.forecast_category or "Blank").strip()
-        if fc == "":
+        if fc in ("", "Not yet proposed"):
             fc = "Blank"
             
         bu = str(o.business_unit_raw).strip() if o.business_unit_raw else "Unassigned"
@@ -314,11 +314,17 @@ class V2BusinessUnitsService:
             fs.as_of = as_of
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
-        if bu and bu != "All":
+        if bu and bu not in ("All", "Total", "Grand Total"):
             fs.business_units = [bu]
-        if category:
+        elif bu in ("All", "Total", "Grand Total"):
+            fs.business_units = []
+
+        if category and category not in ("All", "Total", "Grand Total"):
             fs.forecast_categories = [category]
-        if status:
+        elif category in ("All", "Total", "Grand Total"):
+            fs.forecast_categories = []
+
+        if status and status not in ("All", "Total"):
             fs.approval_statuses = [status]
 
         snap = self._active_snap(fs.as_of)

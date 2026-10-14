@@ -384,7 +384,15 @@ class ScopeService:
             bu_conds = []
             for b in bus:
                 b_clean = b.strip()
-                if b_clean:
+                if b_clean.lower() == "unassigned":
+                    bu_conds.append(
+                        or_(
+                            Opportunity.business_unit_raw == None,
+                            Opportunity.business_unit_raw == "",
+                            Opportunity.business_unit_raw == "Unassigned",
+                        )
+                    )
+                elif b_clean and b_clean not in ("All", "Total", "Grand Total"):
                     bu_conds.append(Opportunity.business_unit_raw == b_clean)
             if bu_conds:
                 conditions.append(or_(*bu_conds))
@@ -401,10 +409,11 @@ class ScopeService:
                             Opportunity.forecast_category == None,
                             Opportunity.forecast_category == "",
                             Opportunity.forecast_category == "Blank",
+                            Opportunity.forecast_category == "Not yet proposed",
                             ~Opportunity.forecast_category.in_(["Closed", "Commit", "Best Case", "Pipeline"]),
                         )
                     )
-                else:
+                elif f_clean not in ("All", "Total", "Grand Total"):
                     fc_conds.append(Opportunity.forecast_category == f_clean)
             if fc_conds:
                 conditions.append(or_(*fc_conds))
