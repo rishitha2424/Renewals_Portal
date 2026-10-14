@@ -23,7 +23,7 @@ def test_executive_view_contracts_sqlite():
 
     with TestClient(app) as client:
         # 1. Overview summary check
-        r_ov = client.get("/api/v2/overview/summary")
+        r_ov = client.get("/api/v2/overview/summary?as_of=2026-10-07")
         assert r_ov.status_code == 200, r_ov.text
         ov_data = r_ov.json()
 
@@ -45,7 +45,7 @@ def test_executive_view_contracts_sqlite():
         assert abs(cats["Blank"]["acv"] - 212772.40) < 0.1
 
         # 2. Delayed summary check
-        r_del = client.get("/api/v2/delayed/summary?compare=yesterday")
+        r_del = client.get("/api/v2/delayed/summary?as_of=2026-10-07&compare=yesterday")
         assert r_del.status_code == 200, r_del.text
         del_data = r_del.json()
 

@@ -87,6 +87,7 @@ class V2DelayedService:
             by_id = q.filter(UploadSnapshot.id == as_of).first()
             if by_id:
                 return by_id
+            return None
         return q.filter(UploadSnapshot.is_active_today == True).order_by(UploadSnapshot.snapshot_date.desc()).first()
 
     def _snap_by_date(self, d: date) -> UploadSnapshot | None:
@@ -279,7 +280,7 @@ class V2DelayedService:
         # Exclude "Lost/removed" from delayed totals
         delayed_active = delayed_df[delayed_df["reason"] != "Lost/removed"] if not delayed_df.empty else pd.DataFrame()
         if not overdue_df.empty:
-            delayed_active = pd.concat([delayed_active, overdue_df], ignore_index=True) if not delayed_active.empty else overdue_df.copy()
+            delayed_active = pd.concat([overdue_df, delayed_active], ignore_index=True) if not delayed_active.empty else overdue_df.copy()
             delayed_active = delayed_active.drop_duplicates(subset=["opportunity_id_18"], keep="first")
             
         slipped_df = delayed_active[delayed_active["reason"] == "Slipped quarter"] if not delayed_active.empty else pd.DataFrame()
