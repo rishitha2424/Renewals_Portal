@@ -8,6 +8,8 @@ import { formatDate, acvM, formatCurrency } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
 import SummaryLine from '@/components/common/SummaryLine'
@@ -36,7 +38,7 @@ export default function Expiry() {
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
 
-  const { data: sum, isLoading, isError } = useQuery({
+  const { data: sum, isLoading, isError, refetch: refetchSum } = useQuery({
     queryKey: ['v2ExpirySummary', activeSnapshotId, compareSnapshotId, includeDeletedLost],
     queryFn: () => getV2ExpirySummary({
       as_of: activeSnapshot?.snapshot_date,
@@ -58,8 +60,8 @@ export default function Expiry() {
     enabled: modalOpen && !!activeSnapshotId,
   })
 
-  if (!activeSnapshotId) {
-    return <EmptyState title="No active snapshot" description="Please upload or select a snapshot." icon={<AlertTriangle className="w-10 h-10 text-[var(--text-muted)]" />} />
+  if (!activeSnapshotId || snapshots.length === 0) {
+    return <PageNoSnapshotState />
   }
 
   if (isLoading) {
@@ -73,10 +75,10 @@ export default function Expiry() {
   }
 
   if (isError || !sum || sum.error) {
-    return <div className="p-8 text-center text-rose-500 font-semibold bg-rose-50 border border-rose-200 rounded-xl m-6">{sum?.error || 'Failed to load Expiry view.'}</div>
+    return <PageErrorState message={sum?.error || "Couldn’t load this page. Try again"} onRetry={() => refetchSum()} />
   }
   if (!sum.grand_total) {
-    return <EmptyState title="No data" description="No expiry data found or the response was malformed." />
+    return <PageNoSnapshotState />
   }
 
   const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false) => {
