@@ -5,15 +5,29 @@ import pandas as pd
 @pytest.fixture(scope="module")
 def client_and_db(tmp_path_factory):
     """Upload Oct-7 files and return TestClient + Session factory."""
-    import pathlib, os
-    os.environ.setdefault("DATABASE_URL", "sqlite:///./test_v2_delayed.db")
-
+    import pathlib, os, shutil
     from fastapi.testclient import TestClient
     from backend.database import get_db
     from backend.main import app
-    from backend.tests.test_db_helper import get_test_engine_and_session
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from backend.models.snapshot import UploadSnapshot
 
-    engine, Session = get_test_engine_and_session("test_v2_delayed", tmp_path_factory)
+    root_db = pathlib.Path("renewals.db")
+    if root_db.exists() and tmp_path_factory:
+        db_path = tmp_path_factory.mktemp("db") / "test_v2_delayed.db"
+        shutil.copy(root_db, db_path)
+        engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+        Session = sessionmaker(bind=engine)
+        # Ensure Oct 7 snapshot is active for tests
+        s = Session()
+        s.query(UploadSnapshot).update({"is_active_today": False})
+        s.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == date(2026, 10, 7)).update({"is_active_today": True})
+        s.commit()
+        s.close()
+    else:
+        from backend.tests.test_db_helper import get_test_engine_and_session
+        engine, Session = get_test_engine_and_session("test_v2_delayed", tmp_path_factory)
 
     def override_db():
         db = Session()
@@ -22,25 +36,30 @@ def client_and_db(tmp_path_factory):
 
     app.dependency_overrides[get_db] = override_db
 
-    from backend.utils.excel_parser import detect_file_slot
-    sample = pathlib.Path("data/sample_oct7")
-    slots = {}
-    for fp in sorted(sample.glob("*.xlsx")):
-        slots[detect_file_slot(fp)[0]] = fp
+    # If Oct 7 was already present, we don't need to re-validate and re-commit
+    check_session = Session()
+    oct7_exists = check_session.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == date(2026, 10, 7)).first() is not None
+    check_session.close()
 
     from backend.services.context import sign_admin_token
     token = sign_admin_token()
     headers = {"Authorization": f"Bearer {token}"}
 
     with TestClient(app) as client:
-        files = [(slot, (fp.name, open(fp, "rb"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) for slot, fp in slots.items()]
-        data = {"data_as_of_date": "2026-10-07", "yesterday_date": "2026-10-06"}
-        vr = client.post("/api/snapshots/validate", data=data, files=files, headers=headers)
-        assert vr.status_code == 200, vr.text
-        session_id = vr.json()["session_id"]
+        if not oct7_exists:
+            from backend.utils.excel_parser import detect_file_slot
+            sample = pathlib.Path("data/sample_oct7")
+            slots = {}
+            for fp in sorted(sample.glob("*.xlsx")):
+                slots[detect_file_slot(fp)[0]] = fp
+            files = [(slot, (fp.name, open(fp, "rb"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) for slot, fp in slots.items()]
+            data = {"data_as_of_date": "2026-10-07", "yesterday_date": "2026-10-06"}
+            vr = client.post("/api/snapshots/validate", data=data, files=files, headers=headers)
+            assert vr.status_code == 200, vr.text
+            session_id = vr.json()["session_id"]
 
-        cr = client.post("/api/snapshots/commit", json={"session_id": session_id, "replace": False}, headers=headers)
-        assert cr.status_code == 200, cr.text
+            cr = client.post("/api/snapshots/commit", json={"session_id": session_id, "replace": False}, headers=headers)
+            assert cr.status_code == 200, cr.text
 
         yield client, Session
 
