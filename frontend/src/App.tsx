@@ -60,8 +60,8 @@ export default function App() {
       />
       <Routes>
         <Route path="/loading" element={<LoadingScreen />} />
+        <Route path="/executive" element={<ExecutiveView />} />
         <Route element={<Shell />}>
-          <Route path="/executive" element={<ExecutiveView />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/expiry" element={<Expiry />} />
           <Route path="/approvals" element={<Approvals />} />

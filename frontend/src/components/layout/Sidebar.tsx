@@ -66,6 +66,27 @@ export default function Sidebar() {
       {/* Nav List */}
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden">
         {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+          if (to === '/executive') {
+            return (
+              <a
+                key={to}
+                href="/executive"
+                target="_blank"
+                rel="noopener noreferrer"
+                title={sidebarCollapsed ? label : undefined}
+                className="flex items-center gap-3 px-2.5 py-2 rounded-sm text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors group relative"
+              >
+                <Icon
+                  className="w-[18px] h-[18px] flex-shrink-0 text-slate-400 group-hover:text-slate-200"
+                  strokeWidth={1.75}
+                />
+                {!sidebarCollapsed && (
+                  <span className="truncate whitespace-nowrap">{label}</span>
+                )}
+              </a>
+            )
+          }
+
           const isHash = to.includes('#')
           const basePath = to.split('#')[0]
           const hash = to.split('#')[1]
