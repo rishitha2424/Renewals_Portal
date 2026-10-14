@@ -19,7 +19,7 @@ from backend.services.explorer_service import (
     ExplorerExportRequest,
 )
 
-router = APIRouter(prefix="/v2/explorer", tags=["v2-explorer"])
+router = APIRouter(prefix="/api/v2/explorer", tags=["v2-explorer"])
 
 
 @router.get("/columns")

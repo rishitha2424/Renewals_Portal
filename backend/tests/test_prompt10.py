@@ -26,7 +26,6 @@ from backend.utils.excel_parser import (
 )
 from backend.services.analytics_service import AnalyticsService
 from backend.services.risk_service import RiskService
-from backend.services.assistant_tools import AssistantTools
 from backend.services.pptx_export_service import PptxExportService
 from backend.services.excel_export_service import ExcelExportService
 
@@ -259,18 +258,6 @@ class TestB3YesterdayAndLastWeekSources:
 # =========================================================================== #
 
 class TestB4ScopeAndIncludeDeletedLostEverywhere:
-    def test_assistant_tools_filtering(self, seeded_session):
-        # Default AssistantTools has scope="all", include_deleted_lost=True
-        tools_all = AssistantTools(seeded_session, ADMIN_CONTEXT, scope="all", include_deleted_lost=True)
-        kpi_all = tools_all.get_kpis()
-        assert kpi_all["numbers"]["total_count"] == 3086
-
-        # Scoped AssistantTools to renewals only excluding deleted/lost
-        tools_renewals = AssistantTools(seeded_session, ADMIN_CONTEXT, scope="renewals", include_deleted_lost=False)
-        kpi_renewals = tools_renewals.get_kpis()
-        assert kpi_renewals["numbers"]["total_count"] < 3086
-        assert kpi_renewals["numbers"]["total_count"] == 1128
-
     def test_risk_service_filtering(self, seeded_session):
         risk_svc = RiskService(seeded_session)
         # Insights with renewals only and no deleted/lost

@@ -294,11 +294,11 @@ export default function Expiry() {
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
              <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors">
                <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>GlobalTech Enterprise</span> <span className="text-amber-600 dark:text-amber-400">$3.4M</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1">Commit · Q4-2026</div>
+               <div className="text-[10px] text-[var(--text-muted)] mt-1">Commit · Q4-{fy1}</div>
              </div>
              <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors">
                <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Nexus Systems Core</span> <span className="text-amber-600 dark:text-amber-400">$2.1M</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1">Best Case · Q1-2026</div>
+               <div className="text-[10px] text-[var(--text-muted)] mt-1">Best Case · Q1-{fy1}</div>
              </div>
           </div>
         </Card>

@@ -32,7 +32,7 @@ import {
   getExplorerReconcile,
   downloadReport,
 } from '@/api/client'
-import { formatACV, formatCount, formatDate, formatCurrency } from '@/utils/format'
+import { formatACV, formatCount, formatDate, formatCurrency, getQuarterFromDate } from '@/utils/format'
 import Card from '@/components/ui/Card'
 import SectionHeader from '@/components/ui/SectionHeader'
 import { KpiCard } from '@/components/ui/KpiCard'
@@ -678,7 +678,7 @@ export default function ExecutiveView() {
               </div>
 
               <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
-                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Renewals Scope (Q4-2026)</p>
+                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Renewals Scope ({getQuarterFromDate(activeSnapshot?.snapshot_date)})</p>
                 <p className="text-base font-bold text-[var(--text-primary)] mt-1">
                   348 deals · $40,068,990.09 ACV
                 </p>

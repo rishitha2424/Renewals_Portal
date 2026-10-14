@@ -82,8 +82,8 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   const filteredDeals = useMemo(() => {
     let result = deals.filter(d => {
       if (deltaGroups && selectedGroup !== 'All') {
-        if (selectedGroup === 'added' && d.delta_group !== 'Added to Q4') return false
-        if (selectedGroup === 'left' && d.delta_group !== 'Left Q4 – moved or lost') return false
+        if (selectedGroup === 'added' && !(d.delta_group?.startsWith('Added to') || d.delta_group === 'Added to Q4')) return false
+        if (selectedGroup === 'left' && !(d.delta_group?.startsWith('Left') || d.delta_group === 'Left Q4 – moved or lost')) return false
         if (selectedGroup === 'amount_changed' && d.delta_group !== 'Amount changed') return false
       }
       if (filterFC !== 'All' && d.forecast_category !== filterFC) return false
@@ -233,13 +233,13 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                       onClick={() => setSelectedGroup('added')}
                       className={`px-2.5 py-1 rounded-sm transition-colors ${selectedGroup === 'added' ? 'bg-emerald-600 text-white' : 'text-emerald-700 dark:text-emerald-300 hover:text-emerald-800'}`}
                     >
-                      Added to Q4 ({deltaGroups.added.count})
+                      {deltaGroups.added.name || `Added to Q4 (${deltaGroups.added.count})`}
                     </button>
                     <button
                       onClick={() => setSelectedGroup('left')}
                       className={`px-2.5 py-1 rounded-sm transition-colors ${selectedGroup === 'left' ? 'bg-rose-600 text-white' : 'text-rose-700 dark:text-rose-300 hover:text-rose-800'}`}
                     >
-                      Left Q4 – moved or lost ({deltaGroups.left.count})
+                      {deltaGroups.left.name || `Left Q4 – moved or lost (${deltaGroups.left.count})`}
                     </button>
                     <button
                       onClick={() => setSelectedGroup('amount_changed')}

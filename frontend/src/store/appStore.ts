@@ -6,6 +6,7 @@ export interface SnapshotItem {
   label: string
   snapshot_date: string
   yesterday_date?: string | null
+  period?: string
   row_count: number
   active_row_count?: number
   is_active_today: boolean

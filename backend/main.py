@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
-from backend.routers import snapshots, analytics, opportunities, ai, export, insights, health, admin_auth
+from backend.routers import snapshots, analytics, opportunities, export, health, admin_auth
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters, v2_explorer
 
 logging.basicConfig(
@@ -78,61 +78,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API routes
+# API routes (Mounted exactly once under /api)
 app.include_router(snapshots.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(opportunities.router, prefix="/api")
-app.include_router(ai.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
-app.include_router(insights.router, prefix="/api")
-app.include_router(health.router)
 app.include_router(admin_auth.router, prefix="/api")
-app.include_router(admin_auth.router)
+app.include_router(health.router)
 app.include_router(v2_overview.router)
 app.include_router(v2_expiry.router)
 app.include_router(v2_approvals.router)
-app.include_router(v2_business_units.router)  # has its own /api/v2/overview prefix
+app.include_router(v2_business_units.router)
 app.include_router(v2_regions.router)
 app.include_router(v2_delayed.router)
 app.include_router(v2_filters.router)
-app.include_router(v2_explorer.router, prefix="/api")
 app.include_router(v2_explorer.router)
 
-# Direct routes without /api prefix
-app.include_router(snapshots.router)
-app.include_router(analytics.router)
-app.include_router(opportunities.router)
-app.include_router(ai.router)
-app.include_router(export.router)
-app.include_router(insights.router)
-
-
-# Top-level direct routes matching specification
-from fastapi import Query, Form, File, UploadFile, Depends, Request
+from fastapi import Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
-
-@app.get("/compare", tags=["analytics"])
-@app.get("/api/compare", tags=["analytics"])
-def compare_direct(
-    from_date: str = Query(..., alias="from"),
-    to_date: str = Query(..., alias="to"),
-    scope: str = Query("renewals"),
-    include_deleted_lost: bool = Query(False),
-    db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
-):
-    from backend.routers.analytics import compare_dates
-    from backend.services.analytics_service import AnalyticsService
-    return compare_dates(from_date=from_date, to_date=to_date, scope=scope, include_deleted_lost=include_deleted_lost, svc=AnalyticsService(db), ctx=ctx)
-
-@app.get("/snapshots", tags=["snapshots"])
-def snapshots_direct(db: Session = Depends(get_db), ctx: UserContext = Depends(get_user_context)):
-    from backend.routers.snapshots import list_snapshots
-    return list_snapshots(db=db, ctx=ctx)
-
 
 
 @app.get("/api/health")

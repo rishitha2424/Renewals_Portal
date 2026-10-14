@@ -13,7 +13,7 @@ import {
   getV2RegionalBreakdown,
   getV2OverviewDeals,
 } from '@/api/client'
-import { getForecastCategoryLabel, formatCurrency, formatNumber } from '@/utils/format'
+import { getForecastCategoryLabel, formatCurrency, formatNumber, getQuarterFromDate } from '@/utils/format'
 import { formatDate } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
@@ -136,7 +136,8 @@ function DealModal({ title, deals, onSelectOpp, onClose }: {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { snapshots = [] } = useAppStore()
+  const { snapshots = [], activeSnapshotId } = useAppStore()
+  const activeSnapshot = snapshots.find((s: any) => s.id === activeSnapshotId)
   const navigate = useNavigate()
 
   const [movCompare, setMovCompare] = useState<'yesterday' | 'last_week'>('yesterday')
@@ -471,7 +472,7 @@ export default function Dashboard() {
             </div>
 
             <p className="text-[11px] text-[var(--text-muted)] mt-3">
-              Contracts originally in Q4 that moved close date / fiscal period to FY2027.
+              Contracts originally in {getQuarterFromDate(activeSnapshot?.snapshot_date).split("-")[0]} that moved close date / fiscal period to FY{(activeSnapshot?.snapshot_date ? new Date(activeSnapshot.snapshot_date.length === 10 ? activeSnapshot.snapshot_date + "T00:00:00" : activeSnapshot.snapshot_date).getFullYear() + 1 : 2027)}.
               {standingSlip.count > 0 && ` Active snapshot standing slippage: ${standingSlip.count} deals.`}
             </p>
           </div>

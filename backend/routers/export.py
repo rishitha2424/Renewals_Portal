@@ -10,10 +10,10 @@ from backend.services.context import UserContext, get_user_context
 from backend.services.pptx_export_service import PptxExportService
 from backend.services.excel_export_service import ExcelExportService
 
-router = APIRouter(tags=["export"])
+router = APIRouter(prefix="/export", tags=["export"])
 
 
-@router.get("/export/pptx")
+@router.get("/pptx")
 def export_pptx(
     snapshot_id: str | None = Query(None, description="Snapshot ID or ISO date to export"),
     compare_to: str | None = Query(None, description="Comparison snapshot ID or ISO date"),
@@ -47,7 +47,7 @@ def export_pptx(
         raise HTTPException(status_code=500, detail=f"Failed to generate PowerPoint export: {str(exc)}")
 
 
-@router.get("/export/excel")
+@router.get("/excel")
 def export_excel(
     snapshot_id: str | None = Query(None, description="Snapshot ID or ISO date to export"),
     compare_to: str | None = Query(None, description="Comparison snapshot ID or ISO date"),
