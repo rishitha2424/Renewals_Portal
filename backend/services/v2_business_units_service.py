@@ -37,6 +37,8 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
             "forecast_category": fc,
             "business_unit": bu,
+            "business_unit_primary": o.business_unit_primary or bu,
+            "sub_region": o.revised_sub_region or "",
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period": o.fiscal_period or "",
             "close_date": o.close_date,

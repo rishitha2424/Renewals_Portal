@@ -90,7 +90,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
       if (filterStatus !== 'All' && d.approval_status !== filterStatus) return false
       if (filterStage !== 'All' && d.stage !== filterStage) return false
       if (filterRegion !== 'All' && d.sub_region !== filterRegion) return false
-      if (filterBU !== 'All' && d.business_unit_primary !== filterBU) return false
+      if (filterBU !== 'All' && d.business_unit_primary !== filterBU && (d as any).business_unit !== filterBU) return false
       if (filterOwner !== 'All' && d.owner !== filterOwner) return false
       
       if (search) {

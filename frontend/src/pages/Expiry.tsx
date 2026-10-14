@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { AlertTriangle, TrendingUp, BarChart2, ListTodo, Activity } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
-import { getV2ExpirySummary, getV2ExpiryDeals } from '@/api/client'
+import { getV2ExpirySummary, getV2ExpiryDeals, getV2OverviewMovements, getV2OverviewDeals } from '@/api/client'
 import { formatDate, acvM, formatCurrency } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
@@ -59,6 +59,45 @@ export default function Expiry() {
     }),
     enabled: modalOpen && !!activeSnapshotId,
   })
+
+  const { data: movementsData } = useQuery({
+    queryKey: ['v2ExpiryMovements', activeSnapshotId],
+    queryFn: () => getV2OverviewMovements('yesterday', { as_of: activeSnapshotId }),
+    enabled: !!activeSnapshotId,
+  })
+
+  const { data: openDealsData } = useQuery({
+    queryKey: ['v2ExpiryOpenDeals', activeSnapshotId, includeDeletedLost],
+    queryFn: () => getV2OverviewDeals({
+      as_of: activeSnapshotId,
+      exclude_deleted: !includeDeletedLost,
+      filterSpec: {
+        forecast_categories: ['Commit', 'Best Case', 'Pipeline'],
+        include_deleted_lost: includeDeletedLost,
+      }
+    }),
+    enabled: !!activeSnapshotId,
+  })
+
+  const changedDeals = React.useMemo(() => {
+    const list: any[] = []
+    movementsData?.positive?.forEach((p: any) => {
+      p.deals?.forEach((d: any) => list.push({ ...d, direction: 'positive' }))
+    })
+    movementsData?.negative?.forEach((n: any) => {
+      n.deals?.forEach((d: any) => {
+        if (d.opportunity_name) {
+          list.push({ ...d, direction: 'negative' })
+        }
+      })
+    })
+    return list
+  }, [movementsData])
+
+  const topOpenDeals = React.useMemo(() => {
+    return (openDealsData?.deals || []).slice(0, 5)
+  }, [openDealsData])
+
 
   if (!activeSnapshotId || snapshots.length === 0) {
     return <PageNoSnapshotState />
@@ -213,32 +252,53 @@ export default function Expiry() {
       {/* Insights Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mt-8">
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-4 text-[var(--text-primary)]">
-             <BarChart2 className="w-5 h-5 text-indigo-500" />
-             <h3 className="font-bold">Expiry Profile</h3>
+          <div className="flex items-center justify-between mb-3 text-[var(--text-primary)]">
+            <div className="flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-indigo-500" />
+              <h3 className="font-bold">Expiry Profile</h3>
+            </div>
+            <span className="text-[10px] text-[var(--text-muted)] font-mono font-semibold">FY{fy1}</span>
           </div>
-          <div className="flex-1 flex flex-col justify-end gap-3 min-h-[160px]">
-             {grid1?.rows?.map((r: any) => {
-               const qTot = r.total.acv
-               if (qTot === 0) return null
-               return (
-                 <div key={r.quarter} className="w-full">
-                    <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mb-1">
-                       <span>{r.label}</span>
-                       <span>{acvM(qTot)}</span>
+          <div className="flex-1 flex flex-col justify-between gap-3 min-h-[160px]">
+            <div className="space-y-2.5">
+              {grid1?.rows?.map((r: any) => {
+                const qTot = r.total.acv
+                if (qTot === 0) return null
+                return (
+                  <div key={r.quarter} className="w-full">
+                    <div className="flex justify-between text-[11px] font-semibold text-[var(--text-muted)] mb-1">
+                      <span className="font-bold text-[var(--text-primary)]">{r.label}</span>
+                      <span className="font-mono text-[var(--text-primary)] font-bold">{acvM(qTot)}</span>
                     </div>
-                    <div className="flex w-full h-3 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-                       {['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'].map((c: string) => {
-                         const cVal = r.cells[c]?.acv || 0
-                         if (cVal === 0) return null
-                         return (
-                           <div key={c} style={{ width: `${(cVal/qTot)*100}%`, backgroundColor: FORECAST_COLORS[c as keyof typeof FORECAST_COLORS] || '#cbd5e1' }} className="h-full border-r border-[var(--bg-primary)] last:border-0" title={`${c}: ${acvM(cVal)}`} />
-                         )
-                       })}
+                    <div className="flex w-full h-3.5 bg-[var(--bg-secondary)] rounded-md overflow-hidden p-0.5 border border-[var(--border)] gap-0.5">
+                      {['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'].map((c: string) => {
+                        const cVal = r.cells[c]?.acv || 0
+                        if (cVal === 0) return null
+                        const pct = (cVal / qTot) * 100
+                        return (
+                          <div
+                            key={c}
+                            style={{ width: `${pct}%`, backgroundColor: FORECAST_COLORS[c as keyof typeof FORECAST_COLORS] || '#cbd5e1' }}
+                            className="h-full rounded-sm cursor-pointer hover:opacity-85 transition-opacity"
+                            onClick={() => handleCellClick(r.quarter, c === 'Blank' ? 'Blank' : c, `${r.label} · ${c} Deals`)}
+                            title={`${r.label} - ${c}: ${formatCurrency(cVal)} (${pct.toFixed(1)}%) · Click to view deals`}
+                          />
+                        )
+                      })}
                     </div>
-                 </div>
-               )
-             })}
+                  </div>
+                )
+              })}
+            </div>
+            {/* Legend */}
+            <div className="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
+              {['Closed', 'Commit', 'Best Case', 'Pipeline'].map((c) => (
+                <div key={c} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: FORECAST_COLORS[c as keyof typeof FORECAST_COLORS] }} />
+                  <span className="text-[var(--text-muted)]">{c}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </Card>
 
@@ -271,37 +331,75 @@ export default function Expiry() {
         </Card>
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-             <TrendingUp className="w-5 h-5 text-sky-500" />
-             <h3 className="font-bold">What Changed Today</h3>
+          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-sky-500" />
+              <h3 className="font-bold">What Changed Today</h3>
+            </div>
+            {changedDeals.length > 0 && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                {changedDeals.length} moves
+              </span>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-             <p className="text-[var(--text-muted)] text-[11px] italic">Showing significant movements since yesterday...</p>
-             <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)]">
-               <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Acme Corp Expansion</span> <span>$1.2M</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">Commit <span className="text-emerald-500">→</span> Closed</div>
-             </div>
-             <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)]">
-               <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>TechFlow Renewal</span> <span>$850K</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">Best Case <span className="text-emerald-500">→</span> Commit</div>
-             </div>
+            {changedDeals.length === 0 ? (
+              <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">
+                No changes since {movementsData?.compare_date ? formatDate(movementsData.compare_date) : 'yesterday'}
+              </p>
+            ) : (
+              changedDeals.slice(0, 5).map((d: any, idx: number) => (
+                <div
+                  key={d.opportunity_id_18 || idx}
+                  className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
+                  onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
+                  title="Click to view opportunity details"
+                >
+                  <div className="flex justify-between font-bold text-[var(--text-primary)]">
+                    <span className="truncate pr-2">{d.opportunity_name}</span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400">{acvM(d.acv || d.forecast_acv_amount)}</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
+                    <span>{d.from_category || d.from_status || 'Previous'}</span>
+                    <span className={d.direction === 'positive' ? 'text-emerald-500 font-bold' : 'text-rose-500 font-bold'}>→</span>
+                    <span className="font-semibold text-[var(--text-primary)]">{d.to_category || d.to_status || 'Current'}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </Card>
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-             <ListTodo className="w-5 h-5 text-amber-500" />
-             <h3 className="font-bold">Largest Open</h3>
+          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+            <div className="flex items-center gap-2">
+              <ListTodo className="w-5 h-5 text-amber-500" />
+              <h3 className="font-bold">Largest Open</h3>
+            </div>
+            <span className="text-[10px] text-[var(--text-muted)] font-mono">Top ACV</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-             <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors">
-               <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>GlobalTech Enterprise</span> <span className="text-amber-600 dark:text-amber-400">$3.4M</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1">Commit · Q4-{fy1}</div>
-             </div>
-             <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors">
-               <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Nexus Systems Core</span> <span className="text-amber-600 dark:text-amber-400">$2.1M</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1">Best Case · Q1-{fy1}</div>
-             </div>
+            {topOpenDeals.length === 0 ? (
+              <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">No open deals found</p>
+            ) : (
+              topOpenDeals.map((d: any, idx: number) => (
+                <div
+                  key={d.opportunity_id_18 || idx}
+                  className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
+                  onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
+                  title="Click to view opportunity details"
+                >
+                  <div className="flex justify-between font-bold text-[var(--text-primary)]">
+                    <span className="truncate pr-2">{d.opportunity_name}</span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400">{acvM(d.forecast_acv_amount || d.acv)}</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center justify-between">
+                    <span className="font-semibold text-[var(--text-secondary)]">{d.forecast_category}</span>
+                    <span className="text-[var(--text-muted)] truncate max-w-[120px]">{d.sub_region || d.account_name || ''}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </Card>
       </div>
