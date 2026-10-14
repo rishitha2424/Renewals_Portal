@@ -18,6 +18,8 @@ import { formatDate } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import EmptyState from '@/components/ui/EmptyState'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import DealListModal from '@/components/common/DealListModal'
 import FilterBar from '@/components/common/FilterBar'
 
@@ -167,17 +169,17 @@ export default function Dashboard() {
 
   const { globalFilters } = useAppStore()
 
-  const { data: summary, isLoading: sumLoading, refetch: refetchSum } = useQuery({
+  const { data: summary, isLoading: sumLoading, isError: sumErr, refetch: refetchSum } = useQuery({
     queryKey: ['v2-summary', globalFilters],
     queryFn: () => getV2OverviewSummary(globalFilters),
   })
 
-  const { data: movYesterday, isLoading: movYLoading, refetch: refetchMovY } = useQuery({
+  const { data: movYesterday, isLoading: movYLoading, isError: movYErr, refetch: refetchMovY } = useQuery({
     queryKey: ['v2-movements-yesterday', globalFilters],
     queryFn: () => getV2OverviewMovements('yesterday', globalFilters),
   })
 
-  const { data: movLastWeek, isLoading: movLWLoading, refetch: refetchMovLW } = useQuery({
+  const { data: movLastWeek, isLoading: movLWLoading, isError: movLWErr, refetch: refetchMovLW } = useQuery({
     queryKey: ['v2-movements-lastweek', globalFilters],
     queryFn: () => getV2OverviewMovements('last_week', globalFilters),
   })
@@ -185,7 +187,7 @@ export default function Dashboard() {
   const movements = movCompare === 'yesterday' ? movYesterday : movLastWeek
   const movLoading = movCompare === 'yesterday' ? movYLoading : movLWLoading
 
-  const { data: regional, isLoading: regLoading, refetch: refetchReg } = useQuery({
+  const { data: regional, isLoading: regLoading, isError: regErr, refetch: refetchReg } = useQuery({
     queryKey: ['v2-regional', globalFilters],
     queryFn: () => getV2RegionalBreakdown(globalFilters),
   })
@@ -194,21 +196,19 @@ export default function Dashboard() {
   const refetchAll = () => { refetchSum(); refetchMovY(); refetchMovLW(); refetchReg() }
 
 
+  const isError = Boolean(sumErr || movYErr || movLWErr || regErr || summary?.error || movements?.error || regional?.error)
+  const errorMessage = (summary?.error || movements?.error || regional?.error) || "Couldn’t load this page. Try again"
+
   if (snapshots.length === 0 && !isLoading) {
-    return (
-      <EmptyState
-        title="No Snapshot Data Found"
-        description="Please upload renewal workbooks to initialize the pipeline intelligence platform."
-      />
-    )
+    return <PageNoSnapshotState />
   }
 
-  if (summary?.error || movements?.error || regional?.error) {
-    return <div className="p-8 text-center text-rose-500 font-semibold bg-rose-50 border border-rose-200 rounded-xl m-6">{summary?.error || movements?.error || regional?.error}</div>
+  if (isError) {
+    return <PageErrorState message={errorMessage} onRetry={refetchAll} />
   }
 
   if (!isLoading && (!summary || !summary.total)) {
-    return <EmptyState title="No data" description="Overview data is empty or malformed." />
+    return <PageNoSnapshotState />
   }
 
   const otherCount  = summary?.other_region_count ?? 0
