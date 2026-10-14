@@ -53,9 +53,14 @@ class V2BusinessUnitsService:
         if as_of:
             try:
                 d = date.fromisoformat(as_of)
-                return self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                snap = self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                if snap:
+                    return snap
             except ValueError:
                 pass
+            by_id = self.db.query(UploadSnapshot).filter(UploadSnapshot.id == as_of).first()
+            if by_id:
+                return by_id
         return (
             self.db.query(UploadSnapshot)
             .filter(UploadSnapshot.is_active_today == True)

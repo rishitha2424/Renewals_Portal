@@ -118,9 +118,14 @@ class V2OverviewService:
             try:
                 from datetime import date
                 d = date.fromisoformat(as_of)
-                return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                if snap:
+                    return snap
             except ValueError:
                 pass
+            by_id = q.filter(UploadSnapshot.id == as_of).first()
+            if by_id:
+                return by_id
         return (
             q.filter(UploadSnapshot.is_active_today == True)  # noqa: E712
             .order_by(UploadSnapshot.snapshot_date.desc())

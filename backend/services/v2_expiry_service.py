@@ -39,9 +39,15 @@ class V2ExpiryService:
             else:
                 try:
                     d = date.fromisoformat(target_date)
-                    return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    if snap:
+                        return snap
                 except ValueError:
-                    return None
+                    pass
+                by_id = q.filter(UploadSnapshot.id == target_date).first()
+                if by_id:
+                    return by_id
+                return None
         active = q.filter(UploadSnapshot.is_active_today == True).first()
         if active:
             return active
