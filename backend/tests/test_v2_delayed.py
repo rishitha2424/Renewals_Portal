@@ -112,3 +112,9 @@ def test_delayed_deals_no_snapshot(client_and_db):
     r = client.get("/api/v2/delayed/deals?as_of=2000-01-01&compare=yesterday&kind=all")
     assert r.status_code == 200
     assert r.json()["count"] == 0
+
+def test_delayed_summary_uuid_compare_not_500(client_and_db):
+    client, _ = client_and_db
+    # GET /api/v2/delayed/summary?compare=<uuid> must not 500
+    r = client.get("/api/v2/delayed/summary?compare=59d7e47e-c9e1-4bbd-9c80-33f756c17a33")
+    assert r.status_code != 500
