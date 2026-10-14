@@ -13,6 +13,8 @@ import api from '@/api/client'
 import { formatACV, formatCount } from '@/utils/format'
 import Card from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
@@ -47,7 +49,7 @@ function RegionsContent() {
   const [moveCompare, setMoveCompare] = useState<'yesterday' | 'last_week'>('yesterday')
 
   // Fetch Summary
-  const { data: summary, isLoading, error } = useQuery({
+  const { data: summary, isLoading, error, refetch } = useQuery({
     queryKey: ['v2-regions-summary', activeSnapshotId, compare],
     queryFn: async () => {
       const res = await api.get('/v2/regions/summary', {
@@ -105,21 +107,15 @@ function RegionsContent() {
     enabled: modalOpen
   })
 
-  if (error || (summary && summary.error)) {
-    return (
-      <Card className="p-6">
-        <div className="flex items-center gap-3 text-red-500 mb-2">
-          <AlertOctagon className="w-5 h-5" />
-          <h2 className="text-lg font-semibold">Failed to load Regions</h2>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {error ? error.message : (summary?.error || "Unknown error")}
-        </p>
-      </Card>
-    )
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
   }
 
-  if (isLoading || !summary) {
+  if (error || (summary && summary.error)) {
+    return <PageErrorState message={error ? error.message : (summary?.error || "Couldn’t load this page. Try again")} onRetry={() => refetch()} />
+  }
+
+  if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse">
         <Skeleton className="h-10 w-48" />
@@ -127,6 +123,10 @@ function RegionsContent() {
         <Skeleton className="h-64 w-full" />
       </div>
     )
+  }
+
+  if (!summary || !summary.regions) {
+    return <PageNoSnapshotState />
   }
 
   const { data_slice, yesterday_date, lastweek_date, regions, unmapped } = summary
