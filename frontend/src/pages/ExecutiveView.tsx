@@ -9,6 +9,7 @@ import {
   getV2BusinessUnitsSummary,
   getV2DelayedSummary,
   getExplorerReconcile,
+  getSnapshots,
   downloadReport,
 } from '@/api/client'
 import { useAppStore } from '@/store/appStore'
@@ -18,54 +19,70 @@ import {
   formatNumber,
   formatDate,
   getForecastCategoryLabel,
-  getApprovalStatusLabel,
   getQuarterFromDate,
 } from '@/utils/format'
 
 export default function ExecutiveView() {
-  const { activeSnapshotId, compareSnapshotId } = useAppStore()
+  const { activeSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
   const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
+
+  const { data: fetchedSnapshots = [] } = useQuery({
+    queryKey: ['snapshots'],
+    queryFn: getSnapshots,
+  })
+
+  const allSnapshots = fetchedSnapshots.length > 0 ? fetchedSnapshots : storeSnapshots
+  const activeSnap = allSnapshots.find((s: any) => s.id === activeSnapshotId)
+  const defaultSnap = allSnapshots.find((s: any) => s.is_active_today) || allSnapshots[0]
+  const effectiveSnapshotId = activeSnap?.id || activeSnapshotId || defaultSnap?.id
 
   // 1. Overview Summary (Headline, Forecast categories, Movements)
   const overviewQuery = useQuery({
-    queryKey: ['exec-v2-overview'],
-    queryFn: () => getV2OverviewSummary({ sales_types: ['Renewals'], period: 'current_quarter' }),
+    queryKey: ['exec-v2-overview', effectiveSnapshotId],
+    queryFn: () => getV2OverviewSummary({ as_of: effectiveSnapshotId, sales_types: ['Renewals'], period: 'current_quarter' }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 2. Approvals Distribution
   const approvalsQuery = useQuery({
-    queryKey: ['exec-v2-approvals'],
-    queryFn: () => getApprovalsDistribution(undefined, 'yesterday', false, { sales_types: ['Renewals'], period: 'current_quarter' }),
+    queryKey: ['exec-v2-approvals', effectiveSnapshotId],
+    queryFn: () => getApprovalsDistribution(effectiveSnapshotId ?? undefined, 'yesterday', false, { as_of: effectiveSnapshotId, sales_types: ['Renewals'], period: 'current_quarter' }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 3. Expiry Summary
   const expiryQuery = useQuery({
-    queryKey: ['exec-v2-expiry'],
-    queryFn: () => getV2ExpirySummary({ filterSpec: { sales_types: ['Renewals'] } }),
+    queryKey: ['exec-v2-expiry', effectiveSnapshotId],
+    queryFn: () => getV2ExpirySummary({ as_of: effectiveSnapshotId, compare: 'yesterday', filterSpec: { as_of: effectiveSnapshotId, sales_types: ['Renewals'] } }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 4. Regions Summary
   const regionsQuery = useQuery({
-    queryKey: ['exec-v2-regions'],
-    queryFn: () => getV2RegionsSummary({ compare: 'yesterday' }),
+    queryKey: ['exec-v2-regions', effectiveSnapshotId],
+    queryFn: () => getV2RegionsSummary({ as_of: effectiveSnapshotId, compare: 'yesterday' }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 5. Business Units Summary
   const buQuery = useQuery({
-    queryKey: ['exec-v2-bu'],
-    queryFn: () => getV2BusinessUnitsSummary({ compare: 'yesterday' }),
+    queryKey: ['exec-v2-bu', effectiveSnapshotId],
+    queryFn: () => getV2BusinessUnitsSummary({ as_of: effectiveSnapshotId, compare: 'yesterday' }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 6. Delayed Summary
   const delayedQuery = useQuery({
-    queryKey: ['exec-v2-delayed'],
-    queryFn: () => getV2DelayedSummary({ compare: 'yesterday' }),
+    queryKey: ['exec-v2-delayed', effectiveSnapshotId],
+    queryFn: () => getV2DelayedSummary({ as_of: effectiveSnapshotId, compare: 'yesterday' }),
+    enabled: !!effectiveSnapshotId,
   })
 
   // 7. Reconcile check
   const reconcileQuery = useQuery({
-    queryKey: ['exec-v2-reconcile'],
-    queryFn: () => getExplorerReconcile(),
+    queryKey: ['exec-v2-reconcile', effectiveSnapshotId],
+    queryFn: () => getExplorerReconcile(effectiveSnapshotId),
+    enabled: !!effectiveSnapshotId,
   })
 
   const isLoading =
@@ -83,7 +100,8 @@ export default function ExecutiveView() {
     expiryQuery.isError ||
     regionsQuery.isError ||
     buQuery.isError ||
-    delayedQuery.isError
+    delayedQuery.isError ||
+    (overviewQuery.isSuccess && (!overviewQuery.data || !overviewQuery.data.total))
 
   const error =
     overviewQuery.error ||
@@ -97,7 +115,7 @@ export default function ExecutiveView() {
     if (downloadingFormat) return
     setDownloadingFormat(type)
     try {
-      const { filename } = await downloadReport(type, activeSnapshotId, compareSnapshotId, 'renewals', true)
+      const { filename } = await downloadReport(type, effectiveSnapshotId, compareSnapshotId, 'renewals', true)
       showToast.success('Report downloaded', filename)
     } catch (err: any) {
       showToast.error(
@@ -126,7 +144,7 @@ export default function ExecutiveView() {
           <AlertCircle className="w-10 h-10 text-red-600 mx-auto mb-3" />
           <h2 className="text-base font-bold text-red-900 mb-1">Failed to load report</h2>
           <p className="text-xs text-red-700 mb-4">
-            {(error as any)?.message || 'An error occurred while loading the executive report data.'}
+            {(error as any)?.message || 'Overview data is unavailable for the selected snapshot.'}
           </p>
           <button
             onClick={() => {
@@ -155,11 +173,25 @@ export default function ExecutiveView() {
   const delayed = delayedQuery.data || {}
   const reconcile = reconcileQuery.data || {}
 
-  const snapshotDate = overview.snapshot_date || '2026-10-07'
+  const snapshotDate = overview.snapshot_date || ''
   const period = getQuarterFromDate(snapshotDate)
-  const total = overview.total || { count: 348, acv: 40068990.09 }
+  const total = overview.total || { count: 0, acv: 0 }
   const totalCount = total.count || 0
   const totalAcv = total.acv || 0
+
+  // Snapshot date consistency check
+  const responseDates = [
+    { name: 'Overview', date: overview.snapshot_date },
+    { name: 'Approvals', date: approvals.snapshot_date },
+    { name: 'Expiry', date: expiry.snapshot_date },
+    { name: 'Regions', date: regions.snapshot_date },
+    { name: 'Business Units', date: bu.snapshot_date },
+    { name: 'Delayed', date: delayed.snapshot_date },
+    { name: 'Reconcile', date: reconcile.snapshot_date },
+  ].filter(x => !!x.date)
+
+  const distinctDates = Array.from(new Set(responseDates.map(x => x.date)))
+  const hasSnapshotDateMismatch = distinctDates.length > 1
 
   // Category summary
   const categories = overview.categories || {}
@@ -175,8 +207,46 @@ export default function ExecutiveView() {
   const deltaYesterday = total.delta_yesterday || { count: 0, acv: 0, snapshot_date: '' }
   const deltaLastWeek = total.delta_lastweek || { count: 0, acv: 0, snapshot_date: '' }
 
-  // Approvals
-  const approvalStatuses = approvals.statuses || []
+  // Approval Status Summary - normalized and merged to prevent duplicate or conflicting statuses
+  const rawApprovalStatuses = approvals.statuses || []
+  const approvalMap: Record<string, { count: number; acv: number }> = {}
+  rawApprovalStatuses.forEach((s: any) => {
+    let key = s.status || 'Blank'
+    if (key === 'Pending-Approval' || key === 'Pending Approval' || key === 'Pending') {
+      key = 'Pending Approval'
+    } else if (key === 'Approved' || key === 'Approved - 2nd') {
+      key = 'Approved'
+    } else if (key === 'Blank' || key === 'blank' || key === 'Not submitted' || key === 'Not Submitted') {
+      key = 'Not submitted'
+    }
+    if (!approvalMap[key]) {
+      approvalMap[key] = { count: 0, acv: 0 }
+    }
+    approvalMap[key].count += s.count || 0
+    approvalMap[key].acv += s.acv || 0
+  })
+
+  const approvalOrder = ['Approved', 'Pending Approval', 'Not submitted']
+  Object.keys(approvalMap).forEach(k => {
+    if (!approvalOrder.includes(k)) approvalOrder.push(k)
+  })
+
+  const approvalRows = approvalOrder
+    .filter(k => approvalMap[k] !== undefined)
+    .map(k => {
+      const d = approvalMap[k]
+      const pct = totalAcv > 0 ? (d.acv / totalAcv) * 100 : 0
+      return {
+        status: k,
+        label: k,
+        count: d.count,
+        acv: d.acv,
+        pct,
+      }
+    })
+
+  const approvalSumCount = approvalRows.reduce((acc, r) => acc + r.count, 0)
+  const approvalSumAcv = approvalRows.reduce((acc, r) => acc + r.acv, 0)
 
   // Expiry quarters
   const expiryRows: any[] = []
@@ -197,12 +267,39 @@ export default function ExecutiveView() {
 
   // Business Units
   const buRows = bu.rows || []
+  const buSumCount = buRows.reduce((acc: number, b: any) => acc + b.count, 0)
+  const buSumAcv = buRows.reduce((acc: number, b: any) => acc + b.acv, 0)
 
-  // Delayed summary
+  // Delayed summary (Overdue + Slipped + Later Close Date + Lost)
   const overdue = delayed.overdue || { count: 0, acv: 0 }
   const slipped = delayed.slipped || { count: 0, acv: 0 }
+  const laterClose = delayed.later_close || { count: 0, acv: 0 }
   const lost = delayed.lost || { count: 0, acv: 0 }
-  const delayedTotal = delayed.total || { count: overdue.count + slipped.count + lost.count, acv: overdue.acv + slipped.acv + lost.acv }
+  const delayedTotal = delayed.total || {
+    count: overdue.count + slipped.count + laterClose.count + lost.count,
+    acv: overdue.acv + slipped.acv + laterClose.acv + lost.acv,
+  }
+
+  const delayedRowsSumCount = overdue.count + slipped.count + laterClose.count + lost.count
+  const delayedRowsSumAcv = overdue.acv + slipped.acv + laterClose.acv + lost.acv
+
+  // Runtime reconciliation checks on all tables
+  const mismatchErrors: string[] = []
+  const catSumCount = catRows.reduce((acc, r) => acc + r.count, 0)
+  const catSumAcv = catRows.reduce((acc, r) => acc + r.acv, 0)
+  if (totalCount > 0 && (catSumCount !== totalCount || Math.abs(catSumAcv - totalAcv) > 0.05)) {
+    mismatchErrors.push(`Forecast Category table (${catSumCount} deals / ${formatCurrency(catSumAcv)}) does not reconcile to Portfolio Headline (${totalCount} deals / ${formatCurrency(totalAcv)})`)
+  }
+
+  if (totalCount > 0 && (approvalSumCount !== totalCount || Math.abs(approvalSumAcv - totalAcv) > 0.05)) {
+    mismatchErrors.push(`Approval Status table (${approvalSumCount} deals / ${formatCurrency(approvalSumAcv)}) does not reconcile to Portfolio Headline (${totalCount} deals / ${formatCurrency(totalAcv)})`)
+  }
+
+  if (delayedRowsSumCount !== delayedTotal.count || Math.abs(delayedRowsSumAcv - delayedTotal.acv) > 0.05) {
+    mismatchErrors.push(`Delayed Renewals table rows (${delayedRowsSumCount} deals / ${formatCurrency(delayedRowsSumAcv)}) do not reconcile to Delayed total (${delayedTotal.count} deals / ${formatCurrency(delayedTotal.acv)})`)
+  }
+
+  const hasReconciliationMismatch = mismatchErrors.length > 0
 
   const generatedAt = new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
@@ -286,6 +383,34 @@ export default function ExecutiveView() {
         </div>
       </div>
 
+      {/* Snapshot Date Mismatch Warning */}
+      {hasSnapshotDateMismatch && (
+        <div className="mb-6 p-4 rounded-lg bg-red-50 border-2 border-red-500 text-red-900 flex items-start gap-3" id="executive-snapshot-mismatch-warning">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-bold text-sm text-red-900">Snapshot Date Inconsistency Detected</h3>
+            <p className="text-xs text-red-800 mt-1">
+              Data responses carry differing snapshot dates ({responseDates.map(x => `${x.name}: ${x.date}`).join(', ')}). All sections must reflect the same snapshot.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Reconciliation Warning Banner */}
+      {hasReconciliationMismatch && (
+        <div className="mb-6 p-4 rounded-lg bg-amber-50 border-2 border-amber-500 text-amber-900 flex items-start gap-3" id="executive-reconciliation-warning">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-bold text-sm text-amber-900">Totals do not reconcile</h3>
+            <ul className="text-xs text-amber-800 mt-1 list-disc list-inside space-y-0.5">
+              {mismatchErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Report Header */}
       <header className="mb-6 pb-4 border-b-2 border-slate-800">
         <div className="flex items-center justify-between">
@@ -351,8 +476,8 @@ export default function ExecutiveView() {
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
                 <td className="px-4 py-2.5">Total Renewals</td>
-                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(totalCount)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">{formatCurrency(totalAcv)}</td>
+                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(catSumCount)}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">{formatCurrency(catSumAcv)}</td>
                 <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
               </tr>
             </tfoot>
@@ -380,21 +505,21 @@ export default function ExecutiveView() {
             <tbody className="divide-y divide-slate-100">
               <tr className="hover:bg-slate-50/50">
                 <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Yesterday</td>
-                <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '2026-10-06')}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-emerald-700">
-                  {deltaYesterday.count >= 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
+                <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '')}</td>
+                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                  {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
                 </td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-emerald-700">
+                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
                   {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
                 </td>
               </tr>
               <tr className="hover:bg-slate-50/50">
                 <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Last Week</td>
-                <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '2026-09-30')}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-emerald-700">
-                  {deltaLastWeek.count >= 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
+                <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '')}</td>
+                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                  {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
                 </td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-emerald-700">
+                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
                   {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
                 </td>
               </tr>
@@ -421,27 +546,23 @@ export default function ExecutiveView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {approvalStatuses.map((s: any) => {
-                const label = getApprovalStatusLabel(s.status)
-                const pct = totalAcv > 0 ? (s.acv / totalAcv) * 100 : 0
-                return (
-                  <tr key={s.status} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-2 font-medium text-slate-800">{label}</td>
-                    <td className="px-4 py-2 text-right font-mono text-slate-700">{formatNumber(s.count)}</td>
-                    <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(s.acv)}</td>
-                    <td className="px-4 py-2 text-right font-mono text-slate-600">{pct.toFixed(1)}%</td>
-                  </tr>
-                )
-              })}
+              {approvalRows.map(r => (
+                <tr key={r.status} className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
+                  <td className="px-4 py-2 text-right font-mono text-slate-700">{formatNumber(r.count)}</td>
+                  <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-slate-600">{r.pct.toFixed(1)}%</td>
+                </tr>
+              ))}
             </tbody>
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
                 <td className="px-4 py-2.5">Total</td>
                 <td className="px-4 py-2.5 text-right font-mono">
-                  {formatNumber(approvalStatuses.reduce((acc: number, s: any) => acc + s.count, 0))}
+                  {formatNumber(approvalSumCount)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">
-                  {formatCurrency(approvalStatuses.reduce((acc: number, s: any) => acc + s.acv, 0))}
+                  {formatCurrency(approvalSumAcv)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
               </tr>
@@ -582,10 +703,10 @@ export default function ExecutiveView() {
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
                 <td className="px-4 py-2.5">Total</td>
                 <td className="px-4 py-2.5 text-right font-mono">
-                  {formatNumber(buRows.reduce((acc: number, b: any) => acc + b.count, 0))}
+                  {formatNumber(buSumCount)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">
-                  {formatCurrency(buRows.reduce((acc: number, b: any) => acc + b.acv, 0))}
+                  {formatCurrency(buSumAcv)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
                 <td className="px-4 py-2.5 text-right font-mono">—</td>
@@ -626,6 +747,12 @@ export default function ExecutiveView() {
                 <td className="px-4 py-2 text-slate-500">Expected close pushed into subsequent fiscal year</td>
               </tr>
               <tr className="hover:bg-slate-50/50">
+                <td className="px-4 py-2 font-medium text-blue-900">Later Close Date within Quarter</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-blue-800">{formatNumber(laterClose.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-blue-800">{formatCurrency(laterClose.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Expected close pushed out within current quarter</td>
+              </tr>
+              <tr className="hover:bg-slate-50/50">
                 <td className="px-4 py-2 font-medium text-rose-900">Lost / Terminated</td>
                 <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatNumber(lost.count)}</td>
                 <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatCurrency(lost.acv)}</td>
@@ -648,17 +775,17 @@ export default function ExecutiveView() {
       <footer className="mt-8 pt-4 border-t border-slate-300 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500 page-break-avoid">
         <div className="flex items-center gap-2">
           {reconcile.status === 'reconciled' ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 font-semibold border border-emerald-300">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 font-semibold border border-emerald-300" id="executive-reconcile-badge">
               <CheckCircle2 size={13} className="text-emerald-600" />
               Source check: reconciles to Excel
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-50 text-amber-800 font-semibold border border-amber-300">
-              <AlertCircle size={13} className="text-amber-600" />
-              Source check: pending verification
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-50 text-rose-800 font-semibold border border-rose-300" id="executive-reconcile-badge">
+              <AlertCircle size={13} className="text-rose-600" />
+              Source check: {reconcile.error || reconcile.detail || 'mismatch against Excel control sheet'}
             </span>
           )}
-          <span className="text-slate-400">· Full snapshot: 3,093 deals / $451.99M</span>
+          <span className="text-slate-400">· Full snapshot: {formatNumber(reconcile?.whole_snapshot?.total_rows ?? 3093)} deals / {formatCurrency(reconcile?.whole_snapshot?.total_acv ?? 451999230.24)}</span>
         </div>
 
         <div className="text-right">
