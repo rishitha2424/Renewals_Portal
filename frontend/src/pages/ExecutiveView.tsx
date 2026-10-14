@@ -23,6 +23,8 @@ import {
   X,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import {
   getV2OverviewSummary,
   getV2RegionsSummary,
@@ -48,31 +50,31 @@ export default function ExecutiveView() {
   const activeSnapshot = snapshots.find((s) => s.id === activeSnapshotId)
 
   // 1. Overview Summary (Total ACV, Counts, Forecast Categories, Deltas)
-  const { data: overview, isLoading: overviewLoading } = useQuery({
+  const { data: overview, isLoading: overviewLoading, isError: overviewError, refetch: refetchOverview } = useQuery({
     queryKey: ['v2-overview-summary', activeSnapshotId, globalFilters],
     queryFn: () => getV2OverviewSummary(globalFilters),
   })
 
   // 2. Regions Summary
-  const { data: regionsData, isLoading: regionsLoading } = useQuery({
+  const { data: regionsData, isLoading: regionsLoading, isError: regionsError, refetch: refetchRegions } = useQuery({
     queryKey: ['v2-regions-summary', activeSnapshotId, globalFilters],
     queryFn: () => getV2RegionsSummary({ as_of: activeSnapshotId ?? undefined, compare: 'yesterday' }),
   })
 
   // 3. Business Units Summary
-  const { data: buData, isLoading: buLoading } = useQuery({
+  const { data: buData, isLoading: buLoading, isError: buError, refetch: refetchBU } = useQuery({
     queryKey: ['v2-business-units-summary', activeSnapshotId, globalFilters],
     queryFn: () => getV2BusinessUnitsSummary({ as_of: activeSnapshotId ?? undefined, compare: 'yesterday' }),
   })
 
   // 4. Approvals Distribution
-  const { data: approvalsData, isLoading: approvalsLoading } = useQuery({
+  const { data: approvalsData, isLoading: approvalsLoading, isError: approvalsError, refetch: refetchApprovals } = useQuery({
     queryKey: ['v2-approvals-distribution', activeSnapshotId, globalFilters],
     queryFn: () => getApprovalsDistribution(activeSnapshot?.snapshot_date || undefined),
   })
 
   // 5. Delayed & Risks
-  const { data: delayedData, isLoading: delayedLoading } = useQuery({
+  const { data: delayedData, isLoading: delayedLoading, isError: delayedError, refetch: refetchDelayed } = useQuery({
     queryKey: ['v2-delayed-summary', activeSnapshotId, globalFilters],
     queryFn: () => getV2DelayedSummary({ as_of: activeSnapshotId ?? undefined, compare: 'yesterday' }),
   })
@@ -84,6 +86,23 @@ export default function ExecutiveView() {
   })
 
   const isLoading = overviewLoading || regionsLoading || buLoading || approvalsLoading || delayedLoading
+  const isAnyError = overviewError || regionsError || buError || approvalsError || delayedError || overview?.error || regionsData?.error || buData?.error
+
+  const refetchAll = () => {
+    refetchOverview()
+    refetchRegions()
+    refetchBU()
+    refetchApprovals()
+    refetchDelayed()
+  }
+
+  if (!activeSnapshotId || snapshots.length === 0) {
+    return <PageNoSnapshotState />
+  }
+
+  if (isAnyError) {
+    return <PageErrorState message={overview?.error || "Couldn’t load this page. Try again"} onRetry={refetchAll} />
+  }
 
   const handleDownload = async (type: 'pptx' | 'xlsx') => {
     if (downloadingFormat) return
