@@ -32,7 +32,7 @@ describe('Frontend API URL Smoke Test', () => {
     for (const file of files) {
       const content = fs.readFileSync(file, 'utf-8')
       const lines = content.split('\n')
-      lines.forEach((lineText, idx) => {
+      lines.forEach((lineText: string, idx: number) => {
         if (apiCallRegex.test(lineText)) {
           violations.push({
             file: path.relative(srcDir, file),
@@ -42,6 +42,7 @@ describe('Frontend API URL Smoke Test', () => {
         }
       })
     }
+
 
     expect(
       violations,
