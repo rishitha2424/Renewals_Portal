@@ -10,6 +10,8 @@ import api from '@/api/client'
 import { formatACV, formatCount, formatCurrency, getForecastCategoryLabel } from '@/utils/format'
 import Card from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
@@ -37,8 +39,7 @@ function BusinessUnitsContent() {
   const [topSearch, setTopSearch] = useState('')
   const [topBuFilter, setTopBuFilter] = useState('All')
 
-  // Fetch Summary
-  const { data: summary, isLoading, error } = useQuery({
+  const { data: summary, isLoading, error, refetch } = useQuery({
     queryKey: ['v2-bu-summary', activeSnapshotId, compare],
     queryFn: async () => {
       const res = await api.get('/v2/business-units/summary', {
@@ -71,25 +72,25 @@ function BusinessUnitsContent() {
     }
   })
 
-  if (error || (summary && summary.error)) {
-    return (
-      <Card className="p-6">
-        <div className="flex items-center gap-3 text-red-500 mb-2">
-          <AlertOctagon className="w-6 h-6" />
-          <h2 className="text-lg font-bold">Error loading Business Units</h2>
-        </div>
-        <p className="text-sm text-[var(--text-muted)]">{error?.toString() || summary?.error}</p>
-      </Card>
-    )
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
   }
 
-  if (isLoading || !summary) {
+  if (error || (summary && summary.error)) {
+    return <PageErrorState message={error?.toString() || summary?.error || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
+  }
+
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     )
+  }
+
+  if (!summary || !summary.total) {
+    return <PageNoSnapshotState />
   }
 
   const { data_slice, data_slice_key, total, rows, totals, categories } = summary
