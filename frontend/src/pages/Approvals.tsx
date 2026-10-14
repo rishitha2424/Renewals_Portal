@@ -6,6 +6,8 @@ import { useAppStore } from '@/store/appStore'
 import { getApprovalsDistribution, getApprovalsDeals } from '@/api/client'
 import { formatCurrency, formatNumber, acvM } from '@/utils/format'
 import EmptyState from '@/components/ui/EmptyState'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
 import DealListModal from '@/components/common/DealListModal'
@@ -70,7 +72,7 @@ export default function Approvals() {
   const activeSnapshot = snapshots.find(s => s.id === activeSnapshotId)
   const compareSnapshot = snapshots.find(s => s.id === compareSnapshotId)
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['approvals_v2', activeSnapshotId, compareSnapshotId, includeDeletedLost],
     queryFn: async () => {
       if (!activeSnapshotId) return null
@@ -92,11 +94,10 @@ export default function Approvals() {
     enabled: modalOpen && !!activeSnapshotId,
   })
 
-  if (!activeSnapshotId) return <EmptyState title="No active snapshot" description="Select a snapshot to view data" />
+  if (!activeSnapshotId || snapshots.length === 0) return <PageNoSnapshotState />
   if (isLoading) return <div className="p-8 text-center text-slate-500 animate-pulse">Loading approval data...</div>
-  if (error || data?.error) return <div className="p-8 text-center text-rose-500 font-semibold bg-rose-50 border border-rose-200 rounded-xl m-6">{(error as any)?.message || data?.error}</div>
-  if (!data || !data.total) return <EmptyState title="No data" description="No approval data found or the response was malformed." />
-  if (data.total?.count === 0) return <EmptyState title="No data" description="The data slice is empty." />
+  if (error || data?.error) return <PageErrorState message={(error as any)?.message || data?.error || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
+  if (!data || !data.total || data.total?.count === 0) return <PageNoSnapshotState />
 
   const total = data.total || { count: 0, acv: 0 }
   const statuses = data.statuses || []
