@@ -173,8 +173,16 @@ def health(db: Session = Depends(get_db)):
 import os
 from fastapi.responses import FileResponse
 
-dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
-if os.path.isdir(dist_path):
+# Check candidate locations for frontend/dist (container working directory vs relative to file)
+candidate_paths = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")),
+    os.path.abspath("/app/frontend/dist"),
+    os.path.abspath("frontend/dist"),
+]
+dist_path = next((p for p in candidate_paths if os.path.isdir(p)), None)
+
+if dist_path:
+    log.info(f"Serving frontend SPA from: {dist_path}")
     index_file = os.path.join(dist_path, "index.html")
 
     # Mount static assets directory if it exists
@@ -182,14 +190,21 @@ if os.path.isdir(dist_path):
     if os.path.isdir(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="static_assets")
 
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(index_file)
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
-        # Don't intercept API routes
-        if full_path.startswith("api"):
+        # Don't intercept API routes or openapi docs
+        if full_path.startswith("api") or full_path in ("docs", "redoc", "openapi.json"):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not Found")
         file_candidate = os.path.join(dist_path, full_path)
         if os.path.isfile(file_candidate):
             return FileResponse(file_candidate)
         return FileResponse(index_file)
+else:
+    log.warning(f"Frontend dist not found at any candidate: {candidate_paths}")
+
 
