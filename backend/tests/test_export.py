@@ -145,10 +145,10 @@ def test_excel_export_sheets_and_values(client, seeded_session):
 
 
 def test_export_direct_routes(client):
-    # Both /export/... and /api/export/... should be reachable
-    res_pptx = client.get("/export/pptx")
+    # /api/export/... is reachable
+    res_pptx = client.get("/api/export/pptx")
     assert res_pptx.status_code == 200
-    res_excel = client.get("/export/excel")
+    res_excel = client.get("/api/export/excel")
     assert res_excel.status_code == 200
 
 

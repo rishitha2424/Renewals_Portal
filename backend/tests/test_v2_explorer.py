@@ -83,7 +83,7 @@ def test_columns_exact_openpyxl_order(client_and_db):
 
     assert len(raw_headers) == 172
 
-    r = client.get(f"/v2/explorer/columns?as_of=2026-10-07")
+    r = client.get(f"/api/v2/explorer/columns?as_of=2026-10-07")
     assert r.status_code == 200
     data = r.json()
     assert data["total_columns"] == 172
@@ -96,7 +96,7 @@ def test_no_filters_returns_full_excel_and_no_renewals_default(client_and_db):
     client, Session, snap_id = client_and_db
 
     # No filters sent -> ALL 3,093 rows and $451,999,230.24 returned (No Renewals default applied!)
-    r = client.post("/v2/explorer/rows?as_of=2026-10-07", json={"page_size": 50})
+    r = client.post("/api/v2/explorer/rows?as_of=2026-10-07", json={"page_size": 50})
     assert r.status_code == 200
     data = r.json()
     assert data["total_count"] == 3093
@@ -112,7 +112,7 @@ def test_renewals_and_q4_and_deleted_lost(client_and_db):
         "sales_types": ["Renewals"],
         "include_deleted_lost": True,
     }
-    r = client.post("/v2/explorer/rows?as_of=2026-10-07", json={"filter_spec": spec, "page_size": 50})
+    r = client.post("/api/v2/explorer/rows?as_of=2026-10-07", json={"filter_spec": spec, "page_size": 50})
     assert r.status_code == 200
     data = r.json()
     assert data["total_count"] == 348
@@ -141,7 +141,7 @@ def test_ten_filter_cases_against_pandas_excel(client_and_db):
     ]
 
     for name, flist, exp_cnt, exp_acv in cases:
-        r = client.post("/v2/explorer/rows?as_of=2026-10-07", json={"filters": flist, "page_size": 10})
+        r = client.post("/api/v2/explorer/rows?as_of=2026-10-07", json={"filters": flist, "page_size": 10})
         assert r.status_code == 200, f"Case {name} failed: {r.text}"
         res = r.json()
         assert res["total_count"] == exp_cnt, f"Case {name}: expected count {exp_cnt}, got {res['total_count']}"
@@ -156,7 +156,7 @@ def test_export_csv_and_xlsx_match_filter_and_order(client_and_db):
         {"column": "Sales Type", "operator": "equals", "value": "Renewals"},
         {"column": "Fiscal Period", "operator": "equals", "value": "Q4-2026"},
     ]
-    r_csv = client.post("/v2/explorer/export?as_of=2026-10-07", json={"filters": flist, "format": "csv"})
+    r_csv = client.post("/api/v2/explorer/export?as_of=2026-10-07", json={"filters": flist, "format": "csv"})
     assert r_csv.status_code == 200
     df_csv = pd.read_csv(io.BytesIO(r_csv.content))
     assert len(df_csv) == 348
@@ -165,7 +165,7 @@ def test_export_csv_and_xlsx_match_filter_and_order(client_and_db):
     assert df_csv.columns[1] == "Opportunity ID 18 Digit"
 
     # Export XLSX with same filter
-    r_xlsx = client.post("/v2/explorer/export?as_of=2026-10-07", json={"filters": flist, "format": "xlsx"})
+    r_xlsx = client.post("/api/v2/explorer/export?as_of=2026-10-07", json={"filters": flist, "format": "xlsx"})
     assert r_xlsx.status_code == 200
     df_xlsx = pd.read_excel(io.BytesIO(r_xlsx.content), sheet_name="Data_Explorer")
     assert len(df_xlsx) == 348
@@ -177,7 +177,7 @@ def test_reconcile_endpoint(client_and_db):
     client, Session, snap_id = client_and_db
 
     # 1. Whole snapshot reconciliation
-    r = client.get("/v2/explorer/reconcile?as_of=2026-10-07")
+    r = client.get("/api/v2/explorer/reconcile?as_of=2026-10-07")
     assert r.status_code == 200
     data = r.json()
     assert data["scope"] == "Whole Snapshot"
@@ -197,7 +197,7 @@ def test_reconcile_endpoint(client_and_db):
         {"column": "Sales Type", "operator": "equals", "value": "Renewals"},
         {"column": "Fiscal Period", "operator": "equals", "value": "Q4-2026"},
     ]
-    r_filt = client.post("/v2/explorer/reconcile?as_of=2026-10-07", json={"filters": flist})
+    r_filt = client.post("/api/v2/explorer/reconcile?as_of=2026-10-07", json={"filters": flist})
     assert r_filt.status_code == 200
     d_filt = r_filt.json()
     assert d_filt["current_filter"] is not None
@@ -208,7 +208,7 @@ def test_reconcile_endpoint(client_and_db):
 def test_quick_filters_endpoint(client_and_db):
     client, Session, snap_id = client_and_db
 
-    r = client.get("/v2/explorer/quick-filters?as_of=2026-10-07")
+    r = client.get("/api/v2/explorer/quick-filters?as_of=2026-10-07")
     assert r.status_code == 200
     data = r.json()
 

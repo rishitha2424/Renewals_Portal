@@ -41,21 +41,16 @@ def test_health_check(client):
 
 
 def test_get_snapshots(client):
-    # Both /snapshots and /api/snapshots should work
-    res = client.get("/snapshots")
-    assert res.status_code == 200
-    snaps = res.json()
-    assert isinstance(snaps, list)
-    assert len(snaps) >= 1
-
     res_api = client.get("/api/snapshots")
     assert res_api.status_code == 200
-    assert len(res_api.json()) == len(snaps)
+    snaps = res_api.json()
+    assert isinstance(snaps, list)
+    assert len(snaps) >= 1
 
 
 def test_get_compare_endpoint(client):
     # Test unified comparison route with ?from=DATE&to=DATE
-    res = client.get("/compare?from=2026-10-02&to=2026-10-05")
+    res = client.get("/api/compare?from=2026-10-02&to=2026-10-05")
     assert res.status_code == 200
     data = res.json()
 

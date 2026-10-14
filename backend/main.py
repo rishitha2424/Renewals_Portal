@@ -94,10 +94,32 @@ app.include_router(v2_delayed.router)
 app.include_router(v2_filters.router)
 app.include_router(v2_explorer.router)
 
-from fastapi import Depends
+from fastapi import Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from backend.database import get_db
+from backend.services.context import UserContext, get_user_context
+
+@app.get("/api/compare", tags=["analytics"])
+def compare_api(
+    from_date: str = Query(..., alias="from"),
+    to_date: str = Query(..., alias="to"),
+    scope: str = Query("renewals"),
+    include_deleted_lost: bool = Query(False),
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
+):
+    from backend.routers.analytics import compare_dates
+    from backend.services.analytics_service import AnalyticsService
+    return compare_dates(
+        from_date=from_date,
+        to_date=to_date,
+        scope=scope,
+        include_deleted_lost=include_deleted_lost,
+        svc=AnalyticsService(db),
+        ctx=ctx,
+    )
+
 
 
 @app.get("/api/health")
