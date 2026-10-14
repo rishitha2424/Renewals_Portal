@@ -154,9 +154,8 @@ export const useAppStore = create<AppState>()(
 
       compareSnapshotId: null,
       setCompareSnapshotId: (id) =>
-        set((s) => ({
+        set(() => ({
           compareSnapshotId: id,
-          globalFilters: { ...s.globalFilters, compare: id || 'yesterday' },
         })),
 
       snapshots: [],

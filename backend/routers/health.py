@@ -62,15 +62,3 @@ def get_db_health(db: Session = Depends(get_db)):
             "error": str(e)
         }
 
-@router.get("/fs")
-def get_fs_health():
-    import os
-    results = {}
-    for p in ["/app", "/app/frontend", "/app/frontend/dist", "frontend/dist"]:
-        results[p] = {
-            "exists": os.path.exists(p),
-            "is_dir": os.path.isdir(p),
-            "files": os.listdir(p)[:20] if os.path.isdir(p) else None,
-        }
-    return results
-

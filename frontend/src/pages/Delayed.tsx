@@ -40,21 +40,23 @@ function DelayedContent() {
   const [modalFilters, setModalFilters] = useState<any>({})
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
+  const { compare: _ignored, ...filters } = globalFilters
+
   const { data: summary, isLoading, error, refetch } = useQuery({
-    queryKey: ['v2-delayed-summary', activeSnapshotId, compare, globalFilters],
+    queryKey: ['v2-delayed-summary', activeSnapshotId, compare, filters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/summary', {
-        params: { as_of: activeSnapshotId ?? undefined, compare, ...globalFilters },
+        params: { ...filters, as_of: activeSnapshotId ?? undefined, compare },
       })
       return res.data
     },
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['v2-delayed-deals', activeSnapshotId, compare, globalFilters, modalFilters],
+    queryKey: ['v2-delayed-deals', activeSnapshotId, compare, filters, modalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/deals', {
-        params: { as_of: activeSnapshotId ?? undefined, compare, ...globalFilters, ...modalFilters },
+        params: { ...filters, ...modalFilters, as_of: activeSnapshotId ?? undefined, compare },
       })
       return res.data
     },

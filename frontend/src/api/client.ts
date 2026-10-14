@@ -124,23 +124,32 @@ export const getRegionsOverview = (snapshotId?: string, compareTo?: string, mode
 export const getHistoryOverview = () =>
   api.get('/analytics/history-overview').then(r => r.data)
 
+export function buildFilterParams(filters: Record<string, any> = {}): Record<string, any> {
+  const { compare, ...rest } = filters
+  const params: Record<string, any> = { ...rest }
+  if (compare === 'yesterday' || compare === 'last_week') {
+    params.compare = compare
+  }
+  return params
+}
+
 // ── V2 Overview (Tab 1) ───────────────────────────────────────────────────────
 
 export const getV2OverviewSummary = (filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = { ...state.globalFilters, ...filterSpec }
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec })
   return api.get('/v2/overview/summary', { params: fs }).then(r => r.data)
 }
 
 export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yesterday', filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = { ...state.globalFilters, compare, ...filterSpec }
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec, compare })
   return api.get('/v2/overview/movements', { params: fs }).then(r => r.data)
 }
 
 export const getV2RegionalBreakdown = (filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = { ...state.globalFilters, ...filterSpec }
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec })
   return api.get('/v2/overview/regional-breakdown', { params: fs }).then(r => r.data)
 }
 
@@ -167,7 +176,7 @@ export const getV2OverviewDeals = (params: {
 }> => {
   const state = useAppStore.getState()
   const { filterSpec, ...rest } = params
-  const merged = { ...state.globalFilters, ...filterSpec, ...rest }
+  const merged = buildFilterParams({ ...state.globalFilters, ...filterSpec, ...rest })
   return api.get('/v2/overview/deals', { params: merged }).then(r => r.data)
 }
 
@@ -305,9 +314,9 @@ export const getV2ExpirySummary = async (params: {
   filterSpec?: Partial<FilterSpec>
 } = {}) => {
   const state = useAppStore.getState()
-  const p: any = { ...state.globalFilters, ...params.filterSpec }
+  const p: any = buildFilterParams({ ...state.globalFilters, ...params.filterSpec })
   if (params.as_of) p.as_of = params.as_of
-  if (params.compare) p.compare = params.compare
+  if (params.compare === 'yesterday' || params.compare === 'last_week') p.compare = params.compare
   if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/summary', { params: p })
   return res.data
@@ -322,7 +331,7 @@ export const getV2ExpiryDeals = async (params: {
   filterSpec?: Partial<FilterSpec>
 } = {}) => {
   const state = useAppStore.getState()
-  const p: any = { ...state.globalFilters, ...params.filterSpec }
+  const p: any = buildFilterParams({ ...state.globalFilters, ...params.filterSpec })
   if (params.quarter) p.quarter = params.quarter
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
@@ -334,16 +343,16 @@ export const getV2ExpiryDeals = async (params: {
 
 export const getApprovalsDistribution = async (as_of?: string, compare: string | null = null, exclude_deleted_lost: boolean = false, filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const params: any = { ...state.globalFilters, ...filterSpec }
+  const params: any = buildFilterParams({ ...state.globalFilters, ...filterSpec })
   if (as_of) params.as_of = as_of
-  if (compare) params.compare = compare
+  if (compare === 'yesterday' || compare === 'last_week') params.compare = compare
   if (exclude_deleted_lost !== undefined) params.include_deleted_lost = !exclude_deleted_lost
   return api.get('/v2/approvals/distribution', { params }).then(r => r.data)
 }
 
 export const getApprovalsDeals = async (as_of?: string, status?: string, category?: string, exclude_deleted_lost: boolean = false, region?: string, business_unit?: string, filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const params: any = { ...state.globalFilters, ...filterSpec }
+  const params: any = buildFilterParams({ ...state.globalFilters, ...filterSpec })
   if (as_of) params.as_of = as_of
   if (status) params.status = status
   if (category) params.category = category
@@ -356,21 +365,21 @@ export const getApprovalsDeals = async (as_of?: string, status?: string, categor
 // ── V2 Regions, BU, Delayed ─────────────────────────────────────────────
 export const getV2RegionsSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
   const state = useAppStore.getState()
-  const p: any = { ...state.globalFilters, ...params }
+  const p: any = buildFilterParams({ ...state.globalFilters, ...params })
   const res = await api.get('/v2/regions/summary', { params: p })
   return res.data
 }
 
 export const getV2BusinessUnitsSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
   const state = useAppStore.getState()
-  const p: any = { ...state.globalFilters, ...params }
+  const p: any = buildFilterParams({ ...state.globalFilters, ...params })
   const res = await api.get('/v2/business-units/summary', { params: p })
   return res.data
 }
 
 export const getV2DelayedSummary = async (params: { as_of?: string | null; compare?: string } = {}) => {
   const state = useAppStore.getState()
-  const p: any = { ...state.globalFilters, ...params }
+  const p: any = buildFilterParams({ ...state.globalFilters, ...params })
   const res = await api.get('/v2/delayed/summary', { params: p })
   return res.data
 }

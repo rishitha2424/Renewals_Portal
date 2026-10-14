@@ -66,7 +66,13 @@ class V2ApprovalsService:
                     d = date.fromisoformat(target_date)
                     return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
                 except ValueError:
+                    by_id = q.filter(UploadSnapshot.id == target_date).first()
+                    if by_id:
+                        return by_id
                     return None
+        active = q.filter(UploadSnapshot.is_active_today == True).first()
+        if active:
+            return active
         return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
