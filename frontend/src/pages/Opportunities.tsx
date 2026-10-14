@@ -36,6 +36,8 @@ import { Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import ControlChip from '@/components/ui/ControlChip'
 import showToast from '@/components/ui/Toast'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
 
 // Types
 export interface ColumnMeta {
@@ -464,6 +466,14 @@ export default function Opportunities() {
       (f) => f.name.toLowerCase().includes(q) || String(f.value || '').toLowerCase().includes(q)
     )
   }, [selectedRowData, allColumns, drawerSearchQuery])
+
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
+  }
+
+  if (rowsResp?.error) {
+    return <PageErrorState message={rowsResp.error} onRetry={() => refetch()} />
+  }
 
   return (
     <div className="space-y-4 max-w-full" id="data-explorer-page">
