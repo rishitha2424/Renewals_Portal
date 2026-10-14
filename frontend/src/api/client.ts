@@ -248,14 +248,18 @@ export const getOpportunityFilterOptions = (snapshotId?: string) =>
 export const downloadReport = async (
   format: 'pptx' | 'xlsx',
   snapshotId?: string | null,
-  compareTo?: string | null
+  compareTo?: string | null,
+  scope: string = 'renewals',
+  includeDeletedLost?: boolean | null
 ): Promise<{ filename: string }> => {
   const state = useAppStore.getState()
   const endpoint = format === 'pptx' ? '/export/pptx' : '/export/excel'
   const params: Record<string, string> = {}
   if (snapshotId) params.snapshot_id = snapshotId
   if (compareTo) params.compare_to = compareTo
-  if (state.includeDeletedLost) params.include_deleted_lost = 'true'
+  params.scope = scope || 'renewals'
+  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? true)
+  params.include_deleted_lost = incl ? 'true' : 'false'
 
   const response = await api.get(endpoint, {
     params,

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/export", tags=["export"])
 def export_pptx(
     snapshot_id: str | None = Query(None, description="Snapshot ID or ISO date to export"),
     compare_to: str | None = Query(None, description="Comparison snapshot ID or ISO date"),
-    scope: str = Query("all", description="Scope filter"),
+    scope: str = Query("renewals", description="Scope filter: renewals (default) | full"),
     include_deleted_lost: bool = Query(True, description="Include Deleted and Lost"),
     db: Session = Depends(get_db),
     ctx: UserContext = Depends(get_user_context),
@@ -51,7 +51,7 @@ def export_pptx(
 def export_excel(
     snapshot_id: str | None = Query(None, description="Snapshot ID or ISO date to export"),
     compare_to: str | None = Query(None, description="Comparison snapshot ID or ISO date"),
-    scope: str = Query("all", description="Scope filter"),
+    scope: str = Query("renewals", description="Scope filter: renewals (default) | full"),
     include_deleted_lost: bool = Query(True, description="Include Deleted and Lost"),
     db: Session = Depends(get_db),
     ctx: UserContext = Depends(get_user_context),

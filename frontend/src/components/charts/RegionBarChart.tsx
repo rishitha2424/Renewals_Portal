@@ -9,25 +9,34 @@ import { SkeletonChart } from '@/components/ui/Skeleton'
 import InsightCaption from '@/components/ui/InsightCaption'
 import { useAppStore } from '@/store/appStore'
 
-interface Props { snapshotId?: string; topN?: number }
+interface Props { snapshotId?: string; topN?: number; data?: any }
 
 const BAR_COLORS = [
   '#00A3AD','#8080FF','#22C55E','#F59E0B','#EF4444',
   '#3B82F6','#A78BFA','#34D399','#FBBF24','#F87171',
 ]
 
-export default function RegionBarChart({ snapshotId, topN = 10 }: Props) {
+export default function RegionBarChart({ snapshotId, topN = 10, data: propData }: Props) {
   const activeId = useAppStore(s => s.activeSnapshotId)
   const snapId = snapshotId ?? activeId ?? undefined
 
-  const { data, isLoading } = useQuery({
+  const { data: fetchedData, isLoading } = useQuery({
     queryKey: ['top-regions', snapId, topN],
     queryFn: () => getTopRegions(snapId, topN),
+    enabled: !propData,
   })
 
-  if (isLoading) return <SkeletonChart />
+  if (!propData && isLoading) return <SkeletonChart />
 
-  const rows = (data?.rows ?? []).sort((a: any, b: any) => b.acv - a.acv)
+  const data = propData ?? fetchedData
+
+  const rawRows: any[] = data?.rows ?? (data?.regions ? data.regions.map((r: any) => ({
+    sub_region: r.region,
+    count: r.count,
+    acv: r.acv,
+  })) : [])
+
+  const rows = [...rawRows].sort((a: any, b: any) => b.acv - a.acv).slice(0, topN)
   const topRegion = rows[0]
 
   return (

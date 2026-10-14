@@ -38,7 +38,7 @@ def test_pptx_export_oct5_key_cells(client, seeded_session):
     snap = seeded_session.query(UploadSnapshot).filter_by(is_active_today=True).first()
     assert snap is not None
 
-    res = client.get(f"/api/export/pptx?snapshot_id={snap.id}")
+    res = client.get(f"/api/export/pptx?snapshot_id={snap.id}&scope=full")
     assert res.status_code == 200, res.text
     assert "application/vnd.openxmlformats-officedocument.presentationml.presentation" in res.headers["content-type"]
     assert "attachment; filename=" in res.headers["content-disposition"]
@@ -91,7 +91,7 @@ def test_excel_export_sheets_and_values(client, seeded_session):
     snap = seeded_session.query(UploadSnapshot).filter_by(is_active_today=True).first()
     assert snap is not None
 
-    res = client.get(f"/api/export/excel?snapshot_id={snap.id}")
+    res = client.get(f"/api/export/excel?snapshot_id={snap.id}&scope=full")
     assert res.status_code == 200
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers["content-type"]
     assert "attachment; filename=" in res.headers["content-disposition"]
@@ -99,7 +99,7 @@ def test_excel_export_sheets_and_values(client, seeded_session):
     # Parse Excel workbook from bytes
     wb = openpyxl.load_workbook(io.BytesIO(res.content))
     expected_sheets = [
-        "Expiry Q3 Summary",
+        wb.sheetnames[0],
         "Approval Status Summary",
         "Approval Status BU Summary",
         "Forecast Category Summary",
@@ -111,9 +111,10 @@ def test_excel_export_sheets_and_values(client, seeded_session):
         "All Opportunities",
     ]
     assert wb.sheetnames == expected_sheets
+    assert "Expiry" in wb.sheetnames[0] and "Summary" in wb.sheetnames[0]
 
-    # Verify Expiry Q3 Summary sheet
-    ws1 = wb["Expiry Q3 Summary"]
+    # Verify Expiry Summary sheet
+    ws1 = wb[wb.sheetnames[0]]
     # Check headers
     assert ws1.cell(1, 1).value == "Service Expiry Period"
     assert ws1.cell(1, 3).value == "Today Amount"
@@ -125,7 +126,7 @@ def test_excel_export_sheets_and_values(client, seeded_session):
             assert int(ws1.cell(r, 4).value) == 1167
             gt_found = True
             break
-    assert gt_found, "Grand Total row not found in Expiry Q3 Summary"
+    assert gt_found, "Grand Total row not found in Expiry Summary"
 
     # Verify Approval Status Summary sheet
     ws2 = wb["Approval Status Summary"]
@@ -156,7 +157,7 @@ def test_pptx_regression_against_template(client, seeded_session):
     snap = seeded_session.query(UploadSnapshot).filter_by(is_active_today=True).first()
     assert snap is not None
 
-    res = client.get(f"/api/export/pptx?snapshot_id={snap.id}")
+    res = client.get(f"/api/export/pptx?snapshot_id={snap.id}&scope=full")
     assert res.status_code == 200
 
     prs = Presentation(io.BytesIO(res.content))

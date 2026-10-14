@@ -28,11 +28,11 @@ class V2ExpiryService:
         q = self.db.query(UploadSnapshot)
         if target_date:
             if target_date == "yesterday":
-                latest = q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+                latest = self._get_snapshot(ctx)
                 if not latest: return None
                 return q.filter(UploadSnapshot.snapshot_date < latest.snapshot_date).order_by(UploadSnapshot.snapshot_date.desc()).first()
             elif target_date == "last_week":
-                latest = q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+                latest = self._get_snapshot(ctx)
                 if not latest: return None
                 target = latest.snapshot_date - pd.Timedelta(days=7)
                 return q.filter(UploadSnapshot.snapshot_date <= target).order_by(UploadSnapshot.snapshot_date.desc()).first()
@@ -42,6 +42,9 @@ class V2ExpiryService:
                     return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
                 except ValueError:
                     return None
+        active = q.filter(UploadSnapshot.is_active_today == True).first()
+        if active:
+            return active
         return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
 
     def _window_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False) -> tuple[pd.DataFrame, list[str]]:

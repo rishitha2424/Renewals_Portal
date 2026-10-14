@@ -10,18 +10,21 @@ import { SkeletonChart } from '@/components/ui/Skeleton'
 import InsightCaption from '@/components/ui/InsightCaption'
 import { useAppStore } from '@/store/appStore'
 
-interface Props { snapshotId?: string }
+interface Props { snapshotId?: string; data?: any }
 
-export default function ExpiryQuarterBar({ snapshotId }: Props) {
+export default function ExpiryQuarterBar({ snapshotId, data: propData }: Props) {
   const activeId = useAppStore(s => s.activeSnapshotId)
   const snapId = snapshotId ?? activeId ?? undefined
 
-  const { data, isLoading } = useQuery({
+  const { data: fetchedData, isLoading } = useQuery({
     queryKey: ['expiry-quarters', snapId],
     queryFn: () => getExpiryQuarters(snapId),
+    enabled: !propData,
   })
 
-  if (isLoading) return <SkeletonChart />
+  if (!propData && isLoading) return <SkeletonChart />
+
+  const data = propData ?? fetchedData
 
   const raw: any[] = data?.rows ?? []
 

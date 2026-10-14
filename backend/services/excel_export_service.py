@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from backend.models.change_log import ChangeLog
 from backend.services.analytics_service import AnalyticsService, _opps_to_df
 from backend.services.context import ADMIN_CONTEXT
+from backend.services.v2_overview_service import V2OverviewService
+from backend.services.scopes import ScopeService, FilterSpec
 
 NAVY_FILL = PatternFill(start_color="12284C", end_color="12284C", fill_type="solid")
 BAND_FILL = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
@@ -82,7 +84,7 @@ class ExcelExportService:
         snapshot_id: str | None = None,
         compare_to: str | None = None,
         scope: str = "renewals",
-        include_deleted_lost: bool = False,
+        include_deleted_lost: bool = True,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot
         snap = self.analytics_svc._resolve_snapshot(ADMIN_CONTEXT, snapshot_id)
@@ -105,11 +107,26 @@ class ExcelExportService:
         wb = openpyxl.Workbook()
         wb.remove(wb.active)  # remove default sheet
 
+        cq = ScopeService.quarter_of(snap.snapshot_date)
+        parts = cq.split("-")
+        q_short = parts[0] if len(parts) > 0 else "Q4"
+        fy_label = f"FY{parts[1][-2:]}" if len(parts) > 1 and len(parts[1]) >= 2 else "FY26"
+
         opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)
         fs = self.analytics_svc.get_forecast_summary(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=scope, include_deleted_lost=include_deleted_lost,
         )
+
+        ov_summary = None
+        if scope == "renewals":
+            ov_svc = V2OverviewService(self.db)
+            ov_summary = ov_svc.get_summary(
+                ADMIN_CONTEXT,
+                as_of=snap.snapshot_date.isoformat(),
+                filter_spec=FilterSpec(sales_types=["Renewals"], period="current_quarter", include_deleted_lost=include_deleted_lost),
+            )
+
         aps = self.analytics_svc.get_approval_status(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=scope, include_deleted_lost=include_deleted_lost,
@@ -126,9 +143,9 @@ class ExcelExportService:
             )
 
         # -------------------------------------------------------------
-        # Sheet 1: Expiry Q3 Summary
+        # Sheet 1: Expiry <Quarter> Summary
         # -------------------------------------------------------------
-        ws1 = wb.create_sheet(title="Expiry Q3 Summary")
+        ws1 = wb.create_sheet(title=f"Expiry {q_short} Summary")
         headers1 = [
             "Service Expiry Period",
             "Forecast Category",
@@ -142,37 +159,25 @@ class ExcelExportService:
         ws1.append(headers1)
         style_header_row(ws1, len(headers1))
 
-        by_cell = fs.get("by_cell", {})
-        by_quarter = fs.get("by_quarter", {})
-        totals = fs.get("totals", {})
+        if scope == "renewals" and ov_summary:
+            ov_tot = ov_summary.get("total", {})
+            ov_cats = ov_summary.get("categories", {})
+            ov_dy = ov_tot.get("delta_yesterday", {})
+            ov_dlw = ov_tot.get("delta_lastweek", {})
 
-        q_cats = [
-            ("Q1-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-            ("Q1-2027", ["Closed", "Commit", "Best Case"]),
-            ("Q2-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-            ("Q2-2027", ["Commit"]),
-            ("Q3-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-            ("Q3-2027", ["Closed", "Commit"]),
-            ("Q4-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-            ("Q4-2027", ["Commit"]),
-        ]
+            cat_keys = ["Commit", "Best Case", "Pipeline", "Blank"]
 
-        r_idx = 2
-        for q, cats in q_cats:
-            q_d = by_quarter.get(q, {})
-            t_q = q_d.get("today", {})
-            ty_q = q_d.get("delta_vs_yesterday", {})
-            tlw_q = q_d.get("delta_vs_lastweek", {})
-
+            r_idx = 2
+            # Parent row (cq)
             ws1.append([
-                q,
+                cq,
                 "",
-                t_q.get("acv", 0),
-                int(t_q.get("count", 0)),
-                ty_q.get("acv", 0),
-                int(ty_q.get("count", 0)),
-                tlw_q.get("acv", 0),
-                int(tlw_q.get("count", 0)),
+                ov_tot.get("acv", 0),
+                int(ov_tot.get("count", 0)),
+                ov_dy.get("acv", 0),
+                int(ov_dy.get("count", 0)),
+                ov_dlw.get("acv", 0),
+                int(ov_dlw.get("count", 0)),
             ])
             for c in range(1, 9):
                 cell = ws1.cell(r_idx, c)
@@ -187,10 +192,10 @@ class ExcelExportService:
             ws1.cell(r_idx, 8).number_format = "#,##0"
 
             for c, v in [
-                (5, ty_q.get("acv", 0)),
-                (6, ty_q.get("count", 0)),
-                (7, tlw_q.get("acv", 0)),
-                (8, tlw_q.get("count", 0)),
+                (5, ov_dy.get("acv", 0)),
+                (6, ov_dy.get("count", 0)),
+                (7, ov_dlw.get("acv", 0)),
+                (8, ov_dlw.get("count", 0)),
             ]:
                 if v > 0:
                     ws1.cell(r_idx, c).fill = GREEN_FILL
@@ -200,20 +205,21 @@ class ExcelExportService:
                     ws1.cell(r_idx, c).font = RED_FONT
             r_idx += 1
 
-            for cat in cats:
-                c_d = by_cell.get(f"{q}|{cat}", by_cell.get((q, cat), {}))
-                t_c = c_d.get("today", {})
-                ty_c = c_d.get("delta_vs_yesterday", {})
-                tlw_c = c_d.get("delta_vs_lastweek", {})
+            for c_k in cat_keys:
+                c_data = ov_cats.get(c_k, {})
+                c_dy = c_data.get("delta_yesterday", {})
+                c_dlw = c_data.get("delta_lastweek", {})
+                c_label = "Not yet proposed" if c_k == "Blank" else c_k
+
                 ws1.append([
                     "",
-                    cat,
-                    t_c.get("acv", 0),
-                    int(t_c.get("count", 0)),
-                    ty_c.get("acv", 0),
-                    int(ty_c.get("count", 0)),
-                    tlw_c.get("acv", 0),
-                    int(tlw_c.get("count", 0)),
+                    c_label,
+                    c_data.get("acv", 0),
+                    int(c_data.get("count", 0)),
+                    c_dy.get("acv", 0),
+                    int(c_dy.get("count", 0)),
+                    c_dlw.get("acv", 0),
+                    int(c_dlw.get("count", 0)),
                 ])
                 for c in range(1, 9):
                     ws1.cell(r_idx, c).border = THIN_BORDER
@@ -226,10 +232,10 @@ class ExcelExportService:
                 ws1.cell(r_idx, 8).number_format = "#,##0"
 
                 for c, v in [
-                    (5, ty_c.get("acv", 0)),
-                    (6, ty_c.get("count", 0)),
-                    (7, tlw_c.get("acv", 0)),
-                    (8, tlw_c.get("count", 0)),
+                    (5, c_dy.get("acv", 0)),
+                    (6, c_dy.get("count", 0)),
+                    (7, c_dlw.get("acv", 0)),
+                    (8, c_dlw.get("count", 0)),
                 ]:
                     if v > 0:
                         ws1.cell(r_idx, c).fill = GREEN_FILL
@@ -239,32 +245,153 @@ class ExcelExportService:
                         ws1.cell(r_idx, c).font = RED_FONT
                 r_idx += 1
 
-        # Grand Total row
-        t_tot = totals.get("today", {})
-        ty_tot = totals.get("delta_vs_yesterday", {})
-        tlw_tot = totals.get("delta_vs_lastweek", {})
-        ws1.append([
-            "Grand Total",
-            "",
-            to_float(t_tot.get("acv")),
-            to_int(t_tot.get("count")),
-            to_float(ty_tot.get("acv")),
-            to_int(ty_tot.get("count")),
-            to_float(tlw_tot.get("acv")),
-            to_int(tlw_tot.get("count")),
-        ])
-        for c in range(1, 9):
-            cell = ws1.cell(r_idx, c)
-            cell.fill = NAVY_FILL
-            cell.font = WHITE_BOLD_FONT
-            cell.border = THIN_BORDER
-        ws1.cell(r_idx, 3).number_format = "$#,##0.00"
-        ws1.cell(r_idx, 4).number_format = "#,##0"
-        ws1.cell(r_idx, 5).number_format = "$#,##0.00"
-        ws1.cell(r_idx, 6).number_format = "#,##0"
-        ws1.cell(r_idx, 7).number_format = "$#,##0.00"
-        ws1.cell(r_idx, 8).number_format = "#,##0"
-        autofit_columns(ws1)
+            # Grand Total row
+            ws1.append([
+                "Grand Total",
+                "",
+                ov_tot.get("acv", 0),
+                int(ov_tot.get("count", 0)),
+                ov_dy.get("acv", 0),
+                int(ov_dy.get("count", 0)),
+                ov_dlw.get("acv", 0),
+                int(ov_dlw.get("count", 0)),
+            ])
+            for c in range(1, 9):
+                cell = ws1.cell(r_idx, c)
+                cell.fill = NAVY_FILL
+                cell.font = WHITE_BOLD_FONT
+                cell.border = THIN_BORDER
+            ws1.cell(r_idx, 3).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 4).number_format = "#,##0"
+            ws1.cell(r_idx, 5).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 6).number_format = "#,##0"
+            ws1.cell(r_idx, 7).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 8).number_format = "#,##0"
+            autofit_columns(ws1)
+        else:
+            by_cell = fs.get("by_cell", {})
+            by_quarter = fs.get("by_quarter", {})
+            totals = fs.get("totals", {})
+
+            q_cats = [
+                ("Q1-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
+                ("Q1-2027", ["Closed", "Commit", "Best Case"]),
+                ("Q2-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
+                ("Q2-2027", ["Commit"]),
+                ("Q3-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
+                ("Q3-2027", ["Closed", "Commit"]),
+                ("Q4-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
+                ("Q4-2027", ["Commit"]),
+            ]
+
+            r_idx = 2
+            for q, cats in q_cats:
+                q_d = by_quarter.get(q, {})
+                t_q = q_d.get("today", {})
+                ty_q = q_d.get("delta_vs_yesterday", {})
+                tlw_q = q_d.get("delta_vs_lastweek", {})
+
+                ws1.append([
+                    q,
+                    "",
+                    t_q.get("acv", 0),
+                    int(t_q.get("count", 0)),
+                    ty_q.get("acv", 0),
+                    int(ty_q.get("count", 0)),
+                    tlw_q.get("acv", 0),
+                    int(tlw_q.get("count", 0)),
+                ])
+                for c in range(1, 9):
+                    cell = ws1.cell(r_idx, c)
+                    cell.fill = BAND_FILL
+                    cell.font = BOLD_FONT
+                    cell.border = THIN_BORDER
+                ws1.cell(r_idx, 3).number_format = "$#,##0.00"
+                ws1.cell(r_idx, 4).number_format = "#,##0"
+                ws1.cell(r_idx, 5).number_format = "$#,##0.00"
+                ws1.cell(r_idx, 6).number_format = "#,##0"
+                ws1.cell(r_idx, 7).number_format = "$#,##0.00"
+                ws1.cell(r_idx, 8).number_format = "#,##0"
+
+                for c, v in [
+                    (5, ty_q.get("acv", 0)),
+                    (6, ty_q.get("count", 0)),
+                    (7, tlw_q.get("acv", 0)),
+                    (8, tlw_q.get("count", 0)),
+                ]:
+                    if v > 0:
+                        ws1.cell(r_idx, c).fill = GREEN_FILL
+                        ws1.cell(r_idx, c).font = GREEN_FONT
+                    elif v < 0:
+                        ws1.cell(r_idx, c).fill = RED_FILL
+                        ws1.cell(r_idx, c).font = RED_FONT
+                r_idx += 1
+
+                for cat in cats:
+                    c_d = by_cell.get(f"{q}|{cat}", by_cell.get((q, cat), {}))
+                    t_c = c_d.get("today", {})
+                    ty_c = c_d.get("delta_vs_yesterday", {})
+                    tlw_c = c_d.get("delta_vs_lastweek", {})
+                    ws1.append([
+                        "",
+                        cat,
+                        t_c.get("acv", 0),
+                        int(t_c.get("count", 0)),
+                        ty_c.get("acv", 0),
+                        int(ty_c.get("count", 0)),
+                        tlw_c.get("acv", 0),
+                        int(tlw_c.get("count", 0)),
+                    ])
+                    for c in range(1, 9):
+                        ws1.cell(r_idx, c).border = THIN_BORDER
+                        ws1.cell(r_idx, c).font = REGULAR_FONT
+                    ws1.cell(r_idx, 3).number_format = "$#,##0.00"
+                    ws1.cell(r_idx, 4).number_format = "#,##0"
+                    ws1.cell(r_idx, 5).number_format = "$#,##0.00"
+                    ws1.cell(r_idx, 6).number_format = "#,##0"
+                    ws1.cell(r_idx, 7).number_format = "$#,##0.00"
+                    ws1.cell(r_idx, 8).number_format = "#,##0"
+
+                    for c, v in [
+                        (5, ty_c.get("acv", 0)),
+                        (6, ty_c.get("count", 0)),
+                        (7, tlw_c.get("acv", 0)),
+                        (8, tlw_c.get("count", 0)),
+                    ]:
+                        if v > 0:
+                            ws1.cell(r_idx, c).fill = GREEN_FILL
+                            ws1.cell(r_idx, c).font = GREEN_FONT
+                        elif v < 0:
+                            ws1.cell(r_idx, c).fill = RED_FILL
+                            ws1.cell(r_idx, c).font = RED_FONT
+                    r_idx += 1
+
+            # Grand Total row
+            t_tot = totals.get("today", {})
+            ty_tot = totals.get("delta_vs_yesterday", {})
+            tlw_tot = totals.get("delta_vs_lastweek", {})
+            ws1.append([
+                "Grand Total",
+                "",
+                to_float(t_tot.get("acv")),
+                to_int(t_tot.get("count")),
+                to_float(ty_tot.get("acv")),
+                to_int(ty_tot.get("count")),
+                to_float(tlw_tot.get("acv")),
+                to_int(tlw_tot.get("count")),
+            ])
+            for c in range(1, 9):
+                cell = ws1.cell(r_idx, c)
+                cell.fill = NAVY_FILL
+                cell.font = WHITE_BOLD_FONT
+                cell.border = THIN_BORDER
+            ws1.cell(r_idx, 3).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 4).number_format = "#,##0"
+            ws1.cell(r_idx, 5).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 6).number_format = "#,##0"
+            ws1.cell(r_idx, 7).number_format = "$#,##0.00"
+            ws1.cell(r_idx, 8).number_format = "#,##0"
+            autofit_columns(ws1)
 
         # -------------------------------------------------------------
         # Sheet 2: Approval Status Summary

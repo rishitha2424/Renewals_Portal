@@ -18,6 +18,8 @@ from backend.config import settings
 from backend.models.snapshot import UploadSnapshot
 from backend.services.analytics_service import AnalyticsService, _opps_to_df
 from backend.services.context import ADMIN_CONTEXT
+from backend.services.scopes import ScopeService, FilterSpec
+from backend.services.v2_overview_service import V2OverviewService
 
 GREEN = RGBColor(0x92, 0xD0, 0x6E)
 RED = RGBColor(0xF4, 0xB0, 0x84)
@@ -157,7 +159,7 @@ class PptxExportService:
         snapshot_id: str | None = None,
         compare_to: str | None = None,
         scope: str = "renewals",
-        include_deleted_lost: bool = False,
+        include_deleted_lost: bool = True,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot
         snap = self.analytics_svc._resolve_snapshot(ADMIN_CONTEXT, snapshot_id)
@@ -187,6 +189,9 @@ class PptxExportService:
 
         prs = Presentation(str(template_path))
         fmt_date = snap.snapshot_date.strftime("%d-%b-%Y")
+        cq = ScopeService.quarter_of(snap.snapshot_date)
+        q_short = cq.split("-")[0] if cq and "-" in cq else "Q4"
+        fy_label = ScopeService.quarter_label(cq)
 
         # Gather data
         opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)
@@ -197,6 +202,15 @@ class PptxExportService:
         by_cell = fs.get("by_cell", {})
         by_quarter = fs.get("by_quarter", {})
         totals = fs.get("totals", {})
+
+        ov_summary = None
+        if scope == "renewals":
+            ov_svc = V2OverviewService(self.db)
+            ov_summary = ov_svc.get_summary(
+                ADMIN_CONTEXT,
+                as_of=snap.snapshot_date.isoformat(),
+                filter_spec=FilterSpec(sales_types=["Renewals"], period="current_quarter", include_deleted_lost=include_deleted_lost),
+            )
 
         comp_data = {}
         if comp_snap:
@@ -253,9 +267,11 @@ class PptxExportService:
                 set_text(cov[0], f"Data as of {fmt_date}")
 
             # ---------------------------------------------------------
-            # Slide 2: Renewals Summary – Expiry Q3
+            # Slide 2: Renewals Summary – Expiry <Quarter>
             # ---------------------------------------------------------
             if t.startswith("Renewals Summary"):
+                if s.shapes.title is not None:
+                    set_text(s.shapes.title, f"Renewals Summary – Expiry {q_short}")
                 if sub:
                     set_text(
                         sub[0],
@@ -265,118 +281,203 @@ class PptxExportService:
                 if tbl_list:
                     tbl = tbl_list[0].table
 
-                    # Determine active quarters and categories dynamically
-                    canonical_quarters = [
-                        "Q1-2026", "Q1-2027", "Q2-2026", "Q2-2027",
-                        "Q3-2026", "Q3-2027", "Q4-2026", "Q4-2027",
-                    ]
-                    canonical_cats = ["Closed", "Commit", "Best Case", "Pipeline"]
+                    if scope == "renewals" and ov_summary:
+                        ov_tot = ov_summary.get("total", {})
+                        ov_cats = ov_summary.get("categories", {})
+                        ov_dy = ov_tot.get("delta_yesterday", {})
+                        ov_dlw = ov_tot.get("delta_lastweek", {})
 
-                    q_cats = []
-                    for q in canonical_quarters:
-                        active_cats = []
-                        for c in canonical_cats:
-                            c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
-                            t_c = c_d.get("today", {})
-                            y_c = c_d.get("yesterday", {})
-                            lw_c = c_d.get("lastweek", {})
-                            if (
-                                t_c.get("count", 0) != 0 or t_c.get("acv", 0) != 0
-                                or y_c.get("count", 0) != 0 or y_c.get("acv", 0) != 0
-                                or lw_c.get("count", 0) != 0 or lw_c.get("acv", 0) != 0
-                            ):
-                                active_cats.append(c)
-                        # Fallback for quarters with no deals
-                        if not active_cats:
-                            active_cats = ["Commit"]
-                        q_cats.append((q, active_cats))
+                        cat_keys = ["Commit", "Best Case", "Pipeline", "Blank"]
+                        adjust_table_rows(tbl, 7)
 
-                    # 1 header row + sum(1 parent + len(cats)) + 1 Grand Total row
-                    total_needed_rows = 1 + sum(1 + len(cats) for _, cats in q_cats) + 1
-                    adjust_table_rows(tbl, total_needed_rows)
-
-                    row_idx = 1
-                    for q, cats in q_cats:
-                        q_d = by_quarter.get(q, {})
-                        t_q = q_d.get("today", {})
-                        ty_q = q_d.get("delta_vs_yesterday", {})
-                        tlw_q = q_d.get("delta_vs_lastweek", {})
-                        q_row_vals = [
-                            q,
+                        # Parent row (cq)
+                        parent_vals = [
+                            cq,
                             " ",
-                            money(t_q.get("acv", 0)),
-                            str(int(t_q.get("count", 0))),
-                            money(ty_q.get("acv", 0)),
-                            str(int(ty_q.get("count", 0))),
-                            money(tlw_q.get("acv", 0)),
-                            str(int(tlw_q.get("count", 0))),
+                            money(ov_tot.get("acv", 0)),
+                            str(int(ov_tot.get("count", 0))),
+                            money(ov_dy.get("acv", 0)),
+                            str(int(ov_dy.get("count", 0))),
+                            money(ov_dlw.get("acv", 0)),
+                            str(int(ov_dlw.get("count", 0))),
                         ]
-                        for j, x in enumerate(q_row_vals):
+                        for j, x in enumerate(parent_vals):
                             fill = BAND if j < 4 else sfill(x, BAND)
-                            setc(tbl.cell(row_idx, j), str(x), fill)
-                        row_idx += 1
+                            setc(tbl.cell(1, j), str(x), fill)
 
-                        for c in cats:
-                            c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
-                            t_c = c_d.get("today", {})
-                            ty_c = c_d.get("delta_vs_yesterday", {})
-                            tlw_c = c_d.get("delta_vs_lastweek", {})
-                            c_row_vals = [
+                        # Child rows
+                        r_idx = 2
+                        for c_k in cat_keys:
+                            c_data = ov_cats.get(c_k, {})
+                            c_dy = c_data.get("delta_yesterday", {})
+                            c_dlw = c_data.get("delta_lastweek", {})
+                            c_label = "Not yet proposed" if c_k == "Blank" else c_k
+                            c_vals = [
                                 " ",
-                                c,
-                                money(t_c.get("acv", 0)),
-                                str(int(t_c.get("count", 0))),
-                                money(ty_c.get("acv", 0)),
-                                str(int(ty_c.get("count", 0))),
-                                money(tlw_c.get("acv", 0)),
-                                str(int(tlw_c.get("count", 0))),
+                                c_label,
+                                money(c_data.get("acv", 0)),
+                                str(int(c_data.get("count", 0))),
+                                money(c_dy.get("acv", 0)),
+                                str(int(c_dy.get("count", 0))),
+                                money(c_dlw.get("acv", 0)),
+                                str(int(c_dlw.get("count", 0))),
                             ]
-                            for j, x in enumerate(c_row_vals):
+                            for j, x in enumerate(c_vals):
                                 fill = None if j < 4 else sfill(x, None)
+                                setc(tbl.cell(r_idx, j), str(x), fill)
+                            r_idx += 1
+
+                        # Grand Total row
+                        gt_vals = [
+                            "Grand Total",
+                            " ",
+                            money(ov_tot.get("acv", 0)),
+                            str(int(ov_tot.get("count", 0))),
+                            money(ov_dy.get("acv", 0)),
+                            str(int(ov_dy.get("count", 0))),
+                            money(ov_dlw.get("acv", 0)),
+                            str(int(ov_dlw.get("count", 0))),
+                        ]
+                        for j, x in enumerate(gt_vals):
+                            setc(tbl.cell(r_idx, j), str(x), "keep")
+
+                        # 3 KPI cards
+                        cards = find(s, "KPI card")
+                        t_acv_m = to_float(ov_tot.get("acv")) / 1e6
+                        ty_acv_m = to_float(ov_dy.get("acv")) / 1e6
+                        tlw_acv_m = to_float(ov_dlw.get("acv")) / 1e6
+                        ty_sign = "+" if ty_acv_m >= 0 else "-"
+                        tlw_sign = "+" if tlw_acv_m >= 0 else "-"
+
+                        if len(cards) >= 3:
+                            set_kpi_card(
+                                cards[0],
+                                "Total ACV (Today)",
+                                f"${t_acv_m:,.2f}M  |  {to_int(ov_tot.get('count')):,}",
+                            )
+                            set_kpi_card(
+                                cards[1],
+                                "vs Yesterday",
+                                f"{ty_sign}${abs(ty_acv_m):,.2f}M  |  {to_int(ov_dy.get('count')):+d}",
+                            )
+                            set_kpi_card(
+                                cards[2],
+                                "vs Last Week",
+                                f"{tlw_sign}${abs(tlw_acv_m):,.2f}M  |  {to_int(ov_dlw.get('count')):+d}",
+                            )
+                    else:
+                        # Determine active quarters and categories dynamically
+                        canonical_quarters = [
+                            "Q1-2026", "Q1-2027", "Q2-2026", "Q2-2027",
+                            "Q3-2026", "Q3-2027", "Q4-2026", "Q4-2027",
+                        ]
+                        canonical_cats = ["Closed", "Commit", "Best Case", "Pipeline"]
+
+                        q_cats = []
+                        for q in canonical_quarters:
+                            active_cats = []
+                            for c in canonical_cats:
+                                c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
+                                t_c = c_d.get("today", {})
+                                y_c = c_d.get("yesterday", {})
+                                lw_c = c_d.get("lastweek", {})
+                                if (
+                                    t_c.get("count", 0) != 0 or t_c.get("acv", 0) != 0
+                                    or y_c.get("count", 0) != 0 or y_c.get("acv", 0) != 0
+                                    or lw_c.get("count", 0) != 0 or lw_c.get("acv", 0) != 0
+                                ):
+                                    active_cats.append(c)
+                            # Fallback for quarters with no deals
+                            if not active_cats:
+                                active_cats = ["Commit"]
+                            q_cats.append((q, active_cats))
+
+                        # 1 header row + sum(1 parent + len(cats)) + 1 Grand Total row
+                        total_needed_rows = 1 + sum(1 + len(cats) for _, cats in q_cats) + 1
+                        adjust_table_rows(tbl, total_needed_rows)
+
+                        row_idx = 1
+                        for q, cats in q_cats:
+                            q_d = by_quarter.get(q, {})
+                            t_q = q_d.get("today", {})
+                            ty_q = q_d.get("delta_vs_yesterday", {})
+                            tlw_q = q_d.get("delta_vs_lastweek", {})
+                            q_row_vals = [
+                                q,
+                                " ",
+                                money(t_q.get("acv", 0)),
+                                str(int(t_q.get("count", 0))),
+                                money(ty_q.get("acv", 0)),
+                                str(int(ty_q.get("count", 0))),
+                                money(tlw_q.get("acv", 0)),
+                                str(int(tlw_q.get("count", 0))),
+                            ]
+                            for j, x in enumerate(q_row_vals):
+                                fill = BAND if j < 4 else sfill(x, BAND)
                                 setc(tbl.cell(row_idx, j), str(x), fill)
                             row_idx += 1
 
-                    # Grand Total row
-                    t_tot = totals.get("today", {})
-                    ty_tot = totals.get("delta_vs_yesterday", {})
-                    tlw_tot = totals.get("delta_vs_lastweek", {})
-                    gt_vals = [
-                        "Grand Total",
-                        " ",
-                        money(to_float(t_tot.get("acv"))),
-                        str(to_int(t_tot.get("count"))),
-                        money(to_float(ty_tot.get("acv"))),
-                        str(to_int(ty_tot.get("count"))),
-                        money(to_float(tlw_tot.get("acv"))),
-                        str(to_int(tlw_tot.get("count"))),
-                    ]
-                    for j, x in enumerate(gt_vals):
-                        setc(tbl.cell(row_idx, j), str(x), "keep")
+                            for c in cats:
+                                c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
+                                t_c = c_d.get("today", {})
+                                ty_c = c_d.get("delta_vs_yesterday", {})
+                                tlw_c = c_d.get("delta_vs_lastweek", {})
+                                c_row_vals = [
+                                    " ",
+                                    c,
+                                    money(t_c.get("acv", 0)),
+                                    str(int(t_c.get("count", 0))),
+                                    money(ty_c.get("acv", 0)),
+                                    str(int(ty_c.get("count", 0))),
+                                    money(tlw_c.get("acv", 0)),
+                                    str(int(tlw_c.get("count", 0))),
+                                ]
+                                for j, x in enumerate(c_row_vals):
+                                    fill = None if j < 4 else sfill(x, None)
+                                    setc(tbl.cell(row_idx, j), str(x), fill)
+                                row_idx += 1
 
-                    # 3 KPI cards: clean replacement with label and one value line
-                    cards = find(s, "KPI card")
-                    t_acv_m = to_float(t_tot.get("acv")) / 1e6
-                    ty_acv_m = to_float(ty_tot.get("acv")) / 1e6
-                    tlw_acv_m = to_float(tlw_tot.get("acv")) / 1e6
-                    ty_sign = "+" if ty_acv_m >= 0 else "-"
-                    tlw_sign = "+" if tlw_acv_m >= 0 else "-"
+                        # Grand Total row
+                        t_tot = totals.get("today", {})
+                        ty_tot = totals.get("delta_vs_yesterday", {})
+                        tlw_tot = totals.get("delta_vs_lastweek", {})
+                        gt_vals = [
+                            "Grand Total",
+                            " ",
+                            money(to_float(t_tot.get("acv"))),
+                            str(to_int(t_tot.get("count"))),
+                            money(to_float(ty_tot.get("acv"))),
+                            str(to_int(ty_tot.get("count"))),
+                            money(to_float(tlw_tot.get("acv"))),
+                            str(to_int(tlw_tot.get("count"))),
+                        ]
+                        for j, x in enumerate(gt_vals):
+                            setc(tbl.cell(row_idx, j), str(x), "keep")
 
-                    if len(cards) >= 3:
-                        set_kpi_card(
-                            cards[0],
-                            "Total ACV (Today)",
-                            f"${t_acv_m:,.2f}M  |  {to_int(t_tot.get('count')):,}",
-                        )
-                        set_kpi_card(
-                            cards[1],
-                            "vs Yesterday",
-                            f"{ty_sign}${abs(ty_acv_m):,.2f}M  |  {to_int(ty_tot.get('count')):+d}",
-                        )
-                        set_kpi_card(
-                            cards[2],
-                            "vs Last Week",
-                            f"{tlw_sign}${abs(tlw_acv_m):,.2f}M  |  {to_int(tlw_tot.get('count')):+d}",
-                        )
+                        # 3 KPI cards: clean replacement with label and one value line
+                        cards = find(s, "KPI card")
+                        t_acv_m = to_float(t_tot.get("acv")) / 1e6
+                        ty_acv_m = to_float(ty_tot.get("acv")) / 1e6
+                        tlw_acv_m = to_float(tlw_tot.get("acv")) / 1e6
+                        ty_sign = "+" if ty_acv_m >= 0 else "-"
+                        tlw_sign = "+" if tlw_acv_m >= 0 else "-"
+
+                        if len(cards) >= 3:
+                            set_kpi_card(
+                                cards[0],
+                                "Total ACV (Today)",
+                                f"${t_acv_m:,.2f}M  |  {to_int(t_tot.get('count')):,}",
+                            )
+                            set_kpi_card(
+                                cards[1],
+                                "vs Yesterday",
+                                f"{ty_sign}${abs(ty_acv_m):,.2f}M  |  {to_int(ty_tot.get('count')):+d}",
+                            )
+                            set_kpi_card(
+                                cards[2],
+                                "vs Last Week",
+                                f"{tlw_sign}${abs(tlw_acv_m):,.2f}M  |  {to_int(tlw_tot.get('count')):+d}",
+                            )
 
             # ---------------------------------------------------------
             # Slide 3: Opportunity Approval Status
@@ -544,35 +645,51 @@ class PptxExportService:
                 reg_acv = sum(float(o.forecast_acv_amount or 0) for o in reg_opps)
                 reg_cnt = len(reg_opps)
                 if sub:
-                    set_text(
-                        sub[0],
-                        f"Data as of {fmt_date}   |   {reg} total: ${reg_acv/1e6:,.2f}M across {reg_cnt:,} opportunities",
-                    )
+                    if reg_cnt == 0:
+                        set_text(
+                            sub[0],
+                            f"Data as of {fmt_date}   |   No renewals in this region",
+                        )
+                    else:
+                        set_text(
+                            sub[0],
+                            f"Data as of {fmt_date}   |   {reg} total: ${reg_acv/1e6:,.2f}M across {reg_cnt:,} opportunities",
+                        )
                 tb_list = find(s, "Top 10 table")
                 if tb_list:
                     tb = tb_list[0].table
-                    top10 = sorted(
-                        reg_opps,
-                        key=lambda o: (
-                            -float(o.forecast_acv_amount or 0),
-                            ra_order.get(str(o.opportunity_id_18 or "").strip(), 999999),
-                        ),
-                    )[:10]
-                    for i in range(10):
-                        if i < len(top10):
-                            o = top10[i]
-                            vals = [
-                                i + 1,
-                                o.opportunity_id_18 or "",
-                                o.opportunity_name or "",
-                                money(o.forecast_acv_amount),
-                            ]
-                        else:
-                            vals = [i + 1, " ", " ", " "]
-                        for j, v in enumerate(vals):
-                            setc(tb.cell(i + 1, j), str(v))
-                    top10_sum = sum(float(o.forecast_acv_amount or 0) for o in top10)
-                    setc(tb.cell(11, 3), money(top10_sum))
+                    if reg_cnt == 0:
+                        setc(tb.cell(1, 0), " ")
+                        setc(tb.cell(1, 1), " ")
+                        setc(tb.cell(1, 2), "No renewals in this region")
+                        setc(tb.cell(1, 3), " ")
+                        for i in range(2, 11):
+                            for j in range(4):
+                                setc(tb.cell(i, j), " ")
+                        setc(tb.cell(11, 3), "$0")
+                    else:
+                        top10 = sorted(
+                            reg_opps,
+                            key=lambda o: (
+                                -float(o.forecast_acv_amount or 0),
+                                ra_order.get(str(o.opportunity_id_18 or "").strip(), 999999),
+                            ),
+                        )[:10]
+                        for i in range(10):
+                            if i < len(top10):
+                                o = top10[i]
+                                vals = [
+                                    i + 1,
+                                    o.opportunity_id_18 or "",
+                                    o.opportunity_name or "",
+                                    money(o.forecast_acv_amount),
+                                ]
+                            else:
+                                vals = [i + 1, " ", " ", " "]
+                            for j, v in enumerate(vals):
+                                setc(tb.cell(i + 1, j), str(v))
+                        top10_sum = sum(float(o.forecast_acv_amount or 0) for o in top10)
+                        setc(tb.cell(11, 3), money(top10_sum))
 
             # ---------------------------------------------------------
             # Slide 15: Business Unit – Opportunities & Approval Status
@@ -632,52 +749,83 @@ class PptxExportService:
                 reg = t.split("–", 1)[1].strip()
                 reg_opps = [o for o in opps if o.sub_region == reg]
 
-                # leading BU determined by single highest ACV opportunity in that region
-                bu_max = {}
-                for o in reg_opps:
-                    bu = o.business_unit_raw or "Unknown"
-                    val = float(o.forecast_acv_amount or 0)
-                    if bu not in bu_max or val > bu_max[bu]:
-                        bu_max[bu] = val
+                if not reg_opps:
+                    if sub:
+                        set_text(
+                            sub[0],
+                            f"Data as of {fmt_date}   |   No renewals in this region",
+                        )
+                    tb_list = find(s, "Top 10 by BU table")
+                    if tb_list:
+                        tb = tb_list[0].table
+                        setc(tb.cell(1, 0), " ")
+                        setc(tb.cell(1, 1), " ")
+                        setc(tb.cell(1, 2), " ")
+                        setc(tb.cell(1, 3), "No renewals in this region")
+                        setc(tb.cell(1, 4), " ")
+                        for i in range(2, 11):
+                            for j in range(5):
+                                setc(tb.cell(i, j), " ")
+                        setc(tb.cell(11, 4), "$0")
+                else:
+                    # leading BU determined by single highest ACV opportunity in that region
+                    bu_max = {}
+                    for o in reg_opps:
+                        bu = o.business_unit_raw or "Unknown"
+                        val = float(o.forecast_acv_amount or 0)
+                        if bu not in bu_max or val > bu_max[bu]:
+                            bu_max[bu] = val
 
-                leading_bu = max(bu_max.keys(), key=lambda b: bu_max[b]) if bu_max else "None"
-                bu_opps = [o for o in reg_opps if (o.business_unit_raw or "Unknown") == leading_bu]
-                tot_bu_acv = sum(float(o.forecast_acv_amount or 0) for o in bu_opps)
-                tot_bu_cnt = len(bu_opps)
+                    leading_bu = max(bu_max.keys(), key=lambda b: bu_max[b]) if bu_max else "None"
+                    bu_opps = [o for o in reg_opps if (o.business_unit_raw or "Unknown") == leading_bu]
+                    tot_bu_acv = sum(float(o.forecast_acv_amount or 0) for o in bu_opps)
+                    tot_bu_cnt = len(bu_opps)
 
-                opp_word = "opportunity" if tot_bu_cnt == 1 else "opportunities"
-                if sub:
-                    set_text(
-                        sub[0],
-                        f"Data as of {fmt_date}   |   {reg} – {leading_bu}: ${tot_bu_acv/1e6:,.2f}M across {tot_bu_cnt:,} {opp_word}",
-                    )
+                    opp_word = "opportunity" if tot_bu_cnt == 1 else "opportunities"
+                    if sub:
+                        set_text(
+                            sub[0],
+                            f"Data as of {fmt_date}   |   {reg} – {leading_bu}: ${tot_bu_acv/1e6:,.2f}M across {tot_bu_cnt:,} {opp_word}",
+                        )
 
-                tb_list = find(s, "Top 10 by BU table")
-                if tb_list:
-                    tb = tb_list[0].table
-                    top10_bu = sorted(
-                        bu_opps,
-                        key=lambda o: (
-                            -float(o.forecast_acv_amount or 0),
-                            rb_order.get(str(o.opportunity_id_18 or "").strip(), 999999),
-                        ),
-                    )[:10]
-                    for i in range(10):
-                        if i < len(top10_bu):
-                            o = top10_bu[i]
-                            vals = [
-                                i + 1,
-                                leading_bu,
-                                o.opportunity_id_18 or "",
-                                o.opportunity_name or "",
-                                money(o.forecast_acv_amount),
-                            ]
-                        else:
-                            vals = [i + 1, " ", " ", " ", " "]
-                        for j, v in enumerate(vals):
-                            setc(tb.cell(i + 1, j), str(v))
-                    top10_bu_sum = sum(float(o.forecast_acv_amount or 0) for o in top10_bu)
-                    setc(tb.cell(11, 4), money(top10_bu_sum))
+                    tb_list = find(s, "Top 10 by BU table")
+                    if tb_list:
+                        tb = tb_list[0].table
+                        top10_bu = sorted(
+                            bu_opps,
+                            key=lambda o: (
+                                -float(o.forecast_acv_amount or 0),
+                                rb_order.get(str(o.opportunity_id_18 or "").strip(), 999999),
+                            ),
+                        )[:10]
+                        for i in range(10):
+                            if i < len(top10_bu):
+                                o = top10_bu[i]
+                                vals = [
+                                    i + 1,
+                                    leading_bu,
+                                    o.opportunity_id_18 or "",
+                                    o.opportunity_name or "",
+                                    money(o.forecast_acv_amount),
+                                ]
+                            else:
+                                vals = [i + 1, " ", " ", " ", " "]
+                            for j, v in enumerate(vals):
+                                setc(tb.cell(i + 1, j), str(v))
+                        top10_bu_sum = sum(float(o.forecast_acv_amount or 0) for o in top10_bu)
+                        setc(tb.cell(11, 4), money(top10_bu_sum))
+
+        # Final sweep to ensure dynamic labels: replace hardcoded "Expiry Q3" with current quarter
+        if scope == "renewals":
+            for s in prs.slides:
+                for sp in s.shapes:
+                    if sp.has_text_frame:
+                        for p in sp.text_frame.paragraphs:
+                            if "Expiry Q3" in p.text:
+                                p.text = p.text.replace("Expiry Q3", f"Expiry {q_short}")
+                            for r in p.runs:
+                                if "Expiry Q3" in r.text:
+                                    r.text = r.text.replace("Expiry Q3", f"Expiry {q_short}")
 
         output = io.BytesIO()
         prs.save(output)

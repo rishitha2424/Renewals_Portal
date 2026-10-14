@@ -108,7 +108,14 @@ class AnalyticsService:
 
     def _resolve_snapshot(self, ctx: UserContext, snapshot_id: str | None) -> UploadSnapshot | None:
         if snapshot_id:
-            return self.get_snapshot_by_id(ctx, snapshot_id)
+            snap = self.get_snapshot_by_id(ctx, snapshot_id)
+            if not snap:
+                try:
+                    d = date.fromisoformat(snapshot_id)
+                    snap = self.get_snapshot_by_date(ctx, d)
+                except Exception:
+                    pass
+            return snap
         return self.get_active_snapshot(ctx)
 
     def _opps_for(
@@ -126,21 +133,22 @@ class AnalyticsService:
         # Filter by scope
         s = (scope or "renewals").lower()
         if s == "renewals":
-            q = q.filter(ScopeService.is_renewals())
+            cq = ScopeService.quarter_of(snapshot.snapshot_date)
+            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == cq)
         elif s == "fy2026":
             q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2026", "Q2-2026", "Q3-2026", "Q4-2026"]))
         elif s == "fy2027":
             q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2027", "Q2-2027", "Q3-2027", "Q4-2027"]))
         elif s == "q4_2026":
             q = q.filter(ScopeService.current_quarter_slice(ScopeService.current_quarter(snapshot.snapshot_date)))
-        elif s == "all":
+        elif s in ("all", "full"):
             pass
 
         return q.all()
 
     def is_scope_available(self, snapshot_id: str, scope: str) -> bool:
         s = (scope or "renewals").lower()
-        if s in ("all", "renewals"):
+        if s in ("all", "full", "renewals"):
             return True
         col = getattr(Opportunity, f"in_{s}", None)
         if col is not None:

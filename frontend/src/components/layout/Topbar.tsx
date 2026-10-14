@@ -93,12 +93,31 @@ export default function Topbar() {
     return `vs ${dayName} ${dayNum} ${monthName}`
   }
 
-  const handleDownload = async (type: 'pptx' | 'xlsx') => {
+  const getDynamicReportNote = (scope: string = 'renewals') => {
+    const scopeName = scope === 'full' ? 'Full sheet' : 'Renewals'
+    const snapDateStr = activeSnap?.snapshot_date
+    let qLabel = 'Q4 FY26'
+    let formattedDate = '07-Oct-2026'
+    if (snapDateStr) {
+      formattedDate = formatDate(snapDateStr)
+      const d = new Date(snapDateStr + 'T00:00:00')
+      const m = d.getMonth()
+      const y = d.getFullYear()
+      const yy = String(y).slice(-2)
+      if (m >= 9) qLabel = `Q4 FY${yy}`
+      else if (m >= 6) qLabel = `Q3 FY${yy}`
+      else if (m >= 3) qLabel = `Q2 FY${yy}`
+      else qLabel = `Q1 FY${yy}`
+    }
+    return `${scopeName} · ${qLabel} · as of ${formattedDate}`
+  }
+
+  const handleDownload = async (type: 'pptx' | 'xlsx', scope: string = 'renewals') => {
     if (downloadingFormat) return
     setDownloadingFormat(type)
     setDownloadOpen(false)
     try {
-      const { filename } = await downloadReport(type, activeSnapshotId, compareSnapshotId)
+      const { filename } = await downloadReport(type, activeSnapshotId, compareSnapshotId, scope)
       showToast.success('Report downloaded', filename)
     } catch (err: any) {
       showToast.error(
@@ -216,12 +235,15 @@ export default function Topbar() {
               </button>
 
               {downloadOpen && (
-                <div className="absolute right-0 mt-1 w-60 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1 z-50 divide-y divide-[var(--border)]">
-                  <div className="py-0.5">
+                <div className="absolute right-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-50 divide-y divide-[var(--border)]">
+                  <div className="py-1">
+                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Renewals Scope (Default)
+                    </p>
                     <button
                       type="button"
                       disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('pptx')}
+                      onClick={() => handleDownload('pptx', 'renewals')}
                       className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       id="topbar-download-pptx-btn"
                     >
@@ -233,22 +255,17 @@ export default function Topbar() {
                       <div className="flex-1">
                         <p className="font-medium flex items-center justify-between">
                           PowerPoint (.pptx)
-                          {downloadingFormat === 'pptx' && (
-                            <span className="text-[10px] text-amber-500">Generating...</span>
-                          )}
                         </p>
                         <p className="text-[10px] text-[var(--text-muted)]">
-                          Daily update deck with pivots & charts
+                          Renewals deck (24 slides)
                         </p>
                       </div>
                     </button>
-                  </div>
 
-                  <div className="py-0.5">
                     <button
                       type="button"
                       disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('xlsx')}
+                      onClick={() => handleDownload('xlsx', 'renewals')}
                       className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       id="topbar-download-excel-btn"
                     >
@@ -260,15 +277,51 @@ export default function Topbar() {
                       <div className="flex-1">
                         <p className="font-medium flex items-center justify-between">
                           Excel (.xlsx)
-                          {downloadingFormat === 'xlsx' && (
-                            <span className="text-[10px] text-emerald-600">Generating...</span>
-                          )}
                         </p>
                         <p className="text-[10px] text-[var(--text-muted)]">
-                          10 sheets with formatted summaries
+                          Renewals summaries (10 sheets)
                         </p>
                       </div>
                     </button>
+                  </div>
+
+                  <div className="py-1">
+                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Full Sheet (All Sales Types)
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('pptx', 'full')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-pptx-full-btn"
+                    >
+                      <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">PowerPoint (Full Sheet)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('xlsx', 'full')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-excel-full-btn"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">Excel (Full Sheet)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="px-2.5 py-1.5 bg-[var(--bg-secondary)]/50 rounded-b-lg">
+                    <p className="text-[10px] font-medium text-[var(--text-muted)] text-center">
+                      {getDynamicReportNote()}
+                    </p>
                   </div>
                 </div>
               )}

@@ -9,28 +9,38 @@ import { SkeletonChart } from '@/components/ui/Skeleton'
 import InsightCaption from '@/components/ui/InsightCaption'
 import { useAppStore } from '@/store/appStore'
 
-interface Props { snapshotId?: string }
+interface Props { snapshotId?: string; data?: any }
 
-export default function ApprovalStatusPie({ snapshotId }: Props) {
+export default function ApprovalStatusPie({ snapshotId, data: propData }: Props) {
   const activeId = useAppStore(s => s.activeSnapshotId)
   const snapId = snapshotId ?? activeId ?? undefined
 
-  const { data, isLoading } = useQuery({
+  const { data: fetchedData, isLoading } = useQuery({
     queryKey: ['approval-status', snapId],
     queryFn: () => getApprovalStatus(snapId),
-    enabled: true,
+    enabled: !propData,
   })
 
-  if (isLoading) return <SkeletonChart />
+  if (!propData && isLoading) return <SkeletonChart />
 
-  const rows: any[] = (data?.rows ?? [])
+  const data = propData ?? fetchedData
+
+  const rawList: any[] = data?.rows ?? (data?.statuses ? data.statuses.map((s: any) => ({
+    approval_status: s.status,
+    count: s.count,
+    acv: s.acv,
+    pct_count: s.pct_count,
+    pct_acv: s.pct_acv,
+  })) : [])
+
+  const rows: any[] = rawList
     .filter((r: any) => r.count > 0)
     .sort((a: any, b: any) =>
       APPROVAL_ORDER.indexOf(a.approval_status) - APPROVAL_ORDER.indexOf(b.approval_status)
     )
 
   const topStatus = rows.reduce((a: any, b: any) => (b.count > (a?.count ?? 0) ? b : a), null)
-  const totalAcv = data?.total_acv ?? 0
+  const totalAcv = data?.total_acv ?? data?.total?.acv ?? 0
 
   return (
     <div className="card p-5">
