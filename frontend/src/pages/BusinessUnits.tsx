@@ -240,7 +240,7 @@ function BusinessUnitsContent() {
 
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-3.5 border-l-4 border-l-indigo-500">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Total Value</div>
           <div className="text-xl font-black text-[var(--text-primary)] mt-1">{formatACV(total.acv)}</div>

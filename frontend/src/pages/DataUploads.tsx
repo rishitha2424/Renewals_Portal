@@ -714,7 +714,7 @@ export default function DataUploads() {
                 type="button"
                 onClick={handleValidate}
                 disabled={!comparisonFile.file || isValidating || isCommitting}
-                className="px-5 py-2.5 rounded-sm font-bold text-xs text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0 transition-all"
+                className="px-5 py-2.5 rounded-sm font-bold text-xs shadow-sm flex items-center gap-2 flex-shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-[var(--brand-teal)] focus:ring-offset-2 focus:ring-offset-[var(--bg-card)] bg-[var(--brand-teal)] text-white border border-[var(--brand-teal)] hover:bg-[#008b94] dark:hover:bg-[#00b5bf] active:scale-[0.99] disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:border-slate-300 dark:disabled:border-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed disabled:shadow-none disabled:active:scale-100"
                 id="validate-preview-btn"
               >
                 {isValidating ? (
