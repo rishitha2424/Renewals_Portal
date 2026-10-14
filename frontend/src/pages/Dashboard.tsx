@@ -9,6 +9,7 @@ import {
 import { useAppStore } from '@/store/appStore'
 import {
   getV2OverviewSummary,
+  getV2OverviewFullYear,
   getV2OverviewMovements,
   getV2RegionalBreakdown,
   getV2OverviewDeals,
@@ -168,6 +169,14 @@ export default function Dashboard() {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
   const { globalFilters } = useAppStore()
+
+  const isFullYear = globalFilters?.period === 'all_periods' || globalFilters?.period === 'all' || (typeof globalFilters?.period === 'string' && (globalFilters.period.toUpperCase().startsWith('FY') || globalFilters.period.toLowerCase().includes('full')))
+
+  const { data: fullYearData } = useQuery({
+    queryKey: ['v2-fullyear', activeSnapshotId, globalFilters?.include_deleted_lost],
+    queryFn: () => getV2OverviewFullYear({ as_of: activeSnapshotId, include_deleted_lost: globalFilters?.include_deleted_lost }),
+    enabled: !isFullYear && !!activeSnapshotId,
+  })
 
   const { data: summary, isLoading: sumLoading, isError: sumErr, refetch: refetchSum } = useQuery({
     queryKey: ['v2-summary', globalFilters],
@@ -350,6 +359,38 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── FULL-YEAR STRIP (Shown when selected period is not full year / all periods) ── */}
+      {!isFullYear && fullYearData && !fullYearData.error && (
+        <div className="card p-4 bg-gradient-to-r from-[var(--bg-card)] via-[var(--bg-secondary)] to-[var(--bg-card)] border-l-4 border-l-indigo-500 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                {fullYearData.data_slice || `Full year ${fullYearData.fiscal_year || 'FY26'} (all quarters)`}
+              </h3>
+            </div>
+            <div className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+              Total: {acvM(fullYearData.total?.acv)} · {fullYearData.total?.count} contracts
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {[
+              { label: 'Full Year Total', count: fullYearData.total?.count, acv: fullYearData.total?.acv, color: '#6366f1' },
+              { label: 'Closed', count: fullYearData.categories?.Closed?.count, acv: fullYearData.categories?.Closed?.acv, color: FORECAST_COLORS['Closed'] || '#10b981' },
+              { label: 'Commit', count: fullYearData.categories?.Commit?.count, acv: fullYearData.categories?.Commit?.acv, color: FORECAST_COLORS['Commit'] || '#0284c7' },
+              { label: 'Best Case', count: fullYearData.categories?.['Best Case']?.count, acv: fullYearData.categories?.['Best Case']?.acv, color: FORECAST_COLORS['Best Case'] || '#8b5cf6' },
+              { label: 'Pipeline', count: fullYearData.categories?.Pipeline?.count, acv: fullYearData.categories?.Pipeline?.acv, color: FORECAST_COLORS['Pipeline'] || '#f59e0b' },
+            ].map((item) => (
+              <div key={item.label} className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider truncate">{item.label}</div>
+                <div className="text-base font-extrabold tabular-nums mt-0.5" style={{ color: item.color }}>{acvM(item.acv)}</div>
+                <div className="text-[10px] text-[var(--text-muted)] font-medium mt-0.5">{item.count ?? 0} deals</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── SECTION 2 – Category cards in one row ──────────────────────── */}
       {(() => {
         const categoryCards = [
@@ -357,12 +398,11 @@ export default function Dashboard() {
           { key: 'Commit', label: 'Commit', dataKey: 'Commit' },
           { key: 'Best Case', label: 'Best Case', dataKey: 'Best Case' },
           { key: 'Pipeline', label: 'Pipeline', dataKey: 'Pipeline' },
-          { key: 'Blank', label: 'Not yet proposed', dataKey: 'Blank' },
         ] as const
 
         return (
           <div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {categoryCards.map(({ key, label, dataKey }) => {
                 const cat = cats[dataKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
                 const color = FORECAST_COLORS[dataKey] || '#64748b'
@@ -415,7 +455,7 @@ export default function Dashboard() {
       {/* ── SECTION 3 – Slippage to Next Year (Movement-based) ─────────────── */}
       <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
         <div className="flex flex-wrap items-start justify-between gap-6">
-          <div>
+          <div className="w-full">
             <div className="flex items-center gap-2 mb-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
               <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
@@ -471,7 +511,28 @@ export default function Dashboard() {
               })()}
             </div>
 
-            <p className="text-[11px] text-[var(--text-muted)] mt-3">
+            {/* Sub-line for Not yet proposed */}
+            {(() => {
+              const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
+              return (
+                <div
+                  className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
+                  title="Click to view Not yet proposed deals"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
+                    <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
+                    <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                  </div>
+                  <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
+                    View not yet proposed deals →
+                  </span>
+                </div>
+              )
+            })()}
+
+            <p className="text-[11px] text-[var(--text-muted)] mt-2">
               Contracts originally in {getQuarterFromDate(activeSnapshot?.snapshot_date).split("-")[0]} that moved close date / fiscal period to FY{(activeSnapshot?.snapshot_date ? new Date(activeSnapshot.snapshot_date.length === 10 ? activeSnapshot.snapshot_date + "T00:00:00" : activeSnapshot.snapshot_date).getFullYear() + 1 : 2027)}.
               {standingSlip.count > 0 && ` Active snapshot standing slippage: ${standingSlip.count} deals.`}
             </p>

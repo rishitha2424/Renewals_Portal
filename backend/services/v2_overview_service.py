@@ -539,6 +539,65 @@ class V2OverviewService:
             },
         }
 
+    def get_fullyear_summary(
+        self,
+        ctx: UserContext,
+        as_of: str | None = None,
+        include_deleted_lost: bool = True,
+    ) -> dict:
+        """
+        Calculates full fiscal year metrics (Closed, Commit, Best Case, Pipeline, Total)
+        for the entire fiscal year derived from the active snapshot date.
+        Always covers all quarters of that fiscal year (Renewals only).
+        """
+        snap = self._active_snap(as_of)
+        if snap is None:
+            return {"error": "no_snapshot"}
+
+        eff_as_of_date = None
+        if as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
+
+        q = ScopeService.quarter_of(snap.snapshot_date)
+        _, y_part = q.split("-")
+        fy_label = f"FY{y_part[-2:]}"
+
+        from backend.services.scopes import FilterSpec
+        fs = FilterSpec.from_params(
+            as_of=snap.id,
+            period=f"FY{y_part}",
+            sales_types=["Renewals"],
+            include_deleted_lost=include_deleted_lost,
+        )
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
+        df = _opps_to_df(opps)
+        total_count = len(df)
+        total_acv = round(_sum(df, "forecast_acv_amount"), 2) if not df.empty else 0.0
+        cats = self._category_summary(df)
+
+        return {
+            "fiscal_year": fy_label,
+            "fiscal_year_full": y_part,
+            "data_slice": f"Full year {fy_label} (all quarters)",
+            "total": {
+                "count": total_count,
+                "acv": total_acv,
+            },
+            "categories": {
+                "Closed": cats.get("Closed", {"count": 0, "acv": 0.0}),
+                "Commit": cats.get("Commit", {"count": 0, "acv": 0.0}),
+                "Best Case": cats.get("Best Case", {"count": 0, "acv": 0.0}),
+                "Pipeline": cats.get("Pipeline", {"count": 0, "acv": 0.0}),
+                "Blank": cats.get("Blank", {"count": 0, "acv": 0.0}),
+            },
+        }
+
+
     def get_movements(
         self,
         ctx: UserContext,

@@ -27,6 +27,21 @@ def overview_summary(
     return svc.get_summary(ctx, filter_spec=filter_spec)
 
 
+@router.get("/fullyear")
+def overview_fullyear(
+    as_of: Optional[str] = Query(None),
+    include_deleted_lost: Optional[bool] = Query(True),
+    svc: V2OverviewService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    return svc.get_fullyear_summary(
+        ctx,
+        as_of=as_of,
+        include_deleted_lost=include_deleted_lost if include_deleted_lost is not None else True,
+    )
+
+
+
 @router.get("/movements")
 def overview_movements(
     compare: Optional[str] = Query(None),
