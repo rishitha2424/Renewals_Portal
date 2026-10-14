@@ -169,8 +169,27 @@ def health(db: Session = Depends(get_db)):
     }
 
 
-# Serve frontend static files in production (when dist/ exists)
+# Serve frontend static files in production (when dist/ exists) with SPA fallback to index.html
 import os
-dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+from fastapi.responses import FileResponse
+
+dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 if os.path.isdir(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="frontend")
+    index_file = os.path.join(dist_path, "index.html")
+
+    # Mount static assets directory if it exists
+    assets_dir = os.path.join(dist_path, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="static_assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        # Don't intercept API routes
+        if full_path.startswith("api"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_candidate = os.path.join(dist_path, full_path)
+        if os.path.isfile(file_candidate):
+            return FileResponse(file_candidate)
+        return FileResponse(index_file)
+

@@ -8,8 +8,8 @@ Type=simple
 User=renewals
 Group=renewals
 WorkingDirectory=/opt/renewals
-EnvironmentFile=/opt/renewals/.env
-ExecStart=/opt/renewals/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 4
+# Use 1 worker to preserve in-memory snapshot state, avoid database locking contention, and fit container memory bounds
+ExecStart=/opt/renewals/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=5
 StandardOutput=journal
