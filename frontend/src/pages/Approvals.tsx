@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { CheckCircle2, Clock, FileQuestion, Sigma, Activity, TrendingUp, AlertOctagon } from 'lucide-react'
+import { CheckCircle2, Clock, FileQuestion, Sigma, Activity, TrendingUp, AlertOctagon, Info } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { getApprovalsDistribution, getApprovalsDeals } from '@/api/client'
-import { formatCurrency, formatNumber, acvM } from '@/utils/format'
+import { formatCurrency, formatNumber, acvM, formatDate } from '@/utils/format'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
 import { PageErrorState } from '@/components/ui/PageErrorState'
@@ -267,93 +267,233 @@ export default function Approvals() {
       </div>
 
       {/* Insights Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center justify-between mb-3 text-[var(--text-primary)]">
-             <div className="flex items-center gap-2">
-               <Activity className="w-5 h-5 text-emerald-500" />
-               <h3 className="font-bold">Recent Movements</h3>
-             </div>
-             {!compareSnapshotId && (
-               <div className="flex bg-[var(--bg-secondary)] rounded-lg p-0.5 border border-[var(--border)]">
-                 <button className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${movementsMode === 'yesterday' ? 'bg-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-muted)]'}`} onClick={() => setMovementsMode('yesterday')}>Yesterday</button>
-                 <button className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${movementsMode === 'lastweek' ? 'bg-[var(--bg-primary)] shadow-sm' : 'text-[var(--text-muted)]'}`} onClick={() => setMovementsMode('lastweek')}>Last Week</button>
-               </div>
-             )}
-          </div>
-          <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-3">
-             {(() => {
-               const moves = compareSnapshotId ? movements_custom : (movementsMode === 'yesterday' ? movements_yesterday : movements_lastweek);
-               const newlyAppr = moves.filter((m: any) => m.to_status === 'Approved');
-               const newlyPend = moves.filter((m: any) => m.to_status === 'Pending Approval');
-               return (
-                 <>
-                   <div>
-                     <p className="text-[var(--text-muted)] text-[10px] font-bold uppercase mb-1">Newly Approved ({newlyAppr.length})</p>
-                     {newlyAppr.length === 0 ? <div className="text-[10px] text-[var(--text-muted)] italic">None</div> : 
-                       newlyAppr.map((m: any, idx: number) => (
-                         <div key={'a'+idx} className="bg-[var(--bg-secondary)] p-1.5 rounded-md border border-[var(--border)] mb-1 flex justify-between">
-                           <span className="font-semibold text-[10px]">From {m.from_status}</span>
-                           <span className="font-bold text-[10px] text-emerald-600">+{formatCurrency(m.acv)} ({m.count})</span>
-                         </div>
-                       ))
-                     }
-                   </div>
-                   <div>
-                     <p className="text-[var(--text-muted)] text-[10px] font-bold uppercase mb-1">Newly Pending ({newlyPend.length})</p>
-                     {newlyPend.length === 0 ? <div className="text-[10px] text-[var(--text-muted)] italic">None</div> : 
-                       newlyPend.map((m: any, idx: number) => (
-                         <div key={'p'+idx} className="bg-[var(--bg-secondary)] p-1.5 rounded-md border border-[var(--border)] mb-1 flex justify-between">
-                           <span className="font-semibold text-[10px]">From {m.from_status}</span>
-                           <span className="font-bold text-[10px] text-amber-600">+{formatCurrency(m.acv)} ({m.count})</span>
-                         </div>
-                       ))
-                     }
-                   </div>
-                 </>
-               )
-             })()}
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* Approval status changes table */}
+        <Card className="xl:col-span-7 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
+          {(() => {
+            const rawMoves = compareSnapshotId ? movements_custom : (movementsMode === 'yesterday' ? movements_yesterday : movements_lastweek);
+            // Merge Pending Approval and Pending-Approval everywhere
+            const moves = (rawMoves || []).map((m: any) => ({
+              ...m,
+              from_status: m.from_status === 'Pending-Approval' ? 'Pending Approval' : m.from_status,
+              to_status: m.to_status === 'Pending-Approval' ? 'Pending Approval' : m.to_status,
+            })).filter((m: any) => m.from_status !== m.to_status);
 
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-             <Clock className="w-5 h-5 text-amber-500" />
-             <h3 className="font-bold">Submitted, waiting for approval</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-             <p className="text-[var(--text-muted)] text-[11px] italic cursor-pointer hover:underline" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>All {pending_deals?.length || 0} pending deals...</p>
-             {(!pending_deals || pending_deals.length === 0) ? (
-                <div className="text-center py-6 text-[var(--text-muted)]">No pending deals.</div>
-             ) : (
-                pending_deals.map((p: any, idx: number) => {
-                  const daysToClose = p.close_date && activeSnapshot ? Math.floor((new Date(p.close_date).getTime() - new Date(activeSnapshot.snapshot_date).getTime()) / (1000 * 3600 * 24)) : 999;
-                  return (
-                  <div key={idx} className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => { setSelectedOppId(p.opportunity_id_18); handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals'); }}>
-                    <div className="flex justify-between font-bold text-[var(--text-primary)]"><span className="truncate pr-2">{p.account_name || p.opportunity_name}</span> <span className="text-amber-600">{acvM(p.forecast_acv_amount)}</span></div>
-                    <div className="flex justify-between items-center text-[10px] text-[var(--text-muted)] mt-1">
-                      <span>{p.close_date ? p.close_date.substring(0,10) : 'No close date'}</span>
-                      {daysToClose <= 30 && <span className="bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20">closes in {daysToClose}d</span>}
+            const newlyAppr = moves.filter((m: any) => m.to_status === 'Approved');
+            const newlyPend = moves.filter((m: any) => m.to_status === 'Pending Approval');
+            const otherChanges = moves.filter((m: any) => m.to_status !== 'Approved' && m.to_status !== 'Pending Approval');
+
+            const totalDeals = moves.reduce((sum: number, m: any) => sum + (m.count || 0), 0);
+            const totalACV = moves.reduce((sum: number, m: any) => sum + (m.acv || 0), 0);
+
+            const compareDateStr = compareSnapshot?.snapshot_date 
+              ? formatDate(compareSnapshot.snapshot_date)
+              : (movementsMode === 'yesterday' 
+                  ? (yesterday_date ? formatDate(yesterday_date) : 'yesterday')
+                  : (lastweek_date ? formatDate(lastweek_date) : 'last week'));
+
+            const renderStatus = (st: string) => {
+              const isOdd = st === 'New to slice';
+              return (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[11px] text-[var(--text-primary)]">
+                  <span>{st}</span>
+                  {isOdd && (
+                    <span 
+                      className="group relative inline-flex items-center cursor-help text-sky-500 hover:text-sky-600"
+                      title="New to slice: Deals that newly entered this renewals dataset or slice since the comparison date."
+                    >
+                      <Info className="w-3.5 h-3.5" />
+                      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:flex flex-col items-center z-50">
+                        <span className="bg-slate-900 text-white text-[10px] font-normal rounded px-2 py-1 shadow-lg whitespace-nowrap">
+                          New to slice: newly entered this dataset/slice
+                        </span>
+                        <span className="w-1.5 h-1.5 -mt-1 rotate-45 bg-slate-900"></span>
+                      </span>
+                    </span>
+                  )}
+                </span>
+              );
+            };
+
+            const renderGroup = (title: string, helper: string, items: any[], badgeColor: string) => {
+              const grpCount = items.reduce((s: number, m: any) => s + (m.count || 0), 0);
+              const grpACV = items.reduce((s: number, m: any) => s + (m.acv || 0), 0);
+
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between pt-2 pb-1 border-b border-[var(--border)]">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${badgeColor}`}>
+                          {title}
+                        </span>
+                        <span className="text-[10px] font-bold text-[var(--text-muted)]">
+                          ({grpCount} {grpCount === 1 ? 'deal' : 'deals'})
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{helper}</p>
                     </div>
+                    {items.length > 0 && (
+                      <span className="text-xs font-bold text-[var(--text-primary)] font-mono">
+                        {formatCurrency(grpACV)}
+                      </span>
+                    )}
                   </div>
-                )})
-             )}
-          </div>
+
+                  {items.length === 0 ? (
+                    <div className="text-[11px] text-[var(--text-muted)] italic py-1.5 px-2">
+                      No status movements in this group
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[var(--border)]">
+                      {items.map((m: any, idx: number) => (
+                        <div 
+                          key={idx}
+                          className="grid grid-cols-12 items-center py-1.5 px-2 rounded-md hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer text-xs"
+                          onClick={() => {
+                            if (m.deal_ids && m.deal_ids.length > 0) {
+                              handleCellClick({ approval_status: m.to_status }, `${title}: From ${m.from_status} → ${m.to_status}`);
+                            }
+                          }}
+                        >
+                          <div className="col-span-4 flex items-center">
+                            {renderStatus(m.from_status)}
+                          </div>
+                          <div className="col-span-1 flex items-center justify-center text-[var(--text-muted)] font-bold">
+                            →
+                          </div>
+                          <div className="col-span-4 flex items-center">
+                            {renderStatus(m.to_status)}
+                          </div>
+                          <div className="col-span-1 text-right font-bold font-mono text-[var(--text-primary)]">
+                            {m.count}
+                          </div>
+                          <div className="col-span-2 text-right font-bold font-mono text-[var(--text-primary)]">
+                            {formatCurrency(m.acv)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
+            return (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                    <Activity className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    <h3 className="font-bold text-base">Approval status changes since {compareDateStr}</h3>
+                  </div>
+                  {!compareSnapshotId && (
+                    <div className="flex bg-[var(--bg-secondary)] rounded-lg p-0.5 border border-[var(--border)] self-start sm:self-auto">
+                      <button 
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors ${movementsMode === 'yesterday' ? 'bg-[var(--bg-primary)] shadow-sm text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} 
+                        onClick={() => setMovementsMode('yesterday')}
+                      >
+                        Yesterday
+                      </button>
+                      <button 
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors ${movementsMode === 'lastweek' ? 'bg-[var(--bg-primary)] shadow-sm text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} 
+                        onClick={() => setMovementsMode('lastweek')}
+                      >
+                        Last Week
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Table Header */}
+                <div className="grid grid-cols-12 py-2 px-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 rounded-t-lg">
+                  <div className="col-span-4">From status</div>
+                  <div className="col-span-1 text-center"></div>
+                  <div className="col-span-4">To status</div>
+                  <div className="col-span-1 text-right">Deals</div>
+                  <div className="col-span-2 text-right">ACV</div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 py-1">
+                  {moves.length === 0 ? (
+                    <div className="text-center py-8 text-[var(--text-muted)] text-xs italic">
+                      No approval status changes recorded since {compareDateStr}.
+                    </div>
+                  ) : (
+                    <>
+                      {renderGroup(
+                        'Newly approved',
+                        'Deals that transitioned into Approved status',
+                        newlyAppr,
+                        'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                      )}
+                      {renderGroup(
+                        'Newly pending',
+                        'Deals submitted and awaiting management approval',
+                        newlyPend,
+                        'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                      )}
+                      {renderGroup(
+                        'Other changes',
+                        'Deals with other status movements or adjustments',
+                        otherChanges,
+                        'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Totals Row */}
+                <div className="mt-3 pt-2.5 border-t-2 border-[var(--border)] grid grid-cols-12 items-center px-2 text-xs font-black text-[var(--text-primary)] bg-[var(--bg-secondary)]/30 rounded-b-lg">
+                  <div className="col-span-9">Total Changes</div>
+                  <div className="col-span-1 text-right font-mono">{totalDeals}</div>
+                  <div className="col-span-2 text-right font-mono">{formatCurrency(totalACV)}</div>
+                </div>
+              </>
+            );
+          })()}
         </Card>
 
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-             <AlertOctagon className="w-5 h-5 text-rose-500" />
-             <h3 className="font-bold">Not Submitted</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-             <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Blank status...</p>
-             <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: 'Blank', forecast_category: 'Commit' }, 'Not Submitted (Blank Commit)')}>
-               <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Total Blank Commits</span> <span className="text-rose-600">{acvM(matrix['Blank']?.['Commit']?.acv || 0)}</span></div>
-               <div className="text-[10px] text-[var(--text-muted)] mt-1">{matrix['Blank']?.['Commit']?.count || 0} deals at risk</div>
-             </div>
-          </div>
-        </Card>
+        {/* Companion Cards */}
+        <div className="xl:col-span-5 flex flex-col gap-6">
+          <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
+            <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
+               <Clock className="w-5 h-5 text-amber-500" />
+               <h3 className="font-bold">Submitted, waiting for approval</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto max-h-[220px] text-xs space-y-2">
+               <p className="text-[var(--text-muted)] text-[11px] italic cursor-pointer hover:underline" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>All {pending_deals?.length || 0} pending deals...</p>
+               {(!pending_deals || pending_deals.length === 0) ? (
+                  <div className="text-center py-6 text-[var(--text-muted)]">No pending deals.</div>
+               ) : (
+                  pending_deals.map((p: any, idx: number) => {
+                    const daysToClose = p.close_date && activeSnapshot ? Math.floor((new Date(p.close_date).getTime() - new Date(activeSnapshot.snapshot_date).getTime()) / (1000 * 3600 * 24)) : 999;
+                    return (
+                    <div key={idx} className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => { setSelectedOppId(p.opportunity_id_18); handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals'); }}>
+                      <div className="flex justify-between font-bold text-[var(--text-primary)]"><span className="truncate pr-2">{p.account_name || p.opportunity_name}</span> <span className="text-amber-600">{acvM(p.forecast_acv_amount)}</span></div>
+                      <div className="flex justify-between items-center text-[10px] text-[var(--text-muted)] mt-1">
+                        <span>{p.close_date ? p.close_date.substring(0,10) : 'No close date'}</span>
+                        {daysToClose <= 30 && <span className="bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20">closes in {daysToClose}d</span>}
+                      </div>
+                    </div>
+                  )})
+               )}
+            </div>
+          </Card>
+
+          <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
+            <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
+               <AlertOctagon className="w-5 h-5 text-rose-500" />
+               <h3 className="font-bold">Not Submitted</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto max-h-[160px] text-xs space-y-2">
+               <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Blank status...</p>
+               <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: 'Blank', forecast_category: 'Commit' }, 'Not Submitted (Blank Commit)')}>
+                 <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Total Blank Commits</span> <span className="text-rose-600">{acvM(matrix['Blank']?.['Commit']?.acv || 0)}</span></div>
+                 <div className="text-[10px] text-[var(--text-muted)] mt-1">{matrix['Blank']?.['Commit']?.count || 0} deals at risk</div>
+               </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {modalOpen && (

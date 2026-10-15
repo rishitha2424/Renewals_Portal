@@ -499,11 +499,11 @@ class AnalyticsService:
             if not s or s == "Blank":
                 return "Blank"
             if s in ["Pending-Approval", "Pending Approval"]:
-                return "Pending-Approval"
+                return "Pending Approval"
             return s
 
         df["norm_status"] = df["approval_status"].apply(norm_status)
-        canonical_statuses = ["Approved", "Approved - 2nd", "Pending-Approval", "Blank", "Rejected"]
+        canonical_statuses = ["Approved", "Approved - 2nd", "Pending Approval", "Blank", "Rejected"]
         status_map = {s: {"count": 0, "acv": 0.0} for s in canonical_statuses}
 
         for s, grp in df.groupby("norm_status"):

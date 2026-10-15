@@ -238,19 +238,16 @@ class V2ApprovalsService:
                     suffixes=("_prev", "_curr")
                 )
                 changed = merged[merged["approval_status_prev"] != merged["approval_status_curr"]].copy()
-                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("Newly In-Scope")
+                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("New to slice")
                 changed["approval_status_curr"] = changed["approval_status_curr"].fillna("Blank")
                 
-                grouped = changed.groupby(["approval_status_prev", "approval_status_curr"], dropna=False).agg(
-                    count=("opportunity_id_18", "count"),
-                    acv=("forecast_acv_amount", "sum")
-                ).reset_index()
-                for _, row in grouped.iterrows():
+                for (from_st, to_st), grp in changed.groupby(["approval_status_prev", "approval_status_curr"], dropna=False):
                     moves.append({
-                        "from_status": row["approval_status_prev"],
-                        "to_status": row["approval_status_curr"],
-                        "count": int(row["count"]),
-                        "acv": round(float(row["acv"]), 2)
+                        "from_status": str(from_st),
+                        "to_status": str(to_st),
+                        "count": len(grp),
+                        "acv": round(float(grp["forecast_acv_amount"].sum()), 2),
+                        "deal_ids": grp["opportunity_id_18"].tolist()
                     })
             return moves
             

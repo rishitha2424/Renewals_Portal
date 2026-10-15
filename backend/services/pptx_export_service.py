@@ -497,7 +497,7 @@ class PptxExportService:
                 if tbl_list:
                     tbl = tbl_list[0].table
                     app_map = {r["approval_status"]: r for r in aps.get("rows", [])}
-                    order = ["Approved", "Approved - 2nd", "Pending-Approval", "Blank", "Rejected"]
+                    order = ["Approved", "Approved - 2nd", "Pending Approval", "Blank", "Rejected"]
                     counts = [app_map.get(k, {}).get("count", 0) for k in order]
                     acvs = [app_map.get(k, {}).get("acv", 0.0) for k in order]
                     tot_cnt = aps.get("total_count", sum(counts))
@@ -518,7 +518,7 @@ class PptxExportService:
                 if charts:
                     ch = charts[0].chart
                     cd = CategoryChartData()
-                    cd.categories = ["Approved", "Approved - 2nd", "Pending-Approval", "Blank", "Rejected"]
+                    cd.categories = ["Approved", "Approved - 2nd", "Pending Approval", "Blank", "Rejected"]
                     cd.add_series("Opportunities", counts)
                     ch.replace_data(cd)
 
