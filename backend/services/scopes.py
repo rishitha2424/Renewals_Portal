@@ -232,8 +232,11 @@ class ScopeService:
         )
 
     @staticmethod
-    def delayed(quarter: str) -> ColumnElement[bool]:
-        """Scope: renewals AND fiscal_period an earlier quarter of the SAME fiscal year AND forecast_category != 'Closed'"""
+    def delayed(quarter: str, include_prior_fy: Optional[bool] = None) -> ColumnElement[bool]:
+        """Scope: open renewals whose fiscal period is before current quarter (including prior FY if configured)."""
+        if include_prior_fy is None:
+            include_prior_fy = getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
+
         cq = quarter
         if not cq or "-" not in cq:
             return False
@@ -243,11 +246,16 @@ class ScopeService:
         current_y = int(y_part)
         
         earlier_quarters = [f"Q{q}-{current_y}" for q in range(1, current_q)]
+        if include_prior_fy:
+            for y in range(current_y - 5, current_y):
+                for q in range(1, 5):
+                    earlier_quarters.append(f"Q{q}-{y}")
         
         return and_(
             ScopeService.is_renewals(),
             Opportunity.fiscal_period.in_(earlier_quarters),
-            Opportunity.forecast_category != "Closed"
+            Opportunity.forecast_category != "Closed",
+            Opportunity.is_deleted_or_lost == False
         )
 
     @staticmethod

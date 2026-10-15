@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     FISCAL_YEAR_START_MONTH: int = 1
+    DELAYED_INCLUDE_PRIOR_FY: bool = True
 
     # Security & Admin Auth (Addendum D)
     ENVIRONMENT: str = "development"

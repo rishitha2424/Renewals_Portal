@@ -178,8 +178,10 @@ class V2DelayedService:
         y_snap_date = pd.Timestamp(data["y_snap"].snapshot_date)
         w_snap_date = pd.Timestamp(data["w_snap"].snapshot_date)
         
-        # 1. OVERDUE (based only on AS-OF)
-        # Overdue = Renewals deal in the current-quarter slice, Close Date < snapshot date, category not Closed.
+        # 1. OVERDUE (based on AS-OF: current quarter past close date, plus prior FY open deals if at year start)
+        from backend.config import settings
+        include_prior_fy = getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
+
         t_q4 = t_ren[t_ren["fiscal_period"] == target_q_str]
         overdue_df = pd.DataFrame()
         if not t_q4.empty:
@@ -190,7 +192,26 @@ class V2DelayedService:
             overdue_df["days_overdue"] = overdue_df["close_date"].apply(
                 lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
             )
-            
+
+        # At year start (Q1), open deals whose fiscal period is before current quarter (prior FY) count as delayed
+        if target_parsed[1] == 1 and include_prior_fy:
+            prior_open = t_ren[
+                t_ren["fiscal_period"].apply(lambda fp: (_parse_fp(fp) < target_parsed and _parse_fp(fp) > (0, 0)) if fp and "-" in fp else False)
+                & (t_ren["forecast_category"] != "Closed")
+                & (~t_ren["is_deleted_or_lost"])
+            ].copy()
+        else:
+            prior_open = pd.DataFrame()
+
+        if not prior_open.empty:
+            prior_open["reason"] = "Overdue"
+            prior_open["push_out_days"] = 0
+            prior_open["days_overdue"] = prior_open["close_date"].apply(
+                lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
+            )
+            overdue_df = pd.concat([overdue_df, prior_open], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first")
+
+        if not overdue_df.empty:
             # For each overdue deal, was it overdue yesterday? (i.e. Close Date < yesterday date and not closed yesterday)
             y_indexed = y_ren.set_index("opportunity_id_18")
             w_indexed = w_ren.set_index("opportunity_id_18")
@@ -198,9 +219,11 @@ class V2DelayedService:
             def check_overdue_hist(row, hist_idx, hist_date):
                 if row["opportunity_id_18"] not in hist_idx.index: return False
                 h = hist_idx.loc[row["opportunity_id_18"]]
-                return (pd.notna(h["close_date"]) and h["close_date"] < hist_date and 
-                        h["forecast_category"] != "Closed" and not h["is_deleted_or_lost"] and 
-                        h["fiscal_period"] == target_q_str)
+                if row.get("fiscal_period") == target_q_str:
+                    return (pd.notna(h["close_date"]) and h["close_date"] < hist_date and 
+                            h["forecast_category"] != "Closed" and not h["is_deleted_or_lost"] and 
+                            h["fiscal_period"] == target_q_str)
+                return (h["forecast_category"] != "Closed" and not h["is_deleted_or_lost"])
                 
             overdue_df["overdue_yesterday"] = overdue_df.apply(lambda r: check_overdue_hist(r, y_indexed, y_snap_date), axis=1)
             overdue_df["overdue_lastweek"] = overdue_df.apply(lambda r: check_overdue_hist(r, w_indexed, w_snap_date), axis=1)
@@ -503,9 +526,19 @@ class V2DelayedService:
         else:
             top_deals = []
 
+        from backend.config import settings
+        include_prior_fy = getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
+        rule_text = (
+            "Open deals whose fiscal period is before the current quarter (including previous fiscal year) count as delayed."
+            if include_prior_fy
+            else "Open deals whose fiscal period is before the current quarter of the same fiscal year count as delayed."
+        )
+
         return {
             "data_slice": target_q_label,
             "data_slice_key": target_q_str,
+            "rule_text": rule_text,
+            "delayed_include_prior_fy": include_prior_fy,
             "filters_applied": res.filters_applied,
             "snapshot_date": t_snap.snapshot_date.isoformat(),
             "compare_date": data["p_snap"].snapshot_date.isoformat(),

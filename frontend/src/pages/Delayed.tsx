@@ -324,6 +324,16 @@ function DelayedContent() {
         }
       />
 
+      {summary.rule_text && (
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50/70 dark:bg-blue-950/20 text-xs text-blue-900 dark:text-blue-300 shadow-xs">
+          <AlertCircle className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+          <span>
+            <strong className="font-semibold text-blue-950 dark:text-blue-200">Rule: </strong>
+            {summary.rule_text}
+          </span>
+        </div>
+      )}
+
       {/* 5 KPI Cards in one row: grid-cols-5 at ≥1280px, 3 at ≥768px, 1 on mobile */}
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
         <DelayedKpiCard
