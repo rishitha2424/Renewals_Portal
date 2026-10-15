@@ -98,6 +98,8 @@ class V2ExpiryService:
                 "forecast_category": fc,
                 "forecast_acv_amount": float(o.forecast_acv_amount or 0),
                 "service_expiry_period": sep,
+                "fiscal_period": o.fiscal_period,
+                "sales_type": o.sales_type,
                 "close_date": o.close_date
             })
         
@@ -273,6 +275,52 @@ class V2ExpiryService:
                         "acv": round(_sum(q_slip, "forecast_acv_amount"), 2)
                     })
         
+        # Build Profile Chart tied to Overview & Executive numbers (fiscal quarters for Renewals)
+        chart_columns = []
+        chart_df = df[df["sales_type"] == "Renewals"] if ("sales_type" in df.columns and not df.empty) else df
+
+        for q in quarters:
+            q_key = q["key"]
+            q_label = q["label"]
+            q_sub = chart_df[chart_df["fiscal_period"] == q_key] if (not chart_df.empty and "fiscal_period" in chart_df.columns) else pd.DataFrame()
+
+            q_tot_acv = round(_sum(q_sub, "forecast_acv_amount"), 2)
+            q_deal_cnt = len(q_sub)
+
+            # 5 categories in order: Closed, Commit, Best Case, Pipeline, Not yet proposed
+            cats_breakdown = {}
+            commit_acv = 0.0
+            for fc_key, fc_label in [
+                ("Closed", "Closed"),
+                ("Commit", "Commit"),
+                ("Best Case", "Best Case"),
+                ("Pipeline", "Pipeline"),
+                ("Blank", "Not yet proposed")
+            ]:
+                fc_sub = q_sub[q_sub["forecast_category"] == fc_key] if not q_sub.empty else pd.DataFrame()
+                fc_cnt = len(fc_sub)
+                fc_acv = round(_sum(fc_sub, "forecast_acv_amount"), 2)
+                fc_pct = round((fc_acv / q_tot_acv * 100), 1) if q_tot_acv > 0 else 0.0
+                if fc_key == "Commit":
+                    commit_acv = fc_acv
+                cats_breakdown[fc_label] = {
+                    "count": fc_cnt,
+                    "acv": fc_acv,
+                    "pct": fc_pct,
+                    "raw_category": fc_key
+                }
+
+            commit_cov_pct = round((commit_acv / q_tot_acv * 100), 1) if q_tot_acv > 0 else 0.0
+            chart_columns.append({
+                "quarter": q_key,
+                "label": q_label,
+                "is_current": (q_key == target_quarter),
+                "total_acv": q_tot_acv,
+                "deal_count": q_deal_cnt,
+                "commit_coverage_pct": commit_cov_pct,
+                "categories": cats_breakdown
+            })
+
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
@@ -290,6 +338,7 @@ class V2ExpiryService:
             ],
             "categories": ALL_FC,
             "grids": grids,
+            "profile_chart": chart_columns,
             "acv_by_year": acv_by_year,
             "grand_total": {
                 "count": grand_total_count,
@@ -311,6 +360,7 @@ class V2ExpiryService:
         as_of: Optional[str] = None,
         exclude_deleted_lost: bool = False,
         slippage: bool = False,
+        period_type: str = "service_expiry",
         filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> list[dict]:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
@@ -341,13 +391,19 @@ class V2ExpiryService:
             q = q.filter(Opportunity.close_date > fy_end_date, Opportunity.service_expiry_period.in_(default_grid_quarters))
 
         if quarter:
-            q = q.filter(Opportunity.service_expiry_period == quarter)
+            if period_type == "fiscal":
+                q = q.filter(Opportunity.fiscal_period == quarter)
+            else:
+                q = q.filter(Opportunity.service_expiry_period == quarter)
         elif not slippage:
-            # Default Expiry window: current FY + next FY
-            q = q.filter(Opportunity.service_expiry_period.in_(default_grid_quarters))
+            if period_type == "fiscal":
+                q = q.filter(Opportunity.fiscal_period.in_(default_grid_quarters))
+            else:
+                q = q.filter(Opportunity.service_expiry_period.in_(default_grid_quarters))
+
         if category:
-            if category == "Blank":
-                q = q.filter(or_(Opportunity.forecast_category == None, Opportunity.forecast_category == "", ~Opportunity.forecast_category.in_(["Closed", "Commit", "Best Case", "Pipeline"])))
+            if category in ("Blank", "Not yet proposed"):
+                q = q.filter(or_(Opportunity.forecast_category == None, Opportunity.forecast_category == "", Opportunity.forecast_category == "Not yet proposed", Opportunity.forecast_category == "Blank", ~Opportunity.forecast_category.in_(["Closed", "Commit", "Best Case", "Pipeline"])))
             else:
                 q = q.filter(Opportunity.forecast_category == category)
                 
@@ -371,6 +427,7 @@ class V2ExpiryService:
                 "sub_region": o.sub_region,
                 "business_unit_primary": o.business_unit_primary,
                 "service_expiry_period": o.service_expiry_period,
+                "fiscal_period": o.fiscal_period,
                 "close_date": o.close_date.isoformat() if o.close_date else None
             }
         return [to_dict(o) for o in reversed(deduped)]

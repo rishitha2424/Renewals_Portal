@@ -336,6 +336,7 @@ export const getV2ExpiryDeals = async (params: {
   as_of?: string | null
   exclude_deleted_lost?: boolean
   slippage?: boolean
+  period_type?: string
   filterSpec?: Partial<FilterSpec>
 } = {}) => {
   const state = useAppStore.getState()
@@ -344,6 +345,7 @@ export const getV2ExpiryDeals = async (params: {
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
   if (params.slippage !== undefined) p.slippage = params.slippage
+  if (params.period_type) p.period_type = params.period_type
   if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/deals', { params: p })
   return res.data

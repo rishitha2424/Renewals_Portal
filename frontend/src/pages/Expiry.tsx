@@ -35,7 +35,7 @@ export default function Expiry() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
-  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean }>({ quarter: null, category: null })
+  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean; period_type?: string }>({ quarter: null, category: null })
   const [drillDeals, setDrillDeals] = useState<any[] | null>(null)
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
@@ -51,11 +51,12 @@ export default function Expiry() {
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['v2ExpiryDeals', activeSnapshotId, modalParams.quarter, modalParams.category, modalParams.slippage, includeDeletedLost],
+    queryKey: ['v2ExpiryDeals', activeSnapshotId, modalParams.quarter, modalParams.category, modalParams.slippage, modalParams.period_type, includeDeletedLost],
     queryFn: () => getV2ExpiryDeals({
       quarter: modalParams.quarter || undefined,
       category: modalParams.category || undefined,
       slippage: modalParams.slippage,
+      period_type: modalParams.period_type,
       as_of: activeSnapshot?.snapshot_date,
       exclude_deleted_lost: !includeDeletedLost
     }),
@@ -122,9 +123,9 @@ export default function Expiry() {
     return <PageNoSnapshotState />
   }
 
-  const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false) => {
+  const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false, periodType = 'service_expiry') => {
     setDrillDeals(null)
-    setModalParams({ quarter, category, slippage: isSlippage })
+    setModalParams({ quarter, category, slippage: isSlippage, period_type: periodType })
     setModalTitle(title)
     setModalOpen(true)
   }
@@ -252,58 +253,168 @@ export default function Expiry() {
       })}
 
 
-      {/* Insights Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mt-8">
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center justify-between mb-3 text-[var(--text-primary)]">
+      {/* Expiry Profile Stacked Column Chart Section */}
+      <Card className="p-5 mt-6 hover:border-[var(--primary)] transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <div>
             <div className="flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-indigo-500" />
-              <h3 className="font-bold">Expiry Profile</h3>
+              <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Expiry Profile</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                Renewals
+              </span>
             </div>
-            <span className="text-[10px] text-[var(--text-muted)] font-mono font-semibold">FY{fy1}</span>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Quarterly expiry profile stacked by forecast category, tied directly to Overview and Executive metrics.
+            </p>
           </div>
-          <div className="flex-1 flex flex-col justify-between gap-3 min-h-[160px]">
-            <div className="space-y-2.5">
-              {grid1?.rows?.map((r: any) => {
-                const qTot = r.total.acv
-                if (qTot === 0) return null
-                return (
-                  <div key={r.quarter} className="w-full">
-                    <div className="flex justify-between text-[11px] font-semibold text-[var(--text-muted)] mb-1">
-                      <span className="font-bold text-[var(--text-primary)]">{r.label}</span>
-                      <span className="font-mono text-[var(--text-primary)] font-bold">{acvM(qTot)}</span>
-                    </div>
-                    <div className="flex w-full h-3.5 bg-[var(--bg-secondary)] rounded-md overflow-hidden p-0.5 border border-[var(--border)] gap-0.5">
-                      {['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'].map((c: string) => {
-                        const cVal = r.cells[c]?.acv || 0
-                        if (cVal === 0) return null
-                        const pct = (cVal / qTot) * 100
-                        return (
+
+          {/* Fixed Color Legend */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] bg-[var(--bg-secondary)] px-3 py-1.5 rounded-xl border border-[var(--border)]">
+            {[
+              { label: 'Closed', color: '#0E7490' },
+              { label: 'Commit', color: '#1D4ED8' },
+              { label: 'Best Case', color: '#3B82F6' },
+              { label: 'Pipeline', color: '#D97706' },
+              { label: 'Not yet proposed', color: '#64748B' },
+            ].map((cat) => (
+              <div key={cat.label} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs shadow-xs" style={{ backgroundColor: cat.color }} />
+                <span className="font-semibold text-[var(--text-secondary)]">{cat.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stacked Column Chart */}
+        {(() => {
+          const chartData: any[] = sum.profile_chart || []
+          if (!chartData || chartData.length === 0) {
+            return (
+              <div className="py-12 text-center text-sm text-[var(--text-muted)]">
+                No expiry profile quarters found for the active snapshot.
+              </div>
+            )
+          }
+
+          const maxAcv = Math.max(...chartData.map((d: any) => d.total_acv || 0), 1)
+          const chartHeightPx = 180
+
+          return (
+            <div className="pt-4 pb-2">
+              <div className="flex items-end justify-between gap-2 sm:gap-4 overflow-x-auto pb-2">
+                {chartData.map((col: any) => {
+                  const total = col.total_acv || 0
+                  const heightPct = Math.max((total / maxAcv) * 100, total > 0 ? 8 : 2)
+                  const heightPx = Math.round((heightPct / 100) * chartHeightPx)
+                  const isCurrent = col.is_current
+
+                  // Order of stack from bottom to top: Closed, Commit, Best Case, Pipeline, Not yet proposed
+                  const catList = [
+                    { name: 'Closed', data: col.categories?.['Closed'], color: '#0E7490' },
+                    { name: 'Commit', data: col.categories?.['Commit'], color: '#1D4ED8' },
+                    { name: 'Best Case', data: col.categories?.['Best Case'], color: '#3B82F6' },
+                    { name: 'Pipeline', data: col.categories?.['Pipeline'], color: '#D97706' },
+                    { name: 'Not yet proposed', data: col.categories?.['Not yet proposed'], color: '#64748B' },
+                  ]
+
+                  return (
+                    <div
+                      key={col.quarter}
+                      className={clsx(
+                        "flex-1 min-w-[95px] max-w-[140px] flex flex-col items-center group relative rounded-xl p-2 transition-all",
+                        isCurrent
+                          ? "bg-indigo-500/5 dark:bg-indigo-500/10 border-2 border-indigo-500 shadow-sm"
+                          : "hover:bg-[var(--bg-secondary)]/60 border border-transparent"
+                      )}
+                    >
+                      {/* Total ACV above column */}
+                      <div
+                        className="text-center mb-2 cursor-pointer transition-transform group-hover:scale-105"
+                        onClick={() => handleCellClick(col.quarter, null, `${col.label} · All Deals`, false, 'fiscal')}
+                        title={`Click to view all ${col.deal_count} deals in ${col.label}`}
+                      >
+                        <div className="text-xs sm:text-sm font-black font-mono text-[var(--text-primary)]">
+                          {total > 0 ? acvM(total) : '$0'}
+                        </div>
+                      </div>
+
+                      {/* Stacked Bar Body */}
+                      <div
+                        className="w-full flex items-end justify-center"
+                        style={{ height: `${chartHeightPx}px` }}
+                      >
+                        {total > 0 ? (
                           <div
-                            key={c}
-                            style={{ width: `${pct}%`, backgroundColor: FORECAST_COLORS[c as keyof typeof FORECAST_COLORS] || '#cbd5e1' }}
-                            className="h-full rounded-sm cursor-pointer hover:opacity-85 transition-opacity"
-                            onClick={() => handleCellClick(r.quarter, c === 'Blank' ? 'Blank' : c, `${r.label} · ${c} Deals`)}
-                            title={`${r.label} - ${c}: ${formatCurrency(cVal)} (${pct.toFixed(1)}%) · Click to view deals`}
+                            style={{ height: `${heightPx}px` }}
+                            className="w-12 sm:w-14 rounded-lg overflow-hidden flex flex-col-reverse shadow-sm border border-[var(--border)] bg-slate-100 dark:bg-slate-800 transition-all group-hover:shadow-md"
+                          >
+                            {catList.map((cat) => {
+                              const catAcv = cat.data?.acv || 0
+                              if (catAcv <= 0) return null
+                              const segPct = (catAcv / total) * 100
+                              return (
+                                <div
+                                  key={cat.name}
+                                  style={{
+                                    height: `${segPct}%`,
+                                    backgroundColor: cat.color,
+                                  }}
+                                  className="w-full cursor-pointer hover:opacity-85 transition-opacity relative"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCellClick(
+                                      col.quarter,
+                                      cat.data?.raw_category || cat.name,
+                                      `${col.label} · ${cat.name} Deals`,
+                                      false,
+                                      'fiscal'
+                                    )
+                                  }}
+                                  title={`${col.label} · ${cat.name}: ${formatCurrency(catAcv)} (${segPct.toFixed(1)}%) · ${cat.data?.count || 0} deals (Click to view)`}
+                                />
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div
+                            style={{ height: '8px' }}
+                            className="w-12 sm:w-14 rounded bg-slate-200 dark:bg-slate-700 border border-dashed border-slate-300 dark:border-slate-600"
+                            title={`${col.label}: No renewal deals`}
                           />
-                        )
-                      })}
+                        )}
+                      </div>
+
+                      {/* Quarter Label & Metrics Below Column */}
+                      <div className="mt-3 text-center w-full pt-2 border-t border-[var(--border)] space-y-0.5">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className={clsx("font-bold text-xs", isCurrent ? "text-indigo-600 dark:text-indigo-400" : "text-[var(--text-primary)]")}>
+                            {col.label}
+                          </span>
+                        </div>
+                        {isCurrent && (
+                          <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500 text-white shadow-xs">
+                            Current
+                          </span>
+                        )}
+                        <div className="text-[11px] font-mono text-[var(--text-muted)] font-semibold">
+                          {col.deal_count} deals
+                        </div>
+                        <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          {col.commit_coverage_pct > 0 ? `${col.commit_coverage_pct}% commit` : (total > 0 ? '0% commit' : '—')}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
-            {/* Legend */}
-            <div className="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
-              {['Closed', 'Commit', 'Best Case', 'Pipeline'].map((c) => (
-                <div key={c} className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: FORECAST_COLORS[c as keyof typeof FORECAST_COLORS] }} />
-                  <span className="text-[var(--text-muted)]">{c}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
+          )
+        })()}
+      </Card>
+
+      {/* Insights Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center gap-2 mb-4 text-[var(--text-primary)]">

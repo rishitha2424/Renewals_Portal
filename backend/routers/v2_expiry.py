@@ -27,9 +27,10 @@ def get_deals(
     as_of: str = Query(None),
     exclude_deleted_lost: bool = Query(False),
     slippage: bool = Query(False),
+    period_type: str = Query("service_expiry"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db)
 ):
     ctx = UserContext()
     svc = V2ExpiryService(db)
-    return svc.get_deals(ctx, quarter=quarter, category=category, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, slippage=slippage, filter_spec=filter_spec)
+    return svc.get_deals(ctx, quarter=quarter, category=category, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, slippage=slippage, period_type=period_type, filter_spec=filter_spec)
