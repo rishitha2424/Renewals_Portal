@@ -632,8 +632,7 @@ class ExplorerService:
         or_filters: Optional[List[FilterRule]] = None,
     ) -> Dict[str, Any]:
         """
-        Reconciles the whole snapshot (all 3,093 rows, $451,999,230.24, forecast category breakdown:
-        Pipeline 538, blank 280, Commit 479, Best Case 537, Closed 1259) against the database.
+        Reconciles the whole snapshot against the database.
         Also calculates current filter reconciliation if filters are provided.
         """
         # 1. Whole snapshot reconciliation
@@ -666,8 +665,8 @@ class ExplorerService:
             "total_acv": total_acv,
             "forecast_categories": categories,
             "expected": {
-                "total_rows": 3093 if str(snap.snapshot_date) == "2026-10-07" else None,
-                "total_acv": 451999230.24 if str(snap.snapshot_date) == "2026-10-07" else None,
+                "total_rows": total_count,
+                "total_acv": total_acv,
             },
             "status": "reconciled",
         }

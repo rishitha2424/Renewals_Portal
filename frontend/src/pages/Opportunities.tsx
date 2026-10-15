@@ -1417,23 +1417,35 @@ export default function Opportunities() {
                 </span>
               </div>
               <p className="text-xs text-[var(--text-secondary)]">
-                Compares the entire uploaded Excel sheet today for Oct 7 against the database:
+                Compares the entire uploaded Excel sheet today for {reconcileData?.snapshot_date || 'the active snapshot'} against the database:
               </p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
                   <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Total Deals</p>
                   <p className="text-xl font-black text-[var(--text-primary)] mt-1">
-                    {formatCount(reconcileData?.whole_snapshot?.total_rows ?? reconcileData?.total_rows ?? 3093)}
+                    {reconcileData?.whole_snapshot?.total_rows != null
+                      ? formatCount(reconcileData.whole_snapshot.total_rows)
+                      : reconcileData?.total_rows != null
+                      ? formatCount(reconcileData.total_rows)
+                      : 'Not available'}
                   </p>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Excel: 3,093 rows</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                    Excel: {reconcileData?.whole_snapshot?.total_rows != null ? `${formatCount(reconcileData.whole_snapshot.total_rows)} rows` : 'Not available'}
+                  </p>
                 </div>
                 <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
                   <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Total ACV</p>
                   <p className="text-xl font-black text-[#00A3AD] mt-1">
-                    {formatACV(reconcileData?.whole_snapshot?.total_acv ?? reconcileData?.total_acv ?? 451999230.24)}
+                    {reconcileData?.whole_snapshot?.total_acv != null
+                      ? formatACV(reconcileData.whole_snapshot.total_acv)
+                      : reconcileData?.total_acv != null
+                      ? formatACV(reconcileData.total_acv)
+                      : 'Not available'}
                   </p>
-                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Excel: $451,999,230.24</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                    Excel: {reconcileData?.whole_snapshot?.total_acv != null ? formatACV(reconcileData.whole_snapshot.total_acv) : 'Not available'}
+                  </p>
                 </div>
               </div>
 

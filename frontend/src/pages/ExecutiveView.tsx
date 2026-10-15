@@ -785,7 +785,9 @@ export default function ExecutiveView() {
               Source check: {reconcile.error || reconcile.detail || 'mismatch against Excel control sheet'}
             </span>
           )}
-          <span className="text-slate-400">· Full snapshot: {formatNumber(reconcile?.whole_snapshot?.total_rows ?? 3093)} deals / {formatCurrency(reconcile?.whole_snapshot?.total_acv ?? 451999230.24)}</span>
+          <span className="text-slate-400">
+            · Full snapshot: {reconcile?.whole_snapshot?.total_rows != null && reconcile?.whole_snapshot?.total_acv != null ? `${formatNumber(reconcile.whole_snapshot.total_rows)} deals / ${formatCurrency(reconcile.whole_snapshot.total_acv)}` : 'Not available'}
+          </span>
         </div>
 
         <div className="text-right">
