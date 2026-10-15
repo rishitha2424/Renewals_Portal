@@ -220,13 +220,14 @@ class PptxExportService:
                 scope=comp_scope, include_deleted_lost=include_deleted_lost,
             )
 
+        approval_scope = "current_quarter" if scope == "renewals" else scope
         aps = self.analytics_svc.get_approval_status(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
-            scope=scope, include_deleted_lost=include_deleted_lost,
+            scope=approval_scope, include_deleted_lost=include_deleted_lost,
         )
         bu_aps = self.analytics_svc.get_approval_by_bu(
             ADMIN_CONTEXT, snapshot_id=snap.id, mode="as_in_excel",
-            scope=scope, include_deleted_lost=include_deleted_lost,
+            scope=approval_scope, include_deleted_lost=include_deleted_lost,
         )
 
         # Load Excel tie-break row order if reference workbook exists
