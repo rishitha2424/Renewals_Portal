@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar } from 'lucide-react'
 import {
   getV2OverviewSummary,
   getApprovalsDistribution,
@@ -23,7 +23,7 @@ import {
 } from '@/utils/format'
 
 export default function ExecutiveView() {
-  const { activeSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
+  const { activeSnapshotId, setActiveSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
   const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
 
   const { data: fetchedSnapshots = [] } = useQuery({
@@ -350,6 +350,23 @@ export default function ExecutiveView() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <div className="h-8 px-2.5 rounded-lg border border-slate-300 bg-white text-xs inline-flex items-center gap-1.5 shadow-sm">
+            <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+            <span className="font-medium text-slate-500 text-xs">As of:</span>
+            <select
+              value={effectiveSnapshotId ?? ''}
+              onChange={(e) => setActiveSnapshotId(e.target.value || null)}
+              className="bg-transparent font-medium text-slate-800 outline-none cursor-pointer text-xs pr-1"
+              id="exec-as-of-select"
+            >
+              {allSnapshots.map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {s.label} ({formatDate(s.snapshot_date)})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={() => handleDownload('pptx')}
             disabled={!!downloadingFormat}

@@ -126,11 +126,15 @@ class V2OverviewService:
             try:
                 from datetime import date
                 d = date.fromisoformat(as_of)
+                exact = q.filter(UploadSnapshot.snapshot_date == d).first()
+                if exact:
+                    return exact
                 snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
                 if snap:
                     return snap
             except ValueError:
                 pass
+            return None
         return (
             q.filter(UploadSnapshot.is_active_today == True)  # noqa: E712
             .order_by(UploadSnapshot.snapshot_date.desc())
@@ -434,33 +438,35 @@ class V2OverviewService:
             "overall": {
                 "count": del_overall.get("count", 0),
                 "acv": round(float(del_overall.get("acv", 0.0)), 2),
-                "delta_yesterday": del_overall.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
-                "delta_lastweek": del_overall.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                "delta_yesterday": del_overall.get("delayed_vs_yesterday"),
+                "delta_lastweek": del_overall.get("delayed_vs_lastweek"),
             },
             "categories": {
                 "slipped": {
                     "label": "Slipped to Next Year / Quarter",
                     "count": del_slipped.get("count", 0),
                     "acv": round(float(del_slipped.get("acv", 0.0)), 2),
-                    "delta_yesterday": del_slipped.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
-                    "delta_lastweek": del_slipped.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                    "delta_yesterday": del_slipped.get("delayed_vs_yesterday"),
+                    "delta_lastweek": del_slipped.get("delayed_vs_lastweek"),
                 },
                 "overdue": {
                     "label": "Overdue Deals",
                     "count": del_overdue.get("count", 0),
                     "acv": round(float(del_overdue.get("acv", 0.0)), 2),
-                    "delta_yesterday": del_overdue.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
-                    "delta_lastweek": del_overdue.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                    "delta_yesterday": del_overdue.get("delayed_vs_yesterday"),
+                    "delta_lastweek": del_overdue.get("delayed_vs_lastweek"),
                 },
                 "later_close": {
                     "label": "Later Close Date (Postponed)",
                     "count": del_later.get("count", 0),
                     "acv": round(float(del_later.get("acv", 0.0)), 2),
-                    "delta_yesterday": del_later.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
-                    "delta_lastweek": del_later.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                    "delta_yesterday": del_later.get("delayed_vs_yesterday"),
+                    "delta_lastweek": del_later.get("delayed_vs_lastweek"),
                 },
             },
             "rule_text": del_rule,
+            "yesterday_date": del_sum.get("yesterday_date"),
+            "lastweek_date": del_sum.get("lastweek_date"),
         }
 
         # Legacy slippage count for fallback
@@ -576,25 +582,36 @@ class V2OverviewService:
             "deal_ids": [str(d) for d in cov_deals["opportunity_id_18"]] if not cov_deals.empty else [],
         }
 
-        # ── B7 Needs attention panel (up to 5 items) ──────────────────────────
+        # ── B7 Needs attention panel (up to settings.NEEDS_ATTENTION_MAX_ITEMS) ──────
         from datetime import timedelta
+        from backend.config import settings
+        window_days = getattr(settings, "NEEDS_ATTENTION_WINDOW_DAYS", 14)
+        max_items = getattr(settings, "NEEDS_ATTENTION_MAX_ITEMS", 5)
+
         items = []
         category_summaries = {}
+        seen_categories = set()
+
+        def _add_item(item_dict):
+            if item_dict["category_key"] not in seen_categories:
+                seen_categories.add(item_dict["category_key"])
+                items.append(item_dict)
 
         # 1. Commit deals not approved
         commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
-        candidate_second = None
         if not commit_unappr.empty:
             commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
             c_cnt = len(commit_unappr)
             c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
             top_c = commit_unappr.iloc[0]
+            raw_app = str(top_c.get("approval_status", "")).strip()
+            norm_app = "Not submitted" if raw_app in ("Blank", "Not submitted", "", "None") else raw_app
             category_summaries["commit_not_approved"] = {
                 "count": c_cnt,
                 "acv": c_tot_acv,
                 "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             }
-            items.append({
+            _add_item({
                 "category_key": "commit_not_approved",
                 "category_label": "Commit not approved",
                 "opportunity_id_18": str(top_c["opportunity_id_18"]),
@@ -603,7 +620,7 @@ class V2OverviewService:
                 "acv": round(float(top_c["forecast_acv_amount"]), 2),
                 "category_count": c_cnt,
                 "category_acv": c_tot_acv,
-                "badge": f"Commit · {top_c['approval_status']}",
+                "badge": f"Commit · {norm_app}",
                 "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
                 "kind": "commit_not_approved",
                 "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
@@ -626,7 +643,7 @@ class V2OverviewService:
                 "acv": od_tot_acv,
                 "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
             }
-            items.append({
+            _add_item({
                 "category_key": "overdue",
                 "category_label": "Overdue deal",
                 "opportunity_id_18": str(top_od["opportunity_id_18"]),
@@ -690,7 +707,7 @@ class V2OverviewService:
                 "acv": dr_acv,
                 "deal_ids": [d["opportunity_id_18"] for d in drops_sorted],
             }
-            items.append({
+            _add_item({
                 "category_key": "biggest_drop",
                 "category_label": "Biggest drop vs yesterday",
                 "opportunity_id_18": top_drop["opportunity_id_18"],
@@ -705,13 +722,13 @@ class V2OverviewService:
                 "deal_ids": [d["opportunity_id_18"] for d in drops_sorted],
             })
 
-        # 4. Deals closing within 14 days with no approval
+        # 4. Deals closing within window_days with no approval
         closing_14d_df = pd.DataFrame()
         if not df.empty and "close_date" in df.columns:
             cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
             closing_14d_df = df[
                 (cd >= snap.snapshot_date) &
-                (cd <= snap.snapshot_date + timedelta(days=14)) &
+                (cd <= snap.snapshot_date + timedelta(days=window_days)) &
                 (df["approval_status"] != "Approved") &
                 (df["forecast_category"] != "Closed") &
                 (~df["is_deleted_or_lost"])
@@ -721,6 +738,8 @@ class V2OverviewService:
             cl_cnt = len(closing_14d_df)
             cl_tot_acv = round(float(_sum(closing_14d_df, "forecast_acv_amount")), 2)
             top_cl = closing_14d_df.iloc[0]
+            raw_cl_app = str(top_cl.get("approval_status", "")).strip()
+            norm_cl_app = "Not submitted" if raw_cl_app in ("Blank", "Not submitted", "", "None") else raw_cl_app
             top_cl_date = pd.to_datetime(top_cl["close_date"]).date() if top_cl["close_date"] else snap.snapshot_date
             days_to_close = max(0, (top_cl_date - snap.snapshot_date).days)
             category_summaries["closing_14d_unapproved"] = {
@@ -728,25 +747,25 @@ class V2OverviewService:
                 "acv": cl_tot_acv,
                 "deal_ids": [str(d) for d in closing_14d_df["opportunity_id_18"]],
             }
-            items.append({
+            _add_item({
                 "category_key": "closing_14d_unapproved",
-                "category_label": "Closing within 14 days (no approval)",
+                "category_label": f"Closing within {window_days} days (no approval)",
                 "opportunity_id_18": str(top_cl["opportunity_id_18"]),
                 "opportunity_name": str(top_cl["opportunity_name"]),
                 "account_name": str(top_cl["account_name"]),
                 "acv": round(float(top_cl["forecast_acv_amount"]), 2),
                 "category_count": cl_cnt,
                 "category_acv": cl_tot_acv,
-                "badge": f"Closes in {days_to_close}d · {top_cl['approval_status']}",
-                "detail": f"{cl_cnt} deals closing within 14d unapproved totaling ${cl_tot_acv:,.2f}",
+                "badge": f"Closes in {days_to_close}d · {norm_cl_app}",
+                "detail": f"{cl_cnt} deals closing within {window_days}d unapproved totaling ${cl_tot_acv:,.2f}",
                 "kind": "closing_14d_unapproved",
                 "deal_ids": [str(d) for d in closing_14d_df["opportunity_id_18"]],
             })
 
         needs_attention = {
-            "items": items[:5],
+            "items": items[:max_items],
             "category_summaries": category_summaries,
-            "total_items": len(items[:5]),
+            "total_items": len(items[:max_items]),
         }
 
         return {
@@ -791,6 +810,7 @@ class V2OverviewService:
                 "passed": sum(1 for c in snap.checks if c.status == "pass"),
                 "failed": sum(1 for c in snap.checks if c.status == "fail"),
                 "badge": "red" if any(c.status == "fail" for c in snap.checks) else ("green" if len(snap.checks) > 0 else "none"),
+                "failed_items": [c.metric_name for c in snap.checks if c.status == "fail"],
             },
         }
 
@@ -1030,8 +1050,8 @@ class V2OverviewService:
         if compare:
             filters_applied["compare"] = compare
 
-        # ── Kind: delayed deals (all, slipped, overdue, later_close) ──────────
-        if kind in ("delayed_all", "delayed_slipped", "delayed_overdue", "delayed_later_close") or (kind == "slipped" and not compare):
+        # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
+        if kind.startswith("delayed_") or (kind == "slipped" and not compare):
             target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else "slipped"
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
@@ -1203,10 +1223,12 @@ class V2OverviewService:
             df = df[(cd < snap.snapshot_date) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])]
         elif kind == "closing_14d_unapproved":
             from datetime import timedelta
+            from backend.config import settings
+            window_days = getattr(settings, "NEEDS_ATTENTION_WINDOW_DAYS", 14)
             cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
             df = df[
                 (cd >= snap.snapshot_date) &
-                (cd <= snap.snapshot_date + timedelta(days=14)) &
+                (cd <= snap.snapshot_date + timedelta(days=window_days)) &
                 (df["approval_status"] != "Approved") &
                 (df["forecast_category"] != "Closed") &
                 (~df["is_deleted_or_lost"])

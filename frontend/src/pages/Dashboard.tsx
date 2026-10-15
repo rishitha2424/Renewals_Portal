@@ -282,10 +282,17 @@ export default function Dashboard() {
                     ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
                     : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30'
                 }`}
-                title={`${summary.source_checks.passed}/${summary.source_checks.total} control checks matched Excel summary sheets`}
+                title={
+                  summary.source_checks.failed > 0
+                    ? `Mismatches: ${summary.source_checks.failed_items?.join(', ') || `${summary.source_checks.failed} failed`}`
+                    : `${summary.source_checks.passed}/${summary.source_checks.total} control checks matched Excel summary sheets`
+                }
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Source check: {summary.source_checks.badge === 'green' ? `yes (${summary.source_checks.passed} checks)` : `${summary.source_checks.failed} mismatches`}
+                Source check:{' '}
+                {summary.source_checks.badge === 'green'
+                  ? `yes (${summary.source_checks.passed} checks)`
+                  : `${summary.source_checks.failed} mismatches${summary.source_checks.failed_items?.length ? `: ${summary.source_checks.failed_items.slice(0, 2).join(', ')}` : ''}`}
               </span>
             )}
           </div>
@@ -596,8 +603,6 @@ export default function Dashboard() {
             const overdueCat = summary?.slippage?.categories?.overdue ?? { count: 0, acv: 0 }
             const laterCat = summary?.slippage?.categories?.later_close ?? { count: 0, acv: 0 }
 
-            const ySlip = movYesterday?.slippage_to_2027 ?? slipCat.delta_yesterday ?? { count: 0, acv: 0 }
-            const lwSlip = movLastWeek?.slippage_to_2027 ?? slipCat.delta_lastweek ?? { count: 0, acv: 0 }
             const yDate = movYesterday?.compare_date || summary?.slippage?.yesterday_date
             const lwDate = movLastWeek?.compare_date || summary?.slippage?.lastweek_date
 
@@ -608,14 +613,8 @@ export default function Dashboard() {
                 count: slipCat.count,
                 acv: slipCat.acv,
                 mainDrawerKind: 'delayed_slipped',
-                yCount: ySlip.count,
-                yAcv: ySlip.acv,
-                yDrawerKind: 'slipped',
-                yCompare: 'yesterday',
-                lwCount: lwSlip.count,
-                lwAcv: lwSlip.acv,
-                lwDrawerKind: 'slipped',
-                lwCompare: 'last_week',
+                yDelta: slipCat.delta_yesterday ?? null,
+                lwDelta: slipCat.delta_lastweek ?? null,
               },
               {
                 id: 'overdue',
@@ -623,14 +622,8 @@ export default function Dashboard() {
                 count: overdueCat.count,
                 acv: overdueCat.acv,
                 mainDrawerKind: 'delayed_overdue',
-                yCount: overdueCat.delta_yesterday?.count ?? 0,
-                yAcv: overdueCat.delta_yesterday?.acv ?? 0,
-                yDrawerKind: 'delayed_overdue',
-                yCompare: 'yesterday',
-                lwCount: overdueCat.delta_lastweek?.count ?? 0,
-                lwAcv: overdueCat.delta_lastweek?.acv ?? 0,
-                lwDrawerKind: 'delayed_overdue',
-                lwCompare: 'last_week',
+                yDelta: overdueCat.delta_yesterday ?? null,
+                lwDelta: overdueCat.delta_lastweek ?? null,
               },
               {
                 id: 'later_close',
@@ -638,16 +631,71 @@ export default function Dashboard() {
                 count: laterCat.count,
                 acv: laterCat.acv,
                 mainDrawerKind: 'delayed_later_close',
-                yCount: laterCat.delta_yesterday?.count ?? 0,
-                yAcv: laterCat.delta_yesterday?.acv ?? 0,
-                yDrawerKind: 'delayed_later_close',
-                yCompare: 'yesterday',
-                lwCount: laterCat.delta_lastweek?.count ?? 0,
-                lwAcv: laterCat.delta_lastweek?.acv ?? 0,
-                lwDrawerKind: 'delayed_later_close',
-                lwCompare: 'last_week',
+                yDelta: laterCat.delta_yesterday ?? null,
+                lwDelta: laterCat.delta_lastweek ?? null,
               },
             ]
+
+            const renderTrendBox = (
+              label: string,
+              delta: { count: number; acv: number } | null | undefined,
+              comparePeriod: 'yesterday' | 'last_week',
+              dateStr: string | null | undefined,
+              cat: typeof slipCategories[0]
+            ) => {
+              if (!delta) {
+                return (
+                  <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 opacity-70 cursor-default">
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                    <div className="font-bold text-sm text-[var(--text-muted)] tabular-nums">n/a</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                  </div>
+                )
+              }
+
+              const isUp = delta.count > 0 || delta.acv > 0
+              const isDown = delta.count < 0 || delta.acv < 0
+
+              const colorClasses = isUp
+                ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
+                : isDown
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
+                : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+
+              let acvText = '$0'
+              if (delta.acv > 0) {
+                acvText = `+${acvM(delta.acv)}`
+              } else if (delta.acv < 0) {
+                acvText = `-${acvM(Math.abs(delta.acv))}`
+              }
+
+              let countText = '0 deals'
+              if (delta.count > 0) {
+                countText = `+${delta.count} deals`
+              } else if (delta.count < 0) {
+                countText = `${delta.count} deals`
+              }
+
+              const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
+              const drawerTitle = `${cat.title} (${label}${dateSub}) · Net ${countText} · ${acvText}`
+
+              return (
+                <div
+                  className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
+                  onClick={() =>
+                    openDealsQuery(drawerTitle, {
+                      kind: `delayed_${cat.id}_delta`,
+                      compare: comparePeriod,
+                    })
+                  }
+                  title={`Click to view ${cat.title} ${label} movement`}
+                >
+                  <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                  <div className="font-bold text-sm tabular-nums">{acvText}</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+                </div>
+              )
+            }
 
             return (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -675,37 +723,8 @@ export default function Dashboard() {
 
                     {/* Trends below it: vs Yesterday and vs Last Week */}
                     <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                      <div
-                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
-                        onClick={() => openDealsQuery(`${cat.title} (vs Yesterday, ${yDate ? formatDate(yDate) : 'Oct 6'}) · ${cat.yCount} deals · ${acvM(cat.yAcv)}`, { kind: cat.yDrawerKind, compare: cat.yCompare })}
-                        title="Click to view deals vs yesterday"
-                      >
-                        <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">
-                          vs Yesterday
-                        </div>
-                        <div className="font-bold text-sm text-amber-600 dark:text-amber-400 tabular-nums">
-                          {acvM(cat.yAcv)}
-                        </div>
-                        <div className="text-[10px] text-[var(--text-muted)]">
-                          {cat.yCount} deals
-                        </div>
-                      </div>
-
-                      <div
-                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
-                        onClick={() => openDealsQuery(`${cat.title} (vs Last Week, ${lwDate ? formatDate(lwDate) : 'Sep 30'}) · ${cat.lwCount} deals · ${acvM(cat.lwAcv)}`, { kind: cat.lwDrawerKind, compare: cat.lwCompare })}
-                        title="Click to view deals vs last week"
-                      >
-                        <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">
-                          vs Last Week
-                        </div>
-                        <div className="font-bold text-sm text-amber-600 dark:text-amber-400 tabular-nums">
-                          {acvM(cat.lwAcv)}
-                        </div>
-                        <div className="text-[10px] text-[var(--text-muted)]">
-                          {cat.lwCount} deals
-                        </div>
-                      </div>
+                      {renderTrendBox('vs Yesterday', cat.yDelta, 'yesterday', yDate, cat)}
+                      {renderTrendBox('vs Last Week', cat.lwDelta, 'last_week', lwDate, cat)}
                     </div>
                   </div>
                 ))}
@@ -896,7 +915,7 @@ export default function Dashboard() {
               } else if (item.category_key === 'overdue') {
                 headline = `${item.category_count} Overdue deals · ${acvM(item.category_acv)}`
               } else if (item.category_key === 'closing_14d_unapproved') {
-                headline = `${item.category_count} Deals closing within 14 days with no approval · ${acvM(item.category_acv)}`
+                headline = `${item.category_count} ${item.category_label || 'Deals closing without approval'} · ${acvM(item.category_acv)}`
               } else if (item.category_key === 'biggest_drop') {
                 headline = `Biggest drop vs yesterday · -${acvM(item.acv)}`
               } else {
@@ -907,7 +926,7 @@ export default function Dashboard() {
                 ? `${item.opportunity_name}${item.account_name ? ` (${item.account_name})` : ''} · ${item.detail}`
                 : `Largest: ${item.opportunity_name}${item.account_name ? ` (${item.account_name})` : ''} · ${acvM(item.acv)}${item.badge ? ` · ${item.badge}` : ''}`
 
-              const rightVal = isSingleDeal ? `-${formatCurrency(item.acv)}` : formatCurrency(item.category_acv)
+              const rightVal = isSingleDeal ? `-${acvM(item.acv)}` : acvM(item.category_acv)
               const rightCount = isSingleDeal ? '1 deal' : `${formatNumber(item.category_count)} deals`
 
               return (
@@ -916,8 +935,8 @@ export default function Dashboard() {
                   className="py-3 px-3 rounded-lg hover:bg-[var(--bg-secondary)]/80 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                   onClick={() => {
                     const drawerTitle = isSingleDeal
-                      ? `Biggest Drop: ${item.opportunity_name} (-${formatCurrency(item.acv)})`
-                      : `${headline.split('·')[0].trim()} (${formatNumber(item.category_count)} deals · ${formatCurrency(item.category_acv)})`
+                      ? `Biggest Drop: ${item.opportunity_name} (-${acvM(item.acv)})`
+                      : `${headline.split('·')[0].trim()} (${formatNumber(item.category_count)} deals · ${acvM(item.category_acv)})`
 
                     openDealsQuery(
                       drawerTitle,

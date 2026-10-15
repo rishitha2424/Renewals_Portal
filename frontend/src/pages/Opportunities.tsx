@@ -178,6 +178,7 @@ export default function Opportunities() {
   // Combine quick filter selections + include_deleted_lost into FilterSpec or FilterRules
   const effectiveFilterSpec = useMemo(() => {
     return {
+      as_of: activeSnapshotId || undefined,
       include_deleted_lost: includeDeletedLost,
       sales_types: selectedSalesTypes.length > 0 ? selectedSalesTypes : [],
       forecast_categories: selectedForecastCats.length > 0 ? selectedForecastCats : [],
@@ -187,6 +188,7 @@ export default function Opportunities() {
       period: selectedFiscalPeriods.length === 1 ? selectedFiscalPeriods[0] : 'all_periods',
     }
   }, [
+    activeSnapshotId,
     includeDeletedLost,
     selectedSalesTypes,
     selectedForecastCats,

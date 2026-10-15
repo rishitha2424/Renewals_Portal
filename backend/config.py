@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     FISCAL_YEAR_START_MONTH: int = 1
     DELAYED_INCLUDE_PRIOR_FY: bool = True
     APPROVAL_DEAL_SIZE_THRESHOLD: float = 100000.0
+    NEEDS_ATTENTION_WINDOW_DAYS: int = 14
+    NEEDS_ATTENTION_MAX_ITEMS: int = 5
 
     # Security & Admin Auth (Addendum D)
     ENVIRONMENT: str = "development"

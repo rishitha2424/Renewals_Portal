@@ -63,14 +63,20 @@ class V2ApprovalsService:
                     target = latest.snapshot_date - timedelta(days=7)
                 return q.filter(UploadSnapshot.snapshot_date <= target).order_by(UploadSnapshot.snapshot_date.desc()).first()
             else:
+                by_id = q.filter(UploadSnapshot.id == target_date).first()
+                if by_id:
+                    return by_id
                 try:
                     d = date.fromisoformat(target_date)
-                    return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    exact = q.filter(UploadSnapshot.snapshot_date == d).first()
+                    if exact:
+                        return exact
+                    snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    if snap:
+                        return snap
                 except ValueError:
-                    by_id = q.filter(UploadSnapshot.id == target_date).first()
-                    if by_id:
-                        return by_id
-                    return None
+                    pass
+                return None
         active = q.filter(UploadSnapshot.is_active_today == True).first()
         if active:
             return active

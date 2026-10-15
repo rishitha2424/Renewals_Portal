@@ -179,16 +179,20 @@ class ExplorerService:
     def resolve_snapshot(self, as_of: Optional[str] = None) -> Optional[UploadSnapshot]:
         snap_q = self.db.query(UploadSnapshot)
         if as_of:
+            by_id = snap_q.filter(UploadSnapshot.id == as_of).first()
+            if by_id:
+                return by_id
             try:
                 d = date.fromisoformat(as_of)
+                exact = snap_q.filter(UploadSnapshot.snapshot_date == d).first()
+                if exact:
+                    return exact
                 snap = snap_q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
                 if snap:
                     return snap
             except ValueError:
                 pass
-            snap = snap_q.filter(UploadSnapshot.id == as_of).first()
-            if snap:
-                return snap
+            return None
         snap = snap_q.filter(UploadSnapshot.is_active_today == True).order_by(UploadSnapshot.snapshot_date.desc()).first()
         if not snap:
             snap = snap_q.order_by(UploadSnapshot.snapshot_date.desc()).first()

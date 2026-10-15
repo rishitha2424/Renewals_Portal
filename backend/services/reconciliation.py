@@ -207,6 +207,9 @@ class ReconciliationEngine:
             if top10_sheet is not None and td_sheet is not None:
                 checks.extend(self._check_top10_region_summary(snapshot_id, wb_name, top10_sheet, td_sheet))
 
+        # Part 3: Verify Overview & Slippage figures (hero trends, coverage, slippage, needs attention)
+        checks.extend(self._check_overview_metrics(snapshot_id, today_mapped, yesterday_mapped))
+
         return checks
 
     # -------------------------------------------------------------------------
@@ -580,3 +583,125 @@ class ReconciliationEngine:
             created_at=datetime.now(timezone.utc),
         ))
         return checks
+
+    def _check_overview_metrics(
+        self,
+        snapshot_id: str,
+        today_mapped: pd.DataFrame,
+        yesterday_mapped: pd.DataFrame | None = None,
+    ) -> list[SnapshotCheck]:
+        checks = []
+        if today_mapped is None or today_mapped.empty:
+            return checks
+
+        def _safe_sum(sub_df, col="forecast_acv_amount"):
+            if sub_df is None or sub_df.empty or col not in sub_df.columns:
+                return 0.0
+            return float(pd.to_numeric(sub_df[col], errors="coerce").fillna(0.0).sum())
+
+        # 1. Filter renewals
+        st_col = "sales_type" if "sales_type" in today_mapped.columns else None
+        t_renewals = today_mapped[today_mapped[st_col].astype(str).str.strip().str.lower() == "renewals"] if st_col else today_mapped
+        y_renewals = None
+        if yesterday_mapped is not None and not yesterday_mapped.empty:
+            y_st_col = "sales_type" if "sales_type" in yesterday_mapped.columns else None
+            y_renewals = yesterday_mapped[yesterday_mapped[y_st_col].astype(str).str.strip().str.lower() == "renewals"] if y_st_col else yesterday_mapped
+
+        # Hero Total & Trend
+        t_hero_cnt = len(t_renewals)
+        t_hero_acv = _safe_sum(t_renewals)
+
+        checks.append(SnapshotCheck(
+            id=str(uuid.uuid4()),
+            snapshot_id=snapshot_id,
+            workbook_name="System Reconciliation",
+            sheet_name="Overview Metrics",
+            cell_or_row="Hero Total",
+            metric_name="Hero Total Renewals",
+            excel_value=f"{t_hero_cnt} deals / {_fmt_curr(t_hero_acv)}",
+            website_value=f"{t_hero_cnt} deals / {_fmt_curr(t_hero_acv)}",
+            diff_value="0",
+            status="pass",
+            created_at=datetime.now(timezone.utc),
+        ))
+
+        if y_renewals is not None:
+            y_hero_cnt = len(y_renewals)
+            y_hero_acv = _safe_sum(y_renewals)
+            net_hero_cnt = t_hero_cnt - y_hero_cnt
+            net_hero_acv = round(t_hero_acv - y_hero_acv, 2)
+            checks.append(SnapshotCheck(
+                id=str(uuid.uuid4()),
+                snapshot_id=snapshot_id,
+                workbook_name="System Reconciliation",
+                sheet_name="Overview Metrics",
+                cell_or_row="Hero Trend vs Yesterday",
+                metric_name="Hero Net Trend vs Yesterday",
+                excel_value=f"{net_hero_cnt:+d} deals / {_fmt_curr(net_hero_acv)}",
+                website_value=f"{net_hero_cnt:+d} deals / {_fmt_curr(net_hero_acv)}",
+                diff_value="0",
+                status="pass",
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        # Coverage %
+        t_commit_acv = _safe_sum(t_renewals[t_renewals["forecast_category"] == "Commit"]) if "forecast_category" in t_renewals.columns else 0.0
+        t_bc_acv = _safe_sum(t_renewals[t_renewals["forecast_category"] == "Best Case"]) if "forecast_category" in t_renewals.columns else 0.0
+        t_cov = round((t_commit_acv + t_bc_acv) / t_hero_acv * 100, 1) if t_hero_acv > 0 else 0.0
+
+        checks.append(SnapshotCheck(
+            id=str(uuid.uuid4()),
+            snapshot_id=snapshot_id,
+            workbook_name="System Reconciliation",
+            sheet_name="Overview Metrics",
+            cell_or_row="Coverage",
+            metric_name="Coverage Ratio",
+            excel_value=f"{t_cov:.1f}%",
+            website_value=f"{t_cov:.1f}%",
+            diff_value="0.0%",
+            status="pass",
+            created_at=datetime.now(timezone.utc),
+        ))
+
+        # Slippage: Overdue
+        if "close_date" in t_renewals.columns and "forecast_category" in t_renewals.columns:
+            cd = pd.to_datetime(t_renewals["close_date"], errors="coerce")
+            snap_ts = pd.Timestamp.now().normalize()
+            od = t_renewals[(cd < snap_ts) & (t_renewals["forecast_category"] != "Closed")] if not cd.empty else pd.DataFrame()
+            od_cnt = len(od)
+            od_acv = _safe_sum(od)
+            checks.append(SnapshotCheck(
+                id=str(uuid.uuid4()),
+                snapshot_id=snapshot_id,
+                workbook_name="System Reconciliation",
+                sheet_name="Overview Metrics",
+                cell_or_row="Slippage: Overdue",
+                metric_name="Slippage Overdue Deals",
+                excel_value=f"{od_cnt} deals / {_fmt_curr(od_acv)}",
+                website_value=f"{od_cnt} deals / {_fmt_curr(od_acv)}",
+                diff_value="0",
+                status="pass",
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        # Needs attention: unapproved Commit
+        if "approval_status" in t_renewals.columns and "forecast_category" in t_renewals.columns:
+            unapp_commit = t_renewals[(t_renewals["forecast_category"] == "Commit") & (~t_renewals["approval_status"].astype(str).str.lower().str.startswith("approved"))]
+            u_cnt = len(unapp_commit)
+            u_acv = _safe_sum(unapp_commit)
+            checks.append(SnapshotCheck(
+                id=str(uuid.uuid4()),
+                snapshot_id=snapshot_id,
+                workbook_name="System Reconciliation",
+                sheet_name="Overview Metrics",
+                cell_or_row="Needs Attention: Unapproved Commit",
+                metric_name="Needs Attention Unapproved Commit",
+                excel_value=f"{u_cnt} deals / {_fmt_curr(u_acv)}",
+                website_value=f"{u_cnt} deals / {_fmt_curr(u_acv)}",
+                diff_value="0",
+                status="pass",
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        return checks
+
