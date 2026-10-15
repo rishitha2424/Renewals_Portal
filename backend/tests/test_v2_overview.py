@@ -320,8 +320,10 @@ class TestOverviewDealsClickTargets:
         # Category sum check matches total
         total_cats_count = d_closed["count"] + d_commit["count"] + d_bc["count"] + d_blank["count"] + d_pipe["count"]
         total_cats_acv = d_closed["acv"] + d_commit["acv"] + d_bc["acv"] + d_blank["acv"] + d_pipe["acv"]
-        assert total_cats_count == d["count"]
-        assert total_cats_acv == pytest.approx(d["acv"], abs=0.01)
+        r_all = client.get("/api/v2/overview/deals")
+        d_all = r_all.json()
+        assert total_cats_count == d_all["count"]
+        assert total_cats_acv == pytest.approx(d_all["acv"], abs=0.01)
 
     def test_overview_deals_slipped(self, client_and_db):
         client, _ = client_and_db

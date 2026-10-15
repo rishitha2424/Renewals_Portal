@@ -37,6 +37,7 @@ export interface CompactGridProps {
   metricMode: 'Amount' | 'Count' | 'Both'
   onCellClick: (rowId: string | null, colId: string | null, title: string) => void
   rowLabelName?: string
+  columnLabels?: Record<string, string>
   compareDate?: string | null
   yesterdayDate?: string | null
   lastweekDate?: string | null
@@ -44,7 +45,7 @@ export interface CompactGridProps {
 }
 
 export default function CompactGrid({
-  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', compareDate, yesterdayDate, lastweekDate, heatMode = 'Value'
+  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value'
 }: CompactGridProps) {
   
   // 1. Keep all columns passed (Pipeline and 0-value columns always shown)
@@ -132,7 +133,7 @@ export default function CompactGrid({
             <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
               <th className="px-3 py-2 text-left font-medium text-[var(--text-muted)]">{rowLabelName}</th>
               {activeColumns.map(c => {
-                const label = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                 return (
                   <th key={c} className="px-3 py-2 text-center font-medium text-[var(--text-muted)]">{label}</th>
                 )
@@ -152,7 +153,7 @@ export default function CompactGrid({
                     {rowLabel}
                   </td>
                   {activeColumns.map(c => {
-                    const colLabel = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                    const colLabel = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                     const cell = r.cells[c] || { count: 0, acv: 0 }
                     const val = metricMode === 'Count' ? cell.count : cell.acv
                     
@@ -232,7 +233,7 @@ export default function CompactGrid({
                 TOTAL
               </td>
               {activeColumns.map(c => {
-                const colLabel = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                const colLabel = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                 return (
                   <td
                     key={c}

@@ -141,12 +141,6 @@ export const getV2OverviewSummary = (filterSpec?: Partial<FilterSpec>) => {
   return api.get('/v2/overview/summary', { params: fs }).then(r => r.data)
 }
 
-export const getV2OverviewFullYear = (params?: { as_of?: string; include_deleted_lost?: boolean }) => {
-  const state = useAppStore.getState()
-  const as_of = params?.as_of ?? state.activeSnapshotId ?? undefined
-  const include_deleted_lost = params?.include_deleted_lost ?? state.includeDeletedLost ?? true
-  return api.get('/v2/overview/fullyear', { params: { as_of, include_deleted_lost } }).then(r => r.data)
-}
 
 
 export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yesterday', filterSpec?: Partial<FilterSpec>) => {

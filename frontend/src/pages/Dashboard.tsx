@@ -10,7 +10,6 @@ import {
 import { useAppStore } from '@/store/appStore'
 import {
   getV2OverviewSummary,
-  getV2OverviewFullYear,
   getV2OverviewMovements,
   getV2RegionalBreakdown,
   getV2OverviewDeals,
@@ -32,8 +31,9 @@ const REGION_ORDER = [
 ]
 
 function acvM(v: number | null | undefined): string {
-  if (v == null) return '\u2014'
+  if (v == null || isNaN(v)) return '$0'
   const abs = Math.abs(v)
+  if (abs === 0) return '$0'
   const sign = v < 0 ? '-' : ''
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`
   if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`
@@ -62,7 +62,7 @@ function AcvDelta({ val }: { val: number | null | undefined }) {
       up ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
          : 'bg-red-500/10 text-red-700 dark:text-red-400'
     }`}>
-      {up ? '\u25b2' : '\u25bc'} {up ? '+' : ''}{acvM(val)}
+      {up ? '▲' : '▼'} {up ? '+' : ''}{acvM(val)}
     </span>
   )
 }
@@ -122,7 +122,7 @@ function DealModal({ title, deals, onSelectOpp, onClose }: {
                         onClick={() => d.opportunity_id_18 && onSelectOpp(d.opportunity_id_18)}
                       >
                         <td className="px-4 py-2.5 font-medium">{d.opportunity_name || d.opportunity_id_18}</td>
-                        <td className="px-4 py-2.5 text-[var(--text-muted)]">{d.region || d.canonical_region || '\u2014'}</td>
+                        <td className="px-4 py-2.5 text-[var(--text-muted)]">{d.region || d.canonical_region || '—'}</td>
                         <td className="px-4 py-2.5 text-right font-mono font-semibold">{acvM(d.acv ?? d.forecast_acv_amount)}</td>
                         <td className="pr-3 text-[var(--text-muted)] opacity-0 group-hover:opacity-100">
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -171,14 +171,6 @@ export default function Dashboard() {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
   const { globalFilters } = useAppStore()
-
-  const isFullYear = globalFilters?.period === 'all_periods' || globalFilters?.period === 'all' || (typeof globalFilters?.period === 'string' && (globalFilters.period.toUpperCase().startsWith('FY') || globalFilters.period.toLowerCase().includes('full')))
-
-  const { data: fullYearData } = useQuery({
-    queryKey: ['v2-fullyear', activeSnapshotId, globalFilters?.include_deleted_lost],
-    queryFn: () => getV2OverviewFullYear({ as_of: activeSnapshotId || undefined, include_deleted_lost: globalFilters?.include_deleted_lost }),
-    enabled: !isFullYear && !!activeSnapshotId,
-  })
 
   const { data: summary, isLoading: sumLoading, isError: sumErr, refetch: refetchSum } = useQuery({
     queryKey: ['v2-summary', globalFilters],
@@ -325,44 +317,83 @@ export default function Dashboard() {
 
       {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
       <div className="card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div
-            className="cursor-pointer group"
-            onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count} Contracts · ${formatCurrency(total.acv)})`, {})}
-            title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
-          >
-            <p className="text-xs font-semibold text-[var(--text-muted)] group-hover:text-[var(--brand-teal)] uppercase tracking-wider mb-2 transition-colors">
-              Total Renewal {summary?.data_slice || 'ACV'} ACV Value
-            </p>
-            <div className="flex items-baseline gap-3">
-              {sumLoading
-                ? <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
-                : (
-                  <span className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums group-hover:underline">
-                    ${(total.acv / 1_000_000).toFixed(2)}M
-                  </span>
-                )}
-              <Pill color="teal"><Users className="w-3 h-3" />{total.count} Contracts</Pill>
-            </div>
-            <p className="text-[11px] text-[var(--text-muted)] mt-2">Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count} contracts</p>
-          </div>
-          <div className="flex gap-3 flex-wrap">
-            {[
-              { label: 'vs Yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday' },
-              { label: 'vs Last Week', delta: total.delta_lastweek, kind: 'delta_lastweek' },
-            ].map(({ label, delta, kind }) => (
-              <div
-                key={label}
-                className="card px-4 py-3 min-w-[145px] cursor-pointer hover:border-[var(--brand-teal)] transition-all"
-                onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count} deals · ${acvM(delta.acv)})`, { kind })}
-                title={`Click to view deals with changes ${label}`}
+        <div>
+          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+            TOTAL {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} ACV VALUE
+          </p>
+          <div className="flex flex-wrap items-baseline gap-3">
+            {sumLoading ? (
+              <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
+            ) : (
+              <span
+                className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
+                onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} Contracts · ${formatCurrency(total.acv ?? 0)})`, {})}
+                title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
               >
-                <p className="text-[11px] text-[var(--text-muted)] font-medium mb-2">{label}</p>
-                {delta
-                  ? <div className="flex flex-col gap-1"><DeltaBadge val={delta.count} label="deals" /><AcvDelta val={delta.acv} /></div>
-                  : <span className="text-xs text-[var(--text-muted)]">\u2014</span>}
-              </div>
-            ))}
+                {acvM(total.acv ?? 0)}
+              </span>
+            )}
+            <Pill color="teal">
+              <Users className="w-3 h-3" />
+              {total.count ?? 0} Contracts
+            </Pill>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] mt-2">
+            Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count ?? 0} contracts
+          </p>
+
+          {/* Trend rows BELOW the total ACV and contract count */}
+          <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row gap-4 sm:gap-8">
+            {[
+              { label: 'vs Yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
+              { label: 'vs Last Week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
+            ].map(({ label, delta, kind, date }) => {
+              const acvVal = delta?.acv ?? 0
+              const countVal = delta?.count ?? 0
+              const isAcvNeutral = acvVal === 0
+              const isCountNeutral = countVal === 0
+
+              const acvColor = isAcvNeutral
+                ? 'text-[var(--text-muted)]'
+                : acvVal > 0
+                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-red-600 dark:text-red-400 font-bold'
+
+              const countColor = isCountNeutral
+                ? 'text-[var(--text-muted)]'
+                : countVal > 0
+                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-red-600 dark:text-red-400 font-bold'
+
+              const acvSign = acvVal > 0 ? '+' : ''
+              const countSign = countVal > 0 ? '+' : ''
+
+              return (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 text-xs cursor-pointer group hover:opacity-80 transition-opacity"
+                  onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
+                  title={`Click to view deals with changes ${label}`}
+                >
+                  <span className="text-[var(--text-muted)] font-medium">
+                    {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}:
+                  </span>
+                  {delta ? (
+                    <span className="font-mono text-xs flex items-center gap-1.5">
+                      <span className={acvColor}>
+                        {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
+                      </span>
+                      <span className="text-[var(--text-muted)]">·</span>
+                      <span className={countColor}>
+                        {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-muted)]">—</span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -387,7 +418,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <span className="text-sm sm:text-base font-black font-mono text-[var(--text-primary)] tabular-nums group-hover:underline">
-                {summary.coverage.pct != null ? `${summary.coverage.pct}%` : '\u2014'}
+                {summary.coverage.pct != null ? `${summary.coverage.pct}%` : '—'}
               </span>
               <span className="text-xs text-[var(--text-muted)] font-mono">
                 of total ACV ({formatCurrency(summary.coverage.acv)} · {formatNumber(summary.coverage.count)} contracts)
@@ -409,7 +440,7 @@ export default function Dashboard() {
                     {summary.coverage.delta_yesterday_pp.toFixed(2)} pp
                   </span>
                 ) : (
-                  <span className="text-[var(--text-muted)]">\u2014</span>
+                  <span className="text-[var(--text-muted)]">—</span>
                 )}
               </div>
 
@@ -427,137 +458,16 @@ export default function Dashboard() {
                     {summary.coverage.delta_lastweek_pp.toFixed(2)} pp
                   </span>
                 ) : (
-                  <span className="text-[var(--text-muted)]">\u2014</span>
+                  <span className="text-[var(--text-muted)]">—</span>
                 )}
               </div>
               <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
-                View deals \u2192
+                View deals →
               </span>
             </div>
           </div>
         )}
       </div>
-
-      {/* ── B7 SECTION: Needs Attention Panel ──────────────────────────────── */}
-      {summary?.needs_attention?.items?.length > 0 && (
-        <div className="card p-5 border border-amber-500/30 bg-gradient-to-br from-[var(--bg-card)] via-[var(--bg-secondary)]/30 to-[var(--bg-card)] shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">
-                  Needs attention
-                </h2>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Actionable exceptions for {summary.data_slice || 'selected period'} · Click any line to inspect deals
-                </p>
-              </div>
-            </div>
-            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 font-mono">
-              {summary.needs_attention.items.length} {summary.needs_attention.items.length === 1 ? 'item' : 'items'}
-            </span>
-          </div>
-
-          <div className="divide-y divide-[var(--border-subtle)]">
-            {summary.needs_attention.items.map((item: any, idx: number) => {
-              const badgeColors: Record<string, string> = {
-                commit_not_approved: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30',
-                overdue: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30',
-                biggest_drop: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30',
-                closing_14d_unapproved: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
-              }
-              const badgeClass = badgeColors[item.category_key] || 'bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30'
-
-              return (
-                <div
-                  key={`${item.category_key}-${item.opportunity_id_18}-${idx}`}
-                  className="py-3 px-3 rounded-lg hover:bg-[var(--bg-secondary)]/80 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
-                  onClick={() => {
-                    openDealsQuery(
-                      `${item.category_label} Deals (${formatNumber(item.category_count)} deals · ${formatCurrency(item.category_acv)})`,
-                      {
-                        kind: item.kind,
-                        deal_ids: item.deal_ids && item.deal_ids.length > 0 ? item.deal_ids.join(',') : undefined,
-                      }
-                    )
-                  }}
-                  title="Click to view matching deals drawer"
-                >
-                  <div className="flex items-start sm:items-center gap-3 min-w-0">
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border whitespace-nowrap ${badgeClass}`}>
-                      {item.category_label}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--brand-teal)] transition-colors truncate">
-                          {item.opportunity_name}
-                        </span>
-                        {item.account_name && (
-                          <span className="text-[11px] text-[var(--text-muted)] truncate hidden md:inline">
-                            ({item.account_name})
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
-                        {item.detail}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 self-end sm:self-auto flex-shrink-0">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)]">
-                      {item.badge}
-                    </span>
-                    <div className="text-right font-mono">
-                      <div className="text-xs font-black text-[var(--text-primary)] tabular-nums group-hover:underline">
-                        {formatCurrency(item.acv)}
-                      </div>
-                      <div className="text-[10px] text-[var(--text-muted)]">
-                        {item.category_count} {item.category_count === 1 ? 'deal' : 'deals'}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] group-hover:translate-x-0.5 transition-all" />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── FULL-YEAR STRIP (Shown when selected period is not full year / all periods) ── */}
-      {!isFullYear && fullYearData && !fullYearData.error && (
-        <div className="card p-4 bg-gradient-to-r from-[var(--bg-card)] via-[var(--bg-secondary)] to-[var(--bg-card)] border-l-4 border-l-indigo-500 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-500" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                {fullYearData.data_slice || (fullYearData.fiscal_year ? `Full year ${fullYearData.fiscal_year} (all quarters)` : 'Full Year (all quarters)')}
-              </h3>
-            </div>
-            <div className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-              Total: {acvM(fullYearData.total?.acv)} · {fullYearData.total?.count} contracts
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
-            {[
-              { label: 'Full Year Total', count: fullYearData.total?.count, acv: fullYearData.total?.acv, color: '#6366f1' },
-              { label: 'Closed', count: fullYearData.categories?.Closed?.count, acv: fullYearData.categories?.Closed?.acv, color: FORECAST_COLORS['Closed'] || '#10b981' },
-              { label: 'Commit', count: fullYearData.categories?.Commit?.count, acv: fullYearData.categories?.Commit?.acv, color: FORECAST_COLORS['Commit'] || '#0284c7' },
-              { label: 'Best Case', count: fullYearData.categories?.['Best Case']?.count, acv: fullYearData.categories?.['Best Case']?.acv, color: FORECAST_COLORS['Best Case'] || '#8b5cf6' },
-              { label: 'Pipeline', count: fullYearData.categories?.Pipeline?.count, acv: fullYearData.categories?.Pipeline?.acv, color: FORECAST_COLORS['Pipeline'] || '#f59e0b' },
-            ].map((item) => (
-              <div key={item.label} className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-                <div className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider truncate">{item.label}</div>
-                <div className="text-base font-extrabold tabular-nums mt-0.5" style={{ color: item.color }}>{acvM(item.acv)}</div>
-                <div className="text-[10px] text-[var(--text-muted)] font-medium mt-0.5">{item.count ?? 0} deals</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── SECTION 2 – Category cards in one row ──────────────────────── */}
       {(() => {
@@ -597,11 +507,19 @@ export default function Dashboard() {
                       
                       <div className="flex flex-col gap-1">
                         {[
-                          { l: 'vs Yesterday', d: cat.delta_yesterday },
-                          { l: 'vs Last Week', d: cat.delta_lastweek },
-                        ].map(({ l, d }) => d ? (
-                          <div key={l} className="flex items-center justify-between text-[11px]">
-                            <span className="text-[var(--text-muted)]">{l}</span>
+                          { l: 'vs Yesterday', d: cat.delta_yesterday, kind: 'delta_yesterday' },
+                          { l: 'vs Last Week', d: cat.delta_lastweek, kind: 'delta_lastweek' },
+                        ].map(({ l, d, kind }) => d ? (
+                          <div
+                            key={l}
+                            className="flex items-center justify-between text-[11px] p-1 -mx-1 rounded hover:bg-[var(--bg-secondary)] cursor-pointer group/trend"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openDealsQuery(`${label} Deals (${l}) · ${d.count ?? 0} deals · ${acvM(d.acv ?? 0)}`, { category: dataKey, kind })
+                            }}
+                            title={`Click to view ${label} deals that changed ${l}`}
+                          >
+                            <span className="text-[var(--text-muted)] group-hover/trend:text-[var(--text-primary)]">{l}</span>
                             <div className="flex gap-1"><DeltaBadge val={d.count} /><AcvDelta val={d.acv} /></div>
                           </div>
                         ) : (
@@ -736,7 +654,7 @@ export default function Dashboard() {
                 <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total Opportunity Approval in the System</th>
                 <th className="text-right px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">Approved</th>
                 <th className="text-right px-4 py-3 font-semibold text-amber-600 dark:text-amber-400">Pending Approval</th>
-                <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Blanks (Yet to be proposed)</th>
+                <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Not submitted</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -748,7 +666,7 @@ export default function Dashboard() {
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
                   <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)] cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Not submitted (Blank)`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
+                  <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)] cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
                 </tr>
               ))}
               <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
@@ -758,7 +676,7 @@ export default function Dashboard() {
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
                 <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
-                <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Not submitted (Blank) Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
+                <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
               </tr>
             </tbody>
           </table>
@@ -835,11 +753,98 @@ export default function Dashboard() {
           }`}>
             <CheckCircle2 className="w-3.5 h-3.5" />
             {regional.total_acv_check_passes
-              ? `Regional Trend Total matches Overview Total Renewal ${summary?.data_slice || ''} ACV \u2713`
-              : '\u26a0 Regional Trend Total does NOT match — check for unmapped regions'}
+              ? `Regional Trend Total matches Overview Total Renewal ${summary?.data_slice || ''} ACV ✓`
+              : '⚠️ Regional Trend Total does NOT match — check for unmapped regions'}
           </div>
         )}
       </div>
+
+      {/* ── B7 SECTION: Needs Attention Panel (Last section of Overview) ── */}
+      {summary?.needs_attention?.items?.length > 0 && (
+        <div className="card p-5 border border-amber-500/30 bg-gradient-to-br from-[var(--bg-card)] via-[var(--bg-secondary)]/30 to-[var(--bg-card)] shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">
+                Needs attention
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Actionable exceptions for {summary.data_slice || 'selected period'} · Click any line to inspect deals
+              </p>
+            </div>
+            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 font-mono">
+              {summary.needs_attention.items.length} {summary.needs_attention.items.length === 1 ? 'item' : 'items'}
+            </span>
+          </div>
+
+          <div className="divide-y divide-[var(--border-subtle)]">
+            {summary.needs_attention.items.map((item: any, idx: number) => {
+              const isSingleDeal = item.category_key === 'biggest_drop'
+
+              let headline = ''
+              if (item.category_key === 'commit_not_approved') {
+                headline = `${item.category_count} Commit deals not approved · ${acvM(item.category_acv)}`
+              } else if (item.category_key === 'overdue') {
+                headline = `${item.category_count} Overdue deals · ${acvM(item.category_acv)}`
+              } else if (item.category_key === 'closing_14d_unapproved') {
+                headline = `${item.category_count} Deals closing within 14 days with no approval · ${acvM(item.category_acv)}`
+              } else if (item.category_key === 'biggest_drop') {
+                headline = `Biggest drop vs yesterday · -${acvM(item.acv)}`
+              } else {
+                headline = `${item.category_count} ${item.category_label} · ${acvM(item.category_acv)}`
+              }
+
+              const exampleText = isSingleDeal
+                ? `${item.opportunity_name}${item.account_name ? ` (${item.account_name})` : ''} · ${item.detail}`
+                : `Largest: ${item.opportunity_name}${item.account_name ? ` (${item.account_name})` : ''} · ${acvM(item.acv)}${item.badge ? ` · ${item.badge}` : ''}`
+
+              const rightVal = isSingleDeal ? `-${formatCurrency(item.acv)}` : formatCurrency(item.category_acv)
+              const rightCount = isSingleDeal ? '1 deal' : `${formatNumber(item.category_count)} deals`
+
+              return (
+                <div
+                  key={`${item.category_key}-${item.opportunity_id_18}-${idx}`}
+                  className="py-3 px-3 rounded-lg hover:bg-[var(--bg-secondary)]/80 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                  onClick={() => {
+                    const drawerTitle = isSingleDeal
+                      ? `Biggest Drop: ${item.opportunity_name} (-${formatCurrency(item.acv)})`
+                      : `${headline.split('·')[0].trim()} (${formatNumber(item.category_count)} deals · ${formatCurrency(item.category_acv)})`
+
+                    openDealsQuery(
+                      drawerTitle,
+                      {
+                        kind: item.kind,
+                        deal_ids: isSingleDeal ? item.opportunity_id_18 : (item.deal_ids && item.deal_ids.length > 0 ? item.deal_ids.join(',') : undefined),
+                      }
+                    )
+                  }}
+                  title="Click to view matching deals drawer"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--brand-teal)] transition-colors">
+                      {headline}
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+                      {exampleText}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4 self-end sm:self-auto flex-shrink-0">
+                    <div className="text-right font-mono">
+                      <div className="text-xs font-black text-[var(--text-primary)] tabular-nums group-hover:underline">
+                        {rightVal}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)] font-medium">
+                        {rightCount}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Deal modal */}
       {modal && (

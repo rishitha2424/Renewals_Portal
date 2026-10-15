@@ -466,30 +466,47 @@ export default function Expiry() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center gap-2 mb-4 text-[var(--text-primary)]">
-             <Activity className="w-5 h-5 text-emerald-500" />
-             <h3 className="font-bold">Closure Progress</h3>
+          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-500" />
+              <h3 className="font-bold">Closure Progress</h3>
+            </div>
+            <span className="text-[10px] text-[var(--text-muted)] font-mono">By Quarter</span>
           </div>
-          <div className="flex-1 flex flex-col justify-end gap-3 min-h-[160px]">
-             {grid1?.rows?.map((r: any) => {
-               const closed = r.cells['Closed']?.acv || 0
-               const open = r.total.acv - closed
-               const tot = r.total.acv
-               if (tot === 0) return null
-               const pct = Math.round((closed/tot)*100)
-               return (
-                 <div key={r.quarter} className="w-full">
+          <div className="flex-1 flex flex-col justify-between min-h-[160px] overflow-y-auto">
+            <div className="space-y-2.5 flex-1">
+              {grid1?.rows?.map((r: any) => {
+                const closed = r.cells['Closed']?.acv || 0
+                const tot = r.total?.acv || 0
+                if (tot === 0) return null
+                const pct = Math.round((closed / tot) * 100)
+                return (
+                  <div key={r.quarter} className="w-full">
                     <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mb-1">
-                       <span>{r.label}</span>
-                       <span className="text-emerald-600 dark:text-emerald-400">{pct}% Closed</span>
+                      <span>{r.label}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-mono">{pct}% Closed ({acvM(closed)})</span>
                     </div>
-                    <div className="flex w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                       <div style={{ width: `${pct}%` }} className="h-full bg-emerald-500" />
-                       <div style={{ width: `${100-pct}%` }} className="h-full bg-slate-300 dark:bg-slate-600" />
+                    <div className="flex w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div style={{ width: `${pct}%` }} className="h-full bg-emerald-500 transition-all duration-500" />
+                      <div style={{ width: `${100 - pct}%` }} className="h-full bg-slate-300 dark:bg-slate-600" />
                     </div>
-                 </div>
-               )
-             })}
+                  </div>
+                )
+              })}
+            </div>
+            {(() => {
+              const totalClosed = grid1?.rows?.reduce((s: number, r: any) => s + (r.cells['Closed']?.acv || 0), 0) || 0
+              const totalAll = grid1?.rows?.reduce((s: number, r: any) => s + (r.total?.acv || 0), 0) || 0
+              const overallPct = totalAll > 0 ? Math.round((totalClosed / totalAll) * 100) : 0
+              return (
+                <div className="pt-2.5 mt-3 border-t border-[var(--border)] flex items-center justify-between text-[11px] font-bold text-[var(--text-primary)]">
+                  <span>Portfolio Total</span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                    {acvM(totalClosed)} / {acvM(totalAll)} ({overallPct}%)
+                  </span>
+                </div>
+              )
+            })()}
           </div>
         </Card>
 

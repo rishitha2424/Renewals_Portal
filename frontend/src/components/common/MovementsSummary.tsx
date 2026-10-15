@@ -1,6 +1,6 @@
 import React from 'react'
 import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, Users } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/utils/format'
+import { formatCurrency, formatDate, getApprovalStatusLabel } from '@/utils/format'
 
 interface MovementsSummaryProps {
   movements: any
@@ -102,7 +102,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                   onClick={() =>
                     row.deals?.length &&
                     onSelectDeals?.(
-                      row.label ?? `${row.from_category} \u2192 ${row.to_category}`,
+                      row.label ?? `${row.from_category} → ${row.to_category}`,
                       row.deals
                     )
                   }
@@ -167,7 +167,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                   onClick={() =>
                     row.deals?.length &&
                     onSelectDeals?.(
-                      row.label ?? `${row.from_category} \u2192 ${row.to_category}`,
+                      row.label ?? `${row.from_category} → ${row.to_category}`,
                       row.deals
                     )
                   }
@@ -250,8 +250,8 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               <tbody className="divide-y divide-[var(--border-subtle)]">
                 {apv.map((row: any, i: number) => (
                   <tr key={i} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                    <td className="px-4 py-2.5 text-[var(--text-secondary)]">{row.from_status}</td>
-                    <td className="px-4 py-2.5 font-semibold">{row.to_status}</td>
+                    <td className="px-4 py-2.5 text-[var(--text-secondary)]">{getApprovalStatusLabel(row.from_status)}</td>
+                    <td className="px-4 py-2.5 font-semibold">{getApprovalStatusLabel(row.to_status)}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-bold">{row.count}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{acvM(row.acv)}</td>
                     <td className="px-4 py-2.5">
@@ -260,7 +260,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                         onClick={() =>
                           row.deals?.length &&
                           onSelectDeals?.(
-                            `${row.from_status} \u2192 ${row.to_status}`,
+                            `${getApprovalStatusLabel(row.from_status)} → ${getApprovalStatusLabel(row.to_status)}`,
                             row.deals
                           )
                         }

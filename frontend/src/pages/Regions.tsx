@@ -117,6 +117,34 @@ function RegionsContent() {
     enabled: modalOpen
   })
 
+  // Sorted region comparison table rows
+  const sortedRegions = useMemo(() => {
+    if (!summary?.regions) return []
+    const list = [...summary.regions]
+    list.sort((a: any, b: any) => {
+      let vA: any = a[sortCol]
+      let vB: any = b[sortCol]
+      if (sortCol === 'delta_yesterday') {
+        vA = a.delta_yesterday?.acv ?? 0
+        vB = b.delta_yesterday?.acv ?? 0
+      }
+      if (typeof vA === 'string') {
+        return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA)
+      }
+      return sortDir === 'asc' ? (vA || 0) - (vB || 0) : (vB || 0) - (vA || 0)
+    })
+    return list
+  }, [summary?.regions, sortCol, sortDir])
+
+  const toggleSort = (col: string) => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortCol(col)
+      setSortDir('desc')
+    }
+  }
+
   if (!activeSnapshotId) {
     return <PageNoSnapshotState />
   }
@@ -181,35 +209,6 @@ function RegionsContent() {
   const otherRegions = presentRegions.filter((r: string) => !knownRegions.includes(r) && r !== 'Other' && r !== 'Other / Unmapped')
   const unmappedRegions = presentRegions.filter((r: string) => r === 'Other' || r === 'Other / Unmapped')
   const tileOrder = [...knownRegions, ...otherRegions, ...unmappedRegions]
-  
-  // Sorted region comparison table rows
-  const sortedRegions = useMemo(() => {
-    if (!summary?.regions) return []
-    const list = [...summary.regions]
-    list.sort((a: any, b: any) => {
-      let vA: any = a[sortCol]
-      let vB: any = b[sortCol]
-      if (sortCol === 'delta_yesterday') {
-        vA = a.delta_yesterday?.acv ?? 0
-        vB = b.delta_yesterday?.acv ?? 0
-      }
-      if (typeof vA === 'string') {
-        return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA)
-      }
-      return sortDir === 'asc' ? (vA || 0) - (vB || 0) : (vB || 0) - (vA || 0)
-    })
-    return list
-  }, [summary?.regions, sortCol, sortDir])
-
-  const toggleSort = (col: string) => {
-    if (sortCol === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortCol(col)
-      setSortDir('desc')
-    }
-  }
-
   // Generate Insight Lines
   const getInsightLines = () => {
     if (!summary || !summary.regions || summary.regions.length === 0) return []
@@ -1229,6 +1228,7 @@ function RegionsContent() {
                   title="Regions (Forecast Category)"
                   rowLabelName="Region"
                   columns={displayFc}
+                  columnLabels={{ 'Blank': 'Blanks' }}
                   rows={regions.map((r: any) => ({
                     label: r.region,
                     cells: r.cells,

@@ -568,22 +568,6 @@ class V2OverviewService:
                 "kind": "commit_not_approved",
                 "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             })
-            if len(commit_unappr) > 1:
-                second_c = commit_unappr.iloc[1]
-                candidate_second = {
-                    "category_key": "commit_not_approved",
-                    "category_label": "Commit not approved (#2)",
-                    "opportunity_id_18": str(second_c["opportunity_id_18"]),
-                    "opportunity_name": str(second_c["opportunity_name"]),
-                    "account_name": str(second_c["account_name"]),
-                    "acv": round(float(second_c["forecast_acv_amount"]), 2),
-                    "category_count": c_cnt,
-                    "category_acv": c_tot_acv,
-                    "badge": f"Commit · {second_c['approval_status']}",
-                    "detail": "2nd largest unapproved Commit deal",
-                    "kind": "commit_not_approved",
-                    "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
-                }
 
         # 2. Largest overdue deals
         overdue_df = pd.DataFrame()
@@ -719,10 +703,6 @@ class V2OverviewService:
                 "deal_ids": [str(d) for d in closing_14d_df["opportunity_id_18"]],
             })
 
-        # Fill up to 5 items if space remains from commit_unappr (#2 deal)
-        if len(items) < 5 and candidate_second is not None:
-            items.append(candidate_second)
-
         needs_attention = {
             "items": items[:5],
             "category_summaries": category_summaries,
@@ -772,65 +752,6 @@ class V2OverviewService:
                 "badge": "red" if any(c.status == "fail" for c in snap.checks) else ("green" if len(snap.checks) > 0 else "none"),
             },
         }
-
-    def get_fullyear_summary(
-        self,
-        ctx: UserContext,
-        as_of: str | None = None,
-        include_deleted_lost: bool = True,
-    ) -> dict:
-        """
-        Calculates full fiscal year metrics (Closed, Commit, Best Case, Pipeline, Total)
-        for the entire fiscal year derived from the active snapshot date.
-        Always covers all quarters of that fiscal year (Renewals only).
-        """
-        snap = self._active_snap(as_of)
-        if snap is None:
-            return {"error": "no_snapshot"}
-
-        eff_as_of_date = None
-        if as_of:
-            try:
-                eff_as_of_date = date.fromisoformat(as_of)
-            except ValueError:
-                pass
-        if not eff_as_of_date:
-            eff_as_of_date = snap.snapshot_date
-
-        q = ScopeService.quarter_of(snap.snapshot_date)
-        _, y_part = q.split("-")
-        fy_label = f"FY{y_part[-2:]}"
-
-        from backend.services.scopes import FilterSpec
-        fs = FilterSpec.from_params(
-            as_of=snap.id,
-            period=f"FY{y_part}",
-            sales_types=["Renewals"],
-            include_deleted_lost=include_deleted_lost,
-        )
-        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
-        df = _opps_to_df(opps)
-        total_count = len(df)
-        total_acv = round(_sum(df, "forecast_acv_amount"), 2) if not df.empty else 0.0
-        cats = self._category_summary(df)
-
-        return {
-            "fiscal_year": fy_label,
-            "fiscal_year_full": y_part,
-            "data_slice": f"Full year {fy_label} (all quarters)",
-            "total": {
-                "count": total_count,
-                "acv": total_acv,
-            },
-            "categories": {
-                "Closed": cats.get("Closed", {"count": 0, "acv": 0.0}),
-                "Commit": cats.get("Commit", {"count": 0, "acv": 0.0}),
-                "Best Case": cats.get("Best Case", {"count": 0, "acv": 0.0}),
-                "Pipeline": cats.get("Pipeline", {"count": 0, "acv": 0.0}),
-                "Blank": cats.get("Blank", {"count": 0, "acv": 0.0}),
-            },
-        }
-
 
     def get_movements(
         self,
@@ -1104,7 +1025,7 @@ class V2OverviewService:
         if kind in ("delta_yesterday", "delta_lastweek"):
             prev_snap = self._yesterday_snap(snap) if kind == "delta_yesterday" else self._lastweek_snap(snap)
             if prev_snap:
-                prev_opps = self._q4_opps(prev_snap, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
+                prev_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs, exclude_deleted=exclude_deleted, target_date=snap.snapshot_date)
                 prev_df = _opps_to_df(prev_opps)
 
                 t_map = {str(r["opportunity_id_18"]): r for _, r in df.iterrows()}
