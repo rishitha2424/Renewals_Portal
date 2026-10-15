@@ -73,12 +73,13 @@ export default function CompactGrid({
 
   const renderVal = (count: number, acv: number) => {
     if (count === 0 && acv === 0) return <span className="text-[var(--text-muted)] opacity-50">–</span>
-    if (metricMode === 'Amount') return <span className="font-semibold">{acvM(acv)}</span>
-    if (metricMode === 'Count') return <span className="font-semibold">{count}</span>
+    if (metricMode === 'Amount') return <span className="font-semibold tabular-nums">{acvM(acv)}</span>
+    if (metricMode === 'Count') return <span className="font-semibold tabular-nums">{count} deals</span>
     return (
-      <span className="font-semibold">
-        {acvM(acv)} <span className="text-[var(--text-muted)] text-[11px] font-normal">({count})</span>
-      </span>
+      <div className="flex flex-col items-center leading-tight">
+        <span className="font-semibold tabular-nums text-xs">{acvM(acv)}</span>
+        <span className="font-semibold tabular-nums text-xs">{count} deals</span>
+      </div>
     )
   }
 

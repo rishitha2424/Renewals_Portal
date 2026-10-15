@@ -44,8 +44,9 @@ function formatDelta(val: number, isCount: boolean) {
 
 function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
   const isCount = metricMode === 'Count'
+  const isBoth = metricMode === 'Both'
   const val = isCount ? data.count : data.acv
-  const valStr = isCount ? formatNumber(val) : formatCurrency(val)
+  const valStr = isCount ? `${formatNumber(val)} deals` : formatCurrency(val)
   
   const dYes = data.delta_yesterday
   const dLast = data.delta_lastweek
@@ -71,7 +72,14 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
         </div>
         <div>
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
-          <div className="text-xl font-black text-[var(--text-primary)] leading-tight">{valStr}</div>
+          {isBoth ? (
+            <div className="flex flex-col">
+              <span className="text-base font-black text-[var(--text-primary)] leading-tight">{formatCurrency(data.acv)}</span>
+              <span className="text-base font-black text-[var(--text-primary)] leading-tight">{formatNumber(data.count)} deals</span>
+            </div>
+          ) : (
+            <div className="text-xl font-black text-[var(--text-primary)] leading-tight">{valStr}</div>
+          )}
           <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5 font-medium">{renderDeltas()}</div>
         </div>
       </div>
@@ -218,6 +226,25 @@ export default function Approvals() {
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
         <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}><StatChip label="Total" data={attachDates(total)} icon={Sigma} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
       </div>
+
+      {/* Overview Reconciliation Banner */}
+      {data.overview_reconciliation && (
+        <div className={`p-3 rounded-xl border text-xs flex items-center justify-between shadow-xs ${
+          data.overview_reconciliation.matches
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+            : 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+            <span>
+              <strong>Overview Reconciliation:</strong> Approvals total matches Overview ({formatNumber(data.overview_reconciliation.approvals_count)} deals · {formatCurrency(data.overview_reconciliation.approvals_acv)})
+            </span>
+          </div>
+          <span className="text-[11px] opacity-80 font-medium">
+            Portfolio Scope: {data_slice}
+          </span>
+        </div>
+      )}
 
       {/* 1. Approval Funnel Pipeline Card */}
       {funnel.length > 0 && (

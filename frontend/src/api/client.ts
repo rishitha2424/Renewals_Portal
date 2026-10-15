@@ -353,12 +353,12 @@ export const getV2ExpiryDeals = async (params: {
   return res.data
 }
 
-export const getApprovalsDistribution = async (as_of?: string, compare: string | null = null, exclude_deleted_lost: boolean = false, filterSpec?: Partial<FilterSpec>) => {
+export const getApprovalsDistribution = async (as_of?: string, compare: string | null = null, include_deleted_lost?: boolean, filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
   const params: any = buildFilterParams({ ...state.globalFilters, ...filterSpec })
   if (as_of) params.as_of = as_of
   if (compare === 'yesterday' || compare === 'last_week') params.compare = compare
-  if (exclude_deleted_lost !== undefined) params.include_deleted_lost = !exclude_deleted_lost
+  if (include_deleted_lost !== undefined) params.include_deleted_lost = include_deleted_lost
   return api.get('/v2/approvals/distribution', { params }).then(r => r.data)
 }
 
@@ -366,7 +366,7 @@ export const getApprovalsDeals = async (
   as_of?: string,
   status?: string,
   category?: string,
-  exclude_deleted_lost: boolean = false,
+  include_deleted_lost?: boolean,
   region?: string,
   business_unit?: string,
   filterSpec?: Partial<FilterSpec>,
@@ -384,7 +384,7 @@ export const getApprovalsDeals = async (
   if (min_acv !== undefined && min_acv !== null) params.min_acv = min_acv
   if (max_acv !== undefined && max_acv !== null) params.max_acv = max_acv
   if (deal_ids) params.deal_ids = deal_ids
-  if (exclude_deleted_lost !== undefined) params.include_deleted_lost = !exclude_deleted_lost
+  if (include_deleted_lost !== undefined) params.include_deleted_lost = include_deleted_lost
   return api.get('/v2/approvals/deals', { params }).then(r => r.data)
 }
 

@@ -241,6 +241,23 @@ class V2ApprovalsService:
                 "pct_acv": pct_a,
             })
 
+        # Explicit "Other / not classified" stage if any deals fall outside the three main statuses
+        other_df = df[~df["approval_status"].isin(["Blank", "Pending Approval", "Approved"])] if not df.empty else pd.DataFrame()
+        other_c = len(other_df)
+        other_a = _sum(other_df, "forecast_acv_amount")
+        if other_c > 0:
+            pct_other_c = round((other_c / total_count * 100), 1) if total_count > 0 else 0.0
+            pct_other_a = round((other_a / total_acv * 100), 1) if total_acv > 0 else 0.0
+            funnel.append({
+                "stage": "Other / not classified",
+                "status_key": "Other",
+                "count": other_c,
+                "acv": round(other_a, 2),
+                "pct_count": pct_other_c,
+                "pct_acv": pct_other_a,
+                "deal_ids": [str(d) for d in other_df["opportunity_id_18"]],
+            })
+
         # 2. Deal-size split (threshold in setting, not typed in code) per status
         threshold = getattr(settings, "APPROVAL_DEAL_SIZE_THRESHOLD", 100000.0)
         deal_size_split = {
@@ -252,8 +269,10 @@ class V2ApprovalsService:
             ("Approved", "Approved"),
             ("Pending Approval", "Pending Approval"),
             ("Not submitted", "Blank"),
-            ("Total", None),
         ]
+        if other_c > 0:
+            statuses_to_split.append(("Other / not classified", "Other"))
+        statuses_to_split.append(("Total", None))
         for label, st_key in statuses_to_split:
             st_df = df if st_key is None else (df[df["approval_status"] == st_key] if not df.empty else pd.DataFrame())
             large_df = st_df[st_df["forecast_acv_amount"] >= threshold] if not st_df.empty else pd.DataFrame()
@@ -506,6 +525,24 @@ class V2ApprovalsService:
             if prev_df.empty:
                 return {"count": 0, "acv": 0.0}
             return {"count": total_count - len(prev_df), "acv": round(total_acv - _sum(prev_df, "forecast_acv_amount"), 2)}
+
+        # Reconcile with Overview for the same snapshot and filters
+        from backend.services.v2_overview_service import V2OverviewService
+        ov_svc = V2OverviewService(self.db)
+        ov_sum = ov_svc.get_summary(ctx, filter_spec=filter_spec)
+        ov_tot = ov_sum.get("total", {}) if ov_sum else {}
+        ov_count = int(ov_tot.get("count", total_count))
+        ov_acv = float(ov_tot.get("acv", total_acv))
+        reconciliation_matches = bool(total_count == ov_count and abs(total_acv - ov_acv) < 0.01)
+        overview_reconciliation = {
+            "matches": reconciliation_matches,
+            "overview_count": ov_count,
+            "overview_acv": round(ov_acv, 2),
+            "approvals_count": total_count,
+            "approvals_acv": round(total_acv, 2),
+            "diff_count": total_count - ov_count,
+            "diff_acv": round(total_acv - ov_acv, 2),
+        }
             
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
@@ -523,6 +560,7 @@ class V2ApprovalsService:
                 "delta_lastweek": get_total_delta(df_lw),
                 "delta_custom": get_total_delta(comp_df) if comp_snap else None
             },
+            "overview_reconciliation": overview_reconciliation,
             "statuses": statuses_list,
             "matrix": matrix,
             "categories": ALL_FC,
@@ -571,6 +609,8 @@ class V2ApprovalsService:
         if status:
             if status in ("not_approved", "unapproved", "Not Approved"):
                 df = df[df["approval_status"] != "Approved"]
+            elif status in ("Other", "Other / not classified", "other"):
+                df = df[~df["approval_status"].isin(["Approved", "Pending Approval", "Blank"])]
             else:
                 df = df[df["approval_status"] == status]
             filters_applied["status"] = status
