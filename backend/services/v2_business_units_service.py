@@ -144,7 +144,14 @@ class V2BusinessUnitsService:
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
-        eff_date = target_date or snap.snapshot_date
+        eff_date = target_date
+        if not eff_date and fs.as_of:
+            try:
+                eff_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_date:
+            eff_date = snap.snapshot_date
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
         q = (
             self.db.query(Opportunity)
@@ -183,7 +190,14 @@ class V2BusinessUnitsService:
         if not snap:
             return {"error": "no_snapshot"}
 
-        eff_as_of_date = snap.snapshot_date
+        eff_as_of_date = None
+        if fs.as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
@@ -499,8 +513,17 @@ class V2BusinessUnitsService:
         snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
+
+        eff_as_of_date = None
+        if fs.as_of:
+            try:
+                eff_as_of_date = date.fromisoformat(fs.as_of)
+            except ValueError:
+                pass
+        if not eff_as_of_date:
+            eff_as_of_date = snap.snapshot_date
             
-        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=snap.snapshot_date)
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
         
         if df.empty:

@@ -137,9 +137,10 @@ class ExcelExportService:
         )
         comp_data = {}
         if comp_snap:
+            comp_scope = "current_quarter" if scope == "renewals" else scope
             comp_data = self.analytics_svc.get_comparison(
                 ADMIN_CONTEXT, comp_snap.snapshot_date, snap.snapshot_date,
-                scope=scope, include_deleted_lost=include_deleted_lost,
+                scope=comp_scope, include_deleted_lost=include_deleted_lost,
             )
 
         # -------------------------------------------------------------

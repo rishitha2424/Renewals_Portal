@@ -9,6 +9,7 @@ import logging
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
+import re
 
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -63,7 +64,7 @@ EXPIRY_PIVOT_PERIODS: list[str] = []
 def filter_expiry_scope(df: pd.DataFrame, allowed_periods: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Expiry summary pivot scope includes only rows where:
-    (a) Service Expiry Period is a valid quarter Q[1-4]-\\d{4}.
+    (a) Service Expiry Period is a valid quarter in allowed_periods.
     (b) Forecast Category is not blank.
     """
     if df.empty or "service_expiry_period" not in df.columns:
@@ -76,8 +77,7 @@ def filter_expiry_scope(df: pd.DataFrame, allowed_periods: Optional[List[str]] =
     cat_mask = (
         df["forecast_category"].notna() &
         (df["forecast_category"].astype(str).str.strip() != "") &
-        (df["forecast_category"].astype(str).str.lower() != "blank") &
-        (df["forecast_category"].astype(str).str.lower() != "not yet proposed")
+        (df["forecast_category"].astype(str).str.lower() != "blank")
     )
     return df[period_mask & cat_mask]
 
@@ -135,6 +135,8 @@ class AnalyticsService:
         # Filter by scope
         s = (scope or "renewals").lower()
         if s == "renewals":
+            q = q.filter(ScopeService.is_renewals())
+        elif s == "current_quarter":
             cq = ScopeService.quarter_of(snapshot.snapshot_date)
             q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == cq)
         elif s.startswith("fy") and len(s) == 6 and s[2:].isdigit():
@@ -303,9 +305,21 @@ class AnalyticsService:
 
         lw_snap = self._get_adjacent_snapshot(snap, days_back=7)
 
-        today_df = filter_expiry_scope(_opps_to_df(self._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)))
-        yest_df = filter_expiry_scope(_opps_to_df(self._opps_for(comp_snap, scope=scope, include_deleted_lost=include_deleted_lost))) if comp_snap else pd.DataFrame()
-        lw_df = filter_expiry_scope(_opps_to_df(self._opps_for(lw_snap, scope=scope, include_deleted_lost=include_deleted_lost))) if lw_snap else pd.DataFrame()
+        snap_ref_date = snap.snapshot_date if snap else None
+        if not snap_ref_date:
+            active_s = self.get_active_snapshot(ctx)
+            snap_ref_date = active_s.snapshot_date if active_s else None
+        if not snap_ref_date:
+            latest_s = self.db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            snap_ref_date = latest_s.snapshot_date if latest_s else date(2026, 10, 7)
+
+        cq = ScopeService.quarter_of(snap_ref_date)
+        curr_fy = int(cq.split("-")[1]) if "-" in cq else snap_ref_date.year
+        fy_periods = [f"Q{q}-{y}" for y in (curr_fy, curr_fy + 1) for q in range(1, 5)]
+
+        today_df = filter_expiry_scope(_opps_to_df(self._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)), allowed_periods=fy_periods)
+        yest_df = filter_expiry_scope(_opps_to_df(self._opps_for(comp_snap, scope=scope, include_deleted_lost=include_deleted_lost)), allowed_periods=fy_periods) if comp_snap else pd.DataFrame()
+        lw_df = filter_expiry_scope(_opps_to_df(self._opps_for(lw_snap, scope=scope, include_deleted_lost=include_deleted_lost)), allowed_periods=fy_periods) if lw_snap else pd.DataFrame()
 
         categories = [c for c in CANONICAL_FORECAST_CATEGORIES if c != "Blank"]
 
@@ -337,22 +351,17 @@ class AnalyticsService:
         y_qmap = get_quarter_map(yest_df)
         lw_qmap = get_quarter_map(lw_df)
 
-        # Derive quarters from data
+        # Derive quarters present in data within the fiscal years
         found_periods = set()
         for d in (today_df, yest_df, lw_df):
             if not d.empty and "service_expiry_period" in d.columns:
                 for val in d["service_expiry_period"].dropna().unique():
                     s_val = str(val).strip()
-                    if re.match(r"^Q[1-4]-\d{4}$", s_val, re.IGNORECASE):
-                        found_periods.add(s_val.upper())
+                    if s_val in fy_periods:
+                        found_periods.add(s_val)
 
-        if not found_periods and snap:
-            cq = ScopeService.quarter_of(snap.snapshot_date)
-            if "-" in cq:
-                curr_fy = int(cq.split("-")[1])
-                for y in (curr_fy, curr_fy + 1):
-                    for q in range(1, 5):
-                        found_periods.add(f"Q{q}-{y}")
+        if not found_periods:
+            found_periods = set(fy_periods)
 
         expiry_periods = ScopeService.sort_quarters(list(found_periods))
 
@@ -938,8 +947,12 @@ class AnalyticsService:
         if df.empty:
             return {"rows": [], "total_count": 0, "total_acv": 0.0, "by_quarter": {}}
 
-        # Apply Expiry Q3 Summary pivot scope
-        df = filter_expiry_scope(df)
+        cq = ScopeService.quarter_of(snap.snapshot_date)
+        curr_fy = int(cq.split("-")[1]) if "-" in cq else snap.snapshot_date.year
+        fy_periods = [f"Q{q}-{y}" for y in (curr_fy, curr_fy + 1) for q in range(1, 5)]
+
+        # Apply Expiry Summary pivot scope
+        df = filter_expiry_scope(df, allowed_periods=fy_periods)
 
         grouped = (
             df.groupby(["service_expiry_period", "forecast_category"])
@@ -1099,11 +1112,27 @@ class AnalyticsService:
                 "acv_diff": round(t_acv - f_acv, 2),
             })
 
-        # 3. Expiry pivot comparison (scoped to Expiry Q3 Summary)
-        f_exp = filter_expiry_scope(from_df)
-        t_exp = filter_expiry_scope(to_df)
+        # 3. Expiry pivot comparison (scoped to Expiry Summary)
+        cq = ScopeService.quarter_of(to_snap.snapshot_date)
+        curr_fy = int(cq.split("-")[1]) if "-" in cq else to_snap.snapshot_date.year
+        fy_periods = [f"Q{q}-{y}" for y in (curr_fy, curr_fy + 1) for q in range(1, 5)]
+
+        f_exp = filter_expiry_scope(from_df, allowed_periods=fy_periods)
+        t_exp = filter_expiry_scope(to_df, allowed_periods=fy_periods)
+
+        found_p = set()
+        for d in (f_exp, t_exp):
+            if not d.empty and "service_expiry_period" in d.columns:
+                for val in d["service_expiry_period"].dropna().unique():
+                    s_val = str(val).strip()
+                    if s_val in fy_periods:
+                        found_p.add(s_val)
+        if not found_p:
+            found_p = set(fy_periods)
+        exp_periods = ScopeService.sort_quarters(list(found_p))
+
         exp_list = []
-        for p in EXPIRY_PIVOT_PERIODS:
+        for p in exp_periods:
             f_sub = f_exp[f_exp["service_expiry_period"] == p] if not f_exp.empty else pd.DataFrame()
             t_sub = t_exp[t_exp["service_expiry_period"] == p] if not t_exp.empty else pd.DataFrame()
             f_cnt = len(f_sub)
@@ -1121,7 +1150,7 @@ class AnalyticsService:
             })
 
         expiry_cells = []
-        for p in EXPIRY_PIVOT_PERIODS:
+        for p in exp_periods:
             for c in [cat for cat in CANONICAL_FORECAST_CATEGORIES if cat != "Blank"]:
                 f_cell = f_exp[(f_exp["service_expiry_period"] == p) & (f_exp["forecast_category"] == c)] if not f_exp.empty else pd.DataFrame()
                 t_cell = t_exp[(t_exp["service_expiry_period"] == p) & (t_exp["forecast_category"] == c)] if not t_exp.empty else pd.DataFrame()

@@ -489,10 +489,9 @@ class V2OverviewService:
                 "acv":   round(slippage["acv"] - _sum(lw_slip_df, "forecast_acv_amount"), 2),
             }
 
-        # ── Other regions notice ──────────────────────────────────────────────
         other_count = 0
-        if not df.empty:
-            other_count = int((df["canonical_region"] == "Other").sum())
+        if not df.empty and "canonical_region" in df.columns:
+            other_count = int(df["canonical_region"].isin(["Other", "Other / Unmapped"]).sum())
 
         # Proposal confirmation totals for summary
         prop_totals = {
