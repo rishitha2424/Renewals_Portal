@@ -53,22 +53,24 @@ class V2ExpiryService:
             return active
         return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
 
-    def _window_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False) -> tuple[pd.DataFrame, list[str]]:
+    def _window_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, period_type: str = "fiscal") -> tuple[pd.DataFrame, list[str]]:
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
             
-        # We want to apply all FilterSpec conditions EXCEPT period (since expiry organizes by service expiry year)
-        # We can construct conditions using FilterSpec with period="all_periods"
         fs_for_expiry = fs.model_copy()
         fs_for_expiry.period = "all_periods"
+        if period_type == "fiscal":
+            fs_for_expiry.sales_types = ["Renewals"]
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
         
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
             *res.conditions
         )
+        if period_type == "fiscal":
+            q = q.filter(Opportunity.sales_type == "Renewals")
         
         opps = q.all()
         if not opps:
@@ -84,9 +86,11 @@ class V2ExpiryService:
                 fc = "Blank"
                 
             sep = o.service_expiry_period or "Blank"
-            if sep and "-" in sep:
+            fp = o.fiscal_period or "Blank"
+            p_val = fp if period_type == "fiscal" else sep
+            if p_val and "-" in p_val:
                 try:
-                    parts = sep.split("-")
+                    parts = p_val.split("-")
                     if len(parts) == 2 and parts[1].isdigit():
                         years_found.add(parts[1])
                 except:
@@ -114,6 +118,7 @@ class V2ExpiryService:
         as_of: Optional[str] = None,
         compare: Optional[str] = None,
         exclude_deleted_lost: bool = False,
+        period_type: str = "fiscal",
         filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
@@ -122,7 +127,7 @@ class V2ExpiryService:
         if not snap:
             return {"error": "No snapshot found"}
             
-        df, years_found = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost)
+        df, years_found = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
         
         eff_date = snap.snapshot_date
         if eff_as_of:
@@ -151,13 +156,13 @@ class V2ExpiryService:
             comp_snap = self._get_snapshot(ctx, eff_compare)
         comp_df = pd.DataFrame()
         if comp_snap:
-            comp_df, _ = self._window_opps(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost)
+            comp_df, _ = self._window_opps(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
             
         snap_yest = self._get_snapshot(ctx, "yesterday")
-        df_yest, _ = self._window_opps(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost) if snap_yest else (pd.DataFrame(), [])
+        df_yest, _ = self._window_opps(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_yest else (pd.DataFrame(), [])
         
         snap_lw = self._get_snapshot(ctx, "last_week")
-        df_lw, _ = self._window_opps(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost) if snap_lw else (pd.DataFrame(), [])
+        df_lw, _ = self._window_opps(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_lw else (pd.DataFrame(), [])
         
         quarters = []
         for y_str in years_to_use:
@@ -166,6 +171,8 @@ class V2ExpiryService:
                 label = ScopeService.quarter_label(key)
                 quarters.append({"key": key, "label": label, "fy": y_str})
                 
+        period_col = "fiscal_period" if period_type == "fiscal" else "service_expiry_period"
+
         def build_grid(target_df: pd.DataFrame, y_label: str):
             rows = []
             fy_qs = [q for q in quarters if q["fy"] == y_label]
@@ -177,7 +184,7 @@ class V2ExpiryService:
                 cells = {}
                 row_count = 0
                 row_acv = 0.0
-                q_df = target_df[target_df["service_expiry_period"] == q["key"]] if not target_df.empty else pd.DataFrame()
+                q_df = target_df[target_df[period_col] == q["key"]] if (not target_df.empty and period_col in target_df.columns) else pd.DataFrame()
                 
                 for fc in ALL_FC:
                     fc_df = q_df[q_df["forecast_category"] == fc] if not q_df.empty else pd.DataFrame()
@@ -259,7 +266,7 @@ class V2ExpiryService:
             
         _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
         grid_quarters = [q["key"] for q in quarters]
-        grid_df = df[df["service_expiry_period"].isin(grid_quarters)] if not df.empty else pd.DataFrame()
+        grid_df = df[df[period_col].isin(grid_quarters)] if (not df.empty and period_col in df.columns) else pd.DataFrame()
         slip_df = grid_df[grid_df["close_date"] > fy_end_date] if not grid_df.empty else pd.DataFrame()
         slip_count = len(slip_df)
         slip_acv = _sum(slip_df, "forecast_acv_amount")
@@ -267,7 +274,7 @@ class V2ExpiryService:
         slip_by_quarter = []
         if not slip_df.empty:
             for q in quarters:
-                q_slip = slip_df[slip_df["service_expiry_period"] == q["key"]]
+                q_slip = slip_df[slip_df[period_col] == q["key"]] if period_col in slip_df.columns else pd.DataFrame()
                 if not q_slip.empty:
                     slip_by_quarter.append({
                         "quarter": q["key"],
@@ -282,7 +289,7 @@ class V2ExpiryService:
         for q in quarters:
             q_key = q["key"]
             q_label = q["label"]
-            q_sub = chart_df[chart_df["fiscal_period"] == q_key] if (not chart_df.empty and "fiscal_period" in chart_df.columns) else pd.DataFrame()
+            q_sub = chart_df[chart_df[period_col] == q_key] if (not chart_df.empty and period_col in chart_df.columns) else pd.DataFrame()
 
             q_tot_acv = round(_sum(q_sub, "forecast_acv_amount"), 2)
             q_deal_cnt = len(q_sub)
@@ -329,6 +336,7 @@ class V2ExpiryService:
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
+            "period_type": period_type,
             "data_slice": res.label,
             "data_slice_key": target_quarter,
             "filters_applied": res.filters_applied,
@@ -360,7 +368,7 @@ class V2ExpiryService:
         as_of: Optional[str] = None,
         exclude_deleted_lost: bool = False,
         slippage: bool = False,
-        period_type: str = "service_expiry",
+        period_type: str = "fiscal",
         filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> list[dict]:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
@@ -374,32 +382,32 @@ class V2ExpiryService:
             fs.include_deleted_lost = False
         fs_for_expiry = fs.model_copy()
         fs_for_expiry.period = "all_periods"
+        if period_type == "fiscal":
+            fs_for_expiry.sales_types = ["Renewals"]
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
         
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
             *res.conditions
         )
+        if period_type == "fiscal":
+            q = q.filter(Opportunity.sales_type == "Renewals")
             
         target_quarter = ScopeService.current_quarter(snap.snapshot_date)
         _, current_y_str = target_quarter.split("-") if (target_quarter and "-" in target_quarter) else ("", "2026")
         next_y_str = str(int(current_y_str) + 1)
         default_grid_quarters = [f"Q{q}-{y}" for y in [current_y_str, next_y_str] for q in range(1, 5)]
 
+        period_col_attr = Opportunity.fiscal_period if period_type == "fiscal" else Opportunity.service_expiry_period
+
         if slippage:
             _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-            q = q.filter(Opportunity.close_date > fy_end_date, Opportunity.service_expiry_period.in_(default_grid_quarters))
+            q = q.filter(Opportunity.close_date > fy_end_date, period_col_attr.in_(default_grid_quarters))
 
         if quarter:
-            if period_type == "fiscal":
-                q = q.filter(Opportunity.fiscal_period == quarter)
-            else:
-                q = q.filter(Opportunity.service_expiry_period == quarter)
+            q = q.filter(period_col_attr == quarter)
         elif not slippage:
-            if period_type == "fiscal":
-                q = q.filter(Opportunity.fiscal_period.in_(default_grid_quarters))
-            else:
-                q = q.filter(Opportunity.service_expiry_period.in_(default_grid_quarters))
+            q = q.filter(period_col_attr.in_(default_grid_quarters))
 
         if category:
             if category in ("Blank", "Not yet proposed"):

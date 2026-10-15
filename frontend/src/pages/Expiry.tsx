@@ -35,17 +35,19 @@ export default function Expiry() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
-  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean; period_type?: string }>({ quarter: null, category: null })
+  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean; period_type?: string }>({ quarter: null, category: null, period_type: 'fiscal' })
   const [drillDeals, setDrillDeals] = useState<any[] | null>(null)
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
+  const [periodMode, setPeriodMode] = useState<'fiscal' | 'service_expiry'>('fiscal')
 
   const { data: sum, isLoading, isError, refetch: refetchSum } = useQuery({
-    queryKey: ['v2ExpirySummary', activeSnapshotId, compareSnapshotId, includeDeletedLost],
+    queryKey: ['v2ExpirySummary', activeSnapshotId, compareSnapshotId, includeDeletedLost, periodMode],
     queryFn: () => getV2ExpirySummary({
       as_of: activeSnapshot?.snapshot_date,
       compare: compareSnapshot?.snapshot_date,
-      exclude_deleted_lost: !includeDeletedLost
+      exclude_deleted_lost: !includeDeletedLost,
+      period_type: periodMode,
     }),
     enabled: !!activeSnapshotId,
   })
@@ -56,7 +58,7 @@ export default function Expiry() {
       quarter: modalParams.quarter || undefined,
       category: modalParams.category || undefined,
       slippage: modalParams.slippage,
-      period_type: modalParams.period_type,
+      period_type: modalParams.period_type || periodMode,
       as_of: activeSnapshot?.snapshot_date,
       exclude_deleted_lost: !includeDeletedLost
     }),
@@ -123,9 +125,9 @@ export default function Expiry() {
     return <PageNoSnapshotState />
   }
 
-  const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false, periodType = 'service_expiry') => {
+  const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false, periodType?: string) => {
     setDrillDeals(null)
-    setModalParams({ quarter, category, slippage: isSlippage, period_type: periodType })
+    setModalParams({ quarter, category, slippage: isSlippage, period_type: periodType || periodMode })
     setModalTitle(title)
     setModalOpen(true)
   }
@@ -165,6 +167,51 @@ export default function Expiry() {
         </div>
       </div>
 
+      {/* View by Toggle with definitions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-secondary)] p-3 rounded-xl border border-[var(--border)]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-bold text-[var(--text-secondary)] whitespace-nowrap">View by:</span>
+          <div className="inline-flex p-1 bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] shadow-xs">
+            <button
+              id="view-by-fiscal"
+              onClick={() => setPeriodMode('fiscal')}
+              className={clsx(
+                "px-3 py-1 rounded-md text-xs font-bold transition-all",
+                periodMode === 'fiscal'
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              Fiscal period
+            </button>
+            <button
+              id="view-by-service-expiry"
+              onClick={() => setPeriodMode('service_expiry')}
+              className={clsx(
+                "px-3 py-1 rounded-md text-xs font-bold transition-all",
+                periodMode === 'service_expiry'
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              Service end date
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-[var(--text-muted)] italic">
+          {periodMode === 'fiscal'
+            ? 'Fiscal period: Deals closing in each fiscal quarter (matches Overview & Executive numbers).'
+            : 'Service end date: Groups deals by when contract service ends; totals will differ from the Overview.'}
+        </div>
+      </div>
+
+      {/* Service end date info note */}
+      {periodMode === 'service_expiry' && (
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-medium">
+          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span>Includes services that end in this quarter regardless of close date; totals will differ from the Overview.</span>
+        </div>
+      )}
 
       {/* Grand Total & Slippage KPI Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -175,7 +222,7 @@ export default function Expiry() {
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                FY{fy1} All-Years Total Expiry
+                FY{fy1} All-Years Total Expiry ({periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})
               </span>
               <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                 {grandTotal.count} deals
@@ -231,7 +278,7 @@ export default function Expiry() {
         return (
           <div key={yLabel} className="space-y-1">
             <CompactGrid
-              title={`FY ${yLabel} Expiry`}
+              title={`FY ${yLabel} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
               columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
               rows={grid.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
               totals={grid.totals}
@@ -261,11 +308,13 @@ export default function Expiry() {
               <BarChart2 className="w-5 h-5 text-indigo-500" />
               <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Expiry Profile</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                Renewals
+                {periodMode === 'fiscal' ? 'Fiscal Period · Renewals' : 'Service End Date · Renewals'}
               </span>
             </div>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              Quarterly expiry profile stacked by forecast category, tied directly to Overview and Executive metrics.
+              {periodMode === 'fiscal'
+                ? 'Quarterly expiry profile stacked by forecast category, tied directly to Overview and Executive metrics.'
+                : 'Quarterly expiry profile stacked by forecast category based on service end date.'}
             </p>
           </div>
 
@@ -331,7 +380,7 @@ export default function Expiry() {
                       {/* Total ACV above column */}
                       <div
                         className="text-center mb-2 cursor-pointer transition-transform group-hover:scale-105"
-                        onClick={() => handleCellClick(col.quarter, null, `${col.label} · All Deals`, false, 'fiscal')}
+                        onClick={() => handleCellClick(col.quarter, null, `${col.label} · All Deals`, false, periodMode)}
                         title={`Click to view all ${col.deal_count} deals in ${col.label}`}
                       >
                         <div className="text-xs sm:text-sm font-black font-mono text-[var(--text-primary)]">
@@ -368,7 +417,7 @@ export default function Expiry() {
                                       cat.data?.raw_category || cat.name,
                                       `${col.label} · ${cat.name} Deals`,
                                       false,
-                                      'fiscal'
+                                      periodMode
                                     )
                                   }}
                                   title={`${col.label} · ${cat.name}: ${formatCurrency(catAcv)} (${segPct.toFixed(1)}%) · ${cat.data?.count || 0} deals (Click to view)`}

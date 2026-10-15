@@ -319,6 +319,7 @@ export const getV2ExpirySummary = async (params: {
   as_of?: string | null
   compare?: string | null
   exclude_deleted_lost?: boolean
+  period_type?: string
   filterSpec?: Partial<FilterSpec>
 } = {}) => {
   const state = useAppStore.getState()
@@ -326,6 +327,7 @@ export const getV2ExpirySummary = async (params: {
   if (params.as_of) p.as_of = params.as_of
   if (params.compare === 'yesterday' || params.compare === 'last_week') p.compare = params.compare
   if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
+  if (params.period_type) p.period_type = params.period_type
   const res = await api.get('/v2/expiry/summary', { params: p })
   return res.data
 }
@@ -345,7 +347,7 @@ export const getV2ExpiryDeals = async (params: {
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
   if (params.slippage !== undefined) p.slippage = params.slippage
-  if (params.period_type) p.period_type = params.period_type
+  p.period_type = params.period_type || 'fiscal'
   if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/deals', { params: p })
   return res.data

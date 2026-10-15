@@ -13,12 +13,13 @@ def get_summary(
     as_of: str = Query(None),
     compare: str = Query("yesterday"),
     exclude_deleted_lost: bool = Query(False),
+    period_type: str = Query("fiscal"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db)
 ):
     ctx = UserContext()
     svc = V2ExpiryService(db)
-    return svc.get_summary(ctx, as_of=as_of, compare=compare, exclude_deleted_lost=exclude_deleted_lost, filter_spec=filter_spec)
+    return svc.get_summary(ctx, as_of=as_of, compare=compare, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type, filter_spec=filter_spec)
 
 @router.get("/deals")
 def get_deals(
@@ -27,7 +28,7 @@ def get_deals(
     as_of: str = Query(None),
     exclude_deleted_lost: bool = Query(False),
     slippage: bool = Query(False),
-    period_type: str = Query("service_expiry"),
+    period_type: str = Query("fiscal"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db)
 ):
