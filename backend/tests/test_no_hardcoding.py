@@ -96,3 +96,50 @@ def test_no_hardcoding():
                             )
 
     assert not violations, f"Found {len(violations)} hardcoded values:\n" + "\n".join(violations[:50])
+
+
+ASSERT_3DIGIT_NUMBER = re.compile(r"assert\s+.*==\s*\d{3,}(?:\.\d+)?")
+ASSERT_3DIGIT_NUMBER_REV = re.compile(r"assert\s+\d{3,}(?:\.\d+)?\s*==")
+
+
+def test_no_hardcoded_number_assertions_in_backend_tests():
+    """
+    Scans backend/tests for assertions with hardcoded numbers of 3+ digits (e.g. == 193, == 206).
+    Expected values must be computed dynamically with pandas from fixture Excel or derived from len()/sum().
+    Allow-listed:
+    - HTTP status_code assertions (e.g. status_code == 200, status_code == 409)
+    - Comment lines
+    """
+    tests_dir = ROOT / "backend" / "tests"
+    assert tests_dir.exists()
+
+    violations = []
+
+    for file_path in tests_dir.glob("**/*.py"):
+        if file_path.name == "test_no_hardcoding.py":
+            continue
+
+        rel_path = str(file_path.relative_to(ROOT)).replace("\\", "/")
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        for line_no, line in enumerate(content.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+
+            if ASSERT_3DIGIT_NUMBER.search(line) or ASSERT_3DIGIT_NUMBER_REV.search(line):
+                # Allow-listed: status_code assertions (e.g. status_code == 200, status_code == 409)
+                if "status_code" in line:
+                    continue
+
+                violations.append(
+                    f"{rel_path}:{line_no} -> {stripped}"
+                )
+
+    assert not violations, (
+        f"Found {len(violations)} hardcoded number assertions (3+ digits) in backend/tests:\n"
+        + "\n".join(violations[:50])
+    )

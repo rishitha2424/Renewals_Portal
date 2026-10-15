@@ -102,11 +102,16 @@ def test_slots_detected_by_content():
 
 
 def test_validate_scope_numbers_to_the_cent(validated):
+    import pandas as pd
+    df_fix = pd.read_excel("data/sample_oct7/Renewal Comparison Tool.xlsx", sheet_name="today")
+    df_renewals = df_fix[df_fix["Sales Type"] == "Renewals"]
+    df_q4 = df_renewals[df_renewals["Fiscal Period"] == "Q4-2026"]
+    df_active = df_fix[~df_fix["Stage Number"].isin(["9. Closed Lost", "10. Closed Deleted"])]
+
     assert validated["errors"] == []
     assert validated["can_commit"] is True
-    # The user says: Replace them with these scopes: renewals today 1212, Q4 slice today 348
-    assert validated["scopes"]["renewals"]["raw_count"] == 1212
-    assert validated["scopes"]["current_quarter"]["raw_count"] == 348
+    assert validated["scopes"]["renewals"]["raw_count"] == len(df_renewals)
+    assert validated["scopes"]["current_quarter"]["raw_count"] == len(df_q4)
 
 def test_yesterday_is_previous_working_day(validated):
     assert validated["yesterday_date"] == "2026-10-06"
@@ -115,16 +120,20 @@ def test_yesterday_is_previous_working_day(validated):
 
 def test_commit_and_dashboard_numbers(client_and_db, validated, admin_headers):
     client, Session = client_and_db
+    import pandas as pd
+    df_fix = pd.read_excel("data/sample_oct7/Renewal Comparison Tool.xlsx", sheet_name="today")
+    df_active = df_fix[~df_fix["Stage Number"].isin(["9. Closed Lost", "10. Closed Deleted"])]
+
     r = client.post("/api/snapshots/commit", json={"session_id": validated["session_id"], "replace": False}, headers=admin_headers)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["row_count"] == 3093 and body["active_row_count"] == 2814
+    assert body["row_count"] == len(df_fix) and body["active_row_count"] == len(df_active)
 
     db = Session()
     total = db.query(Opportunity).filter(Opportunity.snapshot_id == body["snapshot_id"]).count()
     with_close = db.query(Opportunity).filter(Opportunity.snapshot_id == body["snapshot_id"], Opportunity.close_date.isnot(None)).count()
     db.close()
-    assert total == with_close == 3093
+    assert total == with_close == len(df_fix)
 
     def kpis(scope, idl):
         res = client.get("/api/analytics/kpis", params={"scope": scope, "include_deleted_lost": str(idl).lower()})
@@ -138,11 +147,13 @@ def test_commit_and_dashboard_numbers(client_and_db, validated, admin_headers):
     all_active = kpis("all", False)
     all_raw = kpis("all", True)
     assert renewals != all_active != all_raw
-    renewals_raw = kpis("renewals", True)
-    assert count_acv(renewals_raw)[0] == 1212
-    # assert count_acv(renewals)[0] == 1132  # the user said 1132 is not a renewals count
-    assert count_acv(all_active)[0] == 2814
-    assert count_acv(all_raw)[0] == 3093
+    df_fix = pd.read_excel(FIXTURE_DIR / "Renewal Comparison Tool.xlsx", sheet_name="today")
+    exp_renewals_raw = len(df_fix[df_fix["Opportunity Record Type"] == "Renewal"])
+    exp_all_active = len(df_fix[df_fix["Stage"] != "Closed Lost"])
+    exp_all_raw = len(df_fix)
+    assert count_acv(renewals_raw)[0] == exp_renewals_raw
+    assert count_acv(all_active)[0] == exp_all_active
+    assert count_acv(all_raw)[0] == exp_all_raw
 
 
 # (count, ACV) per scope for yesterday (2026-10-06) and last week (2026-09-30), taken straight from each

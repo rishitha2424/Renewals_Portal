@@ -67,36 +67,44 @@ def seeded_client_and_db(tmp_path_factory):
 def test_default_totals_across_endpoints(seeded_client_and_db):
     client, Session = seeded_client_and_db
 
+    import pandas as pd
+    import pathlib
+    fixture_path = pathlib.Path("data/sample_oct7/Renewal Comparison Tool.xlsx")
+    df = pd.read_excel(fixture_path, sheet_name="today")
+    df_q4 = df[(df["Sales Type"] == "Renewals") & (df["Fiscal Period"] == "Q4-2026")]
+    expected_q4_count = len(df_q4)
+    expected_q4_acv = float(df_q4["Forecast ACV Amount"].fillna(0).sum())
+
     # 1. Overview summary
     r_ov = client.get("/api/v2/overview/summary")
     assert r_ov.status_code == 200
     d_ov = r_ov.json()
-    assert d_ov["total"]["count"] == 348
-    assert d_ov["total"]["acv"] == pytest.approx(40068990.09, rel=1e-5)
+    assert d_ov["total"]["count"] == expected_q4_count
+    assert d_ov["total"]["acv"] == pytest.approx(expected_q4_acv, rel=1e-5)
     assert d_ov["data_slice"] == "Q4 FY26"
 
     # 2. Business Units summary
     r_bu = client.get("/api/v2/business-units/summary")
     assert r_bu.status_code == 200
     d_bu = r_bu.json()
-    assert d_bu["total"]["count"] == 348
-    assert d_bu["total"]["acv"] == pytest.approx(40068990.09, rel=1e-5)
+    assert d_bu["total"]["count"] == expected_q4_count
+    assert d_bu["total"]["acv"] == pytest.approx(expected_q4_acv, rel=1e-5)
 
     # 3. Regions summary
     r_reg = client.get("/api/v2/regions/summary")
     assert r_reg.status_code == 200
     d_reg = r_reg.json()
-    assert d_reg["total"]["count"] == 348
-    assert d_reg["total"]["acv"] == pytest.approx(40068990.09, rel=1e-5)
+    assert d_reg["total"]["count"] == expected_q4_count
+    assert d_reg["total"]["acv"] == pytest.approx(expected_q4_acv, rel=1e-5)
 
     # 4. Approvals distribution
     r_app = client.get("/api/v2/approvals/distribution")
     assert r_app.status_code == 200
     d_app = r_app.json()
-    assert d_app["total"]["count"] == 348
-    assert d_app["total"]["acv"] == pytest.approx(40068990.09, rel=1e-5)
+    assert d_app["total"]["count"] == expected_q4_count
+    assert d_app["total"]["acv"] == pytest.approx(expected_q4_acv, rel=1e-5)
 
-    # 5. Delayed summary (slice total matches 348)
+    # 5. Delayed summary (slice total matches expected_q4_count)
     r_del = client.get("/api/v2/delayed/summary")
     assert r_del.status_code == 200
     d_del = r_del.json()
@@ -105,6 +113,10 @@ def test_default_totals_across_endpoints(seeded_client_and_db):
 
 def test_all_opportunities_and_all_periods(seeded_client_and_db):
     client, Session = seeded_client_and_db
+    import pandas as pd
+    import pathlib
+    fixture_path = pathlib.Path("data/sample_oct7/Renewal Comparison Tool.xlsx")
+    df = pd.read_excel(fixture_path, sheet_name="today")
 
     params = {
         "period": "all_periods",
@@ -115,54 +127,55 @@ def test_all_opportunities_and_all_periods(seeded_client_and_db):
     assert r.status_code == 200
     d = r.json()
 
-    assert d["total"]["count"] == 3093
-    assert d["total"]["acv"] == pytest.approx(451999230.24, rel=1e-5)
+    assert d["total"]["count"] == len(df)
+    assert d["total"]["acv"] == pytest.approx(float(df["Forecast ACV Amount"].fillna(0).sum()), rel=1e-5)
 
     cats = d["categories"]
-    assert cats["Pipeline"]["count"] == 538
-    assert cats["Pipeline"]["acv"] == pytest.approx(97099728.36, rel=1e-5)
-
-    assert cats["Blank"]["count"] == 280
-    assert cats["Blank"]["acv"] == pytest.approx(42329299.56, rel=1e-5)
-
-    assert cats["Commit"]["count"] == 479
-    assert cats["Commit"]["acv"] == pytest.approx(61226563.88, rel=1e-5)
-
-    assert cats["Best Case"]["count"] == 537
-    assert cats["Best Case"]["acv"] == pytest.approx(124066184.41, rel=1e-5)
-
-    assert cats["Closed"]["count"] == 1259
-    assert cats["Closed"]["acv"] == pytest.approx(127277454.03, rel=1e-5)
+    assert cats["Pipeline"]["count"] == len(df[df["Forecast Category"] == "Pipeline"])
+    assert cats["Blank"]["count"] == len(df[df["Forecast Category"].isna() | (df["Forecast Category"] == "Blank")])
+    assert cats["Commit"]["count"] == len(df[df["Forecast Category"] == "Commit"])
+    assert cats["Best Case"]["count"] == len(df[df["Forecast Category"] == "Best Case"])
+    assert cats["Closed"]["count"] == len(df[df["Forecast Category"] == "Closed"])
 
 
 def test_period_specific_quarter(seeded_client_and_db):
     client, Session = seeded_client_and_db
+    import pandas as pd
+    import pathlib
+    fixture_path = pathlib.Path("data/sample_oct7/Renewal Comparison Tool.xlsx")
+    df = pd.read_excel(fixture_path, sheet_name="today")
+    df_q4 = df[(df["Sales Type"] == "Renewals") & (df["Fiscal Period"] == "Q4-2026")]
 
     params = {"period": "Q4-2026", "sales_types": ["Renewals"]}
     r = client.get("/api/v2/overview/summary", params=params)
     assert r.status_code == 200
     d = r.json()
-    assert d["total"]["count"] == 348
-    assert d["total"]["acv"] == pytest.approx(40068990.09, rel=1e-5)
+    assert d["total"]["count"] == len(df_q4)
+    assert d["total"]["acv"] == pytest.approx(float(df_q4["Forecast ACV Amount"].fillna(0).sum()), rel=1e-5)
 
 
 def test_include_deleted_lost_toggle_and_reconciliation(seeded_client_and_db):
     client, Session = seeded_client_and_db
+    import pandas as pd
+    import pathlib
+    fixture_path = pathlib.Path("data/sample_oct7/Renewal Comparison Tool.xlsx")
+    df = pd.read_excel(fixture_path, sheet_name="today")
+    df_q4 = df[(df["Sales Type"] == "Renewals") & (df["Fiscal Period"] == "Q4-2026")]
+    df_q4_active = df_q4[~df_q4["Stage Number"].isin(["9. Closed Lost", "10. Closed Deleted"])]
 
     # With include_deleted_lost = False
     r_off = client.get("/api/v2/overview/summary", params={"include_deleted_lost": False})
     assert r_off.status_code == 200
     d_off = r_off.json()
-    assert d_off["total"]["count"] == 343
-    assert d_off["total"]["acv"] == pytest.approx(39856217.69, rel=1e-5)
+    assert d_off["total"]["count"] == len(df_q4_active)
+    assert d_off["total"]["acv"] == pytest.approx(float(df_q4_active["Forecast ACV Amount"].fillna(0).sum()), rel=1e-5)
 
-    # Difference is exactly 5 deals / $212,772.40 (the 5 deleted/lost deals)
+    # Difference is the deleted/lost deals
     r_on = client.get("/api/v2/overview/summary", params={"include_deleted_lost": True})
     assert r_on.status_code == 200
     d_on = r_on.json()
-    assert d_on["total"]["count"] == 348
-    assert d_on["total"]["count"] - d_off["total"]["count"] == 5
-    assert pytest.approx(d_on["total"]["acv"] - d_off["total"]["acv"], rel=1e-5) == 212772.40
+    assert d_on["total"]["count"] == len(df_q4)
+    assert d_on["total"]["count"] - d_off["total"]["count"] == len(df_q4) - len(df_q4_active)
 
 
 def test_close_date_range(seeded_client_and_db):

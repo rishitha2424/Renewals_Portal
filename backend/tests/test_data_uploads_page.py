@@ -102,12 +102,16 @@ def test_history_numbers_equal_db_values(client_and_db, seeded_oct7):
     history = res.json()
     assert len(history) > 0
 
+    import pandas as pd
+    df_fix = pd.read_excel("data/sample_oct7/Renewal Comparison Tool.xlsx", sheet_name="today")
+    df_q4 = df_fix[(df_fix["Sales Type"] == "Renewals") & (df_fix["Fiscal Period"] == "Q4-2026")]
+
     oct7_snap = next((h for h in history if h["snapshot_date"] == "2026-10-07"), None)
     assert oct7_snap is not None, f"Oct 7 snapshot not found in history: {[h['snapshot_date'] for h in history]}"
 
     assert oct7_snap["q_slice_label"] in ("Q4 FY26", "Q4-2026")
-    assert oct7_snap["q_slice_deals"] == 348
-    assert abs(oct7_snap["q_slice_acv"] - 40068990.09) < 0.01
+    assert oct7_snap["q_slice_deals"] == len(df_q4)
+    assert abs(oct7_snap["q_slice_acv"] - float(df_q4["Forecast ACV Amount"].fillna(0).sum())) < 0.01
 
     # Check sha256 and files metadata
     assert "files" in oct7_snap
@@ -121,13 +125,17 @@ def test_snapshots_list_also_reports_q_slice_deals_and_acv(client_and_db, seeded
     Assert GET /api/snapshots also returns q_slice_deals and q_slice_acv matching DB.
     """
     client, _ = client_and_db
+    import pandas as pd
+    df_fix = pd.read_excel("data/sample_oct7/Renewal Comparison Tool.xlsx", sheet_name="today")
+    df_q4 = df_fix[(df_fix["Sales Type"] == "Renewals") & (df_fix["Fiscal Period"] == "Q4-2026")]
+
     res = client.get("/api/snapshots")
     assert res.status_code == 200
     snaps = res.json()
     oct7_snap = next((s for s in snaps if s["snapshot_date"] == "2026-10-07"), None)
     assert oct7_snap is not None
-    assert oct7_snap["q_slice_deals"] == 348
-    assert abs(oct7_snap["q_slice_acv"] - 40068990.09) < 0.01
+    assert oct7_snap["q_slice_deals"] == len(df_q4)
+    assert abs(oct7_snap["q_slice_acv"] - float(df_q4["Forecast ACV Amount"].fillna(0).sum())) < 0.01
 
 
 def test_write_routes_reject_non_admin_requests(client_and_db):
