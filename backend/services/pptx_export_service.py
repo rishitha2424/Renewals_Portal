@@ -824,17 +824,32 @@ class PptxExportService:
                         top10_bu_sum = sum(float(o.forecast_acv_amount or 0) for o in top10_bu)
                         setc(tb.cell(11, 4), money(top10_bu_sum))
 
-        # Final sweep to ensure dynamic labels: replace hardcoded "Expiry Q3" with current quarter
-        if scope == "renewals":
-            for s in prs.slides:
-                for sp in s.shapes:
-                    if sp.has_text_frame:
-                        for p in sp.text_frame.paragraphs:
-                            if "Expiry Q3" in p.text:
-                                p.text = p.text.replace("Expiry Q3", f"Expiry {q_short}")
-                            for r in p.runs:
-                                if "Expiry Q3" in r.text:
-                                    r.text = r.text.replace("Expiry Q3", f"Expiry {q_short}")
+        # Final sweep to ensure dynamic labels: replace hardcoded "Expiry Q3", template placeholders, and dates
+        replacements = [
+            ("Expiry Q3", f"Expiry {q_short}"),
+            ("Expiry {quarter}", f"Expiry {q_short}"),
+            ("{quarter}", q_short),
+            ("05-Oct-2026", fmt_date),
+        ]
+
+        def _clean_text_frame(tf):
+            for p in tf.paragraphs:
+                for src_str, tgt_str in replacements:
+                    if src_str in p.text:
+                        p.text = p.text.replace(src_str, tgt_str)
+                for r in p.runs:
+                    for src_str, tgt_str in replacements:
+                        if src_str in r.text:
+                            r.text = r.text.replace(src_str, tgt_str)
+
+        for s in prs.slides:
+            for sp in s.shapes:
+                if sp.has_text_frame:
+                    _clean_text_frame(sp.text_frame)
+                if sp.has_table:
+                    for row in sp.table.rows:
+                        for cell in row.cells:
+                            _clean_text_frame(cell.text_frame)
 
         output = io.BytesIO()
         prs.save(output)
