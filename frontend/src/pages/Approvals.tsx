@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { getApprovalsDistribution, getApprovalsDeals } from '@/api/client'
-import { formatCurrency, formatNumber, acvM, formatDate } from '@/utils/format'
+import { formatCurrency, formatNumber, acvM, formatDate, getApprovalStatusLabel, getForecastCategoryLabel } from '@/utils/format'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
 import { PageErrorState } from '@/components/ui/PageErrorState'
@@ -45,40 +45,69 @@ function formatDelta(val: number, isCount: boolean) {
 function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
   const isCount = metricMode === 'Count'
   const isBoth = metricMode === 'Both'
-  const val = isCount ? data.count : data.acv
-  const valStr = isCount ? `${formatNumber(val)} deals` : formatCurrency(val)
-  
+  const isAmount = metricMode === 'Amount'
+
   const dYes = data.delta_yesterday
   const dLast = data.delta_lastweek
   const dCust = data.delta_custom
 
   const renderDeltas = () => {
     if (dCust && (dCust.count || dCust.acv)) {
-      return <span>{compareDate ? compareDate.substring(5,10) : 'vs'} {formatDelta(dCust.count, true)} · {formatDelta(dCust.acv, false)}</span>
+      const cmpStr = compareDate ? compareDate.substring(5,10) : 'vs'
+      const deltaPart = isCount
+        ? formatDelta(dCust.count, true)
+        : isAmount
+        ? formatDelta(dCust.acv, false)
+        : <>{formatDelta(dCust.count, true)} · {formatDelta(dCust.acv, false)}</>
+      return <span>{cmpStr} {deltaPart}</span>
     }
     return (
       <span className="flex flex-col gap-0.5 mt-1 text-[10px] text-[var(--text-muted)] font-medium">
-        <span>vs {data.yesterday_date ? data.yesterday_date.substring(5,10) : 'Yesterday'} {formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</span>
-        <span>vs {data.lastweek_date ? data.lastweek_date.substring(5,10) : 'Last Week'} {formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</span>
+        <span>
+          vs {data.yesterday_date ? data.yesterday_date.substring(5,10) : 'Yesterday'}{' '}
+          {isCount ? formatDelta(dYes?.count, true) : isAmount ? formatDelta(dYes?.acv, false) : <>{formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</>}
+        </span>
+        <span>
+          vs {data.lastweek_date ? data.lastweek_date.substring(5,10) : 'Last Week'}{' '}
+          {isCount ? formatDelta(dLast?.count, true) : isAmount ? formatDelta(dLast?.acv, false) : <>{formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</>}
+        </span>
       </span>
     )
   }
 
   return (
     <div className="card px-4 py-3 flex items-center justify-between border border-[var(--border)] transition-transform hover:scale-[1.02]">
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-xl ${label === 'Approved' ? 'bg-emerald-500/10 text-emerald-500' : label === 'Pending' ? 'bg-amber-500/10 text-amber-500' : label === 'Blank' || label === 'Not submitted' ? 'bg-slate-500/10 text-slate-500' : 'bg-[var(--primary)]/10 text-[var(--primary)]'}`}>
+      <div className="flex items-center gap-3 w-full">
+        <div className={`p-2 rounded-xl flex-shrink-0 ${
+          label === 'Approved'
+            ? 'bg-emerald-500/10 text-emerald-500'
+            : label === 'Pending' || label === 'Pending Approval'
+            ? 'bg-amber-500/10 text-amber-500'
+            : label === 'Blank' || label === 'Not submitted'
+            ? 'bg-slate-500/10 text-slate-500'
+            : 'bg-[var(--primary)]/10 text-[var(--primary)]'
+        }`}>
           <Icon className="w-5 h-5" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
           {isBoth ? (
-            <div className="flex flex-col">
-              <span className="text-base font-black text-[var(--text-primary)] leading-tight">{formatCurrency(data.acv)}</span>
-              <span className="text-base font-black text-[var(--text-primary)] leading-tight">{formatNumber(data.count)} deals</span>
+            <div className="flex flex-col mt-0.5">
+              <span className="text-lg font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums" title={formatCurrency(data.acv)}>
+                {acvM(data.acv)}
+              </span>
+              <span className="text-lg font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums">
+                {formatNumber(data.count)} deals
+              </span>
+            </div>
+          ) : isAmount ? (
+            <div className="text-xl font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums" title={formatCurrency(data.acv)}>
+              {acvM(data.acv)}
             </div>
           ) : (
-            <div className="text-xl font-black text-[var(--text-primary)] leading-tight">{valStr}</div>
+            <div className="text-xl font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums">
+              {formatNumber(data.count)} deals
+            </div>
           )}
           <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5 font-medium">{renderDeltas()}</div>
         </div>
@@ -281,7 +310,7 @@ export default function Approvals() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}`}>
-                      {stage.stage}
+                      {getApprovalStatusLabel(stage.stage)}
                     </span>
                     <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 group-hover:text-[var(--primary)] font-semibold">
                       <span>View deals</span>
@@ -289,32 +318,56 @@ export default function Approvals() {
                     </span>
                   </div>
 
-                  <div className="mt-3 flex items-baseline justify-between">
-                    <div className="text-2xl font-black text-[var(--text-primary)] font-mono tabular-nums">
-                      {metricMode === 'Count' ? formatNumber(stage.count) : formatCurrency(stage.acv)}
+                  {metricMode === 'Both' ? (
+                    <div className="mt-3 space-y-1.5 pt-2 border-t border-[var(--border)]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">ACV</span>
+                        <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums" title={formatCurrency(stage.acv)}>
+                          {acvM(stage.acv)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Deals</span>
+                        <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums">
+                          {formatNumber(stage.count)} deals
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-xs font-bold text-[var(--text-secondary)] font-mono">
-                      {metricMode === 'Count' ? formatCurrency(stage.acv) : `${formatNumber(stage.count)} deals`}
+                  ) : metricMode === 'Amount' ? (
+                    <div className="mt-3">
+                      <div className="text-2xl font-black text-[var(--text-primary)] font-mono tabular-nums" title={formatCurrency(stage.acv)}>
+                        {acvM(stage.acv)}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-3">
+                      <div className="text-2xl font-black text-[var(--text-primary)] font-mono tabular-nums">
+                        {formatNumber(stage.count)} deals
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-medium">
-                      <span>% of Period ACV</span>
-                      <span className="font-bold text-[var(--text-primary)] font-mono tabular-nums">{stage.pct_acv}%</span>
-                    </div>
+                    {metricMode !== 'Count' && (
+                      <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-medium">
+                        <span>% of Period ACV</span>
+                        <span className="font-bold text-[var(--text-primary)] font-mono tabular-nums">{stage.pct_acv}%</span>
+                      </div>
+                    )}
                     <div className="w-full bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           stage.status_key === 'Approved' ? 'bg-emerald-500' : stage.status_key === 'Pending Approval' ? 'bg-amber-500' : 'bg-slate-400'
                         }`}
-                        style={{ width: `${Math.min(100, stage.pct_acv)}%` }}
+                        style={{ width: `${Math.min(100, metricMode === 'Count' ? stage.pct_count : stage.pct_acv)}%` }}
                       />
                     </div>
-                    <div className="flex justify-between text-[10px] text-[var(--text-muted)] pt-0.5">
-                      <span>% of Deals</span>
-                      <span className="font-semibold">{stage.pct_count}%</span>
-                    </div>
+                    {metricMode !== 'Amount' && (
+                      <div className="flex justify-between text-[10px] text-[var(--text-muted)] pt-0.5">
+                        <span>% of Deals</span>
+                        <span className="font-semibold">{stage.pct_count}%</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
@@ -347,34 +400,107 @@ export default function Approvals() {
                       strokeDasharray={strokeDasharray}
                       strokeDashoffset={strokeDashoffset}
                       className="transition-all hover:opacity-80"
-                      onClick={(e) => { e.stopPropagation(); handleCellClick({ approval_status: seg.status }, seg.status) }}
-                    />
+                      onClick={(e) => { e.stopPropagation(); handleCellClick({ approval_status: seg.status }, `${getApprovalStatusLabel(seg.status)} Deals`) }}
+                    >
+                      <title>
+                        {metricMode === 'Both'
+                          ? `${getApprovalStatusLabel(seg.status)}: ${formatNumber(seg.count)} deals · ${formatCurrency(seg.acv)} (${seg.pct.toFixed(1)}%)`
+                          : metricMode === 'Amount'
+                          ? `${getApprovalStatusLabel(seg.status)}: ${formatCurrency(seg.acv)} (${seg.pct.toFixed(1)}%)`
+                          : `${getApprovalStatusLabel(seg.status)}: ${formatNumber(seg.count)} deals (${((seg.count / (total.count || 1)) * 100).toFixed(1)}%)`
+                        }
+                      </title>
+                    </circle>
                   )
                 })}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{metricMode === 'Count' ? 'Deals' : 'ACV'}</span>
-                <span className="text-xl font-black text-[var(--text-primary)] tabular-nums">{metricMode === 'Count' ? formatNumber(total?.count ?? 0) : acvM(total?.acv ?? 0)}</span>
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-2">
+                {metricMode === 'Both' ? (
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total</span>
+                    <span className="text-base font-black text-[var(--text-primary)] font-mono tabular-nums leading-tight" title={formatCurrency(total?.acv ?? 0)}>
+                      {acvM(total?.acv ?? 0)}
+                    </span>
+                    <span className="text-xs font-black text-[var(--text-primary)] font-mono tabular-nums leading-tight">
+                      {formatNumber(total?.count ?? 0)} deals
+                    </span>
+                  </>
+                ) : metricMode === 'Amount' ? (
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">ACV</span>
+                    <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums" title={formatCurrency(total?.acv ?? 0)}>
+                      {acvM(total?.acv ?? 0)}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Deals</span>
+                    <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums">
+                      {formatNumber(total?.count ?? 0)} deals
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             
             {/* Legend */}
             <div className="flex-1 w-full space-y-2">
-              {donutSegments.map((seg: any) => (
-                <div key={seg.status} className="flex flex-col bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: seg.status }, seg.status)}>
-                  <div className="flex items-center justify-between font-bold text-[var(--text-primary)] text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: seg.color }}></div>
-                      <span>{seg.status === 'Blank' ? 'Not submitted' : seg.status}</span>
+              {donutSegments.map((seg: any) => {
+                const displayStatus = getApprovalStatusLabel(seg.status)
+                const pctOfDeals = total.count > 0 ? ((seg.count / total.count) * 100).toFixed(0) : '0'
+                const pctOfAcv = seg.pct.toFixed(0)
+
+                return (
+                  <div
+                    key={seg.status}
+                    className="flex flex-col bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
+                    onClick={() => handleCellClick({ approval_status: seg.status }, `${displayStatus} Deals`)}
+                  >
+                    <div className="flex items-center justify-between font-bold text-[var(--text-primary)] text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: seg.color }}></div>
+                        <span>{displayStatus}</span>
+                      </div>
+                      {metricMode === 'Both' ? (
+                        <div className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
+                          <span className="font-bold text-[var(--text-primary)]">{formatNumber(seg.count)} deals</span>
+                          <span className="text-[var(--text-muted)]">·</span>
+                          <span className="font-bold text-[var(--text-primary)]" title={formatCurrency(seg.acv)}>{acvM(seg.acv)}</span>
+                          <span className="text-[10px] text-[var(--text-muted)] font-sans">({pctOfAcv}%)</span>
+                        </div>
+                      ) : metricMode === 'Amount' ? (
+                        <span className="font-mono text-xs font-bold text-[var(--text-primary)]" title={formatCurrency(seg.acv)}>
+                          {acvM(seg.acv)} ({pctOfAcv}%)
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs font-bold text-[var(--text-primary)]">
+                          {formatNumber(seg.count)} deals ({pctOfDeals}%)
+                        </span>
+                      )}
                     </div>
-                    <span>{metricMode === 'Count' ? formatNumber(seg.count) : acvM(seg.acv)} ({seg.pct.toFixed(0)}%)</span>
+                    <div className="flex justify-between items-center text-[9px] text-[var(--text-muted)] mt-1 font-medium pl-4">
+                      <span>
+                        vs {yesterday_date ? yesterday_date.substring(5,10) : '1d'}{' '}
+                        {metricMode === 'Count'
+                          ? formatDelta(seg.delta_yesterday?.count, true)
+                          : metricMode === 'Amount'
+                          ? formatDelta(seg.delta_yesterday?.acv, false)
+                          : <>{formatDelta(seg.delta_yesterday?.count, true)} · {formatDelta(seg.delta_yesterday?.acv, false)}</>
+                        }
+                      </span>
+                      <span>
+                        vs {lastweek_date ? lastweek_date.substring(5,10) : '7d'}{' '}
+                        {metricMode === 'Count'
+                          ? formatDelta(seg.delta_lastweek?.count, true)
+                          : metricMode === 'Amount'
+                          ? formatDelta(seg.delta_lastweek?.acv, false)
+                          : <>{formatDelta(seg.delta_lastweek?.count, true)} · {formatDelta(seg.delta_lastweek?.acv, false)}</>
+                        }
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-[9px] text-[var(--text-muted)] mt-1 font-medium pl-4">
-                    <span>vs {yesterday_date ? yesterday_date.substring(5,10) : '1d'} {formatDelta(metricMode === 'Count' ? seg.delta_yesterday?.count : seg.delta_yesterday?.acv, metricMode === 'Count')}</span>
-                    <span>vs {lastweek_date ? lastweek_date.substring(5,10) : '7d'} {formatDelta(metricMode === 'Count' ? seg.delta_lastweek?.count : seg.delta_lastweek?.acv, metricMode === 'Count')}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </Card>
@@ -421,44 +547,195 @@ export default function Approvals() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Large Deals (≥ {deal_size_split.threshold_label})</th>
-                  <th className="py-2.5 px-3 text-right">Small Deals (&lt; {deal_size_split.threshold_label})</th>
-                  <th className="py-2.5 px-3 text-right">Total Status ACV</th>
-                </tr>
+                {metricMode === 'Both' ? (
+                  <>
+                    <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="py-2.5 px-3" rowSpan={2}>Status</th>
+                      <th className="py-1.5 px-3 text-center border-l border-[var(--border)]" colSpan={3}>
+                        Large Deals (≥ {deal_size_split.threshold_label})
+                      </th>
+                      <th className="py-1.5 px-3 text-center border-l border-[var(--border)]" colSpan={3}>
+                        Small Deals (&lt; {deal_size_split.threshold_label})
+                      </th>
+                      <th className="py-1.5 px-3 text-center border-l border-[var(--border)]" colSpan={3}>
+                        Total Status
+                      </th>
+                    </tr>
+                    <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <th className="py-1.5 px-2.5 text-right border-l border-[var(--border)]">Deals</th>
+                      <th className="py-1.5 px-2.5 text-right">ACV</th>
+                      <th className="py-1.5 px-2.5 text-right">% Share</th>
+                      <th className="py-1.5 px-2.5 text-right border-l border-[var(--border)]">Deals</th>
+                      <th className="py-1.5 px-2.5 text-right">ACV</th>
+                      <th className="py-1.5 px-2.5 text-right">% Share</th>
+                      <th className="py-1.5 px-2.5 text-right border-l border-[var(--border)]">Deals</th>
+                      <th className="py-1.5 px-2.5 text-right">ACV</th>
+                      <th className="py-1.5 px-2.5 text-right">% of Total</th>
+                    </tr>
+                  </>
+                ) : metricMode === 'Amount' ? (
+                  <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Large ACV (≥ {deal_size_split.threshold_label})</th>
+                    <th className="py-2.5 px-3 text-right">Large % Share</th>
+                    <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Small ACV (&lt; {deal_size_split.threshold_label})</th>
+                    <th className="py-2.5 px-3 text-right">Small % Share</th>
+                    <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Total ACV</th>
+                    <th className="py-2.5 px-3 text-right">% of Total</th>
+                  </tr>
+                ) : (
+                  <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Large Deals (≥ {deal_size_split.threshold_label})</th>
+                    <th className="py-2.5 px-3 text-right">Large % Share</th>
+                    <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Small Deals (&lt; {deal_size_split.threshold_label})</th>
+                    <th className="py-2.5 px-3 text-right">Small % Share</th>
+                    <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Total Deals</th>
+                    <th className="py-2.5 px-3 text-right">% of Total</th>
+                  </tr>
+                )}
               </thead>
               <tbody className="divide-y divide-[var(--border)] font-mono">
                 {deal_size_split.statuses.map((st: any) => {
                   const isTotal = st.status === 'Total'
+                  const displayStatus = getApprovalStatusLabel(st.status)
+                  const largeCountPct = st.total.count > 0 ? ((st.large.count / st.total.count) * 100).toFixed(1) : '0.0'
+                  const smallCountPct = st.total.count > 0 ? ((st.small.count / st.total.count) * 100).toFixed(1) : '0.0'
+                  const totalCountPct = total.count > 0 ? ((st.total.count / total.count) * 100).toFixed(1) : '0.0'
+                  const totalAcvPct = total.acv > 0 ? ((st.total.acv / total.acv) * 100).toFixed(1) : '0.0'
+
+                  if (metricMode === 'Both') {
+                    return (
+                      <tr
+                        key={st.status}
+                        className={`hover:bg-[var(--bg-secondary)]/70 transition-colors ${isTotal ? 'font-black bg-[var(--bg-secondary)]/30' : ''}`}
+                      >
+                        <td className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)]">
+                          {displayStatus}
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, min_acv: deal_size_split.threshold }, `${displayStatus} Large Deals (≥ ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatNumber(st.large.count)}
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right cursor-pointer hover:text-[var(--primary)] font-bold text-emerald-600 dark:text-emerald-400 transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, min_acv: deal_size_split.threshold }, `${displayStatus} Large Deals (≥ ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatCurrency(st.large.acv)}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-[var(--text-muted)] font-sans">
+                          {st.large.pct_acv}%
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, max_acv: deal_size_split.threshold }, `${displayStatus} Small Deals (< ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatNumber(st.small.count)}
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, max_acv: deal_size_split.threshold }, `${displayStatus} Small Deals (< ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatCurrency(st.small.acv)}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-[var(--text-muted)] font-sans">
+                          {st.small.pct_acv}%
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined }, `${displayStatus} All Deals`)}
+                        >
+                          {formatNumber(st.total.count)}
+                        </td>
+                        <td
+                          className="py-2 px-2.5 text-right cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined }, `${displayStatus} All Deals`)}
+                        >
+                          {formatCurrency(st.total.acv)}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-[var(--text-muted)] font-sans">
+                          {totalAcvPct}%
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  if (metricMode === 'Amount') {
+                    return (
+                      <tr
+                        key={st.status}
+                        className={`hover:bg-[var(--bg-secondary)]/70 transition-colors ${isTotal ? 'font-black bg-[var(--bg-secondary)]/30' : ''}`}
+                      >
+                        <td className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)]">
+                          {displayStatus}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] font-bold text-emerald-600 dark:text-emerald-400 transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, min_acv: deal_size_split.threshold }, `${displayStatus} Large Deals (≥ ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatCurrency(st.large.acv)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                          {st.large.pct_acv}%
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined, max_acv: deal_size_split.threshold }, `${displayStatus} Small Deals (< ${deal_size_split.threshold_label})`)}
+                        >
+                          {formatCurrency(st.small.acv)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                          {st.small.pct_acv}%
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                          onClick={() => handleCellClick({ approval_status: st.status_key || undefined }, `${displayStatus} All Deals`)}
+                        >
+                          {formatCurrency(st.total.acv)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                          {totalAcvPct}%
+                        </td>
+                      </tr>
+                    )
+                  }
+
                   return (
                     <tr
                       key={st.status}
                       className={`hover:bg-[var(--bg-secondary)]/70 transition-colors ${isTotal ? 'font-black bg-[var(--bg-secondary)]/30' : ''}`}
                     >
                       <td className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)]">
-                        {st.status}
+                        {displayStatus}
                       </td>
                       <td
-                        className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
-                        onClick={() => handleCellClick({ approval_status: st.status_key, min_acv: deal_size_split.threshold }, `${st.status} (≥ ${deal_size_split.threshold_label})`)}
+                        className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                        onClick={() => handleCellClick({ approval_status: st.status_key || undefined, min_acv: deal_size_split.threshold }, `${displayStatus} Large Deals (≥ ${deal_size_split.threshold_label})`)}
                       >
-                        <span className="font-bold text-[var(--text-primary)]">{formatCurrency(st.large.acv)}</span>
-                        <span className="text-[10px] text-[var(--text-muted)] ml-1.5">({st.large.count} deals · {st.large.pct_acv}%)</span>
+                        {formatNumber(st.large.count)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                        {largeCountPct}%
                       </td>
                       <td
-                        className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
-                        onClick={() => handleCellClick({ approval_status: st.status_key, max_acv: deal_size_split.threshold }, `${st.status} (< ${deal_size_split.threshold_label})`)}
+                        className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                        onClick={() => handleCellClick({ approval_status: st.status_key || undefined, max_acv: deal_size_split.threshold }, `${displayStatus} Small Deals (< ${deal_size_split.threshold_label})`)}
                       >
-                        <span className="font-bold text-[var(--text-primary)]">{formatCurrency(st.small.acv)}</span>
-                        <span className="text-[10px] text-[var(--text-muted)] ml-1.5">({st.small.count} deals · {st.small.pct_acv}%)</span>
+                        {formatNumber(st.small.count)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                        {smallCountPct}%
                       </td>
                       <td
-                        className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
-                        onClick={() => handleCellClick({ approval_status: st.status_key }, `${st.status} Deals`)}
+                        className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] font-bold text-[var(--text-primary)] transition-colors"
+                        onClick={() => handleCellClick({ approval_status: st.status_key || undefined }, `${displayStatus} All Deals`)}
                       >
-                        <span className="font-bold text-[var(--text-primary)]">{formatCurrency(st.total.acv)}</span>
-                        <span className="text-[10px] text-[var(--text-muted)] ml-1.5 font-normal">({st.total.count} deals)</span>
+                        {formatNumber(st.total.count)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-[var(--text-muted)] font-sans">
+                        {totalCountPct}%
                       </td>
                     </tr>
                   )
@@ -480,7 +757,35 @@ export default function Approvals() {
               </h2>
             </div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Portfolio Average: <span className="font-bold text-emerald-600 dark:text-emerald-400">{approval_coverage.portfolio_average_pct}% approved</span> ({formatCurrency(approval_coverage.portfolio_approved_acv)} of {formatCurrency(approval_coverage.portfolio_total_acv)})
+              {metricMode === 'Both' ? (
+                <>
+                  Portfolio Average:{' '}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {approval_coverage.portfolio_average_pct}% by ACV
+                  </span>{' '}
+                  ({formatCurrency(approval_coverage.portfolio_approved_acv)} of {formatCurrency(approval_coverage.portfolio_total_acv)}) ·{' '}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {approval_coverage.portfolio_average_count_pct}% by Deals
+                  </span>{' '}
+                  ({formatNumber(getStatus('Approved').count)} of {formatNumber(total.count)} deals)
+                </>
+              ) : metricMode === 'Amount' ? (
+                <>
+                  Portfolio Average:{' '}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {approval_coverage.portfolio_average_pct}% approved
+                  </span>{' '}
+                  ({formatCurrency(approval_coverage.portfolio_approved_acv)} of {formatCurrency(approval_coverage.portfolio_total_acv)})
+                </>
+              ) : (
+                <>
+                  Portfolio Average:{' '}
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {approval_coverage.portfolio_average_count_pct}% approved
+                  </span>{' '}
+                  ({formatNumber(getStatus('Approved').count)} of {formatNumber(total.count)} deals)
+                </>
+              )}
             </p>
           </div>
 
@@ -509,14 +814,33 @@ export default function Approvals() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <th className="py-2.5 px-3">{coverageTab === 'category' ? 'Forecast Category' : coverageTab === 'region' ? 'Region' : 'Business Unit'}</th>
-                <th className="py-2.5 px-3 text-right">Approved ACV</th>
-                <th className="py-2.5 px-3 text-right">Total ACV</th>
-                <th className="py-2.5 px-3 text-center">Approval %</th>
-                <th className="py-2.5 px-3 text-right">Gap to Benchmark</th>
-                <th className="py-2.5 px-3 text-right">Approved Deals</th>
-              </tr>
+              {metricMode === 'Both' ? (
+                <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  <th className="py-2.5 px-3">{coverageTab === 'category' ? 'Forecast Category' : coverageTab === 'region' ? 'Region' : 'Business Unit'}</th>
+                  <th className="py-2.5 px-3 text-right">Approved Deals</th>
+                  <th className="py-2.5 px-3 text-right">Approved ACV</th>
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Total Deals</th>
+                  <th className="py-2.5 px-3 text-right">Total ACV</th>
+                  <th className="py-2.5 px-3 text-center border-l border-[var(--border)]">Approval %</th>
+                  <th className="py-2.5 px-3 text-right">Gap to Benchmark</th>
+                </tr>
+              ) : metricMode === 'Amount' ? (
+                <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  <th className="py-2.5 px-3">{coverageTab === 'category' ? 'Forecast Category' : coverageTab === 'region' ? 'Region' : 'Business Unit'}</th>
+                  <th className="py-2.5 px-3 text-right">Approved ACV</th>
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Total ACV</th>
+                  <th className="py-2.5 px-3 text-center border-l border-[var(--border)]">Approval %</th>
+                  <th className="py-2.5 px-3 text-right">Gap to Benchmark</th>
+                </tr>
+              ) : (
+                <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  <th className="py-2.5 px-3">{coverageTab === 'category' ? 'Forecast Category' : coverageTab === 'region' ? 'Region' : 'Business Unit'}</th>
+                  <th className="py-2.5 px-3 text-right">Approved Deals</th>
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border)]">Total Deals</th>
+                  <th className="py-2.5 px-3 text-center border-l border-[var(--border)]">Approval %</th>
+                  <th className="py-2.5 px-3 text-right">Gap to Benchmark</th>
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-[var(--border)] font-mono">
               {(() => {
@@ -528,9 +852,10 @@ export default function Approvals() {
                     : approval_coverage.by_bu
 
                 if (!list || list.length === 0) {
+                  const colCount = metricMode === 'Both' ? 7 : 5
                   return (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-[var(--text-muted)] italic">
+                      <td colSpan={colCount} className="py-6 text-center text-[var(--text-muted)] italic">
                         No coverage data available
                       </td>
                     </tr>
@@ -538,8 +863,16 @@ export default function Approvals() {
                 }
 
                 return list.map((item: any) => {
+                  const displayName = coverageTab === 'category' ? getForecastCategoryLabel(item.name) : item.name
                   const isPositive = item.gap >= 0
                   const gapBadge = isPositive
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+
+                  const dealApprovalPct = item.total_count > 0 ? Number(((item.approved_count / item.total_count) * 100).toFixed(1)) : 0
+                  const countGap = Number((dealApprovalPct - (approval_coverage.portfolio_average_count_pct || 0)).toFixed(1))
+                  const isCountPositive = countGap >= 0
+                  const countGapBadge = isCountPositive
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
 
@@ -550,39 +883,162 @@ export default function Approvals() {
                       ? { sub_region: item.name }
                       : { business_unit_primary: item.name }
 
+                  if (metricMode === 'Both') {
+                    return (
+                      <tr
+                        key={item.name}
+                        className="hover:bg-[var(--bg-secondary)]/70 transition-colors"
+                      >
+                        <td
+                          className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)]"
+                          onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                        >
+                          {displayName}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          {formatNumber(item.approved_count)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          {formatCurrency(item.approved_acv)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                        >
+                          {formatNumber(item.total_count)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                        >
+                          {formatCurrency(item.total_acv)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
+                              <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${Math.min(100, item.coverage_pct)}%` }}
+                              />
+                            </div>
+                            <span className="font-bold text-[var(--text-primary)]">{item.coverage_pct}%</span>
+                          </div>
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${gapBadge}`}>
+                            {item.gap > 0 ? `+${item.gap}%` : `${item.gap}%`}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  if (metricMode === 'Amount') {
+                    return (
+                      <tr
+                        key={item.name}
+                        className="hover:bg-[var(--bg-secondary)]/70 transition-colors"
+                      >
+                        <td
+                          className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)]"
+                          onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                        >
+                          {displayName}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          {formatCurrency(item.approved_acv)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                        >
+                          {formatCurrency(item.total_acv)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
+                              <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${Math.min(100, item.coverage_pct)}%` }}
+                              />
+                            </div>
+                            <span className="font-bold text-[var(--text-primary)]">{item.coverage_pct}%</span>
+                          </div>
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                        >
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${gapBadge}`}>
+                            {item.gap > 0 ? `+${item.gap}%` : `${item.gap}%`}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  }
+
                   return (
                     <tr
                       key={item.name}
-                      className="hover:bg-[var(--bg-secondary)]/70 transition-colors cursor-pointer"
-                      onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${item.name} Approved Deals`)}
+                      className="hover:bg-[var(--bg-secondary)]/70 transition-colors"
                     >
-                      <td className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)]">
-                        {item.name}
+                      <td
+                        className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)]"
+                        onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                      >
+                        {displayName}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(item.approved_acv)}
+                      <td
+                        className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                        onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                      >
+                        {formatNumber(item.approved_count)}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-[var(--text-secondary)]">
-                        {formatCurrency(item.total_acv)}
+                      <td
+                        className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                        onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
+                      >
+                        {formatNumber(item.total_count)}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td
+                        className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                        onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                      >
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
                             <div
                               className="h-full bg-emerald-500 rounded-full"
-                              style={{ width: `${Math.min(100, item.coverage_pct)}%` }}
+                              style={{ width: `${Math.min(100, dealApprovalPct)}%` }}
                             />
                           </div>
-                          <span className="font-bold text-[var(--text-primary)]">{item.coverage_pct}%</span>
+                          <span className="font-bold text-[var(--text-primary)]">{dealApprovalPct}%</span>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${gapBadge}`}>
-                          {item.gap > 0 ? `+${item.gap}%` : `${item.gap}%`}
+                      <td
+                        className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
+                        onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
+                      >
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${countGapBadge}`}>
+                          {countGap > 0 ? `+${countGap}%` : `${countGap}%`}
                         </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right text-[var(--text-muted)]">
-                        <span className="font-bold text-[var(--text-primary)]">{item.approved_count}</span> / {item.total_count}
                       </td>
                     </tr>
                   )
@@ -1012,9 +1468,9 @@ export default function Approvals() {
                <h3 className="font-bold">Not Submitted</h3>
             </div>
             <div className="flex-1 overflow-y-auto max-h-[160px] text-xs space-y-2">
-               <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Blank status...</p>
-               <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: 'Blank', forecast_category: 'Commit' }, 'Not Submitted (Blank Commit)')}>
-                 <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Total Blank Commits</span> <span className="text-rose-600">{acvM(matrix['Blank']?.['Commit']?.acv || 0)}</span></div>
+               <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Not submitted status...</p>
+               <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: 'Blank', forecast_category: 'Commit' }, 'Not Submitted · Commit Deals')}>
+                 <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Total Not Submitted Commits</span> <span className="text-rose-600">{acvM(matrix['Blank']?.['Commit']?.acv || 0)}</span></div>
                  <div className="text-[10px] text-[var(--text-muted)] mt-1">{matrix['Blank']?.['Commit']?.count || 0} deals at risk</div>
                </div>
             </div>
@@ -1025,7 +1481,7 @@ export default function Approvals() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={dealsData?.deals || []}
+          deals={(dealsData?.deals || []).map((d: any) => ({ ...d, owner: d.opportunity_owner || d.owner }))}
           initialFilters={modalFilters}
           onSelectOpp={setSelectedOppId}
           onClose={() => setModalOpen(false)}

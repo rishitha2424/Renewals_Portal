@@ -141,85 +141,89 @@ export default function CompactGrid({
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group">
-                <td 
-                  className="px-3 py-2 font-medium bg-[var(--bg-secondary)] border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors h-[36px]"
-                  onClick={() => onCellClick(r.id, null, `${r.label} Expiry`)}
-                >
-                  {r.label}
-                </td>
-                {activeColumns.map(c => {
-                  const cell = r.cells[c] || { count: 0, acv: 0 }
-                  const val = metricMode === 'Count' ? cell.count : cell.acv
-                  
-                  let bgColor = ''
-                  let cellContent = renderVal(cell.count, cell.acv)
-                  
-                  if (heatMode === 'Value') {
-                    const ratio = maxVal > 0 ? val / maxVal : 0
-                    const intensity = Math.min(ratio * 0.4, 0.4)
-                    if (val > 0) bgColor = `rgba(14, 165, 233, ${intensity})` // pale teal -> deep blue scale
-                  } else {
-                    // Change mode
-                    const dObj = heatMode === 'Yesterday' ? deltas?.yesterday : deltas?.lastweek
-                    const dCell = dObj?.matrix?.[r.id]?.[c] || { count: 0, acv: 0 }
-                    const dVal = metricMode === 'Count' ? dCell.count : dCell.acv
-                    if (dVal !== 0) {
-                      const ratio = maxAbsDelta > 0 ? Math.abs(dVal) / maxAbsDelta : 0
-                      const intensity = Math.min(ratio * 0.5, 0.5)
-                      bgColor = dVal > 0 ? `rgba(16, 185, 129, ${intensity})` : `rgba(239, 68, 68, ${intensity})`
-                      
-                      // Text: delta main, current value small
-                      const sign = dVal > 0 ? '+' : ''
-                      cellContent = (
-                        <div className="flex flex-col items-center leading-tight">
-                          <span className="font-bold text-[var(--text-primary)]">
-                            {sign}{metricMode === 'Count' ? dVal : acvM(dVal)}
-                          </span>
-                          <span className="text-[9px] text-[var(--text-muted)] opacity-80 mt-0.5">
-                            {renderVal(cell.count, cell.acv)}
-                          </span>
-                        </div>
-                      )
-                    } else if (val > 0) {
-                       cellContent = (
-                        <div className="flex flex-col items-center leading-tight">
-                          <span className="font-medium text-[var(--text-muted)] opacity-70">
-                            No change
-                          </span>
-                          <span className="text-[9px] text-[var(--text-muted)] opacity-60 mt-0.5">
-                            {renderVal(cell.count, cell.acv)}
-                          </span>
-                        </div>
-                      )
+            {rows.map(r => {
+              const rowLabel = rowLabelName === 'Status' ? getApprovalStatusLabel(r.label) : r.label
+              return (
+                <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group">
+                  <td 
+                    className="px-3 py-2 font-medium bg-[var(--bg-secondary)] border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors h-[36px]"
+                    onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
+                  >
+                    {rowLabel}
+                  </td>
+                  {activeColumns.map(c => {
+                    const colLabel = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                    const cell = r.cells[c] || { count: 0, acv: 0 }
+                    const val = metricMode === 'Count' ? cell.count : cell.acv
+                    
+                    let bgColor = ''
+                    let cellContent = renderVal(cell.count, cell.acv)
+                    
+                    if (heatMode === 'Value') {
+                      const ratio = maxVal > 0 ? val / maxVal : 0
+                      const intensity = Math.min(ratio * 0.4, 0.4)
+                      if (val > 0) bgColor = `rgba(14, 165, 233, ${intensity})` // pale teal -> deep blue scale
+                    } else {
+                      // Change mode
+                      const dObj = heatMode === 'Yesterday' ? deltas?.yesterday : deltas?.lastweek
+                      const dCell = dObj?.matrix?.[r.id]?.[c] || { count: 0, acv: 0 }
+                      const dVal = metricMode === 'Count' ? dCell.count : dCell.acv
+                      if (dVal !== 0) {
+                        const ratio = maxAbsDelta > 0 ? Math.abs(dVal) / maxAbsDelta : 0
+                        const intensity = Math.min(ratio * 0.5, 0.5)
+                        bgColor = dVal > 0 ? `rgba(16, 185, 129, ${intensity})` : `rgba(239, 68, 68, ${intensity})`
+                        
+                        // Text: delta main, current value small
+                        const sign = dVal > 0 ? '+' : ''
+                        cellContent = (
+                          <div className="flex flex-col items-center leading-tight">
+                            <span className="font-bold text-[var(--text-primary)]">
+                              {sign}{metricMode === 'Count' ? dVal : acvM(dVal)}
+                            </span>
+                            <span className="text-[9px] text-[var(--text-muted)] opacity-80 mt-0.5">
+                              {renderVal(cell.count, cell.acv)}
+                            </span>
+                          </div>
+                        )
+                      } else if (val > 0) {
+                         cellContent = (
+                          <div className="flex flex-col items-center leading-tight">
+                            <span className="font-medium text-[var(--text-muted)] opacity-70">
+                              No change
+                            </span>
+                            <span className="text-[9px] text-[var(--text-muted)] opacity-60 mt-0.5">
+                              {renderVal(cell.count, cell.acv)}
+                            </span>
+                          </div>
+                        )
+                      }
                     }
-                  }
 
-                  return (
-                    <td
-                      key={c}
-                      onClick={() => onCellClick(r.id, c, `${r.label} - ${c}`)}
-                      className="px-3 py-1 text-center cursor-pointer transition-all hover:ring-2 hover:ring-[var(--primary)] hover:z-10 relative text-[var(--text-primary)] h-[36px]"
-                      style={bgColor ? { backgroundColor: bgColor } : {}}
-                    >
-                      {cellContent}
-                    </td>
-                  )
-                })}
-                <td
-                  onClick={() => onCellClick(r.id, null, `${r.label} Total`)}
-                  className="px-3 py-1 text-center cursor-pointer bg-[var(--bg-secondary)] border-l border-[var(--border)] hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
-                >
-                  <div>{renderVal(r.total?.count || 0, r.total?.acv || 0)}</div>
-                  {renderDeltas({
-                    yesterday: deltas?.yesterday?.quarters?.[r.id] || deltas?.yesterday?.rows?.[r.id],
-                    lastweek: deltas?.lastweek?.quarters?.[r.id] || deltas?.lastweek?.rows?.[r.id],
-                    custom: deltas?.custom?.quarters?.[r.id] || deltas?.custom?.rows?.[r.id]
+                    return (
+                      <td
+                        key={c}
+                        onClick={() => onCellClick(r.id, c, `${rowLabel} · ${colLabel} Deals`)}
+                        className="px-3 py-1 text-center cursor-pointer transition-all hover:ring-2 hover:ring-[var(--primary)] hover:z-10 relative text-[var(--text-primary)] h-[36px]"
+                        style={bgColor ? { backgroundColor: bgColor } : {}}
+                      >
+                        {cellContent}
+                      </td>
+                    )
                   })}
-                </td>
-              </tr>
-            ))}
+                  <td
+                    onClick={() => onCellClick(r.id, null, `${rowLabel} Total`)}
+                    className="px-3 py-1 text-center cursor-pointer bg-[var(--bg-secondary)] border-l border-[var(--border)] hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
+                  >
+                    <div>{renderVal(r.total?.count || 0, r.total?.acv || 0)}</div>
+                    {renderDeltas({
+                      yesterday: deltas?.yesterday?.quarters?.[r.id] || deltas?.yesterday?.rows?.[r.id],
+                      lastweek: deltas?.lastweek?.quarters?.[r.id] || deltas?.lastweek?.rows?.[r.id],
+                      custom: deltas?.custom?.quarters?.[r.id] || deltas?.custom?.rows?.[r.id]
+                    })}
+                  </td>
+                </tr>
+              )
+            })}
             <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-secondary)]">
               <td 
                 className="px-3 py-2 font-semibold border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] h-[36px]"
@@ -227,20 +231,23 @@ export default function CompactGrid({
               >
                 TOTAL
               </td>
-              {activeColumns.map(c => (
-                <td
-                  key={c}
-                  onClick={() => onCellClick(null, c, `Total - ${c}`)}
-                  className="px-3 py-1 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
-                >
-                  <div>{renderVal(totals.category[c]?.count || 0, totals.category[c]?.acv || 0)}</div>
-                  {renderDeltas({
-                    yesterday: deltas?.yesterday?.category?.[c],
-                    lastweek: deltas?.lastweek?.category?.[c],
-                    custom: deltas?.custom?.category?.[c]
-                  })}
-                </td>
-              ))}
+              {activeColumns.map(c => {
+                const colLabel = rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c)
+                return (
+                  <td
+                    key={c}
+                    onClick={() => onCellClick(null, c, `Total · ${colLabel} Deals`)}
+                    className="px-3 py-1 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
+                  >
+                    <div>{renderVal(totals.category[c]?.count || 0, totals.category[c]?.acv || 0)}</div>
+                    {renderDeltas({
+                      yesterday: deltas?.yesterday?.category?.[c],
+                      lastweek: deltas?.lastweek?.category?.[c],
+                      custom: deltas?.custom?.category?.[c]
+                    })}
+                  </td>
+                )
+              })}
               <td
                 onClick={() => onCellClick(null, null, `${title} Grand Total`)}
                 className="px-3 py-1 text-center cursor-pointer border-l border-[var(--border)] hover:bg-slate-100 dark:hover:bg-slate-800 h-[36px]"
