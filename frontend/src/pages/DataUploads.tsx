@@ -90,9 +90,11 @@ export default function DataUploads() {
   const [manualYesterdayEdited, setManualYesterdayEdited] = useState(false)
 
   // ── Files / Slots ───────────────────────────────────────────────────────────
-  // Primary comparison tool file + optional summary files list
+  // Primary comparison tool file + 3 generic summary slots
   const [comparisonFile, setComparisonFile] = useState<UploadSlotState>({ file: null, name: '', size: 0 })
-  const [summaryFiles, setSummaryFiles] = useState<UploadSlotState[]>([])
+  const [summarySlot1, setSummarySlot1] = useState<UploadSlotState>({ file: null, name: '', size: 0 })
+  const [summarySlot2, setSummarySlot2] = useState<UploadSlotState>({ file: null, name: '', size: 0 })
+  const [summarySlot3, setSummarySlot3] = useState<UploadSlotState>({ file: null, name: '', size: 0 })
 
   // ── Validation & Commit State ───────────────────────────────────────────────
   const [isValidating, setIsValidating] = useState(false)
@@ -180,15 +182,14 @@ export default function DataUploads() {
       const compFile: File = comp
       setComparisonFile({ file: compFile, name: compFile.name, size: compFile.size })
     }
-    if (summaries.length > 0) {
-      setSummaryFiles((prev) => {
-        // avoid exact duplicates by name
-        const existingNames = new Set(prev.map((p) => p.name))
-        const added = summaries
-          .filter((s) => !existingNames.has(s.name))
-          .map((s) => ({ file: s, name: s.name, size: s.size }))
-        return [...prev, ...added]
-      })
+    if (summaries[0]) {
+      setSummarySlot1({ file: summaries[0], name: summaries[0].name, size: summaries[0].size })
+    }
+    if (summaries[1]) {
+      setSummarySlot2({ file: summaries[1], name: summaries[1].name, size: summaries[1].size })
+    }
+    if (summaries[2]) {
+      setSummarySlot3({ file: summaries[2], name: summaries[2].name, size: summaries[2].size })
     }
     setPreviewData(null)
     setUserConfirmReplace(false)
@@ -204,24 +205,6 @@ export default function DataUploads() {
   // Handle single slot drops
   const handleComparisonDrop = (f: File) => {
     setComparisonFile({ file: f, name: f.name, size: f.size })
-    setPreviewData(null)
-    setUserConfirmReplace(false)
-  }
-
-  const handleAddSummaryFiles = (files: File[]) => {
-    setSummaryFiles((prev) => {
-      const existingNames = new Set(prev.map((p) => p.name))
-      const added = files
-        .filter((s) => !existingNames.has(s.name))
-        .map((s) => ({ file: s, name: s.name, size: s.size }))
-      return [...prev, ...added]
-    })
-    setPreviewData(null)
-    setUserConfirmReplace(false)
-  }
-
-  const handleRemoveSummaryFile = (index: number) => {
-    setSummaryFiles((prev) => prev.filter((_, i) => i !== index))
     setPreviewData(null)
     setUserConfirmReplace(false)
   }
@@ -243,11 +226,9 @@ export default function DataUploads() {
       formData.append('yesterday_date', yesterdayDate)
       formData.append('comparison_tool', comparisonFile.file)
 
-      summaryFiles.forEach((sf, idx) => {
-        if (sf.file) {
-          formData.append(`summary_file_${idx}`, sf.file)
-        }
-      })
+      if (summarySlot1.file) formData.append('summary_file_1', summarySlot1.file)
+      if (summarySlot2.file) formData.append('summary_file_2', summarySlot2.file)
+      if (summarySlot3.file) formData.append('summary_file_3', summarySlot3.file)
 
       const res = await validateUpload(formData)
       setPreviewData(res)
@@ -279,7 +260,9 @@ export default function DataUploads() {
       setPreviewData(null)
       setUserConfirmReplace(false)
       setComparisonFile({ file: null, name: '', size: 0 })
-      setSummaryFiles([])
+      setSummarySlot1({ file: null, name: '', size: 0 })
+      setSummarySlot2({ file: null, name: '', size: 0 })
+      setSummarySlot3({ file: null, name: '', size: 0 })
       qc.invalidateQueries()
       refetchHistory()
     } catch (err: any) {
@@ -601,21 +584,23 @@ export default function DataUploads() {
             </div>
 
             {/* Selected Files Staging List */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Selected Files Staging List (Comparison Tool + 3 Generic Summary File Slots) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {/* Mandatory Comparison Tool Box */}
-              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3 flex flex-col justify-between" id="slot-comparison-tool">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-teal-500/10 text-teal-700 dark:text-teal-400">
                       Mandatory
                     </span>
-                    <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewal Comparison Tool</h4>
+                    {comparisonFile.file && (
+                      <span className="text-emerald-500 text-xs flex items-center gap-1 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Staged
+                      </span>
+                    )}
                   </div>
-                  {comparisonFile.file && (
-                    <span className="text-emerald-500 text-xs flex items-center gap-1 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Staged
-                    </span>
-                  )}
+                  <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewal Comparison Tool</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Core workbook with Today &amp; Yesterday data</p>
                 </div>
 
                 {comparisonFile.file ? (
@@ -647,59 +632,170 @@ export default function DataUploads() {
                       }}
                     />
                     <FileSpreadsheet className="w-5 h-5 mx-auto text-[var(--text-muted)] mb-1 opacity-70" />
-                    <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">Select Comparison Tool Excel</span>
+                    <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">Select Comparison Tool</span>
                   </label>
                 )}
               </div>
 
-              {/* Renewals Summary Files Box */}
-              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+              {/* Summary Slot 1 */}
+              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3 flex flex-col justify-between" id="slot-summary-1">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-slate-500/10 text-slate-700 dark:text-slate-400">
-                      Optional Summaries
+                      Optional
                     </span>
-                    <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewals Summary Files ({summaryFiles.length})</h4>
+                    {summarySlot1.file && (
+                      <span className="text-emerald-500 text-xs flex items-center gap-1 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Staged
+                      </span>
+                    )}
                   </div>
-                  <label className="text-teal-600 dark:text-teal-400 text-xs font-bold cursor-pointer hover:underline">
-                    + Add Files
+                  <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewals Summary — File 1</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Primary fiscal period summary workbook</p>
+                </div>
+
+                {summarySlot1.file ? (
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between">
+                    <div className="truncate pr-2">
+                      <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{summarySlot1.name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)]">{(summarySlot1.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSummarySlot1({ file: null, name: '', size: 0 })
+                        setPreviewData(null)
+                      }}
+                      className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-rose-500"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="block p-3 border border-dashed rounded-sm border-[var(--border)] text-center cursor-pointer hover:border-teal-400 bg-[var(--bg-card)]">
                     <input
                       type="file"
-                      multiple
                       accept=".xlsx"
                       className="hidden"
                       onChange={(e) => {
-                        if (e.target.files) handleAddSummaryFiles(Array.from(e.target.files))
+                        const f = e.target.files?.[0]
+                        if (f) {
+                          setSummarySlot1({ file: f, name: f.name, size: f.size })
+                          setPreviewData(null)
+                        }
                       }}
                     />
+                    <FileSpreadsheet className="w-5 h-5 mx-auto text-[var(--text-muted)] mb-1 opacity-70" />
+                    <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">Select Summary File 1</span>
                   </label>
+                )}
+              </div>
+
+              {/* Summary Slot 2 */}
+              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3 flex flex-col justify-between" id="slot-summary-2">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-slate-500/10 text-slate-700 dark:text-slate-400">
+                      Optional
+                    </span>
+                    {summarySlot2.file && (
+                      <span className="text-emerald-500 text-xs flex items-center gap-1 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Staged
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewals Summary — File 2</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Secondary fiscal period summary workbook</p>
                 </div>
 
-                {summaryFiles.length === 0 ? (
-                  <p className="text-xs text-[var(--text-muted)] italic py-3 text-center">
-                    No optional Renewals Summary files staged.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {summaryFiles.map((sf, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between text-xs"
-                      >
-                        <div className="truncate pr-2">
-                          <span className="font-semibold text-[var(--text-primary)] truncate block">{sf.name}</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">{(sf.size / (1024 * 1024)).toFixed(2)} MB</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSummaryFile(idx)}
-                          className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-rose-500"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                {summarySlot2.file ? (
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between">
+                    <div className="truncate pr-2">
+                      <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{summarySlot2.name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)]">{(summarySlot2.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSummarySlot2({ file: null, name: '', size: 0 })
+                        setPreviewData(null)
+                      }}
+                      className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-rose-500"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
                   </div>
+                ) : (
+                  <label className="block p-3 border border-dashed rounded-sm border-[var(--border)] text-center cursor-pointer hover:border-teal-400 bg-[var(--bg-card)]">
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) {
+                          setSummarySlot2({ file: f, name: f.name, size: f.size })
+                          setPreviewData(null)
+                        }
+                      }}
+                    />
+                    <FileSpreadsheet className="w-5 h-5 mx-auto text-[var(--text-muted)] mb-1 opacity-70" />
+                    <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">Select Summary File 2</span>
+                  </label>
+                )}
+              </div>
+
+              {/* Summary Slot 3 */}
+              <div className="p-4 rounded-sm border border-[var(--border)] bg-[var(--bg-secondary)] space-y-3 flex flex-col justify-between" id="slot-summary-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-slate-500/10 text-slate-700 dark:text-slate-400">
+                      Optional
+                    </span>
+                    {summarySlot3.file && (
+                      <span className="text-emerald-500 text-xs flex items-center gap-1 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Staged
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="font-bold text-xs text-[var(--text-primary)]">Renewals Summary — File 3</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Interim or quarter period summary workbook</p>
+                </div>
+
+                {summarySlot3.file ? (
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between">
+                    <div className="truncate pr-2">
+                      <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{summarySlot3.name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)]">{(summarySlot3.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSummarySlot3({ file: null, name: '', size: 0 })
+                        setPreviewData(null)
+                      }}
+                      className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-rose-500"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="block p-3 border border-dashed rounded-sm border-[var(--border)] text-center cursor-pointer hover:border-teal-400 bg-[var(--bg-card)]">
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) {
+                          setSummarySlot3({ file: f, name: f.name, size: f.size })
+                          setPreviewData(null)
+                        }
+                      }}
+                    />
+                    <FileSpreadsheet className="w-5 h-5 mx-auto text-[var(--text-muted)] mb-1 opacity-70" />
+                    <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">Select Summary File 3</span>
+                  </label>
                 )}
               </div>
             </div>

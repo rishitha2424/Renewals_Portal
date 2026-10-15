@@ -69,7 +69,7 @@ class UploadedFile(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     snapshot_id: Mapped[str] = mapped_column(String(36), ForeignKey("upload_snapshots.id", ondelete="CASCADE"), index=True)
-    file_slot: Mapped[str] = mapped_column(String(64))  # comparison_tool | fiscal_2026 | fiscal_2027 | fiscal_q4
+    file_slot: Mapped[str] = mapped_column(String(64))  # comparison_tool | renewals_summary:<period> | summary_file
     filename: Mapped[str] = mapped_column(String(256))
     file_size_bytes: Mapped[int] = mapped_column(Integer)
     sha256_hash: Mapped[str] = mapped_column(String(64), index=True)

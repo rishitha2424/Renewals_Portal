@@ -255,6 +255,12 @@ async def validate_upload(
     data_as_of_date: Optional[str] = Form(None),
     yesterday_date: Optional[str] = Form(None),
     comparison_tool: Optional[UploadFile] = File(None),
+    summary_file_1: Optional[UploadFile] = File(None),
+    summary_file_2: Optional[UploadFile] = File(None),
+    summary_file_3: Optional[UploadFile] = File(None),
+    summary_1: Optional[UploadFile] = File(None),
+    summary_2: Optional[UploadFile] = File(None),
+    summary_3: Optional[UploadFile] = File(None),
     fiscal_2026: Optional[UploadFile] = File(None),
     fiscal_2027: Optional[UploadFile] = File(None),
     fiscal_q4: Optional[UploadFile] = File(None),
@@ -263,7 +269,7 @@ async def validate_upload(
 ):
     """
     Validate uploaded files, compute preview metrics and reconciliation warnings.
-    Supports fixed slots as well as arbitrary dynamic files (Addendum C).
+    Supports generic slots (content-detected) as well as arbitrary dynamic files (Addendum C).
     Admin-only (Addendum D).
     """
     if not data_as_of_date:
@@ -286,13 +292,13 @@ async def validate_upload(
     files_dict: dict[str, Path] = {}
 
     try:
-        # Collect all form files (both standard slot names and any dynamic uploads)
+        # Collect all form files (both standard generic slots, legacy names, and any dynamic uploads)
         uploaded_files_list: list[tuple[str, UploadFile]] = []
         for name, u_file in [
             ("comparison_tool", comparison_tool),
-            ("fiscal_2026", fiscal_2026),
-            ("fiscal_2027", fiscal_2027),
-            ("fiscal_q4", fiscal_q4),
+            ("summary_file_1", summary_file_1 or summary_1 or fiscal_2026),
+            ("summary_file_2", summary_file_2 or summary_2 or fiscal_2027),
+            ("summary_file_3", summary_file_3 or summary_3 or fiscal_q4),
         ]:
             if u_file is not None and getattr(u_file, "filename", None):
                 uploaded_files_list.append((name, u_file))
@@ -320,6 +326,11 @@ async def validate_upload(
             detected_slot, _ = detect_file_slot(f_path)
             # Use detected content slot or fallback to field_name
             slot_key = detected_slot if detected_slot != "unknown" else field_name
+            base_key = slot_key
+            idx = 2
+            while slot_key in files_dict:
+                slot_key = f"{base_key}_{idx}"
+                idx += 1
             files_dict[slot_key] = f_path
 
         svc = IngestService(db)
