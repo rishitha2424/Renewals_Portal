@@ -57,27 +57,29 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-EXPIRY_PIVOT_PERIODS = [
-    "Q1-2026", "Q2-2026", "Q3-2026", "Q4-2026",
-    "Q1-2027", "Q2-2027", "Q3-2027", "Q4-2027",
-]
+EXPIRY_PIVOT_PERIODS: list[str] = []
 
 
-def filter_expiry_scope(df: pd.DataFrame) -> pd.DataFrame:
+def filter_expiry_scope(df: pd.DataFrame, allowed_periods: Optional[List[str]] = None) -> pd.DataFrame:
     """
-    Expiry Q3 Summary pivot scope includes only rows where:
-    (a) Service Expiry Period is one of Q1-2026 .. Q4-2027
-        (blank and 2025-and-earlier periods are excluded).
+    Expiry summary pivot scope includes only rows where:
+    (a) Service Expiry Period is a valid quarter Q[1-4]-\\d{4}.
     (b) Forecast Category is not blank.
     """
-    if df.empty:
+    if df.empty or "service_expiry_period" not in df.columns:
         return df
-    return df[
-        df["service_expiry_period"].isin(EXPIRY_PIVOT_PERIODS) &
+    if allowed_periods is not None:
+        period_mask = df["service_expiry_period"].isin(allowed_periods)
+    else:
+        period_mask = df["service_expiry_period"].astype(str).str.contains(r"^Q[1-4]-\d{4}$", regex=True, na=False)
+
+    cat_mask = (
         df["forecast_category"].notna() &
-        (df["forecast_category"].str.strip() != "") &
-        (df["forecast_category"].str.lower() != "blank")
-    ]
+        (df["forecast_category"].astype(str).str.strip() != "") &
+        (df["forecast_category"].astype(str).str.lower() != "blank") &
+        (df["forecast_category"].astype(str).str.lower() != "not yet proposed")
+    )
+    return df[period_mask & cat_mask]
 
 
 class AnalyticsService:
@@ -135,12 +137,12 @@ class AnalyticsService:
         if s == "renewals":
             cq = ScopeService.quarter_of(snapshot.snapshot_date)
             q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == cq)
-        elif s == "fy2026":
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2026", "Q2-2026", "Q3-2026", "Q4-2026"]))
-        elif s == "fy2027":
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_(["Q1-2027", "Q2-2027", "Q3-2027", "Q4-2027"]))
-        elif s == "q4_2026":
-            q = q.filter(ScopeService.current_quarter_slice(ScopeService.current_quarter(snapshot.snapshot_date)))
+        elif s.startswith("fy") and len(s) == 6 and s[2:].isdigit():
+            y_str = s[2:]
+            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_([f"Q{i}-{y_str}" for i in range(1, 5)]))
+        elif re.match(r"^q[1-4]_\d{4}$", s):
+            q_norm = s.replace("_", "-").upper()
+            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == q_norm)
         elif s in ("all", "full"):
             pass
 
@@ -335,11 +337,30 @@ class AnalyticsService:
         y_qmap = get_quarter_map(yest_df)
         lw_qmap = get_quarter_map(lw_df)
 
+        # Derive quarters from data
+        found_periods = set()
+        for d in (today_df, yest_df, lw_df):
+            if not d.empty and "service_expiry_period" in d.columns:
+                for val in d["service_expiry_period"].dropna().unique():
+                    s_val = str(val).strip()
+                    if re.match(r"^Q[1-4]-\d{4}$", s_val, re.IGNORECASE):
+                        found_periods.add(s_val.upper())
+
+        if not found_periods and snap:
+            cq = ScopeService.quarter_of(snap.snapshot_date)
+            if "-" in cq:
+                curr_fy = int(cq.split("-")[1])
+                for y in (curr_fy, curr_fy + 1):
+                    for q in range(1, 5):
+                        found_periods.add(f"Q{q}-{y}")
+
+        expiry_periods = ScopeService.sort_quarters(list(found_periods))
+
         # Union of all cells across periods and canonical categories
         all_cells = sorted(set(
-            [(p, c) for p in EXPIRY_PIVOT_PERIODS for c in categories] +
+            [(p, c) for p in expiry_periods for c in categories] +
             list(t_map.keys()) + list(y_map.keys()) + list(lw_map.keys())
-        ))
+        ), key=lambda x: (ScopeService.parse_quarter(x[0]), x[1]))
 
         today_records = []
         yesterday_records = []
@@ -390,7 +411,7 @@ class AnalyticsService:
 
         # By quarter totals and deltas
         by_quarter = {}
-        for p in EXPIRY_PIVOT_PERIODS:
+        for p in expiry_periods:
             t_q = t_qmap.get(p, {"acv": 0.0, "count": 0})
             y_q = y_qmap.get(p, {"acv": 0.0, "count": 0})
             lw_q = lw_qmap.get(p, {"acv": 0.0, "count": 0})

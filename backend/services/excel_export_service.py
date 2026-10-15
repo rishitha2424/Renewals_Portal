@@ -273,16 +273,24 @@ class ExcelExportService:
             by_quarter = fs.get("by_quarter", {})
             totals = fs.get("totals", {})
 
-            q_cats = [
-                ("Q1-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-                ("Q1-2027", ["Closed", "Commit", "Best Case"]),
-                ("Q2-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-                ("Q2-2027", ["Commit"]),
-                ("Q3-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-                ("Q3-2027", ["Closed", "Commit"]),
-                ("Q4-2026", ["Closed", "Commit", "Best Case", "Pipeline"]),
-                ("Q4-2027", ["Commit"]),
-            ]
+            quarters = ScopeService.sort_quarters(list(by_quarter.keys()))
+            if not quarters:
+                quarters = ScopeService.sort_quarters(list({k.split("|")[0] for k in by_cell.keys() if "|" in k}))
+
+            canonical_cat_order = ["Closed", "Commit", "Best Case", "Pipeline", "Not yet proposed", "Blank"]
+            q_cats = []
+            for q in quarters:
+                present_cats = []
+                for k, c_d in by_cell.items():
+                    if k.startswith(f"{q}|"):
+                        cat_name = k.split("|", 1)[1]
+                        t_c = c_d.get("today", {})
+                        if t_c.get("count", 0) != 0 or t_c.get("acv", 0) != 0:
+                            present_cats.append(cat_name)
+                sorted_cats = sorted(set(present_cats), key=lambda c: canonical_cat_order.index(c) if c in canonical_cat_order else 999)
+                if not sorted_cats:
+                    sorted_cats = ["Commit"]
+                q_cats.append((q, sorted_cats))
 
             r_idx = 2
             for q, cats in q_cats:

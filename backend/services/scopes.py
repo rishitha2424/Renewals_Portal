@@ -135,7 +135,7 @@ class ScopeResolution:
 class ScopeService:
     @staticmethod
     def quarter_of(d: date) -> str:
-        """Returns the fiscal quarter of a date, e.g., 'Q4-2026'."""
+        """Returns the fiscal quarter of a date matching pattern Q[1-4]-\\d{4}."""
         if not d:
             return ""
         start_month = settings.FISCAL_YEAR_START_MONTH
@@ -151,7 +151,6 @@ class ScopeService:
 
     @staticmethod
     def quarter_label(q_str: str) -> str:
-        """Converts 'Q4-2026' to 'Q4 FY26'."""
         if not q_str or "-" not in q_str:
             return q_str
         q, y = q_str.split("-")
@@ -162,8 +161,19 @@ class ScopeService:
         return ScopeService.quarter_of(snapshot_date)
 
     @staticmethod
+    def parse_quarter(q_str: str) -> Tuple[int, int]:
+        m = re.match(r"^Q([1-4])-(\d{4})$", str(q_str).strip(), re.IGNORECASE)
+        if m:
+            return int(m.group(2)), int(m.group(1))
+        return (9999, 9)
+
+    @staticmethod
+    def sort_quarters(quarters: list[str]) -> list[str]:
+        return sorted(quarters, key=ScopeService.parse_quarter)
+
+    @staticmethod
     def offset_quarter(q_str: str, offset: int) -> str:
-        """Returns quarter offset by N quarters, e.g. Q4-2026 + 1 -> Q1-2027."""
+        """Returns quarter offset by N quarters."""
         if not q_str or "-" not in q_str:
             return q_str
         q_part, y_part = q_str.split("-")

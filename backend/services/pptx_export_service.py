@@ -367,14 +367,14 @@ class PptxExportService:
                             )
                     else:
                         # Determine active quarters and categories dynamically
-                        canonical_quarters = [
-                            "Q1-2026", "Q1-2027", "Q2-2026", "Q2-2027",
-                            "Q3-2026", "Q3-2027", "Q4-2026", "Q4-2027",
-                        ]
-                        canonical_cats = ["Closed", "Commit", "Best Case", "Pipeline"]
+                        quarters = ScopeService.sort_quarters(list(by_quarter.keys()))
+                        if not quarters:
+                            quarters = ScopeService.sort_quarters(list({k.split("|")[0] for k in by_cell.keys() if "|" in k}))
+
+                        canonical_cats = ["Closed", "Commit", "Best Case", "Pipeline", "Not yet proposed", "Blank"]
 
                         q_cats = []
-                        for q in canonical_quarters:
+                        for q in quarters:
                             active_cats = []
                             for c in canonical_cats:
                                 c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
@@ -387,7 +387,14 @@ class PptxExportService:
                                     or lw_c.get("count", 0) != 0 or lw_c.get("acv", 0) != 0
                                 ):
                                     active_cats.append(c)
-                            # Fallback for quarters with no deals
+                            for k, c_d in by_cell.items():
+                                if k.startswith(f"{q}|"):
+                                    c_name = k.split("|", 1)[1]
+                                    if c_name not in active_cats:
+                                        t_c = c_d.get("today", {})
+                                        if t_c.get("count", 0) != 0 or t_c.get("acv", 0) != 0:
+                                            active_cats.append(c_name)
+
                             if not active_cats:
                                 active_cats = ["Commit"]
                             q_cats.append((q, active_cats))
