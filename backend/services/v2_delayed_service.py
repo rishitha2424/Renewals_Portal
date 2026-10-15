@@ -162,7 +162,7 @@ class V2DelayedService:
             "t_df": t_df, "y_df": y_df, "w_df": w_df, "p_df": y_df if compare != "last_week" else w_df
         }
 
-    def _compute_delayed_and_overdue(self, data: dict, filter_spec: Optional[ScopeService.FilterSpec] = None):
+    def _compute_delayed_and_overdue(self, data: dict, filter_spec: Optional[ScopeService.FilterSpec] = None, target_q_str: Optional[str] = None):
         t_snap = data["t_snap"]
         t_df = data["t_df"]
         y_df = data["y_df"]
@@ -172,7 +172,11 @@ class V2DelayedService:
         y_ren = self._slice_renewals(y_df, filter_spec)
         w_ren = self._slice_renewals(w_df, filter_spec)
         
-        target_q_str = ScopeService.current_quarter(t_snap.snapshot_date)
+        if not target_q_str:
+            if filter_spec and filter_spec.period and filter_spec.period.startswith("Q") and "-" in filter_spec.period:
+                target_q_str = filter_spec.period
+            else:
+                target_q_str = ScopeService.current_quarter(t_snap.snapshot_date)
         target_parsed = _parse_fp(target_q_str)
         t_snap_date = pd.Timestamp(t_snap.snapshot_date)
         y_snap_date = pd.Timestamp(data["y_snap"].snapshot_date)
@@ -416,7 +420,7 @@ class V2DelayedService:
         target_q_str = res.period if res.period.startswith("Q") and "-" in res.period else ScopeService.current_quarter(t_snap.snapshot_date)
         target_q_label = res.label
         
-        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=fs)
+        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=fs, target_q_str=target_q_str)
         t_ren = self._slice_renewals(data["t_df"], fs)
         
         delayed_df = delayed_y if eff_compare != "last_week" else delayed_w
@@ -627,9 +631,20 @@ class V2DelayedService:
         data = self._get_dataframes(eff_as_of, eff_compare)
         if not data: return {"count": 0, "acv": 0.0, "deals": []}
         
-        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=filter_spec)
+        t_snap = data["t_snap"]
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
+        target_q_str = res.period if res.period.startswith("Q") and "-" in res.period else ScopeService.current_quarter(t_snap.snapshot_date)
+
+        overdue_df, delayed_y, delayed_w = self._compute_delayed_and_overdue(data, filter_spec=fs, target_q_str=target_q_str)
         delayed_df = delayed_y if eff_compare != "last_week" else delayed_w
         
+        delayed_active = delayed_df[delayed_df["reason"] != "Lost/removed"] if not delayed_df.empty else pd.DataFrame()
+        if not overdue_df.empty:
+            delayed_active = pd.concat([overdue_df, delayed_active], ignore_index=True) if not delayed_active.empty else overdue_df.copy()
+            delayed_active = delayed_active.drop_duplicates(subset=["opportunity_id_18"], keep="first")
+
         df = pd.DataFrame()
         if kind == "newly_delayed" or newly_delayed:
             overdue_not_y = overdue_df[~overdue_df["overdue_yesterday"]] if not overdue_df.empty else pd.DataFrame()
@@ -638,17 +653,18 @@ class V2DelayedService:
             df = pd.concat(parts, ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first") if parts else pd.DataFrame()
         elif kind == "overdue":
             df = overdue_df
+            if compare == "yesterday" and "overdue_yesterday" in df.columns:
+                df = df[df["overdue_yesterday"]]
+            elif compare == "last_week" and "overdue_lastweek" in df.columns:
+                df = df[df["overdue_lastweek"]]
         elif kind == "slipped":
-            df = delayed_df[delayed_df["reason"] == "Slipped quarter"] if not delayed_df.empty else pd.DataFrame()
+            df = delayed_active[delayed_active["reason"] == "Slipped quarter"] if not delayed_active.empty else pd.DataFrame()
         elif kind == "later_close":
-            df = delayed_df[delayed_df["reason"] == "Later close date"] if not delayed_df.empty else pd.DataFrame()
+            df = delayed_active[delayed_active["reason"] == "Later close date"] if not delayed_active.empty else pd.DataFrame()
         elif kind == "lost":
             df = delayed_df[delayed_df["reason"] == "Lost/removed"] if not delayed_df.empty else pd.DataFrame()
         elif kind == "all":
-            df = delayed_df[delayed_df["reason"] != "Lost/removed"] if not delayed_df.empty else pd.DataFrame()
-            if not overdue_df.empty:
-                df = pd.concat([df, overdue_df], ignore_index=True) if not df.empty else overdue_df.copy()
-                df = df.drop_duplicates(subset=["opportunity_id_18"], keep="first")
+            df = delayed_active
         else:
             return {"count": 0, "acv": 0.0, "deals": []}
             

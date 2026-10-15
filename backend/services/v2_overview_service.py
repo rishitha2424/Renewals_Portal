@@ -120,6 +120,9 @@ class V2OverviewService:
     def _active_snap(self, as_of: str | None = None) -> UploadSnapshot | None:
         q = self.db.query(UploadSnapshot)
         if as_of:
+            by_id = q.filter(UploadSnapshot.id == as_of).first()
+            if by_id:
+                return by_id
             try:
                 from datetime import date
                 d = date.fromisoformat(as_of)
@@ -128,9 +131,6 @@ class V2OverviewService:
                     return snap
             except ValueError:
                 pass
-            by_id = q.filter(UploadSnapshot.id == as_of).first()
-            if by_id:
-                return by_id
         return (
             q.filter(UploadSnapshot.is_active_today == True)  # noqa: E712
             .order_by(UploadSnapshot.snapshot_date.desc())
@@ -419,16 +419,56 @@ class V2OverviewService:
         target_fp = res.resolved_quarter
         data_slice = res.data_slice
 
-        import pandas as pd
+        # ── Delayed / Slippage summary tying directly to Delayed page ──────────
+        from backend.services.v2_delayed_service import V2DelayedService
+        delayed_svc = V2DelayedService(self.db)
+        del_sum = delayed_svc.get_summary(as_of=fs.as_of or snap.id, filter_spec=fs)
+
+        del_overall = del_sum.get("total", {"count": 0, "acv": 0.0})
+        del_slipped = del_sum.get("slipped", {"count": 0, "acv": 0.0})
+        del_overdue = del_sum.get("overdue", {"count": 0, "acv": 0.0})
+        del_later = del_sum.get("later_close", {"count": 0, "acv": 0.0})
+        del_rule = del_sum.get("rule_text", "All renewals in active quarter that are overdue, slipped, or postponed.")
+
+        slippage_data = {
+            "overall": {
+                "count": del_overall.get("count", 0),
+                "acv": round(float(del_overall.get("acv", 0.0)), 2),
+                "delta_yesterday": del_overall.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
+                "delta_lastweek": del_overall.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+            },
+            "categories": {
+                "slipped": {
+                    "label": "Slipped to Next Year / Quarter",
+                    "count": del_slipped.get("count", 0),
+                    "acv": round(float(del_slipped.get("acv", 0.0)), 2),
+                    "delta_yesterday": del_slipped.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
+                    "delta_lastweek": del_slipped.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                },
+                "overdue": {
+                    "label": "Overdue Deals",
+                    "count": del_overdue.get("count", 0),
+                    "acv": round(float(del_overdue.get("acv", 0.0)), 2),
+                    "delta_yesterday": del_overdue.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
+                    "delta_lastweek": del_overdue.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                },
+                "later_close": {
+                    "label": "Later Close Date (Postponed)",
+                    "count": del_later.get("count", 0),
+                    "acv": round(float(del_later.get("acv", 0.0)), 2),
+                    "delta_yesterday": del_later.get("delayed_vs_yesterday", {"count": 0, "acv": 0.0}),
+                    "delta_lastweek": del_later.get("delayed_vs_lastweek", {"count": 0, "acv": 0.0}),
+                },
+            },
+            "rule_text": del_rule,
+        }
+
+        # Legacy slippage count for fallback
         _, q_end_date = ScopeService.quarter_bounds(target_fp)
-        if not df.empty and "close_date" in df.columns:
-            cd_dates = pd.to_datetime(df["close_date"], errors="coerce")
-            slip_df = df[cd_dates > pd.Timestamp(q_end_date)]
-        else:
-            slip_df = pd.DataFrame()
+        slip_df = df[pd.to_datetime(df["close_date"], errors="coerce") > pd.Timestamp(q_end_date)] if (not df.empty and "close_date" in df.columns) else pd.DataFrame()
         slippage = {
-            "count": len(slip_df),
-            "acv": round(_sum(slip_df, "forecast_acv_amount"), 2) if not slip_df.empty else 0.0,
+            "count": del_slipped.get("count", len(slip_df)),
+            "acv": round(float(del_slipped.get("acv", _sum(slip_df, "forecast_acv_amount"))), 2),
         }
 
         # ── Yesterday deltas ──────────────────────────────────────────────────
@@ -744,6 +784,7 @@ class V2OverviewService:
                 "delta_yesterday": slip_delta_yesterday,
                 "delta_lastweek":  slip_delta_lastweek,
             },
+            "slippage": slippage_data,
             "proposal_confirmation_totals": prop_totals,
             "source_checks": {
                 "total": len(snap.checks),
@@ -988,6 +1029,22 @@ class V2OverviewService:
             filters_applied["kind"] = kind
         if compare:
             filters_applied["compare"] = compare
+
+        # ── Kind: delayed deals (all, slipped, overdue, later_close) ──────────
+        if kind in ("delayed_all", "delayed_slipped", "delayed_overdue", "delayed_later_close") or (kind == "slipped" and not compare):
+            target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else "slipped"
+            from backend.services.v2_delayed_service import V2DelayedService
+            del_svc = V2DelayedService(self.db)
+            return del_svc.get_deals(
+                as_of=fs.as_of or snap.id,
+                compare=compare,
+                kind=target_kind,
+                region=region,
+                category=category,
+                status=approval_status,
+                bu=None,
+                filter_spec=fs,
+            )
 
         # ── Kind: slipped ─────────────────────────────────────────────────────
         if kind == "slipped":

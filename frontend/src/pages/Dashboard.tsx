@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -151,11 +151,14 @@ export default function Dashboard() {
 
   const openDealsQuery = async (
     title: string,
-    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string; deal_ids?: string },
+    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string; deal_ids?: string; as_of?: string },
     initialFilters?: any
   ) => {
     try {
-      const res = await getV2OverviewDeals(params)
+      const res = await getV2OverviewDeals({
+        ...params,
+        as_of: activeSnapshotId || undefined,
+      })
       setModalInitialFilters(initialFilters)
       setModal({
         title,
@@ -172,27 +175,36 @@ export default function Dashboard() {
 
   const { globalFilters } = useAppStore()
 
+  const effectiveFilters = useMemo(() => ({
+    ...globalFilters,
+    as_of: activeSnapshotId || globalFilters?.as_of || undefined,
+  }), [globalFilters, activeSnapshotId])
+
   const { data: summary, isLoading: sumLoading, isError: sumErr, refetch: refetchSum } = useQuery({
-    queryKey: ['v2-summary', globalFilters],
-    queryFn: () => getV2OverviewSummary(globalFilters),
+    queryKey: ['v2-summary', activeSnapshotId, effectiveFilters],
+    queryFn: () => getV2OverviewSummary(effectiveFilters),
+    enabled: !!activeSnapshotId,
   })
 
   const { data: movYesterday, isLoading: movYLoading, isError: movYErr, refetch: refetchMovY } = useQuery({
-    queryKey: ['v2-movements-yesterday', globalFilters],
-    queryFn: () => getV2OverviewMovements('yesterday', globalFilters),
+    queryKey: ['v2-movements-yesterday', activeSnapshotId, effectiveFilters],
+    queryFn: () => getV2OverviewMovements('yesterday', effectiveFilters),
+    enabled: !!activeSnapshotId,
   })
 
   const { data: movLastWeek, isLoading: movLWLoading, isError: movLWErr, refetch: refetchMovLW } = useQuery({
-    queryKey: ['v2-movements-lastweek', globalFilters],
-    queryFn: () => getV2OverviewMovements('last_week', globalFilters),
+    queryKey: ['v2-movements-lastweek', activeSnapshotId, effectiveFilters],
+    queryFn: () => getV2OverviewMovements('last_week', effectiveFilters),
+    enabled: !!activeSnapshotId,
   })
 
   const movements = movCompare === 'yesterday' ? movYesterday : movLastWeek
   const movLoading = movCompare === 'yesterday' ? movYLoading : movLWLoading
 
   const { data: regional, isLoading: regLoading, isError: regErr, refetch: refetchReg } = useQuery({
-    queryKey: ['v2-regional', globalFilters],
-    queryFn: () => getV2RegionalBreakdown(globalFilters),
+    queryKey: ['v2-regional', activeSnapshotId, effectiveFilters],
+    queryFn: () => getV2RegionalBreakdown(effectiveFilters),
+    enabled: !!activeSnapshotId,
   })
 
   const isLoading = sumLoading || movYLoading || movLWLoading || regLoading
@@ -538,91 +550,189 @@ export default function Dashboard() {
         )
       })()}
 
-      {/* ── SECTION 3 – Slippage to Next Year (Movement-based) ─────────────── */}
+      {/* ── SECTION 3 – Slippage & Delayed Renewals ─────────────── */}
       <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="w-full">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                Slipped to Next Year (Movement-Based)
+        <div className="flex flex-col gap-6">
+          {/* Top Header & Overall Slippage Total */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                  Slippage & Delayed Renewals
+                </p>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] max-w-2xl">
+                {summary?.slippage?.rule_text || "Open deals whose fiscal period is before the current quarter (including previous fiscal year) count as delayed."}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-6 mt-3">
-              {/* Yesterday comparison */}
-              {(() => {
-                const ySlip = movYesterday?.slippage_to_2027 ?? { count: 0, acv: 0, deals: [] }
-                const yDate = movYesterday?.compare_date
-                return (
-                  <div
-                    className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
-                    onClick={() => openDealsQuery(`Slipped to Next Year (vs Yesterday, ${yDate ? formatDate(yDate) : 'Oct 6'}) · ${ySlip.count} deals · ${acvM(ySlip.acv)}`, { kind: 'slipped', compare: 'yesterday' })}
-                    title="Click to view deals slipped vs yesterday"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] font-semibold text-[var(--text-muted)]">
-                        vs Yesterday {yDate && `(${formatDate(yDate)})`}
-                      </span>
-                      <Pill color="amber"><AlertTriangle className="w-3 h-3" />{ySlip.count} deals</Pill>
-                    </div>
-                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
-                      {acvM(ySlip.acv)}
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* Last week comparison */}
-              {(() => {
-                const lwSlip = movLastWeek?.slippage_to_2027 ?? { count: 0, acv: 0, deals: [] }
-                const lwDate = movLastWeek?.compare_date
-                return (
-                  <div
-                    className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
-                    onClick={() => openDealsQuery(`Slipped to Next Year (vs Last Week, ${lwDate ? formatDate(lwDate) : 'Sep 30'}) · ${lwSlip.count} deals · ${acvM(lwSlip.acv)}`, { kind: 'slipped', compare: 'last_week' })}
-                    title="Click to view deals slipped vs last week"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] font-semibold text-[var(--text-muted)]">
-                        vs Last Week {lwDate && `(${formatDate(lwDate)})`}
-                      </span>
-                      <Pill color="amber"><AlertTriangle className="w-3 h-3" />{lwSlip.count} deals</Pill>
-                    </div>
-                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums mt-1 hover:underline">
-                      {acvM(lwSlip.acv)}
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-
-            {/* Sub-line for Not yet proposed */}
+            {/* Overall Slippage Total */}
             {(() => {
-              const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
+              const overall = summary?.slippage?.overall ?? { count: 0, acv: 0 }
               return (
                 <div
-                  className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
-                  title="Click to view Not yet proposed deals"
+                  className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all flex items-center gap-4"
+                  onClick={() => openDealsQuery(`Overall Slippage & Delayed Renewals · ${overall.count} deals · ${acvM(overall.acv)}`, { kind: 'delayed_all' })}
+                  title="Click to view all slipped and delayed deals"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
-                    <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
-                    <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                  <div>
+                    <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
+                      Total Slipped / Delayed
+                    </span>
+                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums hover:underline">
+                      {acvM(overall.acv)}
+                    </div>
                   </div>
-                  <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
-                    View not yet proposed deals →
-                  </span>
+                  <Pill color="amber"><AlertTriangle className="w-3.5 h-3.5" />{overall.count} deals</Pill>
                 </div>
               )
             })()}
-
-            <p className="text-[11px] text-[var(--text-muted)] mt-2">
-              Contracts originally in {getQuarterFromDate(activeSnapshot?.snapshot_date).split("-")[0]} that moved close date / fiscal period to subsequent periods.
-              {standingSlip.count > 0 && ` Active snapshot standing slippage: ${standingSlip.count} deals.`}
-            </p>
           </div>
+
+          {/* 3 Slippage Categories */}
+          {(() => {
+            const slipCat = summary?.slippage?.categories?.slipped ?? { count: 0, acv: 0 }
+            const overdueCat = summary?.slippage?.categories?.overdue ?? { count: 0, acv: 0 }
+            const laterCat = summary?.slippage?.categories?.later_close ?? { count: 0, acv: 0 }
+
+            const ySlip = movYesterday?.slippage_to_2027 ?? slipCat.delta_yesterday ?? { count: 0, acv: 0 }
+            const lwSlip = movLastWeek?.slippage_to_2027 ?? slipCat.delta_lastweek ?? { count: 0, acv: 0 }
+            const yDate = movYesterday?.compare_date || summary?.slippage?.yesterday_date
+            const lwDate = movLastWeek?.compare_date || summary?.slippage?.lastweek_date
+
+            const slipCategories = [
+              {
+                id: 'slipped',
+                title: 'Slipped to Next Year / Quarter',
+                count: slipCat.count,
+                acv: slipCat.acv,
+                mainDrawerKind: 'delayed_slipped',
+                yCount: ySlip.count,
+                yAcv: ySlip.acv,
+                yDrawerKind: 'slipped',
+                yCompare: 'yesterday',
+                lwCount: lwSlip.count,
+                lwAcv: lwSlip.acv,
+                lwDrawerKind: 'slipped',
+                lwCompare: 'last_week',
+              },
+              {
+                id: 'overdue',
+                title: 'Overdue Deals',
+                count: overdueCat.count,
+                acv: overdueCat.acv,
+                mainDrawerKind: 'delayed_overdue',
+                yCount: overdueCat.delta_yesterday?.count ?? 0,
+                yAcv: overdueCat.delta_yesterday?.acv ?? 0,
+                yDrawerKind: 'delayed_overdue',
+                yCompare: 'yesterday',
+                lwCount: overdueCat.delta_lastweek?.count ?? 0,
+                lwAcv: overdueCat.delta_lastweek?.acv ?? 0,
+                lwDrawerKind: 'delayed_overdue',
+                lwCompare: 'last_week',
+              },
+              {
+                id: 'later_close',
+                title: 'Later Close Date (Postponed)',
+                count: laterCat.count,
+                acv: laterCat.acv,
+                mainDrawerKind: 'delayed_later_close',
+                yCount: laterCat.delta_yesterday?.count ?? 0,
+                yAcv: laterCat.delta_yesterday?.acv ?? 0,
+                yDrawerKind: 'delayed_later_close',
+                yCompare: 'yesterday',
+                lwCount: laterCat.delta_lastweek?.count ?? 0,
+                lwAcv: laterCat.delta_lastweek?.acv ?? 0,
+                lwDrawerKind: 'delayed_later_close',
+                lwCompare: 'last_week',
+              },
+            ]
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {slipCategories.map(cat => (
+                  <div
+                    key={cat.id}
+                    className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
+                  >
+                    {/* Main figure for the period */}
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                          {cat.title}
+                        </span>
+                        <Pill color="amber">{cat.count} deals</Pill>
+                      </div>
+                      <div
+                        className="font-extrabold text-2xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
+                        onClick={() => openDealsQuery(`${cat.title} (${cat.count} deals · ${acvM(cat.acv)})`, { kind: cat.mainDrawerKind })}
+                        title={`Click to view ${cat.title}`}
+                      >
+                        {acvM(cat.acv)}
+                      </div>
+                    </div>
+
+                    {/* Trends below it: vs Yesterday and vs Last Week */}
+                    <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                      <div
+                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
+                        onClick={() => openDealsQuery(`${cat.title} (vs Yesterday, ${yDate ? formatDate(yDate) : 'Oct 6'}) · ${cat.yCount} deals · ${acvM(cat.yAcv)}`, { kind: cat.yDrawerKind, compare: cat.yCompare })}
+                        title="Click to view deals vs yesterday"
+                      >
+                        <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">
+                          vs Yesterday
+                        </div>
+                        <div className="font-bold text-sm text-amber-600 dark:text-amber-400 tabular-nums">
+                          {acvM(cat.yAcv)}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          {cat.yCount} deals
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all"
+                        onClick={() => openDealsQuery(`${cat.title} (vs Last Week, ${lwDate ? formatDate(lwDate) : 'Sep 30'}) · ${cat.lwCount} deals · ${acvM(cat.lwAcv)}`, { kind: cat.lwDrawerKind, compare: cat.lwCompare })}
+                        title="Click to view deals vs last week"
+                      >
+                        <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">
+                          vs Last Week
+                        </div>
+                        <div className="font-bold text-sm text-amber-600 dark:text-amber-400 tabular-nums">
+                          {acvM(cat.lwAcv)}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          {cat.lwCount} deals
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
+          {/* Sub-line for Not yet proposed */}
+          {(() => {
+            const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
+            return (
+              <div
+                className="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
+                title="Click to view Not yet proposed deals"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
+                  <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
+                  <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                </div>
+                <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
+                  View not yet proposed deals →
+                </span>
+              </div>
+            )
+          })()}
         </div>
       </div>
 

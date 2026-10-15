@@ -128,19 +128,21 @@ export default function Approvals() {
   const activeSnapshot = snapshots.find(s => s.id === activeSnapshotId)
   const compareSnapshot = snapshots.find(s => s.id === compareSnapshotId)
 
+  const effectiveAsOf = activeSnapshot?.snapshot_date || activeSnapshotId || undefined
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['approvals_v2', activeSnapshotId, compareSnapshotId, includeDeletedLost],
+    queryKey: ['approvals_v2', activeSnapshotId, effectiveAsOf, compareSnapshotId, includeDeletedLost],
     queryFn: async () => {
       if (!activeSnapshotId) return null
-      return getApprovalsDistribution(activeSnapshot?.snapshot_date || '', compareSnapshot?.snapshot_date, includeDeletedLost)
+      return getApprovalsDistribution(effectiveAsOf, compareSnapshot?.snapshot_date, includeDeletedLost)
     },
     enabled: !!activeSnapshotId,
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['approvals_deals_v2', activeSnapshotId, modalFilters, includeDeletedLost],
+    queryKey: ['approvals_deals_v2', activeSnapshotId, effectiveAsOf, modalFilters, includeDeletedLost],
     queryFn: () => getApprovalsDeals(
-      activeSnapshot?.snapshot_date || '', 
+      effectiveAsOf || '', 
       modalFilters.approval_status || undefined, 
       modalFilters.forecast_category || undefined, 
       includeDeletedLost,

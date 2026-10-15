@@ -41,10 +41,12 @@ export default function Expiry() {
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
   const [periodMode, setPeriodMode] = useState<'fiscal' | 'service_expiry'>('fiscal')
 
+  const effectiveAsOf = activeSnapshot?.snapshot_date || activeSnapshotId || undefined
+
   const { data: sum, isLoading, isError, refetch: refetchSum } = useQuery({
-    queryKey: ['v2ExpirySummary', activeSnapshotId, compareSnapshotId, includeDeletedLost, periodMode],
+    queryKey: ['v2ExpirySummary', activeSnapshotId, effectiveAsOf, compareSnapshotId, includeDeletedLost, periodMode],
     queryFn: () => getV2ExpirySummary({
-      as_of: activeSnapshot?.snapshot_date,
+      as_of: effectiveAsOf,
       compare: compareSnapshot?.snapshot_date,
       exclude_deleted_lost: !includeDeletedLost,
       period_type: periodMode,
@@ -53,13 +55,13 @@ export default function Expiry() {
   })
 
   const { data: dealsData } = useQuery({
-    queryKey: ['v2ExpiryDeals', activeSnapshotId, modalParams.quarter, modalParams.category, modalParams.slippage, modalParams.period_type, includeDeletedLost],
+    queryKey: ['v2ExpiryDeals', activeSnapshotId, effectiveAsOf, modalParams.quarter, modalParams.category, modalParams.slippage, modalParams.period_type, includeDeletedLost],
     queryFn: () => getV2ExpiryDeals({
       quarter: modalParams.quarter || undefined,
       category: modalParams.category || undefined,
       slippage: modalParams.slippage,
       period_type: modalParams.period_type || periodMode,
-      as_of: activeSnapshot?.snapshot_date,
+      as_of: effectiveAsOf,
       exclude_deleted_lost: !includeDeletedLost
     }),
     enabled: modalOpen && !!activeSnapshotId,

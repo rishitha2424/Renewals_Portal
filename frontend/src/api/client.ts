@@ -125,8 +125,12 @@ export const getHistoryOverview = () =>
   api.get('/analytics/history-overview').then(r => r.data)
 
 export function buildFilterParams(filters: Record<string, any> = {}): Record<string, any> {
+  const state = useAppStore.getState()
   const { compare, ...rest } = filters
   const params: Record<string, any> = { ...rest }
+  if (!params.as_of && state.activeSnapshotId) {
+    params.as_of = state.activeSnapshotId
+  }
   if (compare === 'yesterday' || compare === 'last_week') {
     params.compare = compare
   }
@@ -137,7 +141,8 @@ export function buildFilterParams(filters: Record<string, any> = {}): Record<str
 
 export const getV2OverviewSummary = (filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec })
+  const as_of = filterSpec?.as_of || state.activeSnapshotId || state.globalFilters?.as_of || undefined
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec, as_of })
   return api.get('/v2/overview/summary', { params: fs }).then(r => r.data)
 }
 
@@ -145,13 +150,15 @@ export const getV2OverviewSummary = (filterSpec?: Partial<FilterSpec>) => {
 
 export const getV2OverviewMovements = (compare: 'yesterday' | 'last_week' = 'yesterday', filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec, compare })
+  const as_of = filterSpec?.as_of || state.activeSnapshotId || state.globalFilters?.as_of || undefined
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec, as_of, compare })
   return api.get('/v2/overview/movements', { params: fs }).then(r => r.data)
 }
 
 export const getV2RegionalBreakdown = (filterSpec?: Partial<FilterSpec>) => {
   const state = useAppStore.getState()
-  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec })
+  const as_of = filterSpec?.as_of || state.activeSnapshotId || state.globalFilters?.as_of || undefined
+  const fs = buildFilterParams({ ...state.globalFilters, ...filterSpec, as_of })
   return api.get('/v2/overview/regional-breakdown', { params: fs }).then(r => r.data)
 }
 
