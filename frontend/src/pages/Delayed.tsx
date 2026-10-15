@@ -145,7 +145,7 @@ function DelayedContent() {
   }
 
   // 4px left accent bar + 32px rounded-lg tinted icon tile
-  const DelayedKpiCard = ({ title, data, icon: Icon, accent, kind }: any) => {
+  const DelayedKpiCard = ({ title, definition, data, icon: Icon, accent, kind }: any) => {
     const accentBorder = {
       amber: 'border-l-amber-500',
       rose: 'border-l-rose-500',
@@ -165,20 +165,25 @@ function DelayedContent() {
         className={cn(
           'rounded-xl bg-[var(--bg-card)] border border-[var(--border)] border-l-4 shadow-[var(--card-shadow)]',
           accentBorder,
-          'p-5 flex flex-col justify-between h-full items-stretch transition-colors select-none cursor-pointer hover:bg-[var(--bg-secondary)]/50'
+          'p-4 flex flex-col justify-between h-full items-stretch transition-colors select-none cursor-pointer hover:bg-[var(--bg-secondary)]/50'
         )}
         onClick={() => handleDrill(title, { kind })}
       >
         <div>
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="text-xs font-medium text-[var(--text-muted)] truncate">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
               {title}
             </span>
             <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconTileClass)}>
               <Icon className="w-4 h-4" strokeWidth={1.75} />
             </div>
           </div>
-          <div className="space-y-0.5 mb-3">
+          {definition && (
+            <p className="text-[11px] text-[var(--text-muted)] leading-tight mb-2 min-h-[28px] line-clamp-2">
+              {definition}
+            </p>
+          )}
+          <div className="space-y-0.5 mb-2.5">
             {(metricMode === 'Count' || metricMode === 'Both') && (
               <div className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] tabular-nums">
                 {formatCount(data?.count || 0)}
@@ -214,10 +219,13 @@ function DelayedContent() {
     })
 
     const rows = (summary[byField] || []).map((row: any) => {
-      const cells = categories.map((cat) => ({
-        count: row.categories?.[cat]?.count || 0,
-        acv: row.categories?.[cat]?.acv || 0,
-      }))
+      const cells: Record<string, { count: number; acv: number }> = {}
+      categories.forEach((cat) => {
+        cells[cat] = {
+          count: row.categories?.[cat]?.count || 0,
+          acv: row.categories?.[cat]?.acv || 0,
+        }
+      })
 
       const isY = compare === 'yesterday'
       categories.forEach((cat) => {
@@ -232,9 +240,10 @@ function DelayedContent() {
       gridDeltas[`${row.label}-total`] = { count: rdCount, acv: rdAcv }
 
       return {
+        id: row.label,
         label: row.label,
         cells,
-        totals: { count: row.count, acv: row.acv },
+        total: { count: row.count, acv: row.acv },
       }
     })
 
@@ -274,6 +283,16 @@ function DelayedContent() {
         subtitle={`Renewals in ${summary.data_slice} that have slipped, pushed out, or are overdue.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            {summary.delayed_pct_of_quarter != null && (
+              <div
+                onClick={() => handleDrill('Total Delayed Renewals', { kind: 'all' })}
+                className="cursor-pointer hover:bg-[var(--bg-secondary)] px-3 py-1.5 rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-500/10 text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5 transition-colors"
+                title="Click to view all delayed renewals"
+              >
+                <span className="font-bold tabular-nums">{summary.delayed_pct_of_quarter}%</span>
+                <span>of Quarter Delayed ({formatACV(summary.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})</span>
+              </div>
+            )}
             <MetricToggle />
             <div className="h-9 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
               <button
@@ -309,6 +328,7 @@ function DelayedContent() {
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
         <DelayedKpiCard
           title="Total Delayed"
+          definition="All renewals in active quarter that are overdue, slipped, or postponed."
           data={summary.total}
           icon={Clock}
           accent="teal"
@@ -316,6 +336,7 @@ function DelayedContent() {
         />
         <DelayedKpiCard
           title="Overdue"
+          definition="Active renewals past expected close date and not yet closed as of snapshot date."
           data={summary.overdue}
           icon={AlertCircle}
           accent="rose"
@@ -323,6 +344,7 @@ function DelayedContent() {
         />
         <DelayedKpiCard
           title="Slipped to Next Year"
+          definition="Renewals whose fiscal period pushed into a future quarter or fiscal year."
           data={summary.slipped}
           icon={CalendarX2}
           accent="amber"
@@ -330,6 +352,7 @@ function DelayedContent() {
         />
         <DelayedKpiCard
           title="Later Close Date"
+          definition="Renewals in current quarter whose close date was postponed vs reference date."
           data={summary.later_close}
           icon={ArrowRight}
           accent="amber"
@@ -337,11 +360,149 @@ function DelayedContent() {
         />
         <DelayedKpiCard
           title="Lost / Removed"
+          definition="Deals previously in the renewal forecast that have been marked deleted or lost."
           data={summary.lost}
           icon={AlertTriangle}
           accent="slate"
           kind="lost"
         />
+      </div>
+
+      {/* Overdue Ageing Breakdown */}
+      <Card padding="md">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Overdue Ageing Breakdown</h2>
+            <p className="text-xs text-[var(--text-muted)]">
+              Distribution of active overdue renewals by days past close date
+            </p>
+          </div>
+          <div
+            onClick={() => handleDrill('All Overdue Deals', { kind: 'overdue' })}
+            className="text-xs text-[var(--text-muted)] font-medium cursor-pointer hover:text-[var(--text-primary)]"
+          >
+            Total Overdue: <span className="font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{formatCount(summary.overdue?.count || 0)} deals ({formatACV(summary.overdue?.acv || 0)})</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {summary.ageing_breakdown?.map((item: any) => {
+            const severityClass = {
+              '0-7': 'border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300',
+              '8-30': 'border-l-orange-500 bg-orange-50/40 dark:bg-orange-950/20 text-orange-800 dark:text-orange-300',
+              '31-60': 'border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300',
+              '60+': 'border-l-red-700 bg-red-50/50 dark:bg-red-950/30 text-red-900 dark:text-red-200',
+            }[item.bracket as string] || 'border-l-slate-400 bg-slate-50 dark:bg-slate-800'
+
+            return (
+              <div
+                key={item.bracket}
+                onClick={() => handleDrill(`${item.label} (${item.bracket} days overdue)`, { kind: 'overdue', ageing: item.bracket })}
+                className={cn(
+                  'p-3.5 rounded-lg border border-[var(--border)] border-l-4 transition-all cursor-pointer hover:shadow-md select-none',
+                  severityClass
+                )}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                  <span>{item.label}</span>
+                  <span className="text-[10px] font-normal opacity-75 uppercase tracking-wider">past close</span>
+                </div>
+                <div className="text-xl font-bold tabular-nums text-[var(--text-primary)]">
+                  {metricMode === 'Amount' ? formatACV(item.acv) : formatCount(item.count)}
+                </div>
+                <div className="text-xs text-[var(--text-muted)] tabular-nums mt-0.5">
+                  {metricMode === 'Amount' ? `${formatCount(item.count)} deals` : formatACV(item.acv)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      {/* Historical Trend and Newly Delayed */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Trend of Delayed ACV */}
+        <Card padding="md" className="flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Delayed Renewals Trend</h2>
+              <p className="text-xs text-[var(--text-muted)]">Historical trajectory across recent upload snapshots</p>
+            </div>
+            {summary.delayed_pct_of_quarter != null && (
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300">
+                {summary.delayed_pct_of_quarter}% of Quarter
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {summary.trend?.map((t: any, idx: number) => {
+              const isLatest = idx === summary.trend.length - 1
+              return (
+                <div
+                  key={t.snapshot_date}
+                  className={cn(
+                    'p-2.5 rounded-lg border text-center transition-colors',
+                    isLatest
+                      ? 'border-[var(--brand-teal)] bg-[var(--brand-teal)]/10 shadow-xs ring-1 ring-[var(--brand-teal)]/20'
+                      : 'border-[var(--border)] bg-[var(--bg-secondary)]/40'
+                  )}
+                >
+                  <div className="text-[10px] text-[var(--text-muted)] font-medium">
+                    {t.snapshot_date}
+                  </div>
+                  <div className="text-xs font-semibold text-[var(--text-primary)] tabular-nums mt-1">
+                    {formatACV(t.acv)}
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)] tabular-nums">
+                    {formatCount(t.count)} deals
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+
+        {/* Newly Delayed vs Reference */}
+        <Card padding="md" className="flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                Newly Delayed vs {compare === 'yesterday' ? 'Yesterday' : 'Last Week'}
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Deals newly overdue or pushed out since reference snapshot
+              </p>
+            </div>
+            <button
+              onClick={() => handleDrill('Newly Delayed Deals', { newly_delayed: true })}
+              className="text-xs text-[var(--brand-teal)] hover:underline font-semibold tabular-nums"
+            >
+              {summary.newly_delayed?.count || 0} deals ({formatACV(summary.newly_delayed?.acv || 0)})
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+            {summary.newly_delayed?.deals?.slice(0, 4).map((d: any) => (
+              <div
+                key={d.opportunity_id_18}
+                onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                className="flex items-center justify-between p-2 rounded-md bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer text-xs transition-colors border border-[var(--border-subtle)]"
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="font-medium text-[var(--text-primary)] truncate">{d.opportunity_name}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] truncate">{d.account_name} • {d.region}</div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="font-semibold tabular-nums text-[var(--text-primary)]">{formatACV(d.forecast_acv_amount)}</div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300 bg-amber-500/10">{d.reason}</span>
+                </div>
+              </div>
+            ))}
+            {(!summary.newly_delayed?.deals || summary.newly_delayed.deals.length === 0) && (
+              <div className="text-center py-6 text-xs text-[var(--text-muted)]">
+                No new renewals slipped or became overdue since {compare === 'yesterday' ? 'yesterday' : 'last week'}.
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
       {/* Grid Breakdowns */}
@@ -387,16 +548,27 @@ function DelayedContent() {
 
       {/* Top Delayed Deals Table: 44px rows, px-4 py-3 padding, hairline divider, right-aligned numbers */}
       <Card padding="none">
-        <div className="p-4 border-b border-[var(--border)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top Delayed Deals</h2>
+        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>
+            <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
+          </div>
+          <button
+            onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
+            className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
+          >
+            View All ({formatCount(summary.total?.count || 0)})
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="table-enterprise text-xs">
             <thead>
               <tr>
-                <th className="text-left">Opportunity</th>
+                <th className="text-left">Opportunity & Account</th>
                 <th className="text-left">Region</th>
+                <th className="text-left">Owner</th>
                 <th className="text-left">Reason</th>
+                <th className="text-right">Days Overdue</th>
                 <th className="text-right">Push Out (Days)</th>
                 <th className="text-right">ACV</th>
               </tr>
@@ -408,10 +580,16 @@ function DelayedContent() {
                   className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
                   onClick={() => setSelectedOppId(deal.opportunity_id_18)}
                 >
-                  <td className="font-medium text-[var(--brand-teal)] truncate max-w-xs">
-                    {deal.opportunity_name}
+                  <td className="max-w-xs">
+                    <div className="font-medium text-[var(--brand-teal)] truncate">
+                      {deal.opportunity_name}
+                    </div>
+                    <div className="text-[10px] text-[var(--text-muted)] truncate">
+                      {deal.account_name}
+                    </div>
                   </td>
                   <td className="text-[var(--text-secondary)]">{deal.region}</td>
+                  <td className="text-[var(--text-secondary)]">{deal.owner || deal.opportunity_owner || '—'}</td>
                   <td>
                     <span
                       className={cn(
@@ -428,8 +606,17 @@ function DelayedContent() {
                       {deal.reason}
                     </span>
                   </td>
+                  <td className="text-right tabular-nums">
+                    {deal.days_overdue > 0 ? (
+                      <span className="font-semibold text-rose-600 dark:text-rose-400">
+                        {deal.days_overdue}d
+                      </span>
+                    ) : (
+                      <span className="text-[var(--text-muted)]">—</span>
+                    )}
+                  </td>
                   <td className="text-right text-[var(--text-muted)] tabular-nums">
-                    {deal.push_out_days > 0 ? `+${deal.push_out_days}` : '-'}
+                    {deal.push_out_days > 0 ? `+${deal.push_out_days}d` : '—'}
                   </td>
                   <td className="text-right font-medium text-[var(--text-primary)] tabular-nums">
                     {formatACV(deal.forecast_acv_amount)}
@@ -438,7 +625,7 @@ function DelayedContent() {
               ))}
               {(!summary.top_deals || summary.top_deals.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-[var(--text-muted)]">
+                  <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">
                     No delayed deals found.
                   </td>
                 </tr>
