@@ -893,10 +893,7 @@ class IngestService:
             is_deleted_or_lost=is_del_lost,
             sales_type=_safe_str(row.get("sales_type")),
             fiscal_period=_safe_str(row.get("fiscal_period")),
-            in_renewals=flags.get("in_renewals"),
-            in_fy2026=flags.get("in_fy2026"),
-            in_fy2027=flags.get("in_fy2027"),
-            in_q4_2026=flags.get("in_q4_2026"),
+            in_renewals=flags.get("in_renewals") if flags else True,
             extra_attributes=raw_row_dict,
         )
 
@@ -1067,7 +1064,7 @@ class IngestService:
             rows: list[Opportunity] = []
             for idx_r, (_, r) in enumerate(mapped_df.iterrows()):
                 st = _safe_str(r.get("sales_type"))
-                flags = {"in_renewals": (st == "Renewals") if st else True, "in_fy2026": None, "in_fy2027": None, "in_q4_2026": None}
+                flags = {"in_renewals": (st == "Renewals") if st else True}
                 raw_d = raw_rows_dict[idx_r] if idx_r < len(raw_rows_dict) else None
                 rows.append(self._row_to_opportunity(snap.id, r, scope_flags=flags, raw_row_dict=raw_d))
             self.db.bulk_save_objects(rows)
@@ -1089,7 +1086,7 @@ class IngestService:
             y_rows = []
             for idx_y, (_, r) in enumerate(y_mapped.iterrows()):
                 st = _safe_str(r.get("sales_type"))
-                flags = {"in_renewals": (st == "Renewals") if st else True, "in_fy2026": None, "in_fy2027": None, "in_q4_2026": None}
+                flags = {"in_renewals": (st == "Renewals") if st else True}
                 raw_d = y_raw_dict[idx_y] if idx_y < len(y_raw_dict) else None
                 y_rows.append(self._row_to_opportunity(yest_snap.id, r, scope_flags=flags, raw_row_dict=raw_d))
             self.db.bulk_save_objects(y_rows)
@@ -1111,7 +1108,7 @@ class IngestService:
             lw_rows = []
             for idx_lw, (_, r) in enumerate(lw_mapped.iterrows()):
                 st = _safe_str(r.get("sales_type"))
-                flags = {"in_renewals": (st == "Renewals") if st else True, "in_fy2026": None, "in_fy2027": None, "in_q4_2026": None}
+                flags = {"in_renewals": (st == "Renewals") if st else True}
                 raw_d = lw_raw_dict[idx_lw] if idx_lw < len(lw_raw_dict) else None
                 lw_rows.append(self._row_to_opportunity(lw_snap.id, r, scope_flags=flags, raw_row_dict=raw_d))
             self.db.bulk_save_objects(lw_rows)

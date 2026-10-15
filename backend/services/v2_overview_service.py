@@ -1,15 +1,15 @@
 """
 V2 Overview Service — powers Tab 1 (Overview / Dashboard).
 
-Data slice: Q4 slice = opportunities where in_q4_2026 is True, deduped by
-opportunity_id_18 (multiple snapshots may contain the same opp; we always use
+Data slice: opportunities scoped by ScopeService (period derived from snapshot date),
+deduped by opportunity_id_18 (multiple snapshots may contain the same opp; we always use
 the LATEST record for a given opp_id within the active snapshot).
 
 Deleted/Lost: INCLUDED by default (matches Excel pivots).
 Movements: computed by diffing two scoped snapshots by Opportunity ID —
-  NOT from change_logs (unscoped, only exists for yesterday, inflates Q4).
+  NOT from change_logs (unscoped, only exists for yesterday).
 Blank category: treated as its own column alongside Closed/Commit/Best Case/Pipeline.
-Slippage to 2027: Q4 opps whose close_date.year == 2027.
+Slippage: opportunities whose close date moved beyond the target period.
 Region mapping: EXACT match on revised_sub_region value.
 """
 from __future__ import annotations
