@@ -169,6 +169,7 @@ export const getV2OverviewDeals = (params: {
   compare?: string
   as_of?: string
   exclude_deleted?: boolean
+  deal_ids?: string
   filterSpec?: Partial<FilterSpec>
 } = {}): Promise<{
   count: number

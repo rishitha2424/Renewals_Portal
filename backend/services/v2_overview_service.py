@@ -503,6 +503,232 @@ class V2OverviewService:
             "blank_acv":      _sum(df[df["approval_status"] == "Blank"] if not df.empty and "approval_status" in df.columns else pd.DataFrame(), "forecast_acv_amount"),
         }
 
+        # ── B8 Coverage: Commit + Best Case % of Total ACV ────────────────────
+        c_df = df[df["forecast_category"] == "Commit"] if not df.empty else pd.DataFrame()
+        bc_df = df[df["forecast_category"] == "Best Case"] if not df.empty else pd.DataFrame()
+        cov_deals = df[df["forecast_category"].isin(["Commit", "Best Case"])] if not df.empty else pd.DataFrame()
+        cov_count = len(cov_deals)
+        cov_acv = round(_sum(c_df, "forecast_acv_amount") + _sum(bc_df, "forecast_acv_amount"), 2)
+        cov_pct = round(cov_acv / total_acv * 100, 2) if total_acv > 0 else 0.0
+
+        cov_delta_yesterday_pp = None
+        if yest_snap and not y_df.empty:
+            y_tot_acv = _sum(y_df, "forecast_acv_amount")
+            y_c = _sum(y_df[y_df["forecast_category"] == "Commit"], "forecast_acv_amount")
+            y_bc = _sum(y_df[y_df["forecast_category"] == "Best Case"], "forecast_acv_amount")
+            y_cov_pct = round((y_c + y_bc) / y_tot_acv * 100, 2) if y_tot_acv > 0 else 0.0
+            cov_delta_yesterday_pp = round(cov_pct - y_cov_pct, 2)
+
+        cov_delta_lastweek_pp = None
+        if lw_snap and not lw_df.empty:
+            lw_tot_acv = _sum(lw_df, "forecast_acv_amount")
+            lw_c = _sum(lw_df[lw_df["forecast_category"] == "Commit"], "forecast_acv_amount")
+            lw_bc = _sum(lw_df[lw_df["forecast_category"] == "Best Case"], "forecast_acv_amount")
+            lw_cov_pct = round((lw_c + lw_bc) / lw_tot_acv * 100, 2) if lw_tot_acv > 0 else 0.0
+            cov_delta_lastweek_pp = round(cov_pct - lw_cov_pct, 2)
+
+        coverage = {
+            "count": cov_count,
+            "acv": cov_acv,
+            "pct": cov_pct,
+            "delta_yesterday_pp": cov_delta_yesterday_pp,
+            "delta_lastweek_pp": cov_delta_lastweek_pp,
+            "deal_ids": [str(d) for d in cov_deals["opportunity_id_18"]] if not cov_deals.empty else [],
+        }
+
+        # ── B7 Needs attention panel (up to 5 items) ──────────────────────────
+        from datetime import timedelta
+        items = []
+        category_summaries = {}
+
+        # 1. Commit deals not approved
+        commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
+        candidate_second = None
+        if not commit_unappr.empty:
+            commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
+            c_cnt = len(commit_unappr)
+            c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
+            top_c = commit_unappr.iloc[0]
+            category_summaries["commit_not_approved"] = {
+                "count": c_cnt,
+                "acv": c_tot_acv,
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
+            }
+            items.append({
+                "category_key": "commit_not_approved",
+                "category_label": "Commit not approved",
+                "opportunity_id_18": str(top_c["opportunity_id_18"]),
+                "opportunity_name": str(top_c["opportunity_name"]),
+                "account_name": str(top_c["account_name"]),
+                "acv": round(float(top_c["forecast_acv_amount"]), 2),
+                "category_count": c_cnt,
+                "category_acv": c_tot_acv,
+                "badge": f"Commit · {top_c['approval_status']}",
+                "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
+                "kind": "commit_not_approved",
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
+            })
+            if len(commit_unappr) > 1:
+                second_c = commit_unappr.iloc[1]
+                candidate_second = {
+                    "category_key": "commit_not_approved",
+                    "category_label": "Commit not approved (#2)",
+                    "opportunity_id_18": str(second_c["opportunity_id_18"]),
+                    "opportunity_name": str(second_c["opportunity_name"]),
+                    "account_name": str(second_c["account_name"]),
+                    "acv": round(float(second_c["forecast_acv_amount"]), 2),
+                    "category_count": c_cnt,
+                    "category_acv": c_tot_acv,
+                    "badge": f"Commit · {second_c['approval_status']}",
+                    "detail": "2nd largest unapproved Commit deal",
+                    "kind": "commit_not_approved",
+                    "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
+                }
+
+        # 2. Largest overdue deals
+        overdue_df = pd.DataFrame()
+        if not df.empty and "close_date" in df.columns:
+            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            overdue_df = df[(cd < snap.snapshot_date) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])].copy()
+        if not overdue_df.empty:
+            overdue_df = overdue_df.sort_values(by="forecast_acv_amount", ascending=False)
+            od_cnt = len(overdue_df)
+            od_tot_acv = round(float(_sum(overdue_df, "forecast_acv_amount")), 2)
+            top_od = overdue_df.iloc[0]
+            top_od_date = pd.to_datetime(top_od["close_date"]).date() if top_od["close_date"] else snap.snapshot_date
+            days_od = max(1, (snap.snapshot_date - top_od_date).days)
+            category_summaries["overdue"] = {
+                "count": od_cnt,
+                "acv": od_tot_acv,
+                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+            }
+            items.append({
+                "category_key": "overdue",
+                "category_label": "Overdue deal",
+                "opportunity_id_18": str(top_od["opportunity_id_18"]),
+                "opportunity_name": str(top_od["opportunity_name"]),
+                "account_name": str(top_od["account_name"]),
+                "acv": round(float(top_od["forecast_acv_amount"]), 2),
+                "category_count": od_cnt,
+                "category_acv": od_tot_acv,
+                "badge": f"{days_od}d past close date",
+                "detail": f"{od_cnt} overdue deals totaling ${od_tot_acv:,.2f}",
+                "kind": "overdue",
+                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+            })
+
+        # 3. Biggest drop vs yesterday
+        drops = []
+        if yest_snap and not y_df.empty:
+            t_map = {str(r["opportunity_id_18"]): r for _, r in df.iterrows()}
+            p_map = {str(r["opportunity_id_18"]): r for _, r in y_df.iterrows()}
+            for oid, pr in p_map.items():
+                prev_acv = float(pr["forecast_acv_amount"] or 0)
+                if oid not in t_map:
+                    drops.append({
+                        "opportunity_id_18": str(oid),
+                        "opportunity_name": str(pr["opportunity_name"]),
+                        "account_name": str(pr["account_name"]),
+                        "drop_amount": round(prev_acv, 2),
+                        "prev_acv": round(prev_acv, 2),
+                        "current_acv": 0.0,
+                        "forecast_category": str(pr["forecast_category"]),
+                        "approval_status": str(pr["approval_status"]),
+                        "sub_region": str(pr.get("canonical_region", "")),
+                        "business_unit_primary": str(pr.get("business_unit_primary", "")),
+                        "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
+                        "reason": "Left period / dropped from forecast",
+                    })
+                else:
+                    curr_acv = float(t_map[oid]["forecast_acv_amount"] or 0)
+                    if prev_acv - curr_acv > 0.01:
+                        drops.append({
+                            "opportunity_id_18": str(oid),
+                            "opportunity_name": str(pr["opportunity_name"]),
+                            "account_name": str(pr["account_name"]),
+                            "drop_amount": round(prev_acv - curr_acv, 2),
+                            "prev_acv": round(prev_acv, 2),
+                            "current_acv": round(curr_acv, 2),
+                            "forecast_category": str(t_map[oid]["forecast_category"]),
+                            "approval_status": str(t_map[oid]["approval_status"]),
+                            "sub_region": str(t_map[oid].get("canonical_region", "")),
+                            "business_unit_primary": str(t_map[oid].get("business_unit_primary", "")),
+                            "close_date": t_map[oid]["close_date"].isoformat() if hasattr(t_map[oid]["close_date"], "isoformat") else str(t_map[oid]["close_date"]) if t_map[oid]["close_date"] else None,
+                            "reason": f"ACV decreased (-${round(prev_acv - curr_acv, 2):,})",
+                        })
+        if drops:
+            drops_sorted = sorted(drops, key=lambda x: x["drop_amount"], reverse=True)
+            top_drop = drops_sorted[0]
+            dr_count = len(drops)
+            dr_acv = round(sum(d["drop_amount"] for d in drops), 2)
+            category_summaries["biggest_drop"] = {
+                "count": dr_count,
+                "acv": dr_acv,
+                "deal_ids": [d["opportunity_id_18"] for d in drops_sorted],
+            }
+            items.append({
+                "category_key": "biggest_drop",
+                "category_label": "Biggest drop vs yesterday",
+                "opportunity_id_18": top_drop["opportunity_id_18"],
+                "opportunity_name": top_drop["opportunity_name"],
+                "account_name": top_drop["account_name"],
+                "acv": top_drop["drop_amount"],
+                "category_count": dr_count,
+                "category_acv": dr_acv,
+                "badge": f"-${top_drop['drop_amount']:,.0f} vs yesterday",
+                "detail": top_drop["reason"],
+                "kind": "biggest_drop",
+                "deal_ids": [d["opportunity_id_18"] for d in drops_sorted],
+            })
+
+        # 4. Deals closing within 14 days with no approval
+        closing_14d_df = pd.DataFrame()
+        if not df.empty and "close_date" in df.columns:
+            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            closing_14d_df = df[
+                (cd >= snap.snapshot_date) &
+                (cd <= snap.snapshot_date + timedelta(days=14)) &
+                (df["approval_status"] != "Approved") &
+                (df["forecast_category"] != "Closed") &
+                (~df["is_deleted_or_lost"])
+            ].copy()
+        if not closing_14d_df.empty:
+            closing_14d_df = closing_14d_df.sort_values(by="forecast_acv_amount", ascending=False)
+            cl_cnt = len(closing_14d_df)
+            cl_tot_acv = round(float(_sum(closing_14d_df, "forecast_acv_amount")), 2)
+            top_cl = closing_14d_df.iloc[0]
+            top_cl_date = pd.to_datetime(top_cl["close_date"]).date() if top_cl["close_date"] else snap.snapshot_date
+            days_to_close = max(0, (top_cl_date - snap.snapshot_date).days)
+            category_summaries["closing_14d_unapproved"] = {
+                "count": cl_cnt,
+                "acv": cl_tot_acv,
+                "deal_ids": [str(d) for d in closing_14d_df["opportunity_id_18"]],
+            }
+            items.append({
+                "category_key": "closing_14d_unapproved",
+                "category_label": "Closing within 14 days (no approval)",
+                "opportunity_id_18": str(top_cl["opportunity_id_18"]),
+                "opportunity_name": str(top_cl["opportunity_name"]),
+                "account_name": str(top_cl["account_name"]),
+                "acv": round(float(top_cl["forecast_acv_amount"]), 2),
+                "category_count": cl_cnt,
+                "category_acv": cl_tot_acv,
+                "badge": f"Closes in {days_to_close}d · {top_cl['approval_status']}",
+                "detail": f"{cl_cnt} deals closing within 14d unapproved totaling ${cl_tot_acv:,.2f}",
+                "kind": "closing_14d_unapproved",
+                "deal_ids": [str(d) for d in closing_14d_df["opportunity_id_18"]],
+            })
+
+        # Fill up to 5 items if space remains from commit_unappr (#2 deal)
+        if len(items) < 5 and candidate_second is not None:
+            items.append(candidate_second)
+
+        needs_attention = {
+            "items": items[:5],
+            "category_summaries": category_summaries,
+            "total_items": len(items[:5]),
+        }
+
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
             "requested_as_of":  fs.as_of or snap.snapshot_date.isoformat(),
@@ -519,6 +745,10 @@ class V2OverviewService:
                 "delta_yesterday": delta_yesterday,
                 "delta_lastweek":  delta_lastweek,
             },
+            # B8 Coverage line
+            "coverage": coverage,
+            # B7 Needs attention panel
+            "needs_attention": needs_attention,
             # Section 2 — category cards (standard ALL_FC + any dynamic new categories)
             "categories": {
                 fc: {
@@ -807,6 +1037,7 @@ class V2OverviewService:
         exclude_deleted: bool = False,
         as_of: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
+        deal_ids: Optional[list[str]] = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
@@ -984,6 +1215,77 @@ class V2OverviewService:
                 }
 
 
+        # ── Kind-based filters for Overview ──────────────────────────────────
+        if kind == "coverage":
+            df = df[df["forecast_category"].isin(["Commit", "Best Case"])]
+        elif kind == "commit_not_approved":
+            df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
+        elif kind == "overdue":
+            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            df = df[(cd < snap.snapshot_date) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])]
+        elif kind == "closing_14d_unapproved":
+            from datetime import timedelta
+            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            df = df[
+                (cd >= snap.snapshot_date) &
+                (cd <= snap.snapshot_date + timedelta(days=14)) &
+                (df["approval_status"] != "Approved") &
+                (df["forecast_category"] != "Closed") &
+                (~df["is_deleted_or_lost"])
+            ]
+        elif kind == "biggest_drop":
+            prev_snap = self._yesterday_snap(snap)
+            if prev_snap:
+                y_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs)
+                y_df = _opps_to_df(y_opps)
+                t_map = {str(r["opportunity_id_18"]): r for _, r in df.iterrows()}
+                p_map = {str(r["opportunity_id_18"]): r for _, r in y_df.iterrows()} if not y_df.empty else {}
+                drop_records = []
+                for oid, pr in p_map.items():
+                    prev_acv = float(pr["forecast_acv_amount"] or 0)
+                    if oid not in t_map:
+                        drop_records.append({
+                            "id": str(oid),
+                            "opportunity_id_18": str(oid),
+                            "opportunity_name": str(pr["opportunity_name"]),
+                            "account_name": str(pr["account_name"]),
+                            "forecast_category": str(pr["forecast_category"]),
+                            "forecast_acv_amount": float(prev_acv),
+                            "approval_status": str(pr["approval_status"]),
+                            "sub_region": str(pr.get("canonical_region", "")),
+                            "business_unit_primary": str(pr.get("business_unit_primary", "")),
+                            "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
+                            "delta_acv_change": -float(prev_acv),
+                        })
+                    else:
+                        curr_acv = float(t_map[oid]["forecast_acv_amount"] or 0)
+                        if prev_acv - curr_acv > 0.01:
+                            drop_records.append({
+                                "id": str(oid),
+                                "opportunity_id_18": str(oid),
+                                "opportunity_name": str(pr["opportunity_name"]),
+                                "account_name": str(pr["account_name"]),
+                                "forecast_category": str(t_map[oid]["forecast_category"]),
+                                "forecast_acv_amount": float(curr_acv),
+                                "approval_status": str(t_map[oid]["approval_status"]),
+                                "sub_region": str(t_map[oid].get("canonical_region", "")),
+                                "business_unit_primary": str(t_map[oid].get("business_unit_primary", "")),
+                                "close_date": t_map[oid]["close_date"].isoformat() if hasattr(t_map[oid]["close_date"], "isoformat") else str(t_map[oid]["close_date"]) if t_map[oid]["close_date"] else None,
+                                "delta_acv_change": round(curr_acv - prev_acv, 2),
+                            })
+                drop_records.sort(key=lambda x: abs(x.get("delta_acv_change", 0)), reverse=True)
+                if deal_ids:
+                    drop_records = [d for d in drop_records if d["opportunity_id_18"] in deal_ids]
+                return {
+                    "count": len(drop_records),
+                    "acv": round(sum(r["forecast_acv_amount"] for r in drop_records), 2),
+                    "filters_applied": res.filters_applied,
+                    "deals": drop_records,
+                }
+
+        if deal_ids:
+            df = df[df["opportunity_id_18"].isin(deal_ids)]
+
         if category:
             df = df[df["forecast_category"] == category]
 
@@ -991,7 +1293,13 @@ class V2OverviewService:
             df = df[df["canonical_region"] == region]
 
         if approval_status and approval_status != "Total":
-            df = df[df["approval_status"] == approval_status]
+            if approval_status in ("not_approved", "unapproved", "Not Approved"):
+                df = df[df["approval_status"] != "Approved"]
+            else:
+                df = df[df["approval_status"] == approval_status]
+
+        if not df.empty:
+            df = df.sort_values(by="forecast_acv_amount", ascending=False)
 
         records = []
         for _, r in df.iterrows():

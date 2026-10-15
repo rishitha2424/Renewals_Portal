@@ -68,10 +68,12 @@ def overview_deals(
     approval_status: Optional[str] = Query(None),
     kind: Optional[str] = Query(None),
     compare: Optional[str] = Query(None),
+    deal_ids: Optional[str] = Query(None),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2OverviewService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
+    parsed_deal_ids = [d.strip() for d in deal_ids.split(",") if d.strip()] if deal_ids else None
     return svc.get_deals(
         ctx,
         category=category,
@@ -79,5 +81,6 @@ def overview_deals(
         approval_status=approval_status,
         kind=kind,
         compare=compare,
+        deal_ids=parsed_deal_ids,
         filter_spec=filter_spec,
     )

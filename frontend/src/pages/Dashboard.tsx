@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, Upload, AlertTriangle, TrendingUp, TrendingDown,
   ChevronRight, X, CheckCircle2, ArrowRight, BarChart3, Users, Globe2,
+  ShieldCheck,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import {
@@ -150,7 +151,7 @@ export default function Dashboard() {
 
   const openDealsQuery = async (
     title: string,
-    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string },
+    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string; deal_ids?: string },
     initialFilters?: any
   ) => {
     try {
@@ -364,7 +365,167 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+
+        {/* ── B8 Coverage Line: Commit + Best Case % of Total ACV ── */}
+        {summary?.coverage && (
+          <div
+            className="mt-5 pt-4 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer group hover:bg-[var(--bg-secondary)]/50 p-2.5 rounded-lg transition-colors"
+            onClick={() => {
+              const cov = summary.coverage
+              openDealsQuery(
+                `Coverage Deals (Commit + Best Case) · ${formatNumber(cov.count)} contracts · ${formatCurrency(cov.acv)}`,
+                { kind: 'coverage' }
+              )
+            }}
+            title="Click to view Commit + Best Case deals"
+          >
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+                <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider group-hover:text-[var(--brand-teal)] transition-colors">
+                  Coverage (Commit + Best Case):
+                </span>
+              </div>
+              <span className="text-sm sm:text-base font-black font-mono text-[var(--text-primary)] tabular-nums group-hover:underline">
+                {summary.coverage.pct != null ? `${summary.coverage.pct}%` : '\u2014'}
+              </span>
+              <span className="text-xs text-[var(--text-muted)] font-mono">
+                of total ACV ({formatCurrency(summary.coverage.acv)} · {formatNumber(summary.coverage.count)} contracts)
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5" title="Percentage-point change vs yesterday">
+                <span className="text-[11px] text-[var(--text-muted)]">vs Yesterday:</span>
+                {summary.coverage.delta_yesterday_pp != null ? (
+                  <span
+                    className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                      summary.coverage.delta_yesterday_pp >= 0
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                    }`}
+                  >
+                    {summary.coverage.delta_yesterday_pp >= 0 ? '+' : ''}
+                    {summary.coverage.delta_yesterday_pp.toFixed(2)} pp
+                  </span>
+                ) : (
+                  <span className="text-[var(--text-muted)]">\u2014</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5" title="Percentage-point change vs last week">
+                <span className="text-[11px] text-[var(--text-muted)]">vs Last Week:</span>
+                {summary.coverage.delta_lastweek_pp != null ? (
+                  <span
+                    className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                      summary.coverage.delta_lastweek_pp >= 0
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                    }`}
+                  >
+                    {summary.coverage.delta_lastweek_pp >= 0 ? '+' : ''}
+                    {summary.coverage.delta_lastweek_pp.toFixed(2)} pp
+                  </span>
+                ) : (
+                  <span className="text-[var(--text-muted)]">\u2014</span>
+                )}
+              </div>
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
+                View deals \u2192
+              </span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── B7 SECTION: Needs Attention Panel ──────────────────────────────── */}
+      {summary?.needs_attention?.items?.length > 0 && (
+        <div className="card p-5 border border-amber-500/30 bg-gradient-to-br from-[var(--bg-card)] via-[var(--bg-secondary)]/30 to-[var(--bg-card)] shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-[var(--text-primary)] tracking-tight">
+                  Needs attention
+                </h2>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Actionable exceptions for {summary.data_slice || 'selected period'} · Click any line to inspect deals
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 font-mono">
+              {summary.needs_attention.items.length} {summary.needs_attention.items.length === 1 ? 'item' : 'items'}
+            </span>
+          </div>
+
+          <div className="divide-y divide-[var(--border-subtle)]">
+            {summary.needs_attention.items.map((item: any, idx: number) => {
+              const badgeColors: Record<string, string> = {
+                commit_not_approved: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30',
+                overdue: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30',
+                biggest_drop: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30',
+                closing_14d_unapproved: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
+              }
+              const badgeClass = badgeColors[item.category_key] || 'bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30'
+
+              return (
+                <div
+                  key={`${item.category_key}-${item.opportunity_id_18}-${idx}`}
+                  className="py-3 px-3 rounded-lg hover:bg-[var(--bg-secondary)]/80 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
+                  onClick={() => {
+                    openDealsQuery(
+                      `${item.category_label} Deals (${formatNumber(item.category_count)} deals · ${formatCurrency(item.category_acv)})`,
+                      {
+                        kind: item.kind,
+                        deal_ids: item.deal_ids && item.deal_ids.length > 0 ? item.deal_ids.join(',') : undefined,
+                      }
+                    )
+                  }}
+                  title="Click to view matching deals drawer"
+                >
+                  <div className="flex items-start sm:items-center gap-3 min-w-0">
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border whitespace-nowrap ${badgeClass}`}>
+                      {item.category_label}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--brand-teal)] transition-colors truncate">
+                          {item.opportunity_name}
+                        </span>
+                        {item.account_name && (
+                          <span className="text-[11px] text-[var(--text-muted)] truncate hidden md:inline">
+                            ({item.account_name})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+                        {item.detail}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 self-end sm:self-auto flex-shrink-0">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)]">
+                      {item.badge}
+                    </span>
+                    <div className="text-right font-mono">
+                      <div className="text-xs font-black text-[var(--text-primary)] tabular-nums group-hover:underline">
+                        {formatCurrency(item.acv)}
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">
+                        {item.category_count} {item.category_count === 1 ? 'deal' : 'deals'}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── FULL-YEAR STRIP (Shown when selected period is not full year / all periods) ── */}
       {!isFullYear && fullYearData && !fullYearData.error && (
