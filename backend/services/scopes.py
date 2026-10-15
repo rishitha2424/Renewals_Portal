@@ -372,11 +372,12 @@ class ScopeService:
             reg_conds = []
             for r in regs:
                 r_clean = r.strip()
-                if r_clean == "Other":
+                if r_clean in ("Other", "Other / Unmapped", "Unmapped"):
                     mapped_revs = [rev for rev in REGION_MAP.keys()]
                     reg_conds.append(
                         or_(
                             Opportunity.revised_sub_region == None,
+                            Opportunity.revised_sub_region == "",
                             ~Opportunity.revised_sub_region.in_(mapped_revs),
                         )
                     )
@@ -384,6 +385,8 @@ class ScopeService:
                     revs = CANONICAL_TO_REV[r_clean]
                     reg_conds.append(Opportunity.revised_sub_region.in_(revs))
                 elif r_clean in REGION_MAP:
+                    reg_conds.append(Opportunity.revised_sub_region == r_clean)
+                else:
                     reg_conds.append(Opportunity.revised_sub_region == r_clean)
             if reg_conds:
                 conditions.append(or_(*reg_conds))

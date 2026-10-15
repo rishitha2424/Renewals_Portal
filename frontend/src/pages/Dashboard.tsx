@@ -243,8 +243,14 @@ export default function Dashboard() {
   const regTrend   = regional?.regional_trend ?? []
   const regTotals  = regional?.regional_trend_totals ?? {}
 
-  const orderRegions = (rows: any[]) =>
-    REGION_ORDER.map(r => rows.find((x: any) => x.region === r)).filter(Boolean)
+  const orderRegions = (rows: any[]) => {
+    if (!rows || rows.length === 0) return []
+    const known = REGION_ORDER.map(r => rows.find((x: any) => x.region === r)).filter(Boolean)
+    const knownNames = new Set(REGION_ORDER)
+    const otherInRows = rows.filter((x: any) => !knownNames.has(x.region) && x.region !== 'Other / Unmapped' && x.region !== 'Other')
+    const unmapped = rows.filter((x: any) => x.region === 'Other / Unmapped' || x.region === 'Other')
+    return [...known, ...otherInRows, ...unmapped]
+  }
 
   const propRows  = orderRegions(propConf)
   const trendRows = orderRegions(regTrend)

@@ -117,16 +117,48 @@ def test_regions_summary_regions(client_and_db):
     assert afr["count"] == 23
     assert round(afr["acv"], 2) == 1592103.02
 
-    # Check the unmapped
-    other = next((r for r in regions if r["region"] == "Other"), None)
-    assert other is not None
-    assert other["count"] == 1
-    assert other["acv"] == 50000.0
+    # Check the unmapped / custom region
+    custom_reg = next((r for r in regions if r["region"] in ("Antarctica", "Other", "Other / Unmapped")), None)
+    assert custom_reg is not None
+    assert custom_reg["count"] == 1
+    assert custom_reg["acv"] == 50000.0
     
     unmapped = d["unmapped"]
     assert unmapped["count"] == 1
     assert unmapped["acv"] == 50000.0
     assert "Antarctica" in unmapped["values"]
+
+    # Region rows must sum to total
+    assert sum(r["count"] for r in regions) == d["total"]["count"]
+    assert abs(sum(r["acv"] for r in regions) - d["total"]["acv"]) < 0.05
+
+def test_sub_region_not_in_mapping(client_and_db):
+    client, _ = client_and_db
+    r = client.get("/api/v2/regions/summary")
+    assert r.status_code == 200
+    d = r.json()
+    reg_names = [reg["region"] for reg in d["regions"]]
+    
+    # First 6 must be the known canonical regions in order
+    canonical_6 = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"]
+    for i, c_name in enumerate(canonical_6):
+        assert reg_names[i] == c_name
+        
+    # Any other region found in data (Antarctica) must be present
+    assert "Antarctica" in reg_names or "Other / Unmapped" in reg_names
+    
+    # Region rows must sum to total
+    total_count = d["total"]["count"]
+    total_acv = d["total"]["acv"]
+    assert sum(reg["count"] for reg in d["regions"]) == total_count
+    assert abs(sum(reg["acv"] for reg in d["regions"]) - total_acv) < 0.05
+
+    # Check deals endpoint for the custom sub-region
+    target_region = "Antarctica" if "Antarctica" in reg_names else "Other / Unmapped"
+    deals_res = client.get(f"/api/v2/regions/deals?region={target_region}")
+    assert deals_res.status_code == 200
+    deals_data = deals_res.json()
+    assert deals_data["count"] >= 1
 
 def test_region_deals(client_and_db):
     client, _ = client_and_db

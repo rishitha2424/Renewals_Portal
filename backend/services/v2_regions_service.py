@@ -41,7 +41,7 @@ def _norm_approval(s: str | None) -> str:
 
 def _map_region(s: str | None) -> str:
     if not s or str(s).strip() in ("", "nan", "None"):
-        return "Other"
+        return "Other / Unmapped"
     s = str(s).strip()
     if s == "Europe": return "Europe"
     if s == "APAC": return "APAC"
@@ -49,7 +49,9 @@ def _map_region(s: str | None) -> str:
     if s == "MENA": return "Middle East and North Africa"
     if s == "NAMR": return "North America"
     if s == "South America": return "LATAM"
-    return "Other"
+    if s in REGION_ORDER:
+        return s
+    return s
 
 def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     if not opps:
@@ -198,16 +200,22 @@ class V2RegionsService:
         y_reg = _get_region_data(y_df)
         lw_reg = _get_region_data(lw_df)
 
-        regions_out = []
-        for reg_name in REGION_ORDER + ["Other"]:
-            if reg_name == "Other" and (reg_name not in today_reg or today_reg[reg_name]["count"] == 0):
-                continue
-            if reg_name not in today_reg and reg_name != "Other":
-                today_reg[reg_name] = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}
+        found_regions = set()
+        for r_map in (today_reg, y_reg, lw_reg):
+            found_regions.update(r_map.keys())
 
-            d_today = today_reg.get(reg_name, {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}})
-            d_y = y_reg.get(reg_name, {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}})
-            d_lw = lw_reg.get(reg_name, {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}})
+        known_ordered = [r for r in REGION_ORDER]
+        other_in_data = sorted([r for r in found_regions if r not in known_ordered and r not in ("Other / Unmapped", "Other")])
+        
+        all_ordered = known_ordered + other_in_data
+        if "Other / Unmapped" in found_regions or "Other" in found_regions:
+            all_ordered.append("Other / Unmapped")
+
+        regions_out = []
+        for reg_name in all_ordered:
+            d_today = today_reg.get(reg_name, today_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}))
+            d_y = y_reg.get(reg_name, y_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}))
+            d_lw = lw_reg.get(reg_name, lw_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}))
 
             pct_acv = round((d_today["acv"] / grand_acv * 100) if grand_acv else 0, 1)
             commit_acv = d_today["cells"]["Commit"]["acv"] + d_today["cells"]["Closed"]["acv"]
@@ -249,9 +257,10 @@ class V2RegionsService:
                 "delta_lastweek": {"count": len(st_df) - len(st_lw), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_lw["forecast_acv_amount"].sum() if not st_lw.empty else 0.0), 2)},
             }
 
+        known_set = set(REGION_ORDER)
         unmapped = {"count": 0, "acv": 0.0, "values": []}
         if not df.empty:
-            other_df = df[df["region"] == "Other"]
+            other_df = df[~df["region"].isin(known_set)]
             unmapped["count"] = len(other_df)
             unmapped["acv"] = round(float(other_df["forecast_acv_amount"].sum()), 2)
             unmapped["values"] = sorted(list(set([str(x) for x in other_df["raw_sub_region"].unique() if pd.notna(x) and x != ""])))

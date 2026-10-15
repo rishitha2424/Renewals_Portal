@@ -76,10 +76,15 @@ def _norm_fc(s: str | None) -> str:
 
 
 def _norm_region(revised_sub_region: str | None) -> str:
-    """Exact-match region mapping; returns 'Other' if not in the map."""
-    if not revised_sub_region:
-        return "Other"
-    return REGION_MAP.get(str(revised_sub_region).strip(), "Other")
+    """Exact-match region mapping; returns 'Other / Unmapped' if empty/null, or preserves unmapped region."""
+    if not revised_sub_region or str(revised_sub_region).strip() in ("", "nan", "None"):
+        return "Other / Unmapped"
+    s = str(revised_sub_region).strip()
+    if s in REGION_MAP:
+        return REGION_MAP[s]
+    if s in CANONICAL_REGIONS:
+        return s
+    return s
 
 
 def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
@@ -694,9 +699,16 @@ class V2OverviewService:
         lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=snap.snapshot_date) if lw_snap else ([], None)
         lw_df = _opps_to_df(lw_opps)
 
-        regions = list(CANONICAL_REGIONS)
-        if not df.empty and "Other" in df["canonical_region"].values:
-            regions.append("Other")
+        found_regions = set()
+        for d in (df, y_df, lw_df):
+            if not d.empty and "canonical_region" in d.columns:
+                found_regions.update(d["canonical_region"].unique())
+
+        known_regions = list(CANONICAL_REGIONS)
+        other_regions = sorted([r for r in found_regions if r not in known_regions and r not in ("Other", "Other / Unmapped")])
+        regions = known_regions + other_regions
+        if "Other / Unmapped" in found_regions or "Other" in found_regions:
+            regions.append("Other / Unmapped")
 
         prop_rows = []
         for region in regions:

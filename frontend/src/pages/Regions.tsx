@@ -166,7 +166,11 @@ function RegionsContent() {
   const yDayStr = formatUI(yesterday_date, 'yesterday')
   const lwStr = formatUI(lastweek_date, 'last week')
 
-  const tileOrder = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa", "Other"]
+  const knownRegions = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"]
+  const presentRegions = (regions || []).map((r: any) => r.region)
+  const otherRegions = presentRegions.filter((r: string) => !knownRegions.includes(r) && r !== 'Other' && r !== 'Other / Unmapped')
+  const unmappedRegions = presentRegions.filter((r: string) => r === 'Other' || r === 'Other / Unmapped')
+  const tileOrder = [...knownRegions, ...otherRegions, ...unmappedRegions]
   
   // Generate Insight Lines
   const getInsightLines = () => {

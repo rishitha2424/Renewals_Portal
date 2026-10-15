@@ -34,7 +34,7 @@ def _norm_approval(s: str | None) -> str:
     return s
 
 def _map_region(s: str | None) -> str:
-    if not s or str(s).strip() in ("", "nan", "None"): return "Other"
+    if not s or str(s).strip() in ("", "nan", "None"): return "Other / Unmapped"
     s = str(s).strip()
     if s == "Europe": return "Europe"
     if s == "APAC": return "APAC"
@@ -42,7 +42,9 @@ def _map_region(s: str | None) -> str:
     if s == "MENA": return "Middle East and North Africa"
     if s == "NAMR": return "North America"
     if s == "South America": return "LATAM"
-    return "Other"
+    if s in ("North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"):
+        return s
+    return s
 
 def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     if not opps:
