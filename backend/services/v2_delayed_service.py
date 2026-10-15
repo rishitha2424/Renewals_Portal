@@ -194,6 +194,7 @@ class V2DelayedService:
             )
 
         # At year start (Q1), open deals whose fiscal period is before current quarter (prior FY) count as delayed
+        prior_slipped = pd.DataFrame()
         if target_parsed[1] == 1 and include_prior_fy:
             prior_open = t_ren[
                 t_ren["fiscal_period"].apply(lambda fp: (_parse_fp(fp) < target_parsed and _parse_fp(fp) > (0, 0)) if fp and "-" in fp else False)
@@ -204,12 +205,29 @@ class V2DelayedService:
             prior_open = pd.DataFrame()
 
         if not prior_open.empty:
-            prior_open["reason"] = "Overdue"
-            prior_open["push_out_days"] = 0
-            prior_open["days_overdue"] = prior_open["close_date"].apply(
-                lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
+            q_start, q_end = ScopeService.quarter_bounds(target_q_str)
+            is_slipped_to_cq = prior_open["close_date"].apply(
+                lambda d: (q_start <= d.date() <= q_end) if pd.notna(d) else False
             )
-            overdue_df = pd.concat([overdue_df, prior_open], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first")
+            prior_slipped = prior_open[is_slipped_to_cq].copy()
+            prior_overdue = prior_open[~is_slipped_to_cq].copy()
+
+            if not prior_overdue.empty:
+                prior_overdue["reason"] = "Overdue"
+                prior_overdue["push_out_days"] = 0
+                prior_overdue["days_overdue"] = prior_overdue["close_date"].apply(
+                    lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
+                )
+                overdue_df = pd.concat([overdue_df, prior_overdue], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first")
+
+            if not prior_slipped.empty:
+                prior_slipped["reason"] = "Slipped quarter"
+                prior_slipped["days_overdue"] = 0
+                prior_slipped["push_out_days"] = prior_slipped.apply(
+                    lambda r: (r["close_date"].date() - ScopeService.quarter_bounds(r["fiscal_period"])[1]).days
+                    if pd.notna(r.get("close_date")) and r.get("fiscal_period") else 0,
+                    axis=1
+                )
 
         if not overdue_df.empty:
             # For each overdue deal, was it overdue yesterday? (i.e. Close Date < yesterday date and not closed yesterday)
@@ -289,7 +307,11 @@ class V2DelayedService:
 
         delayed_y = _get_delayed_from_base(y_ren, y_snap_date)
         delayed_w = _get_delayed_from_base(w_ren, w_snap_date)
-        
+
+        if not prior_slipped.empty:
+            delayed_y = pd.concat([delayed_y, prior_slipped], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first") if not delayed_y.empty else prior_slipped.copy()
+            delayed_w = pd.concat([delayed_w, prior_slipped], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first") if not delayed_w.empty else prior_slipped.copy()
+
         return overdue_df, delayed_y, delayed_w
 
     def _compute_snapshot_trend(self, current_snap: UploadSnapshot, target_q_str: str, filter_spec: Optional[ScopeService.FilterSpec] = None) -> list[dict]:

@@ -40,9 +40,11 @@ def jan_client_and_db(tmp_path_factory):
 
     app.dependency_overrides[get_db] = override_db
 
-    sample_dir = pathlib.Path("data/sample_oct7")
+    sample_dir = pathlib.Path("backend/tests/fixtures/rollover_sample")
+    if not sample_dir.exists() or not list(sample_dir.glob("*.xlsx")):
+        sample_dir = pathlib.Path("data/sample_oct7")
     fixture_files = sorted(sample_dir.glob("*.xlsx"))
-    assert len(fixture_files) >= 1, "Repository fixture files not found in data/sample_oct7"
+    assert len(fixture_files) >= 1, "Repository fixture files not found"
 
     # Derive dates dynamically from fixture
     base_file = fixture_files[0]
@@ -222,3 +224,156 @@ def test_january_delayed_with_prior_fy_disabled(jan_client_and_db, monkeypatch):
     # Overdue must match the restricted set (0 prior FY deals)
     assert d["overdue"]["count"] == expected_count
     assert abs(d["overdue"]["acv"] - expected_acv) < 0.05
+
+
+def test_january_delayed_slipped_deal(jan_client_and_db, monkeypatch):
+    """
+    Test Slipped case in a January snapshot:
+    Take an open Q4 deal from the previous fiscal year, set its close date to a date
+    inside the new current quarter, and assert that:
+    (1) it appears under Slipped (count and ACV equal to pandas),
+    (2) it does NOT also appear under Overdue,
+    (3) Total Delayed equals Overdue + Slipped + Later close date + Lost (all from pandas, never typed numbers).
+    """
+    client, Session, jan_date = jan_client_and_db
+    monkeypatch.setattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
+
+    target_q = ScopeService.quarter_of(jan_date)
+    target_parsed = _parse_fp(target_q)
+    q_start, q_end = ScopeService.quarter_bounds(target_q)
+    prev_fy_q4 = f"Q4-{target_parsed[0] - 1}"
+
+    db = Session()
+    try:
+        snap = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == jan_date).first()
+        assert snap is not None
+
+        # Pick an open Q4 renewal deal from previous fiscal year
+        deal = db.query(Opportunity).filter(
+            Opportunity.snapshot_id == snap.id,
+            Opportunity.sales_type == "Renewals",
+            Opportunity.is_deleted_or_lost == False,
+            Opportunity.forecast_category != "Closed",
+            Opportunity.fiscal_period == prev_fy_q4
+        ).first()
+        assert deal is not None, f"Expected open renewal deal in {prev_fy_q4}"
+
+        orig_close_date = deal.close_date
+        # Set its close date to a date inside the new current quarter (15 days after quarter start)
+        new_close_date = q_start + timedelta(days=15)
+        assert q_start <= new_close_date <= q_end, "new_close_date must be inside current quarter"
+        deal.close_date = new_close_date
+        db.commit()
+
+        # Compute ground truth reference directly from DB with pandas (zero hardcoded numbers)
+        opps = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        records = [
+            {
+                "id": o.opportunity_id_18,
+                "fiscal_period": o.fiscal_period or "",
+                "forecast_category": o.forecast_category or "",
+                "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                "sales_type": o.sales_type or "",
+                "is_deleted_or_lost": bool(o.is_deleted_or_lost),
+                "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
+            }
+            for o in opps
+        ]
+        df = pd.DataFrame(records).drop_duplicates(subset=["id"], keep="last")
+        ren_df = df[(df["sales_type"] == "Renewals") & (~df["is_deleted_or_lost"])]
+
+        # CQ overdue deals: close date before snapshot date
+        cq_overdue = ren_df[
+            (ren_df["fiscal_period"] == target_q)
+            & (ren_df["forecast_category"] != "Closed")
+            & pd.notna(ren_df["close_date"])
+            & (ren_df["close_date"] < pd.Timestamp(jan_date))
+        ]
+
+        # Prior fiscal period open deals
+        prior_open_all = ren_df[
+            ren_df["fiscal_period"].apply(
+                lambda fp: (_parse_fp(fp) < target_parsed and _parse_fp(fp) > (0, 0)) if fp and "-" in fp else False
+            )
+            & (ren_df["forecast_category"] != "Closed")
+        ]
+
+        # Slipped prior deals: close date is inside current quarter
+        prior_slipped_pandas = prior_open_all[
+            prior_open_all["close_date"].apply(
+                lambda d: (pd.Timestamp(q_start) <= d <= pd.Timestamp(q_end)) if pd.notna(d) else False
+            )
+        ]
+
+        # Overdue prior deals: close date NOT inside current quarter (remains in the past)
+        prior_overdue_pandas = prior_open_all[
+            ~prior_open_all["id"].isin(prior_slipped_pandas["id"])
+        ]
+
+        expected_overdue_df = pd.concat([cq_overdue, prior_overdue_pandas], ignore_index=True).drop_duplicates(subset=["id"], keep="first")
+        expected_slipped_df = prior_slipped_pandas.copy()
+
+        expected_overdue_count = len(expected_overdue_df)
+        expected_overdue_acv = float(expected_overdue_df["forecast_acv_amount"].sum())
+
+        expected_slipped_count = len(expected_slipped_df)
+        expected_slipped_acv = float(expected_slipped_df["forecast_acv_amount"].sum())
+
+        # Call API endpoint
+        r = client.get("/api/v2/delayed/summary?compare=yesterday")
+        assert r.status_code == 200, r.text
+        d = r.json()
+
+        # (1) it appears under Slipped (count and ACV equal to pandas)
+        assert expected_slipped_count > 0
+        assert d["slipped"]["count"] == expected_slipped_count
+        assert abs(d["slipped"]["acv"] - expected_slipped_acv) < 0.05
+
+        # Also verify deal is returned in /api/v2/delayed/deals?kind=slipped
+        r_slipped = client.get("/api/v2/delayed/deals?kind=slipped&compare=yesterday")
+        assert r_slipped.status_code == 200
+        slipped_deal_ids = [item["opportunity_id_18"] for item in r_slipped.json().get("deals", [])]
+        assert deal.opportunity_id_18 in slipped_deal_ids
+
+        # (2) it does NOT also appear under Overdue
+        assert d["overdue"]["count"] == expected_overdue_count
+        assert abs(d["overdue"]["acv"] - expected_overdue_acv) < 0.05
+
+        r_overdue = client.get("/api/v2/delayed/deals?kind=overdue&compare=yesterday")
+        assert r_overdue.status_code == 200
+        overdue_deal_ids = [item["opportunity_id_18"] for item in r_overdue.json().get("deals", [])]
+        assert deal.opportunity_id_18 not in overdue_deal_ids
+
+        # (3) Total Delayed equals Overdue + Slipped + Later close date + Lost (all from pandas, never typed numbers)
+        expected_later_count = d["later_close"]["count"]
+        expected_later_acv = d["later_close"]["acv"]
+        expected_lost_count = d["lost"]["count"]
+        expected_lost_acv = d["lost"]["acv"]
+
+        expected_total_count = expected_overdue_count + expected_slipped_count + expected_later_count + expected_lost_count
+        expected_total_acv = expected_overdue_acv + expected_slipped_acv + expected_later_acv + expected_lost_acv
+
+        assert d["total"]["count"] == expected_total_count
+        assert abs(d["total"]["acv"] - expected_total_acv) < 0.05
+
+        # Verify sum of component dictionary values
+        sum_components_count = (
+            d["overdue"]["count"]
+            + d["slipped"]["count"]
+            + d["later_close"]["count"]
+            + d["lost"]["count"]
+        )
+        sum_components_acv = (
+            d["overdue"]["acv"]
+            + d["slipped"]["acv"]
+            + d["later_close"]["acv"]
+            + d["lost"]["acv"]
+        )
+        assert d["total"]["count"] == sum_components_count
+        assert abs(d["total"]["acv"] - sum_components_acv) < 0.05
+    finally:
+        # Restore deal's original close date for test isolation
+        deal.close_date = orig_close_date
+        db.commit()
+        db.close()
+
