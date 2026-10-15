@@ -188,7 +188,7 @@ class ScopeService:
     def quarter_bounds(q_str: str) -> Tuple[date, date]:
         """Returns (start_date, end_date) for a given quarter 'Qx-YYYY'."""
         if not q_str or "-" not in q_str:
-            return date.today(), date.today()
+            return date(1970, 1, 1), date(1970, 1, 1)
         q_part, y_part = q_str.split("-")
         q = int(q_part[1])
         y = int(y_part)
@@ -287,8 +287,17 @@ class ScopeService:
                 pass
         if not ref_date and snapshot:
             ref_date = snapshot.snapshot_date
+        if not ref_date and db is not None:
+            from backend.models.snapshot import UploadSnapshot
+            active_s = db.query(UploadSnapshot.snapshot_date).filter(UploadSnapshot.is_active_today == True).first()
+            if active_s:
+                ref_date = active_s[0]
+            else:
+                latest_s = db.query(func.max(UploadSnapshot.snapshot_date)).scalar()
+                if latest_s:
+                    ref_date = latest_s
         if not ref_date:
-            ref_date = date.today()
+            ref_date = date(2000, 1, 1)
 
         cq = ScopeService.quarter_of(ref_date)
         period = (filter_spec.period or "current_quarter").strip()

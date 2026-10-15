@@ -51,9 +51,17 @@ class RiskService:
             ref_date = as_of_date
         elif getattr(opp, "snapshot_id", None):
             snap = self.db.query(UploadSnapshot).filter(UploadSnapshot.id == opp.snapshot_id).first()
-            ref_date = snap.snapshot_date if (snap and snap.snapshot_date) else date.today()
+            ref_date = snap.snapshot_date if (snap and snap.snapshot_date) else None
         else:
-            ref_date = date.today()
+            ref_date = None
+
+        if not ref_date:
+            active_s = self.db.query(UploadSnapshot.snapshot_date).filter(UploadSnapshot.is_active_today == True).first()
+            if active_s:
+                ref_date = active_s[0]
+            else:
+                latest_s = self.db.query(func.max(UploadSnapshot.snapshot_date)).scalar()
+                ref_date = latest_s or date(2000, 1, 1)
 
         factors: list[dict[str, Any]] = []
 

@@ -998,7 +998,12 @@ class AnalyticsService:
     def get_trend_sparklines(
         self, ctx: UserContext, metric: str = "total_acv", days: int = 30
     ) -> dict:
-        cutoff = date.today() - timedelta(days=days)
+        snap = self._resolve_snapshot(ctx, None)
+        ref_date = snap.snapshot_date if snap else None
+        if not ref_date:
+            active_s = self.db.query(UploadSnapshot.snapshot_date).filter(UploadSnapshot.is_active_today == True).first()
+            ref_date = active_s[0] if active_s else date(2000, 1, 1)
+        cutoff = ref_date - timedelta(days=days)
         rows = (
             self.db.query(DailySummary)
             .filter(

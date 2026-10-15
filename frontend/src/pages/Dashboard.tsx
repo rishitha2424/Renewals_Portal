@@ -540,7 +540,7 @@ export default function Dashboard() {
             })()}
 
             <p className="text-[11px] text-[var(--text-muted)] mt-2">
-              Contracts originally in {getQuarterFromDate(activeSnapshot?.snapshot_date).split("-")[0]} that moved close date / fiscal period to FY{(activeSnapshot?.snapshot_date ? new Date(activeSnapshot.snapshot_date.length === 10 ? activeSnapshot.snapshot_date + "T00:00:00" : activeSnapshot.snapshot_date).getFullYear() + 1 : 2027)}.
+              Contracts originally in {getQuarterFromDate(activeSnapshot?.snapshot_date).split("-")[0]} that moved close date / fiscal period to subsequent periods.
               {standingSlip.count > 0 && ` Active snapshot standing slippage: ${standingSlip.count} deals.`}
             </p>
           </div>
