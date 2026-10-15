@@ -15,12 +15,13 @@ def get_filter_spec(
     forecast_categories: Optional[List[str]] = Query(None),
     approval_statuses: Optional[List[str]] = Query(None),
     include_deleted_lost: Optional[bool] = Query(None),
+    exclude_deleted_lost: bool = Query(False),
     exclude_deleted: bool = Query(False),
 ) -> FilterSpec:
     idl = True
     if include_deleted_lost is not None:
         idl = bool(include_deleted_lost)
-    elif exclude_deleted:
+    elif exclude_deleted or exclude_deleted_lost:
         idl = False
 
     return FilterSpec.from_params(

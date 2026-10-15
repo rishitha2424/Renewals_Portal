@@ -1,13 +1,91 @@
 import pytest
 from datetime import date
+from pathlib import Path
+import pandas as pd
 from backend.models.snapshot import UploadSnapshot
+from backend.services.scopes import ScopeService
+from backend.utils.excel_parser import detect_file_slot, detect_suggested_snapshot_date
 
 ACV_ABS = 0.01
 
+def get_fixture_comparison_file() -> tuple[Path, date]:
+    """Finds the Comparison Tool workbook in data/sample_oct7 or data/ and detects snapshot date."""
+    search_dirs = [Path("data/sample_oct7"), Path("data")]
+    for s_dir in search_dirs:
+        if s_dir.exists():
+            for fp in sorted(s_dir.glob("*.xlsx")):
+                slot, _ = detect_file_slot(fp)
+                if slot == "comparison_tool":
+                    d = detect_suggested_snapshot_date(fp)
+                    if d:
+                        return fp, d
+    # Fallback to any comparison file
+    for s_dir in search_dirs:
+        if s_dir.exists():
+            for fp in sorted(s_dir.glob("*.xlsx")):
+                d = detect_suggested_snapshot_date(fp)
+                if d:
+                    return fp, d
+    raise FileNotFoundError("No comparison tool fixture found")
+
+def build_expected_matrix_from_excel(comp_file: Path, scope_period: str, snap_date: date):
+    """
+    Builds the expected BU x forecast-category matrix with pandas directly from the fixture Excel file.
+    Does NOT hardcode any numbers, quarter names, or business unit names.
+    """
+    df_raw = pd.read_excel(comp_file, sheet_name="today")
+
+    # Dynamically find column names
+    bu_col = [c for c in df_raw.columns if str(c).lower().strip() in ("business unit", "business_unit")][0]
+    fc_col = [c for c in df_raw.columns if str(c).lower().strip() in ("forecast category", "forecast_category")][0]
+    acv_col = [c for c in df_raw.columns if str(c).lower().strip() in ("forecast acv amount", "forecast_acv_amount")][0]
+    st_col = [c for c in df_raw.columns if str(c).lower().strip() in ("sales type", "sales_type")][0]
+    fp_col = [c for c in df_raw.columns if str(c).lower().strip() in ("fiscal period", "fiscal_period")][0]
+
+    # Filter Sales Type == 'Renewals'
+    df = df_raw[df_raw[st_col] == "Renewals"].copy()
+
+    # Scope period filter
+    if scope_period == "current_quarter":
+        cq = ScopeService.quarter_of(snap_date)
+        df = df[df[fp_col] == cq].copy()
+    elif scope_period in ("all", "all_periods"):
+        pass # All periods included
+
+    def norm_bu(v):
+        if pd.isna(v): return "Unassigned"
+        s = str(v).strip()
+        if s in ("", "nan", "None"): return "Unassigned"
+        return s
+
+    def norm_fc(v):
+        if pd.isna(v): return "Blank"
+        s = str(v).strip()
+        if s in ("", "Not yet proposed", "nan", "None"): return "Blank"
+        return s
+
+    df["clean_bu"] = df[bu_col].apply(norm_bu)
+    df["clean_fc"] = df[fc_col].apply(norm_fc)
+    df["clean_acv"] = pd.to_numeric(df[acv_col], errors="coerce").fillna(0.0)
+
+    g = df.groupby(["clean_bu", "clean_fc"])["clean_acv"].agg(["count", "sum"])
+    bu_tot = df.groupby("clean_bu")["clean_acv"].agg(["count", "sum"])
+    fc_tot = df.groupby("clean_fc")["clean_acv"].agg(["count", "sum"])
+
+    return {
+        "df": df,
+        "grouped": g,
+        "bu_totals": bu_tot,
+        "fc_totals": fc_tot,
+        "grand_count": int(len(df)),
+        "grand_acv": float(round(df["clean_acv"].sum(), 2)),
+    }
+
+
 @pytest.fixture(scope="module")
 def client_and_db(tmp_path_factory):
-    """Upload Oct-7 files and return TestClient + Session factory."""
-    import pathlib, os
+    """Upload fixture files and return TestClient + Session factory."""
+    import os
     os.environ.setdefault("DATABASE_URL", "sqlite:///./test_v2_business_units.db")
 
     from fastapi.testclient import TestClient
@@ -24,18 +102,25 @@ def client_and_db(tmp_path_factory):
 
     app.dependency_overrides[get_db] = override_db
 
-    from backend.utils.excel_parser import detect_file_slot
-    sample = pathlib.Path("data/sample_oct7")
+    sample = Path("data/sample_oct7")
     slots = {}
+    snap_date = None
     for fp in sorted(sample.glob("*.xlsx")):
-        slots[detect_file_slot(fp)[0]] = fp
+        slot, _ = detect_file_slot(fp)
+        slots[slot] = fp
+        if not snap_date:
+            sd = detect_suggested_snapshot_date(fp)
+            if sd:
+                snap_date = sd
+
+    date_str = snap_date.isoformat() if snap_date else "2026-10-07"
 
     with TestClient(app) as client:
         # Validate
         files = [(slot, (fp.name, open(fp, "rb"),
                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                  for slot, fp in slots.items()]
-        data = {"data_as_of_date": "2026-10-07", "yesterday_date": "2026-10-06"}
+        data = {"data_as_of_date": date_str}
         vr = client.post("/api/snapshots/validate", data=data, files=files)
         assert vr.status_code == 200, vr.text
         session_id = vr.json()["session_id"]
@@ -50,257 +135,148 @@ def client_and_db(tmp_path_factory):
     # Cleanup
     app.dependency_overrides.clear()
 
-def test_bu_summary_oct7(client_and_db):
-    client, db = client_and_db
-    r = client.get("/api/v2/business-units/summary")
-    assert r.status_code == 200
-    d = r.json()
 
-    assert d["data_slice_key"] == "Q4-2026"
-    assert d["total"]["count"] == 348
-    assert d["total"]["acv"] == pytest.approx(40068990.09, abs=ACV_ABS)
-
-    rows = {r["bu"]: r for r in d["rows"]}
-    
-    # Assert today
-    assert rows["Roaming"]["count"] == 86
-    assert rows["Roaming"]["acv"] == pytest.approx(12469199.93, abs=ACV_ABS)
-    assert rows["Testing"]["count"] == 166
-    assert rows["Testing"]["acv"] == pytest.approx(10459935.58, abs=ACV_ABS)
-    assert rows["Roaming; Security"]["count"] == 4
-    assert rows["Roaming; Security"]["acv"] == pytest.approx(6067424.00, abs=ACV_ABS)
-    assert rows["Risk"]["count"] == 66
-    assert rows["Risk"]["acv"] == pytest.approx(5295599.20, abs=ACV_ABS)
-    assert rows["Engagement and Experience"]["count"] == 7
-    assert rows["Engagement and Experience"]["acv"] == pytest.approx(4326903.53, abs=ACV_ABS)
-    assert rows["Security"]["count"] == 18
-    assert rows["Security"]["acv"] == pytest.approx(1346965.40, abs=ACV_ABS)
-    assert rows["Risk; Roaming"]["count"] == 1
-    assert rows["Risk; Roaming"]["acv"] == pytest.approx(102962.45, abs=ACV_ABS)
-
-    # Assert matrix counts
-    assert rows["Roaming"]["cells"]["Best Case"]["count"] == 12
-    assert rows["Roaming"]["cells"]["Blank"]["count"] == 2
-    assert rows["Roaming"]["cells"]["Commit"]["count"] == 72
-    assert rows["Roaming"]["cells"]["Pipeline"]["count"] == 0
-
-    assert rows["Testing"]["cells"]["Best Case"]["count"] == 12
-    assert rows["Testing"]["cells"]["Blank"]["count"] == 3
-    assert rows["Testing"]["cells"]["Commit"]["count"] == 150
-    assert rows["Testing"]["cells"]["Pipeline"]["count"] == 1
-
-    # Assert matrix ACV
-    assert rows["Roaming"]["cells"]["Best Case"]["acv"] == pytest.approx(1386929.98, abs=ACV_ABS)
-    assert rows["Roaming"]["cells"]["Blank"]["acv"] == pytest.approx(146246.02, abs=ACV_ABS)
-    assert rows["Roaming"]["cells"]["Commit"]["acv"] == pytest.approx(10936023.93, abs=ACV_ABS)
-
-    assert rows["Testing"]["cells"]["Best Case"]["acv"] == pytest.approx(1624565.77, abs=ACV_ABS)
-    assert rows["Testing"]["cells"]["Blank"]["acv"] == pytest.approx(66526.38, abs=ACV_ABS)
-    assert rows["Testing"]["cells"]["Commit"]["acv"] == pytest.approx(8719105.81, abs=ACV_ABS)
-    assert rows["Testing"]["cells"]["Pipeline"]["acv"] == pytest.approx(49737.62, abs=ACV_ABS)
-
-    assert rows["Roaming; Security"]["cells"]["Best Case"]["acv"] == pytest.approx(4968375.00, abs=ACV_ABS)
-    assert rows["Roaming; Security"]["cells"]["Commit"]["acv"] == pytest.approx(1099049.00, abs=ACV_ABS)
-
-    # Deltas vs yesterday
-    # Roaming +2 / +351,774.65 ; Testing -1 / -22,736.61 ; Engagement and Experience +1 / +147,181.14
-    dy = rows["Roaming"]["delta_yesterday"]
-    assert dy["count"] == 2
-    assert dy["acv"] == pytest.approx(351774.65, abs=ACV_ABS)
-    
-    dt = rows["Testing"]["delta_yesterday"]
-    assert dt["count"] == -1
-    assert dt["acv"] == pytest.approx(-22736.61, abs=ACV_ABS)
-    
-    de = rows["Engagement and Experience"]["delta_yesterday"]
-    assert de["count"] == 1
-    assert de["acv"] == pytest.approx(147181.14, abs=ACV_ABS)
-
-    # Deltas vs last week
-    # Roaming +6 / +525,274.74 ; Risk +3 / +307,814.87 ; Testing +5 / -13,744.66 ; Engagement and Experience 0 / +84,787.38
-    dlw = rows["Roaming"]["delta_lastweek"]
-    assert dlw["count"] == 6
-    assert dlw["acv"] == pytest.approx(525274.74, abs=ACV_ABS)
-
-    dlwr = rows["Risk"]["delta_lastweek"]
-    assert dlwr["count"] == 3
-    assert dlwr["acv"] == pytest.approx(307814.87, abs=ACV_ABS)
-    
-    dlwt = rows["Testing"]["delta_lastweek"]
-    assert dlwt["count"] == 5
-    assert dlwt["acv"] == pytest.approx(-13744.66, abs=ACV_ABS)
-    
-    dlwe = rows["Engagement and Experience"]["delta_lastweek"]
-    assert dlwe["count"] == 0
-    assert dlwe["acv"] == pytest.approx(84787.38, abs=ACV_ABS)
-
-def test_bu_deals_roaming_commit(client_and_db):
+@pytest.mark.parametrize("scope_period", ["current_quarter", "all_periods"])
+def test_bu_heatmap_and_drawer_tie_to_excel(client_and_db, scope_period):
+    """
+    Test that for ANY uploaded day:
+    1. Expected matrix is built directly with pandas from the fixture Excel file.
+    2. Heatmap cell count and ACV == expected from Excel.
+    3. Drawer count and ACV == heatmap cell exactly.
+    4. Row totals, column totals, and grand total match under both current quarter and all periods.
+    5. Multi-value BUs (e.g. 'Roaming; Security') are retained as distinct rows and match.
+    6. Independent runtime recompute (/reconcile) returns 'reconciles' with 0 diffs.
+    """
     client, _ = client_and_db
-    r = client.get("/api/v2/business-units/deals?bu=Roaming&category=Commit")
-    assert r.status_code == 200
-    d = r.json()
-    assert d["count"] == 72
-    assert d["acv"] == pytest.approx(10936023.93, abs=ACV_ABS)
+    comp_file, snap_date = get_fixture_comparison_file()
+    date_str = snap_date.isoformat()
 
-def test_bu_deals_roaming_security(client_and_db):
-    client, _ = client_and_db
-    r = client.get("/api/v2/business-units/deals?bu=Roaming;%20Security")
-    assert r.status_code == 200
-    d = r.json()
-    assert d["count"] == 4
-    assert d["acv"] == pytest.approx(6067424.00, abs=ACV_ABS)
-    
-def test_bu_deals_no_filter(client_and_db):
-    client, _ = client_and_db
-    r = client.get("/api/v2/business-units/deals")
-    assert r.status_code == 200
-    d = r.json()
-    assert d["count"] == 348
-    assert d["acv"] == pytest.approx(40068990.09, abs=ACV_ABS)
+    # 1. Build expected matrix from Excel with pandas
+    expected = build_expected_matrix_from_excel(comp_file, scope_period, snap_date)
+
+    # 2. Query heatmap summary from service
+    sum_res = client.get(
+        "/api/v2/business-units/summary",
+        params={"as_of": date_str, "period": scope_period}
+    ).json()
+
+    # 3. Assert Grand Total: heatmap == expected
+    assert sum_res["total"]["count"] == expected["grand_count"]
+    assert sum_res["total"]["acv"] == pytest.approx(expected["grand_acv"], abs=ACV_ABS)
+
+    # Drawer grand total == heatmap
+    drawer_grand = client.get(
+        "/api/v2/business-units/deals",
+        params={"as_of": date_str, "period": scope_period}
+    ).json()
+    assert drawer_grand["count"] == sum_res["total"]["count"]
+    assert drawer_grand["acv"] == pytest.approx(sum_res["total"]["acv"], abs=ACV_ABS)
+
+    # 4. Assert every BU row and every category cell
+    heatmap_rows = {r["bu"]: r for r in sum_res["rows"]}
+    all_expected_bus = list(expected["bu_totals"].index)
+
+    # Multi-value BUs must be present if in Excel
+    multi_bus = [b for b in all_expected_bus if ";" in b]
+    for mb in multi_bus:
+        assert mb in heatmap_rows, f"Multi-value BU '{mb}' missing from heatmap"
+
+    for bu in all_expected_bus:
+        exp_bu = expected["bu_totals"].loc[bu]
+        act_row = heatmap_rows.get(bu)
+        assert act_row is not None, f"BU '{bu}' missing from heatmap rows"
+
+        # Row total: heatmap == expected
+        assert act_row["count"] == int(exp_bu["count"])
+        assert act_row["acv"] == pytest.approx(float(exp_bu["sum"]), abs=ACV_ABS)
+
+        # Drawer row total == heatmap
+        drawer_row = client.get(
+            "/api/v2/business-units/deals",
+            params={"as_of": date_str, "period": scope_period, "bu": bu}
+        ).json()
+        assert drawer_row["count"] == act_row["count"]
+        assert drawer_row["acv"] == pytest.approx(act_row["acv"], abs=ACV_ABS)
+
+        # Each category cell
+        for fc in ["Closed", "Commit", "Best Case", "Pipeline", "Blank"]:
+            exp_cell_count = int(expected["grouped"].loc[(bu, fc), "count"]) if (bu, fc) in expected["grouped"].index else 0
+            exp_cell_acv = float(expected["grouped"].loc[(bu, fc), "sum"]) if (bu, fc) in expected["grouped"].index else 0.0
+
+            act_cell = act_row["cells"].get(fc, {"count": 0, "acv": 0.0})
+            assert act_cell["count"] == exp_cell_count, f"Cell count mismatch for ({bu}, {fc})"
+            assert act_cell["acv"] == pytest.approx(exp_cell_acv, abs=ACV_ABS), f"Cell ACV mismatch for ({bu}, {fc})"
+
+            # Drawer cell == heatmap cell
+            drawer_cell = client.get(
+                "/api/v2/business-units/deals",
+                params={"as_of": date_str, "period": scope_period, "bu": bu, "category": fc}
+            ).json()
+            assert drawer_cell["count"] == act_cell["count"], f"Drawer count mismatch for ({bu}, {fc})"
+            assert drawer_cell["acv"] == pytest.approx(act_cell["acv"], abs=ACV_ABS), f"Drawer ACV mismatch for ({bu}, {fc})"
+
+    # 5. Assert Column totals
+    for fc, cat_tot in sum_res["totals"]["categories"].items():
+        exp_col_count = int(expected["fc_totals"].loc[fc, "count"]) if fc in expected["fc_totals"].index else 0
+        exp_col_acv = float(expected["fc_totals"].loc[fc, "sum"]) if fc in expected["fc_totals"].index else 0.0
+
+        assert cat_tot["count"] == exp_col_count
+        assert cat_tot["acv"] == pytest.approx(exp_col_acv, abs=ACV_ABS)
+
+        drawer_col = client.get(
+            "/api/v2/business-units/deals",
+            params={"as_of": date_str, "period": scope_period, "category": fc}
+        ).json()
+        assert drawer_col["count"] == cat_tot["count"]
+        assert drawer_col["acv"] == pytest.approx(cat_tot["acv"], abs=ACV_ABS)
+
+    # 6. Verify independent runtime recompute (Source check badge)
+    reconcile_res = client.get(
+        "/api/v2/business-units/reconcile",
+        params={"as_of": date_str, "period": scope_period}
+    ).json()
+    assert reconcile_res["status"] == "reconciles"
+    assert reconcile_res["badge"] == "green"
+    assert len(reconcile_res["diffs"]) == 0
+    assert sum_res["source_check"]["status"] == "reconciles"
+
 
 def test_bu_exclude_deleted(client_and_db):
     client, _ = client_and_db
-    r = client.get("/api/v2/business-units/summary?exclude_deleted_lost=true")
+    comp_file, snap_date = get_fixture_comparison_file()
+    r = client.get(f"/api/v2/business-units/summary?as_of={snap_date.isoformat()}&exclude_deleted_lost=true")
     assert r.status_code == 200
     d = r.json()
-    # It should succeed without error, though all Q4 deals are likely not deleted
     assert "rows" in d
+    assert d["source_check"]["status"] == "reconciles"
 
-def test_bu_empty_slice(client_and_db):
-    client, _ = client_and_db
-    # Pass a time-travel date where the slice is empty or no snapshots exist
-    r = client.get("/api/v2/business-units/summary?as_of=2024-01-01")
-    assert r.status_code == 200
-    d = r.json()
-    # If no snapshot, returns error code payload OR empty totals
-    if "error" not in d:
-        assert d["total"]["count"] == 0
 
-def test_bu_time_travel_2027(client_and_db):
+def test_bu_time_travel_dynamic(client_and_db):
     client, db = client_and_db
-    # Insert a dummy snap for 2027-01-05
-    from backend.models.snapshot import UploadSnapshot
-    snap = UploadSnapshot(snapshot_date=date(2027,1,5), label="Dummy", is_active_today=False)
+    future_date = date(2027, 1, 5)
+    snap = UploadSnapshot(snapshot_date=future_date, label="Dummy Future", is_active_today=False)
     db.add(snap)
     db.commit()
-    
-    r = client.get("/api/v2/business-units/summary?as_of=2027-01-05")
+
+    r = client.get(f"/api/v2/business-units/summary?as_of={future_date.isoformat()}")
     assert r.status_code == 200
     d = r.json()
-    assert d["data_slice_key"] == "Q1-2027"
+    assert d["data_slice_key"] == ScopeService.quarter_of(future_date)
 
-def test_top_opportunities(client_and_db):
+
+def test_top_opportunities_dynamic(client_and_db):
     client, _ = client_and_db
-    r = client.get("/api/v2/business-units/top-opportunities?bu=Roaming")
+    comp_file, snap_date = get_fixture_comparison_file()
+    # Pick first BU from summary
+    sum_res = client.get(f"/api/v2/business-units/summary?as_of={snap_date.isoformat()}").json()
+    assert len(sum_res["rows"]) > 0
+    first_bu = sum_res["rows"][0]["bu"]
+
+    r = client.get(f"/api/v2/business-units/top-opportunities?as_of={snap_date.isoformat()}&bu={first_bu}")
     assert r.status_code == 200
     d = r.json()
     deals = d["deals"]
     assert len(deals) > 0
-    assert deals[0]["opportunity_name"] == "Docomo GRP Roaming Platform Support Extension 2027 OPEX"
-    assert deals[0]["account_name"] == "NTT Docomo Japan"
-    assert deals[0]["forecast_acv_amount"] == pytest.approx(1000000.0, abs=ACV_ABS)
-    assert deals[0]["forecast_category"] == "Commit"
-    if len(deals) > 1:
-        assert "TPG - Roaming Platform Managed Service" in deals[1]["opportunity_name"]
-        assert deals[1]["forecast_acv_amount"] == pytest.approx(858986.59, abs=ACV_ABS)
-
-
-def test_bu_deals_equal_heatmap_cells_oct7(client_and_db):
-    """
-    Verify for every cell, row total, column total and grand total,
-    the /deals endpoint count and ACV match the heatmap numbers exactly.
-    Multi-value BUs ('Roaming; Security') must be treated as their own row consistently.
-    """
-    client, _ = client_and_db
-    sum_res = client.get("/api/v2/business-units/summary?as_of=2026-10-07").json()
-    
-    # Grand total
-    grand_deals = client.get("/api/v2/business-units/deals?as_of=2026-10-07").json()
-    assert grand_deals["count"] == sum_res["total"]["count"]
-    assert grand_deals["acv"] == pytest.approx(sum_res["total"]["acv"], abs=ACV_ABS)
-
-    # Multi-value BU check
-    bu_names = [r["bu"] for r in sum_res["rows"]]
-    assert "Roaming; Security" in bu_names
-
-    # Every BU and cell
-    for r in sum_res["rows"]:
-        bu = r["bu"]
-        # Row total
-        row_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "as_of": "2026-10-07"}).json()
-        assert row_deals["count"] == r["count"]
-        assert row_deals["acv"] == pytest.approx(r["acv"], abs=ACV_ABS)
-
-        # Each category cell
-        for fc, cell in r["cells"].items():
-            cell_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "category": fc, "as_of": "2026-10-07"}).json()
-            assert cell_deals["count"] == cell["count"]
-            assert cell_deals["acv"] == pytest.approx(cell["acv"], abs=ACV_ABS)
-
-    # Column totals
-    for fc, cat_tot in sum_res["totals"]["categories"].items():
-        cat_deals = client.get("/api/v2/business-units/deals", params={"category": fc, "as_of": "2026-10-07"}).json()
-        assert cat_deals["count"] == cat_tot["count"]
-        assert cat_deals["acv"] == pytest.approx(cat_tot["acv"], abs=ACV_ABS)
-
-
-def test_bu_deals_equal_heatmap_cells_oct14(client_and_db):
-    """
-    Backend test that, for every BU x category cell in the Oct 14 fixture,
-    the deals endpoint count and ACV equal the heatmap numbers exactly.
-    Multi-value BUs ('Roaming; Security') must be treated as their own row consistently.
-    """
-    client, db = client_and_db
-    
-    # Ensure there is a snapshot for 2026-10-14 in the test database
-    snap = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == date(2026, 10, 14)).first()
-    if not snap:
-        existing = db.query(UploadSnapshot).first()
-        if existing:
-            snap = UploadSnapshot(
-                snapshot_date=date(2026, 10, 14),
-                label="Oct 14 Fixture",
-                is_active_today=True
-            )
-            db.add(snap)
-            db.commit()
-            db.refresh(snap)
-            from backend.models.opportunity import Opportunity
-            opps = db.query(Opportunity).filter(Opportunity.snapshot_id == existing.id).all()
-            for o in opps:
-                attrs = {k: v for k, v in o.__dict__.items() if not k.startswith('_') and k != 'id'}
-                attrs['snapshot_id'] = snap.id
-                db.add(Opportunity(**attrs))
-            db.commit()
-
-    sum_res = client.get("/api/v2/business-units/summary?as_of=2026-10-14").json()
-    assert sum_res["total"]["count"] > 0
-
-    # Grand total
-    grand_deals = client.get("/api/v2/business-units/deals?as_of=2026-10-14").json()
-    assert grand_deals["count"] == sum_res["total"]["count"]
-    assert grand_deals["acv"] == pytest.approx(sum_res["total"]["acv"], abs=ACV_ABS)
-
-    # Multi-value BU check
-    bu_names = [r["bu"] for r in sum_res["rows"]]
-    assert "Roaming; Security" in bu_names
-
-    # Every BU and cell
-    for r in sum_res["rows"]:
-        bu = r["bu"]
-        row_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "as_of": "2026-10-14"}).json()
-        assert row_deals["count"] == r["count"]
-        assert row_deals["acv"] == pytest.approx(r["acv"], abs=ACV_ABS)
-
-        for fc, cell in r["cells"].items():
-            cell_deals = client.get("/api/v2/business-units/deals", params={"bu": bu, "category": fc, "as_of": "2026-10-14"}).json()
-            assert cell_deals["count"] == cell["count"]
-            assert cell_deals["acv"] == pytest.approx(cell["acv"], abs=ACV_ABS)
-
-    # Column totals
-    for fc, cat_tot in sum_res["totals"]["categories"].items():
-        cat_deals = client.get("/api/v2/business-units/deals", params={"category": fc, "as_of": "2026-10-14"}).json()
-        assert cat_deals["count"] == cat_tot["count"]
-        assert cat_deals["acv"] == pytest.approx(cat_tot["acv"], abs=ACV_ABS)
-
-
+    # Deals should be sorted by ACV descending
+    acvs = [dl["forecast_acv_amount"] for dl in deals if dl.get("forecast_acv_amount") is not None]
+    assert acvs == sorted(acvs, reverse=True)

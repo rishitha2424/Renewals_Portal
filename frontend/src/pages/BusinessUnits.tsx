@@ -10,7 +10,9 @@ import {
   ChevronRight,
   Sparkles,
   Calendar,
-  DollarSign
+  DollarSign,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import api from '@/api/client'
@@ -46,7 +48,7 @@ function getCategoryBadgeStyle(cat: string) {
 }
 
 function BusinessUnitsContent() {
-  const { activeSnapshotId, globalFilters } = useAppStore()
+  const { activeSnapshotId, globalFilters, setGlobalFilters } = useAppStore()
   const metricMode = (useAppStore((s: any) => s.metricMode) || 'Amount') as MetricMode
 
   const [compare, setCompare] = useState<'yesterday' | 'last_week'>('yesterday')
@@ -253,13 +255,40 @@ function BusinessUnitsContent() {
             <Building2 className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
                 Business Units
               </h1>
               <span className="px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] text-xs font-mono font-medium">
                 {data_slice}
               </span>
+              {/* Source Check Badge */}
+              {summary?.source_check && (
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border ${
+                    summary.source_check.status === 'reconciles'
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                  }`}
+                  title={
+                    summary.source_check.status === 'reconciles'
+                      ? `Source check: reconciles (${summary.source_check.total_cells_checked} cells verified against raw snapshot rows)`
+                      : `Source check: ${summary.source_check.diffs?.map((d: any) => `${d.cell}: exp ${JSON.stringify(d.expected)}, got ${JSON.stringify(d.actual)}`).join('; ')}`
+                  }
+                >
+                  {summary.source_check.status === 'reconciles' ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Source check: reconciles</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                      <span>Source check: {summary.source_check.message}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Portfolio distribution, category coverage, and multi-unit performance
@@ -267,7 +296,31 @@ function BusinessUnitsContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+          {/* Period Scope Toggle */}
+          <div className="flex items-center bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-0.5 text-xs">
+            <button
+              onClick={() => setGlobalFilters({ period: 'current_quarter' })}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                globalFilters?.period !== 'all' && globalFilters?.period !== 'all_periods'
+                  ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              Current Quarter
+            </button>
+            <button
+              onClick={() => setGlobalFilters({ period: 'all_periods' })}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                globalFilters?.period === 'all' || globalFilters?.period === 'all_periods'
+                  ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              All Periods
+            </button>
+          </div>
+
           {/* Compare toggle */}
           <div className="flex items-center bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-0.5 text-xs">
             <button

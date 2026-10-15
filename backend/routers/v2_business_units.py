@@ -50,3 +50,14 @@ def get_bu_top_opportunities(
 ):
     svc = V2BusinessUnitsService(db)
     return svc.get_top_opportunities(ctx, bu=bu, limit=limit, filter_spec=filter_spec)
+
+
+@router.get("/reconcile")
+def reconcile_business_units(
+    filter_spec: FilterSpec = Depends(get_filter_spec),
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context)
+):
+    svc = V2BusinessUnitsService(db)
+    return svc.recompute_and_reconcile(ctx, filter_spec=filter_spec)
+

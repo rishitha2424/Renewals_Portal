@@ -96,19 +96,55 @@ class V2BusinessUnitsService:
             if s: return s
         return None
 
+    def _build_filter_spec(
+        self,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+        as_of: Optional[str] = None,
+        compare: Optional[str] = None,
+        period: Optional[str] = None,
+        bu: Optional[str] = None,
+        category: Optional[str] = None,
+        status: Optional[str] = None,
+        include_deleted_lost: Optional[bool] = None,
+        exclude_deleted_lost: bool = False,
+    ) -> ScopeService.FilterSpec:
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        if as_of:
+            fs.as_of = as_of
+        if compare:
+            fs.compare = compare
+        if period:
+            fs.period = period
+        if include_deleted_lost is not None:
+            fs.include_deleted_lost = bool(include_deleted_lost)
+        elif exclude_deleted_lost:
+            fs.include_deleted_lost = False
+
+        if bu and bu not in ("All", "Total", "Grand Total"):
+            fs.business_units = [bu]
+        elif bu in ("All", "Total", "Grand Total"):
+            fs.business_units = []
+
+        if category and category not in ("All", "Total", "Grand Total"):
+            fs.forecast_categories = [category]
+        elif category in ("All", "Total", "Grand Total"):
+            fs.forecast_categories = []
+
+        if status and status not in ("All", "Total"):
+            fs.approval_statuses = [status]
+
+        if not fs.sales_types:
+            fs.sales_types = ["Renewals"]
+
+        return fs
+
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
-        eff_date = target_date
-        if not eff_date and filter_spec and filter_spec.as_of:
-            try:
-                eff_date = date.fromisoformat(filter_spec.as_of)
-            except ValueError:
-                pass
-        if not eff_date:
-            eff_date = snap.snapshot_date
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
+        eff_date = target_date or snap.snapshot_date
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
         q = (
             self.db.query(Opportunity)
@@ -129,31 +165,25 @@ class V2BusinessUnitsService:
         ctx: UserContext,
         as_of: str = None,
         compare: str = None,
+        period: str = None,
         exclude_deleted_lost: bool = False,
+        include_deleted_lost: Optional[bool] = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        from backend.services.scopes import FilterSpec
-        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
-        if as_of:
-            fs.as_of = as_of
-        if compare:
-            fs.compare = compare
-        if exclude_deleted_lost:
-            fs.include_deleted_lost = False
+        fs = self._build_filter_spec(
+            filter_spec=filter_spec,
+            as_of=as_of,
+            compare=compare,
+            period=period,
+            exclude_deleted_lost=exclude_deleted_lost,
+            include_deleted_lost=include_deleted_lost,
+        )
 
         snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
 
-        eff_as_of_date = None
-        if fs.as_of:
-            try:
-                eff_as_of_date = date.fromisoformat(fs.as_of)
-            except ValueError:
-                pass
-        if not eff_as_of_date:
-            eff_as_of_date = snap.snapshot_date
-            
+        eff_as_of_date = snap.snapshot_date
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
@@ -280,7 +310,7 @@ class V2BusinessUnitsService:
             }
 
         target_fp = res.resolved_quarter
-        return {
+        summary_payload = {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": fs.as_of or snap.snapshot_date.isoformat(),
             "compare_date": None,
@@ -297,6 +327,151 @@ class V2BusinessUnitsService:
             "rows": rows,
             "totals": totals
         }
+        summary_payload["source_check"] = self.recompute_and_reconcile(
+            ctx, filter_spec=fs, summary_to_check=summary_payload
+        )
+        return summary_payload
+
+    def recompute_and_reconcile(
+        self,
+        ctx: UserContext,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+        summary_to_check: Optional[dict] = None,
+    ) -> dict:
+        """
+        Runtime independent recompute of BU x forecast-category counts and ACV
+        directly from the raw snapshot rows (pandas groupby on stored rows, with the same scope),
+        and compares them to what the service returns.
+        Works for whatever snapshot is active, with no fixed numbers.
+        """
+        fs = self._build_filter_spec(filter_spec=filter_spec)
+        snap = self._active_snap(fs.as_of)
+        if not snap:
+            return {
+                "status": "error",
+                "badge": "none",
+                "message": "no_snapshot",
+                "diffs": [],
+                "total_checked": 0,
+            }
+
+        summary = summary_to_check or self.get_summary(ctx, filter_spec=fs)
+        if "error" in summary:
+            return {
+                "status": "error",
+                "badge": "none",
+                "message": summary["error"],
+                "diffs": [],
+                "total_checked": 0,
+            }
+
+        # Query raw snapshot rows using the exact same scope
+        opps, _ = self._scoped_opps(snap, filter_spec=fs, target_date=snap.snapshot_date)
+        df = _opps_to_df(opps)
+
+        diffs = []
+        if df.empty:
+            if summary["total"]["count"] != 0 or summary["total"]["acv"] != 0:
+                diffs.append({
+                    "cell": "Grand Total",
+                    "expected": {"count": 0, "acv": 0.0},
+                    "actual": summary["total"]
+                })
+        else:
+            g = df.groupby(["business_unit", "forecast_category"])["forecast_acv_amount"].agg(["count", "sum"])
+            bu_totals = df.groupby("business_unit")["forecast_acv_amount"].agg(["count", "sum"])
+            fc_totals = df.groupby("forecast_category")["forecast_acv_amount"].agg(["count", "sum"])
+            exp_grand_count = int(len(df))
+            exp_grand_acv = float(round(df["forecast_acv_amount"].sum(), 2))
+
+            # 1. Grand Total
+            if summary["total"]["count"] != exp_grand_count:
+                diffs.append({
+                    "cell": "Grand Total Count",
+                    "expected": exp_grand_count,
+                    "actual": summary["total"]["count"]
+                })
+            if abs(summary["total"]["acv"] - exp_grand_acv) > 0.01:
+                diffs.append({
+                    "cell": "Grand Total ACV",
+                    "expected": exp_grand_acv,
+                    "actual": summary["total"]["acv"]
+                })
+
+            # 2. Rows and Cells
+            rows_dict = {r["bu"]: r for r in summary.get("rows", [])}
+            all_expected_bus = list(bu_totals.index)
+            for bu in all_expected_bus:
+                exp_c = int(bu_totals.loc[bu, "count"])
+                exp_a = float(round(bu_totals.loc[bu, "sum"], 2))
+                act_row = rows_dict.get(bu)
+                if not act_row:
+                    diffs.append({
+                        "cell": f"{bu} Row",
+                        "expected": {"count": exp_c, "acv": exp_a},
+                        "actual": "missing"
+                    })
+                    continue
+                if act_row["count"] != exp_c:
+                    diffs.append({
+                        "cell": f"{bu} Row Count",
+                        "expected": exp_c,
+                        "actual": act_row["count"]
+                    })
+                if abs(act_row["acv"] - exp_a) > 0.01:
+                    diffs.append({
+                        "cell": f"{bu} Row ACV",
+                        "expected": exp_a,
+                        "actual": act_row["acv"]
+                    })
+
+                # Check each category cell
+                for fc in ALL_FC:
+                    exp_cell_c = int(g.loc[(bu, fc), "count"]) if (bu, fc) in g.index else 0
+                    exp_cell_a = float(round(g.loc[(bu, fc), "sum"], 2)) if (bu, fc) in g.index else 0.0
+                    act_cell = act_row.get("cells", {}).get(fc, {"count": 0, "acv": 0.0})
+                    if act_cell["count"] != exp_cell_c:
+                        diffs.append({
+                            "cell": f"{bu} x {fc} Count",
+                            "expected": exp_cell_c,
+                            "actual": act_cell["count"]
+                        })
+                    if abs(act_cell["acv"] - exp_cell_a) > 0.01:
+                        diffs.append({
+                            "cell": f"{bu} x {fc} ACV",
+                            "expected": exp_cell_a,
+                            "actual": act_cell["acv"]
+                        })
+
+            # 3. Column totals
+            for fc in ALL_FC:
+                exp_fc_c = int(fc_totals.loc[fc, "count"]) if fc in fc_totals.index else 0
+                exp_fc_a = float(round(fc_totals.loc[fc, "sum"], 2)) if fc in fc_totals.index else 0.0
+                act_cat = summary.get("totals", {}).get("categories", {}).get(fc, {"count": 0, "acv": 0.0})
+                if act_cat["count"] != exp_fc_c:
+                    diffs.append({
+                        "cell": f"Column Total {fc} Count",
+                        "expected": exp_fc_c,
+                        "actual": act_cat["count"]
+                    })
+                if abs(act_cat["acv"] - exp_fc_a) > 0.01:
+                    diffs.append({
+                        "cell": f"Column Total {fc} ACV",
+                        "expected": exp_fc_a,
+                        "actual": act_cat["acv"]
+                    })
+
+        total_checked = len(summary.get("rows", [])) * 6 + 6 + 1
+        is_reconciled = len(diffs) == 0
+        return {
+            "status": "reconciles" if is_reconciled else "mismatch",
+            "badge": "green" if is_reconciled else "red",
+            "message": "reconciles" if is_reconciled else f"{len(diffs)} cell(s) differ",
+            "diffs": diffs,
+            "total_cells_checked": total_checked,
+            "slice": summary.get("data_slice"),
+            "snapshot_date": snap.snapshot_date.isoformat(),
+        }
 
     def get_deals(
         self,
@@ -305,33 +480,27 @@ class V2BusinessUnitsService:
         category: str = None,
         status: str = None,
         as_of: str = None,
+        period: str = None,
         exclude_deleted_lost: bool = False,
+        include_deleted_lost: Optional[bool] = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
-        from backend.services.scopes import FilterSpec
-        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
-        if as_of:
-            fs.as_of = as_of
-        if exclude_deleted_lost:
-            fs.include_deleted_lost = False
-        if bu and bu not in ("All", "Total", "Grand Total"):
-            fs.business_units = [bu]
-        elif bu in ("All", "Total", "Grand Total"):
-            fs.business_units = []
-
-        if category and category not in ("All", "Total", "Grand Total"):
-            fs.forecast_categories = [category]
-        elif category in ("All", "Total", "Grand Total"):
-            fs.forecast_categories = []
-
-        if status and status not in ("All", "Total"):
-            fs.approval_statuses = [status]
+        fs = self._build_filter_spec(
+            filter_spec=filter_spec,
+            as_of=as_of,
+            period=period,
+            bu=bu,
+            category=category,
+            status=status,
+            exclude_deleted_lost=exclude_deleted_lost,
+            include_deleted_lost=include_deleted_lost,
+        )
 
         snap = self._active_snap(fs.as_of)
         if not snap:
             return {"error": "no_snapshot"}
             
-        opps, res = self._scoped_opps(snap, filter_spec=fs)
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=snap.snapshot_date)
         df = _opps_to_df(opps)
         
         if df.empty:
