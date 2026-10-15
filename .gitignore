@@ -57,6 +57,7 @@ logs/
 # real customer Excel files used by the e2e test (never commit)
 data/sample_oct7/
 *.xlsx
+!backend/tests/fixtures/**
 
 /patch_*.py
 /debug_*.py

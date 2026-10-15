@@ -284,10 +284,10 @@ class PptxExportService:
                     tbl = tbl_list[0].table
 
                     if scope == "renewals" and ov_summary:
-                        ov_tot = ov_summary.get("total", {})
-                        ov_cats = ov_summary.get("categories", {})
-                        ov_dy = ov_tot.get("delta_yesterday", {})
-                        ov_dlw = ov_tot.get("delta_lastweek", {})
+                        ov_tot = ov_summary.get("total", {}) or {}
+                        ov_cats = ov_summary.get("categories", {}) or {}
+                        ov_dy = ov_tot.get("delta_yesterday", {}) or {}
+                        ov_dlw = ov_tot.get("delta_lastweek", {}) or {}
 
                         cat_keys = ["Commit", "Best Case", "Pipeline", "Blank"]
                         adjust_table_rows(tbl, 7)
@@ -310,9 +310,9 @@ class PptxExportService:
                         # Child rows
                         r_idx = 2
                         for c_k in cat_keys:
-                            c_data = ov_cats.get(c_k, {})
-                            c_dy = c_data.get("delta_yesterday", {})
-                            c_dlw = c_data.get("delta_lastweek", {})
+                            c_data = ov_cats.get(c_k, {}) or {}
+                            c_dy = c_data.get("delta_yesterday", {}) or {}
+                            c_dlw = c_data.get("delta_lastweek", {}) or {}
                             c_label = "Not yet proposed" if c_k == "Blank" else c_k
                             c_vals = [
                                 " ",
@@ -408,9 +408,9 @@ class PptxExportService:
                         row_idx = 1
                         for q, cats in q_cats:
                             q_d = by_quarter.get(q, {})
-                            t_q = q_d.get("today", {})
-                            ty_q = q_d.get("delta_vs_yesterday", {})
-                            tlw_q = q_d.get("delta_vs_lastweek", {})
+                            t_q = q_d.get("today", {}) or {}
+                            ty_q = q_d.get("delta_vs_yesterday", {}) or {}
+                            tlw_q = q_d.get("delta_vs_lastweek", {}) or {}
                             q_row_vals = [
                                 q,
                                 " ",
@@ -427,10 +427,10 @@ class PptxExportService:
                             row_idx += 1
 
                             for c in cats:
-                                c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {}))
-                                t_c = c_d.get("today", {})
-                                ty_c = c_d.get("delta_vs_yesterday", {})
-                                tlw_c = c_d.get("delta_vs_lastweek", {})
+                                c_d = by_cell.get(f"{q}|{c}", by_cell.get((q, c), {})) or {}
+                                t_c = c_d.get("today", {}) or {}
+                                ty_c = c_d.get("delta_vs_yesterday", {}) or {}
+                                tlw_c = c_d.get("delta_vs_lastweek", {}) or {}
                                 c_row_vals = [
                                     " ",
                                     c,
@@ -447,9 +447,9 @@ class PptxExportService:
                                 row_idx += 1
 
                         # Grand Total row
-                        t_tot = totals.get("today", {})
-                        ty_tot = totals.get("delta_vs_yesterday", {})
-                        tlw_tot = totals.get("delta_vs_lastweek", {})
+                        t_tot = totals.get("today", {}) or {}
+                        ty_tot = totals.get("delta_vs_yesterday", {}) or {}
+                        tlw_tot = totals.get("delta_vs_lastweek", {}) or {}
                         gt_vals = [
                             "Grand Total",
                             " ",
