@@ -97,11 +97,11 @@ export function getApprovalStatusLabel(status: string | null | undefined): strin
 }
 
 
-/** Derive quarter from date string (e.g. "2026-10-07" -> "Q4-2026") */
+/** Derive quarter from date string (e.g. YYYY-MM-DD -> Qx-YYYY) */
 export function getQuarterFromDate(dateStr?: string | null): string {
-  if (!dateStr) return 'Q4-2026'
+  if (!dateStr) return ''
   const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr)
-  if (isNaN(d.getTime())) return 'Q4-2026'
+  if (isNaN(d.getTime())) return ''
   const month = d.getMonth() + 1 // 1-12
   const q = Math.ceil(month / 3)
   return `Q${q}-${d.getFullYear()}`

@@ -109,8 +109,8 @@ class ExcelExportService:
 
         cq = ScopeService.quarter_of(snap.snapshot_date)
         parts = cq.split("-")
-        q_short = parts[0] if len(parts) > 0 else "Q4"
-        fy_label = f"FY{parts[1][-2:]}" if len(parts) > 1 and len(parts[1]) >= 2 else "FY26"
+        q_short = parts[0] if len(parts) > 0 else "Q"
+        fy_label = f"FY{parts[1][-2:]}" if len(parts) > 1 and len(parts[1]) >= 2 else (f"FY{snap.snapshot_date.year % 100:02d}" if snap and snap.snapshot_date else "FY")
 
         opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)
         fs = self.analytics_svc.get_forecast_summary(

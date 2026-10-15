@@ -11,7 +11,7 @@ from backend.services.context import UserContext
 ALL_FC = ["Best Case", "Blank", "Closed", "Commit", "Pipeline"]
 
 def _parse_fp(fp: str) -> tuple[int, int]:
-    """Parse 'Q4-2026' into (2026, 4)."""
+    """Parse 'Qx-YYYY' into (YYYY, x)."""
     if not fp or "-" not in fp:
         return (0, 0)
     q_str, y_str = fp.split("-")

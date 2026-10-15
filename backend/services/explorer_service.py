@@ -761,7 +761,7 @@ class ExplorerService:
         )
         def _fp_sort_key(r):
             name = r[0] or ""
-            # e.g. Q1-2026 -> year 2026, quarter 1
+            # e.g. Qx-YYYY -> year, quarter
             m = re.match(r"^Q([1-4])-(\d{4})$", name, re.IGNORECASE)
             if m:
                 q_num = int(m.group(1))

@@ -373,7 +373,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-indigo-500" />
               <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                {fullYearData.data_slice || `Full year ${fullYearData.fiscal_year || 'FY26'} (all quarters)`}
+                {fullYearData.data_slice || (fullYearData.fiscal_year ? `Full year ${fullYearData.fiscal_year} (all quarters)` : 'Full Year (all quarters)')}
               </h3>
             </div>
             <div className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">

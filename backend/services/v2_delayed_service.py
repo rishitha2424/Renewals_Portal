@@ -13,7 +13,7 @@ from backend.services.scopes import ScopeService
 log = logging.getLogger(__name__)
 
 def _parse_fp(fp: str) -> tuple[int, int]:
-    """Q4-2026 -> (2026, 4)"""
+    """Qx-YYYY -> (YYYY, x)"""
     try:
         q, y = fp.split("-")
         return int(y), int(q[1])

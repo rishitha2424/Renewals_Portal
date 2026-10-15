@@ -12,6 +12,6 @@ describe('Derived Quarter & Year Helpers', () => {
     expect(getQuarterFromDate('2026-04-20')).toBe('Q2-2026')
     expect(getQuarterFromDate('2026-07-04')).toBe('Q3-2026')
     expect(getQuarterFromDate('2027-02-10')).toBe('Q1-2027')
-    expect(getQuarterFromDate(null)).toBe('Q4-2026')
+    expect(getQuarterFromDate(null)).toBe('')
   })
 })

@@ -96,19 +96,16 @@ export default function Topbar() {
   const getDynamicReportNote = (scope: string = 'renewals') => {
     const scopeName = scope === 'full' ? 'Full sheet' : 'Renewals'
     const snapDateStr = activeSnap?.snapshot_date
-    let qLabel = 'Q4 FY26'
-    let formattedDate = '07-Oct-2026'
-    if (snapDateStr) {
-      formattedDate = formatDate(snapDateStr)
-      const d = new Date(snapDateStr + 'T00:00:00')
-      const m = d.getMonth()
-      const y = d.getFullYear()
-      const yy = String(y).slice(-2)
-      if (m >= 9) qLabel = `Q4 FY${yy}`
-      else if (m >= 6) qLabel = `Q3 FY${yy}`
-      else if (m >= 3) qLabel = `Q2 FY${yy}`
-      else qLabel = `Q1 FY${yy}`
+    if (!snapDateStr) {
+      return `${scopeName} · Active Snapshot`
     }
+    const formattedDate = formatDate(snapDateStr)
+    const d = new Date(snapDateStr + 'T00:00:00')
+    const m = d.getMonth()
+    const y = d.getFullYear()
+    const yy = String(y).slice(-2)
+    const qNum = Math.floor(m / 3) + 1
+    const qLabel = `Q${qNum} FY${yy}`
     return `${scopeName} · ${qLabel} · as of ${formattedDate}`
   }
 
