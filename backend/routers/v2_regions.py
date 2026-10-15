@@ -50,14 +50,30 @@ def get_region_movements(
 def get_region_deals(
     region: str = Query(""),
     category: str = Query(""),
+    categories: str = Query(""),
     status: str = Query(""),
     bu: str = Query(""),
+    account_name: str = Query(""),
+    quarter: str = Query(""),
+    delayed: bool = Query(False),
     as_of: str = Query(""),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2RegionsService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
 ):
-    return svc.get_deals(ctx, region=region, category=category, status=status, bu=bu, as_of=as_of, filter_spec=filter_spec)
+    return svc.get_deals(
+        ctx,
+        region=region,
+        category=category,
+        categories=categories,
+        status=status,
+        bu=bu,
+        account_name=account_name,
+        quarter=quarter,
+        delayed=delayed,
+        as_of=as_of,
+        filter_spec=filter_spec,
+    )
 
 
 @router.get("/{region}/top-opportunities")

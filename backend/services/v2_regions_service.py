@@ -211,15 +211,54 @@ class V2RegionsService:
         if "Other / Unmapped" in found_regions or "Other" in found_regions:
             all_ordered.append("Other / Unmapped")
 
+        # Detect delayed deals: close_date < snap.snapshot_date, not Closed, not deleted/lost
+        snap_date = snap.snapshot_date
+        def _check_delayed_deal(row):
+            cd = row.get("close_date")
+            if pd.isna(cd): return False
+            try:
+                return pd.to_datetime(cd).date() < snap_date and row.get("forecast_category") != "Closed" and not row.get("is_deleted_or_lost")
+            except Exception:
+                return False
+
+        delayed_mask = df.apply(_check_delayed_deal, axis=1) if not df.empty else pd.Series(dtype=bool)
+        delayed_df = df[delayed_mask] if not df.empty else pd.DataFrame()
+
         regions_out = []
         for reg_name in all_ordered:
-            d_today = today_reg.get(reg_name, today_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}))
-            d_y = y_reg.get(reg_name, y_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}))
-            d_lw = lw_reg.get(reg_name, lw_reg.get("Other", {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}))
+            if reg_name in today_reg:
+                d_today = today_reg[reg_name]
+            elif reg_name in ("Other / Unmapped", "Other") and "Other" in today_reg:
+                d_today = today_reg["Other"]
+            else:
+                d_today = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}
+
+            if reg_name in y_reg:
+                d_y = y_reg[reg_name]
+            elif reg_name in ("Other / Unmapped", "Other") and "Other" in y_reg:
+                d_y = y_reg["Other"]
+            else:
+                d_y = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}
+
+            if reg_name in lw_reg:
+                d_lw = lw_reg[reg_name]
+            elif reg_name in ("Other / Unmapped", "Other") and "Other" in lw_reg:
+                d_lw = lw_reg["Other"]
+            else:
+                d_lw = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}
 
             pct_acv = round((d_today["acv"] / grand_acv * 100) if grand_acv else 0, 1)
             commit_acv = d_today["cells"]["Commit"]["acv"] + d_today["cells"]["Closed"]["acv"]
             commit_pct = round((commit_acv / d_today["acv"] * 100) if d_today["acv"] else 0, 1)
+
+            approved_acv = d_today["approval"].get("Approved", {}).get("acv", 0.0)
+            approved_pct = round((approved_acv / d_today["acv"] * 100) if d_today["acv"] else 0, 1)
+
+            reg_delayed = delayed_df[delayed_df["region"] == reg_name] if not delayed_df.empty else pd.DataFrame()
+            if reg_delayed.empty and reg_name in ("Other / Unmapped", "Other"):
+                reg_delayed = delayed_df[delayed_df["region"].isin(["Other", "Other / Unmapped"]) | (~delayed_df["region"].isin(known_ordered))] if not delayed_df.empty else pd.DataFrame()
+            del_cnt = len(reg_delayed)
+            del_acv = round(float(reg_delayed["forecast_acv_amount"].sum()) if not reg_delayed.empty else 0.0, 2)
 
             regions_out.append({
                 "region": reg_name,
@@ -227,6 +266,9 @@ class V2RegionsService:
                 "acv": round(d_today["acv"], 2),
                 "pct_acv": pct_acv,
                 "commit_pct": commit_pct,
+                "approved_pct": approved_pct,
+                "delayed_count": del_cnt,
+                "delayed_acv": del_acv,
                 "cells": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["cells"].items()},
                 "approval": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["approval"].items()},
                 "delta_yesterday": {"count": d_today["count"] - d_y["count"], "acv": round(d_today["acv"] - d_y["acv"], 2)},
@@ -257,6 +299,13 @@ class V2RegionsService:
                 "delta_lastweek": {"count": len(st_df) - len(st_lw), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_lw["forecast_acv_amount"].sum() if not st_lw.empty else 0.0), 2)},
             }
 
+        total_commit_acv = fc_totals.get("Commit", {}).get("acv", 0.0) + fc_totals.get("Closed", {}).get("acv", 0.0)
+        total_commit_pct = round((total_commit_acv / grand_acv * 100) if grand_acv else 0.0, 1)
+        total_approved_acv = app_totals.get("Approved", {}).get("acv", 0.0)
+        total_approved_pct = round((total_approved_acv / grand_acv * 100) if grand_acv else 0.0, 1)
+        total_delayed_acv = round(float(delayed_df["forecast_acv_amount"].sum()) if not delayed_df.empty else 0.0, 2)
+        total_delayed_count = len(delayed_df)
+
         known_set = set(REGION_ORDER)
         unmapped = {"count": 0, "acv": 0.0, "values": []}
         if not df.empty:
@@ -276,6 +325,10 @@ class V2RegionsService:
             "total": {
                 "count": grand_count,
                 "acv": round(grand_acv, 2),
+                "commit_pct": total_commit_pct,
+                "approved_pct": total_approved_pct,
+                "delayed_count": total_delayed_count,
+                "delayed_acv": total_delayed_acv,
                 "delta_yesterday": {"count": grand_count - len(y_df), "acv": round(grand_acv - float(y_df["forecast_acv_amount"].sum() if not y_df.empty else 0.0), 2)},
                 "delta_lastweek": {"count": grand_count - len(lw_df), "acv": round(grand_acv - float(lw_df["forecast_acv_amount"].sum() if not lw_df.empty else 0.0), 2)},
             },
@@ -305,18 +358,197 @@ class V2RegionsService:
         opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost, target_date=eff_date)
         df = _opps_to_df(opps)
         
-        reg_df = df[df["region"] == region] if not df.empty else pd.DataFrame()
+        known_set = set(REGION_ORDER)
+        if region in ("Other / Unmapped", "Other"):
+            reg_df = df[df["region"].isin(["Other", "Other / Unmapped"]) | (~df["region"].isin(known_set))] if not df.empty else pd.DataFrame()
+        else:
+            reg_df = df[df["region"] == region] if not df.empty else pd.DataFrame()
+
+        reg_acv = float(reg_df["forecast_acv_amount"].sum()) if not reg_df.empty else 0.0
+        reg_count = len(reg_df)
+
+        # 1. Forecast category split (Closed, Commit, Best Case, Pipeline, Not yet proposed, Blank)
+        fc_split = []
+        for fc in ["Closed", "Commit", "Best Case", "Pipeline", "Not yet proposed"]:
+            sub = reg_df[reg_df["forecast_category"] == fc] if not reg_df.empty else pd.DataFrame()
+            cnt = len(sub)
+            acv = round(float(sub["forecast_acv_amount"].sum()) if not sub.empty else 0.0, 2)
+            pct = round((acv / reg_acv * 100) if reg_acv else 0.0, 1)
+            fc_split.append({
+                "category": fc,
+                "count": cnt,
+                "acv": acv,
+                "pct_acv": pct
+            })
+        blank_sub = reg_df[reg_df["forecast_category"].isin(["Blank", "", None]) | reg_df["forecast_category"].isna()] if not reg_df.empty else pd.DataFrame()
+        if not blank_sub.empty:
+            b_cnt = len(blank_sub)
+            b_acv = round(float(blank_sub["forecast_acv_amount"].sum()), 2)
+            fc_split.append({
+                "category": "Blank",
+                "count": b_cnt,
+                "acv": b_acv,
+                "pct_acv": round((b_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+            })
+
+        # 2. Approval status split
+        app_split = []
+        for st in ["Approved", "Pending Approval", "Pending-Approval", "Approved - 2nd", "Not submitted", "Blank", "Rejected"]:
+            sub = reg_df[reg_df["approval_status"] == st] if not reg_df.empty else pd.DataFrame()
+            if not sub.empty or st in ["Approved", "Pending Approval", "Not submitted"]:
+                cnt = len(sub)
+                acv = round(float(sub["forecast_acv_amount"].sum()) if not sub.empty else 0.0, 2)
+                pct = round((acv / reg_acv * 100) if reg_acv else 0.0, 1)
+                app_split.append({
+                    "status": st,
+                    "count": cnt,
+                    "acv": acv,
+                    "pct_acv": pct
+                })
+
+        # 3. Commit coverage and approved % compared with portfolio average (gap)
+        reg_commit_pct = reg_data.get("commit_pct", 0.0)
+        port_commit_pct = base.get("total", {}).get("commit_pct", 0.0)
+        commit_gap = round(reg_commit_pct - port_commit_pct, 1)
+
+        reg_approved_pct = reg_data.get("approved_pct", 0.0)
+        port_approved_pct = base.get("total", {}).get("approved_pct", 0.0)
+        approved_gap = round(reg_approved_pct - port_approved_pct, 1)
+
+        # 4. Expiry by quarter for that region
+        exp_col = "service_expiry_period" if "service_expiry_period" in reg_df.columns and reg_df["service_expiry_period"].notna().any() else "fiscal_period"
+        exp_quarters = []
+        if not reg_df.empty and exp_col in reg_df.columns:
+            for q, grp in reg_df.groupby(exp_col):
+                if pd.notna(q) and str(q).strip():
+                    q_acv = round(float(grp["forecast_acv_amount"].sum()), 2)
+                    exp_quarters.append({
+                        "quarter": str(q).strip(),
+                        "count": len(grp),
+                        "acv": q_acv,
+                        "pct_acv": round((q_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+                    })
+            exp_quarters.sort(key=lambda x: ScopeService.parse_quarter(x["quarter"]))
+
+        # 5. Top 10 accounts by ACV
+        top_accounts = []
+        if not reg_df.empty and "account_name" in reg_df.columns:
+            for acc, grp in reg_df.groupby("account_name"):
+                if pd.notna(acc) and str(acc).strip():
+                    acc_acv = round(float(grp["forecast_acv_amount"].sum()), 2)
+                    top_accounts.append({
+                        "account_name": str(acc).strip(),
+                        "count": len(grp),
+                        "acv": acc_acv,
+                        "pct_acv": round((acc_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+                    })
+            top_accounts.sort(key=lambda x: x["acv"], reverse=True)
+            top_accounts = top_accounts[:10]
+
+        # 6. Top BUs with share
         bus = []
         if not reg_df.empty:
             for bu, grp in reg_df.groupby("business_unit"):
-                bus.append({
-                    "bu": bu,
-                    "count": len(grp),
-                    "acv": round(float(grp["forecast_acv_amount"].sum()), 2)
-                })
-        bus.sort(key=lambda x: x["acv"], reverse=True)
+                if pd.notna(bu) and str(bu).strip():
+                    bu_acv = round(float(grp["forecast_acv_amount"].sum()), 2)
+                    bus.append({
+                        "bu": str(bu).strip(),
+                        "count": len(grp),
+                        "acv": bu_acv,
+                        "share_pct": round((bu_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+                    })
+            bus.sort(key=lambda x: x["acv"], reverse=True)
 
+        # 7. Delayed/overdue deals in that region
+        snap_date = snap.snapshot_date
+        delayed_deals = []
+        if not reg_df.empty:
+            for _, r in reg_df.iterrows():
+                c_date = r.get("close_date")
+                if pd.notna(c_date):
+                    try:
+                        c_d = pd.to_datetime(c_date).date()
+                        if c_d < snap_date and r.get("forecast_category") != "Closed" and not r.get("is_deleted_or_lost"):
+                            days_over = (snap_date - c_d).days
+                            delayed_deals.append({
+                                "opportunity_id_18": r.get("opportunity_id_18"),
+                                "opportunity_name": r.get("opportunity_name"),
+                                "account_name": r.get("account_name"),
+                                "business_unit": r.get("business_unit"),
+                                "forecast_category": r.get("forecast_category"),
+                                "approval_status": r.get("approval_status"),
+                                "acv": round(float(r.get("forecast_acv_amount") or 0.0), 2),
+                                "close_date": c_d.isoformat(),
+                                "days_overdue": days_over,
+                                "owner": r.get("opportunity_owner") or "-"
+                            })
+                    except Exception:
+                        pass
+        delayed_deals.sort(key=lambda x: x["acv"], reverse=True)
+        delayed_total_acv = round(sum(d["acv"] for d in delayed_deals), 2)
+        delayed_total_count = len(delayed_deals)
+
+        # 8. Concentration ("top 3 deals = X% of region ACV")
+        sorted_deals = reg_df.sort_values(by="forecast_acv_amount", ascending=False) if not reg_df.empty else pd.DataFrame()
+        top1_acv = float(sorted_deals.iloc[0]["forecast_acv_amount"]) if len(sorted_deals) >= 1 else 0.0
+        top1_acc = str(sorted_deals.iloc[0]["account_name"]) if len(sorted_deals) >= 1 else "-"
+        top1_pct = round((top1_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+
+        top3_acv = float(sorted_deals.head(3)["forecast_acv_amount"].sum()) if not sorted_deals.empty else 0.0
+        top3_pct = round((top3_acv / reg_acv * 100) if reg_acv else 0.0, 1)
+        concentration_text = f"Top 3 deals = {top3_pct}% of region ACV"
+
+        # 9. 2-3 plain-language insight lines per region generated from the data
+        insights = []
+        if commit_gap < 0:
+            insights.append(f"Commit coverage is {abs(commit_gap)} pts below portfolio average ({reg_commit_pct}% vs {port_commit_pct}%)")
+        else:
+            insights.append(f"Commit coverage is {commit_gap} pts above portfolio average ({reg_commit_pct}% vs {port_commit_pct}%)")
+
+        if top1_pct >= 25:
+            insights.append(f"One deal ({top1_acc}) is {top1_pct}% of region ACV (${top1_acv:,.2f})")
+        else:
+            insights.append(f"Top 3 deals represent {top3_pct}% of region ACV (${top3_acv:,.2f})")
+
+        if delayed_total_count > 0:
+            insights.append(f"{delayed_total_count} overdue deal{'s' if delayed_total_count > 1 else ''} totaling ${delayed_total_acv:,.2f} require attention")
+        else:
+            d_y = reg_data.get("delta_yesterday", {})
+            d_y_acv = d_y.get("acv", 0.0)
+            if d_y_acv != 0:
+                insights.append(f"{'+' if d_y_acv > 0 else ''}${d_y_acv:,.2f} ({'+' if d_y.get('count', 0) > 0 else ''}{d_y.get('count', 0)} deals) vs yesterday")
+            else:
+                insights.append(f"Approved status covers {reg_approved_pct}% of region ACV")
+
+        reg_data["forecast_categories"] = fc_split
+        reg_data["approval_statuses"] = app_split
+        reg_data["commit_coverage"] = {
+            "region_pct": reg_commit_pct,
+            "portfolio_pct": port_commit_pct,
+            "gap": commit_gap
+        }
+        reg_data["approved_pct_detail"] = {
+            "region_pct": reg_approved_pct,
+            "portfolio_pct": port_approved_pct,
+            "gap": approved_gap
+        }
+        reg_data["expiry_quarters"] = exp_quarters
+        reg_data["top_accounts"] = top_accounts
         reg_data["business_units"] = bus
+        reg_data["delayed_deals"] = {
+            "count": delayed_total_count,
+            "acv": delayed_total_acv,
+            "deals": delayed_deals
+        }
+        reg_data["concentration"] = {
+            "top1_acv": round(top1_acv, 2),
+            "top1_pct": top1_pct,
+            "top1_account": top1_acc,
+            "top3_acv": round(top3_acv, 2),
+            "top3_pct": top3_pct,
+            "summary_text": concentration_text
+        }
+        reg_data["insights"] = insights
         return reg_data
 
     def get_movements(self, ctx: UserContext, region: str, compare: str = "yesterday", exclude_deleted_lost: bool = False) -> dict:
@@ -429,11 +661,28 @@ class V2RegionsService:
             "slipped_out": {"count": len(slip_list), "acv": round(sum(d["forecast_acv_amount"] for d in slip_list), 2), "deals": slip_list}
         }
 
-    def get_deals(self, ctx: UserContext, region: str = "", category: str = "", status: str = "", bu: str = "", as_of: str = "", filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+    def get_deals(
+        self,
+        ctx: UserContext,
+        region: str = "",
+        category: str = "",
+        categories: str = "",
+        status: str = "",
+        bu: str = "",
+        account_name: str = "",
+        quarter: str = "",
+        delayed: bool = False,
+        as_of: str = "",
+        filter_spec: Optional[ScopeService.FilterSpec] = None
+    ) -> dict:
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of: fs.as_of = as_of
-        if region: fs.regions = [region]
+        if region:
+            if region in ("Other", "Other / Unmapped"):
+                fs.regions = [] # Filter dynamically below
+            else:
+                fs.regions = [region]
         if category: fs.forecast_categories = [category]
         if status: fs.approval_statuses = [status]
         if bu: fs.business_units = [bu]
@@ -443,6 +692,35 @@ class V2RegionsService:
             
         opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
+
+        if not df.empty:
+            known_set = set(REGION_ORDER)
+            if region in ("Other", "Other / Unmapped"):
+                df = df[df["region"].isin(["Other", "Other / Unmapped"]) | (~df["region"].isin(known_set))]
+            elif region:
+                df = df[df["region"] == region]
+
+            if categories:
+                cat_list = [c.strip() for c in categories.split(",") if c.strip()]
+                df = df[df["forecast_category"].isin(cat_list)]
+
+            if account_name:
+                df = df[df["account_name"] == account_name]
+
+            if quarter:
+                exp_col = "service_expiry_period" if "service_expiry_period" in df.columns and df["service_expiry_period"].notna().any() else "fiscal_period"
+                df = df[df[exp_col] == quarter]
+
+            if delayed:
+                snap_date = snap.snapshot_date
+                def _check_del(row):
+                    cd = row.get("close_date")
+                    if pd.isna(cd): return False
+                    try:
+                        return pd.to_datetime(cd).date() < snap_date and row.get("forecast_category") != "Closed" and not row.get("is_deleted_or_lost")
+                    except Exception:
+                        return False
+                df = df[df.apply(_check_del, axis=1)]
                 
         deals = df.to_dict("records") if not df.empty else []
         for d in deals:
