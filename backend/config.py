@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
     FISCAL_YEAR_START_MONTH: int = 1
     DELAYED_INCLUDE_PRIOR_FY: bool = True
+    APPROVAL_DEAL_SIZE_THRESHOLD: float = 100000.0
 
     # Security & Admin Auth (Addendum D)
     ENVIRONMENT: str = "development"

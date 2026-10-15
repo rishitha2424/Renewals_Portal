@@ -34,6 +34,9 @@ def get_approvals_deals(
     category: Optional[str] = None,
     region: Optional[str] = None,
     business_unit: Optional[str] = None,
+    min_acv: Optional[float] = None,
+    max_acv: Optional[float] = None,
+    deal_ids: Optional[str] = None,
     as_of: Optional[str] = None,
     exclude_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
@@ -41,6 +44,7 @@ def get_approvals_deals(
 ):
     ctx = UserContext()
     svc = V2ApprovalsService(db)
+    parsed_deal_ids = [d.strip() for d in deal_ids.split(",") if d.strip()] if deal_ids else None
     return svc.get_deals(
         ctx=ctx,
         status=status,
@@ -49,5 +53,8 @@ def get_approvals_deals(
         exclude_deleted_lost=exclude_deleted_lost,
         region=region,
         business_unit=business_unit,
-        filter_spec=filter_spec
+        filter_spec=filter_spec,
+        min_acv=min_acv,
+        max_acv=max_acv,
+        deal_ids=parsed_deal_ids
     )
