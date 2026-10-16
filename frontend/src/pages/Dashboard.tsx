@@ -576,22 +576,26 @@ export default function Dashboard() {
 
             {/* Overall Slippage Total */}
             {(() => {
-              const overall = summary?.slippage?.overall ?? { count: 0, acv: 0 }
+              const overall = summary?.slippage?.overall ?? { count: null, acv: null }
+              const isFuture = summary?.slippage?.is_future
+              const isNA = isFuture || overall.count === null
+              const cnt = overall.count ?? 0
+              const acvVal = overall.acv ?? 0
               return (
                 <div
-                  className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-all flex items-center gap-4"
-                  onClick={() => openDealsQuery(`Overall Slippage & Delayed Renewals · ${overall.count} deals · ${acvM(overall.acv)}`, { kind: 'delayed_all' })}
-                  title="Click to view all slipped and delayed deals"
+                  className={`px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 transition-all flex items-center gap-4 ${isNA ? 'cursor-default' : 'cursor-pointer hover:border-amber-500/50'}`}
+                  onClick={() => !isNA && openDealsQuery(`Overall Slippage & Delayed Renewals · ${cnt} deals · ${acvM(acvVal)}`, { kind: 'delayed_all' })}
+                  title={isNA ? "Not applicable for selected period" : "Click to view all slipped and delayed deals"}
                 >
                   <div>
                     <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
                       Total Slipped / Delayed
                     </span>
-                    <div className="font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums hover:underline">
-                      {acvM(overall.acv)}
+                    <div className={`font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums ${!isNA ? 'hover:underline' : ''}`}>
+                      {isNA ? 'n/a' : acvM(acvVal)}
                     </div>
                   </div>
-                  <Pill color="amber"><AlertTriangle className="w-3.5 h-3.5" />{overall.count} deals</Pill>
+                  <Pill color="amber"><AlertTriangle className="w-3.5 h-3.5" />{isNA ? 'n/a' : `${cnt} deals`}</Pill>
                 </div>
               )
             })()}
@@ -599,9 +603,10 @@ export default function Dashboard() {
 
           {/* 3 Slippage Categories */}
           {(() => {
-            const slipCat = summary?.slippage?.categories?.slipped ?? { count: 0, acv: 0 }
-            const overdueCat = summary?.slippage?.categories?.overdue ?? { count: 0, acv: 0 }
-            const laterCat = summary?.slippage?.categories?.later_close ?? { count: 0, acv: 0 }
+            const isFuture = summary?.slippage?.is_future
+            const slipCat = summary?.slippage?.categories?.slipped ?? { count: null, acv: null }
+            const overdueCat = summary?.slippage?.categories?.overdue ?? { count: null, acv: null }
+            const laterCat = summary?.slippage?.categories?.later_close ?? { count: null, acv: null }
 
             const yDate = movYesterday?.compare_date || summary?.slippage?.yesterday_date
             const lwDate = movLastWeek?.compare_date || summary?.slippage?.lastweek_date
@@ -610,29 +615,38 @@ export default function Dashboard() {
               {
                 id: 'slipped',
                 title: 'Slipped to Next Year / Quarter',
-                count: slipCat.count,
-                acv: slipCat.acv,
+                count: isFuture ? null : slipCat.count,
+                acv: isFuture ? null : slipCat.acv,
+                baselineLabel: isFuture ? 'n/a' : (slipCat.baseline_label || summary?.slippage?.period_start_baseline_label || 'Since start of period'),
                 mainDrawerKind: 'delayed_slipped',
-                yDelta: slipCat.delta_yesterday ?? null,
-                lwDelta: slipCat.delta_lastweek ?? null,
+                mainCompare: 'period_start',
+                isOverdue: false,
+                yDelta: isFuture ? null : (slipCat.delta_yesterday ?? null),
+                lwDelta: isFuture ? null : (slipCat.delta_lastweek ?? null),
               },
               {
                 id: 'overdue',
                 title: 'Overdue Deals',
-                count: overdueCat.count,
-                acv: overdueCat.acv,
+                count: isFuture ? null : overdueCat.count,
+                acv: isFuture ? null : overdueCat.acv,
+                baselineLabel: isFuture ? 'n/a' : (overdueCat.baseline_label || 'Current'),
                 mainDrawerKind: 'delayed_overdue',
-                yDelta: overdueCat.delta_yesterday ?? null,
-                lwDelta: overdueCat.delta_lastweek ?? null,
+                mainCompare: undefined,
+                isOverdue: true,
+                yDelta: isFuture ? null : (overdueCat.delta_yesterday ?? null),
+                lwDelta: isFuture ? null : (overdueCat.delta_lastweek ?? null),
               },
               {
                 id: 'later_close',
                 title: 'Later Close Date (Postponed)',
-                count: laterCat.count,
-                acv: laterCat.acv,
+                count: isFuture ? null : laterCat.count,
+                acv: isFuture ? null : laterCat.acv,
+                baselineLabel: isFuture ? 'n/a' : (laterCat.baseline_label || summary?.slippage?.period_start_baseline_label || 'Since start of period'),
                 mainDrawerKind: 'delayed_later_close',
-                yDelta: laterCat.delta_yesterday ?? null,
-                lwDelta: laterCat.delta_lastweek ?? null,
+                mainCompare: 'period_start',
+                isOverdue: false,
+                yDelta: isFuture ? null : (laterCat.delta_yesterday ?? null),
+                lwDelta: isFuture ? null : (laterCat.delta_lastweek ?? null),
               },
             ]
 
@@ -643,7 +657,7 @@ export default function Dashboard() {
               dateStr: string | null | undefined,
               cat: typeof slipCategories[0]
             ) => {
-              if (!delta) {
+              if (delta === null || delta === undefined || isFuture) {
                 return (
                   <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 opacity-70 cursor-default">
                     <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
@@ -653,81 +667,120 @@ export default function Dashboard() {
                 )
               }
 
-              const isUp = delta.count > 0 || delta.acv > 0
-              const isDown = delta.count < 0 || delta.acv < 0
+              if (cat.isOverdue) {
+                // Signed net change for overdue
+                const isUp = delta.count > 0 || delta.acv > 0
+                const isDown = delta.count < 0 || delta.acv < 0
 
-              const colorClasses = isUp
-                ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
-                : isDown
-                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
-                : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+                const colorClasses = isUp
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
+                  : isDown
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
+                  : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
 
-              let acvText = '$0'
-              if (delta.acv > 0) {
-                acvText = `+${acvM(delta.acv)}`
-              } else if (delta.acv < 0) {
-                acvText = `-${acvM(Math.abs(delta.acv))}`
+                let acvText = '$0'
+                if (delta.acv > 0) {
+                  acvText = `+${acvM(delta.acv)}`
+                } else if (delta.acv < 0) {
+                  acvText = `-${acvM(Math.abs(delta.acv))}`
+                }
+
+                let countText = '0 deals'
+                if (delta.count > 0) {
+                  countText = `+${delta.count} deals`
+                } else if (delta.count < 0) {
+                  countText = `${delta.count} deals`
+                }
+
+                const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
+                const drawerTitle = `${cat.title} (${label}${dateSub}) · Net ${countText} · ${acvText}`
+
+                return (
+                  <div
+                    className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
+                    onClick={() =>
+                      openDealsQuery(drawerTitle, {
+                        kind: `delayed_${cat.id}_delta`,
+                        compare: comparePeriod,
+                      })
+                    }
+                    title={`Click to view ${cat.title} ${label} net movement`}
+                  >
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                    <div className="font-bold text-sm tabular-nums">{acvText}</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+                  </div>
+                )
+              } else {
+                // Event transitions for Slipped and Later Close
+                const hasDeals = (delta.count || 0) > 0 || (delta.acv || 0) > 0
+                const colorClasses = hasDeals
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
+                  : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+
+                const acvText = acvM(delta.acv || 0)
+                const countText = `${delta.count || 0} deals`
+                const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
+                const drawerTitle = `${cat.title} (${label}${dateSub}) · ${countText} · ${acvText}`
+
+                return (
+                  <div
+                    className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
+                    onClick={() =>
+                      openDealsQuery(drawerTitle, {
+                        kind: `delayed_${cat.id}`,
+                        compare: comparePeriod,
+                      })
+                    }
+                    title={`Click to view ${cat.title} ${label}`}
+                  >
+                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                    <div className="font-bold text-sm tabular-nums">{acvText}</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+                  </div>
+                )
               }
-
-              let countText = '0 deals'
-              if (delta.count > 0) {
-                countText = `+${delta.count} deals`
-              } else if (delta.count < 0) {
-                countText = `${delta.count} deals`
-              }
-
-              const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
-              const drawerTitle = `${cat.title} (${label}${dateSub}) · Net ${countText} · ${acvText}`
-
-              return (
-                <div
-                  className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
-                  onClick={() =>
-                    openDealsQuery(drawerTitle, {
-                      kind: `delayed_${cat.id}_delta`,
-                      compare: comparePeriod,
-                    })
-                  }
-                  title={`Click to view ${cat.title} ${label} movement`}
-                >
-                  <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                  <div className="font-bold text-sm tabular-nums">{acvText}</div>
-                  <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
-                </div>
-              )
             }
 
             return (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {slipCategories.map(cat => (
-                  <div
-                    key={cat.id}
-                    className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
-                  >
-                    {/* Main figure for the period */}
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="text-xs font-semibold text-[var(--text-secondary)]">
-                          {cat.title}
-                        </span>
-                        <Pill color="amber">{cat.count} deals</Pill>
+                {slipCategories.map(cat => {
+                  const isNA = isFuture || cat.count === null
+                  const cnt = cat.count ?? 0
+                  const acvVal = cat.acv ?? 0
+                  return (
+                    <div
+                      key={cat.id}
+                      className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
+                    >
+                      {/* Main figure for the period */}
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                            {cat.title}
+                          </span>
+                          <Pill color="amber">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                        </div>
+                        <div
+                          className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${isNA ? 'cursor-default' : 'cursor-pointer hover:underline'}`}
+                          onClick={() => !isNA && openDealsQuery(`${cat.title} (${cnt} deals · ${acvM(acvVal)})`, { kind: cat.mainDrawerKind, compare: cat.mainCompare })}
+                          title={isNA ? "Not applicable for selected period" : `Click to view ${cat.title}`}
+                        >
+                          {isNA ? 'n/a' : acvM(acvVal)}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">
+                          {cat.baselineLabel}
+                        </div>
                       </div>
-                      <div
-                        className="font-extrabold text-2xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
-                        onClick={() => openDealsQuery(`${cat.title} (${cat.count} deals · ${acvM(cat.acv)})`, { kind: cat.mainDrawerKind })}
-                        title={`Click to view ${cat.title}`}
-                      >
-                        {acvM(cat.acv)}
-                      </div>
-                    </div>
 
-                    {/* Trends below it: vs Yesterday and vs Last Week */}
-                    <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                      {renderTrendBox('vs Yesterday', cat.yDelta, 'yesterday', yDate, cat)}
-                      {renderTrendBox('vs Last Week', cat.lwDelta, 'last_week', lwDate, cat)}
+                      {/* Trends below it: Since yesterday and Since last week */}
+                      <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                        {renderTrendBox('Since yesterday', cat.yDelta, 'yesterday', yDate, cat)}
+                        {renderTrendBox('Since last week', cat.lwDelta, 'last_week', lwDate, cat)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )
           })()}

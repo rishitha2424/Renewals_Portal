@@ -56,16 +56,12 @@ function DelayedContent() {
     queryKey: ['v2-delayed-deals', activeSnapshotId, compare, filters, modalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/delayed/deals', {
-        params: { ...filters, ...modalFilters, as_of: activeSnapshotId ?? undefined, compare },
+        params: { ...filters, ...modalFilters, as_of: activeSnapshotId ?? undefined, compare: modalFilters?.compare || compare },
       })
       return res.data
     },
     enabled: modalOpen,
   })
-
-  if (!activeSnapshotId) {
-    return <PageNoSnapshotState />
-  }
 
   if (error || summary?.error) {
     return <PageErrorState message={summary?.error || error?.toString() || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
@@ -93,59 +89,125 @@ function DelayedContent() {
   const yDateStr = summary.yesterday_date ? format(parseISO(summary.yesterday_date), 'dd MMM') : 'Yday'
   const wDateStr = summary.lastweek_date ? format(parseISO(summary.lastweek_date), 'dd MMM') : 'Wk'
 
-  const DualDeltaDisplay = ({ data }: { data: any }) => {
-    if (!data) return null
-    const yCount = data.delayed_vs_yesterday?.count ?? 0
-    const yAcv = data.delayed_vs_yesterday?.acv ?? 0
-    const wCount = data.delayed_vs_lastweek?.count ?? 0
-    const wAcv = data.delayed_vs_lastweek?.acv ?? 0
+  const DualBoxDisplay = ({
+    data,
+    isOverdue,
+    catTitle,
+    catKind,
+  }: {
+    data: any
+    isOverdue: boolean
+    catTitle: string
+    catKind: string
+  }) => {
+    const isFuture = summary?.is_future
 
-    const renderDelta = (count: number, acv: number, label: string) => {
-      const isPos = acv > 0 || count > 0 // in delays, increase is bad
-      const isNeg = acv < 0 || count < 0
-      const isZero = count === 0 && acv === 0
+    const renderBox = (
+      label: string,
+      delta: { count: number; acv: number } | null | undefined,
+      compPeriod: 'yesterday' | 'last_week',
+      dateLabel: string
+    ) => {
+      if (delta === null || delta === undefined || isFuture) {
+        return (
+          <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 opacity-70 cursor-default flex-1">
+            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+            <div className="font-bold text-xs text-[var(--text-muted)] tabular-nums">n/a</div>
+            <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+          </div>
+        )
+      }
 
-      const Icon = isPos ? ArrowUpRight : isNeg ? ArrowDownRight : Minus
-      const val = isZero
-        ? 'No change'
-        : metricMode === 'Amount'
-        ? formatACV(acv)
-        : metricMode === 'Count'
-        ? formatCount(count)
-        : `${formatCount(count)} / ${formatACV(acv)}`
+      if (isOverdue) {
+        // Signed net change
+        const isUp = delta.count > 0 || delta.acv > 0
+        const isDown = delta.count < 0 || delta.acv < 0
 
-      // Soft muted background with dark text of the same hue
-      const chipClasses = isZero
-        ? 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-[#8A9BB5]'
-        : isPos
-        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
-        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+        const colorClasses = isUp
+          ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400 hover:border-rose-500/50'
+          : isDown
+          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
+          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
 
-      return (
-        <span
-          className={cn(
-            'inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-sm select-none tabular-nums transition-colors',
-            chipClasses
-          )}
-          title={label}
-        >
-          <Icon className="w-3 h-3 mr-0.5" />
-          <span className="opacity-70 mr-1">{label}</span>
-          <span>{val}</span>
-        </span>
-      )
+        let acvText = '$0'
+        if (delta.acv > 0) acvText = `+${formatACV(delta.acv)}`
+        else if (delta.acv < 0) acvText = `-${formatACV(Math.abs(delta.acv))}`
+
+        let countText = '0 deals'
+        if (delta.count > 0) countText = `+${delta.count} deals`
+        else if (delta.count < 0) countText = `${delta.count} deals`
+
+        return (
+          <div
+            className={cn('p-2 rounded-lg border cursor-pointer transition-all flex-1', colorClasses)}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDrill(`${catTitle} (${label} · ${dateLabel}) · Net ${countText} · ${acvText}`, {
+                kind: `${catKind}_delta`,
+                compare: compPeriod,
+              })
+            }}
+            title={`Click to view net change vs ${dateLabel}`}
+          >
+            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+            <div className="font-bold text-xs tabular-nums">{acvText}</div>
+            <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+          </div>
+        )
+      } else {
+        // Transition event bucket
+        const hasDeals = (delta.count || 0) > 0 || (delta.acv || 0) > 0
+        const colorClasses = hasDeals
+          ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
+          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+
+        const acvText = formatACV(delta.acv || 0)
+        const countText = `${delta.count || 0} deals`
+
+        return (
+          <div
+            className={cn('p-2 rounded-lg border cursor-pointer transition-all flex-1', colorClasses)}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDrill(`${catTitle} (${label} · ${dateLabel}) · ${countText} · ${acvText}`, {
+                kind: catKind,
+                compare: compPeriod,
+              })
+            }}
+            title={`Click to view events since ${dateLabel}`}
+          >
+            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+            <div className="font-bold text-xs tabular-nums">{acvText}</div>
+            <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+          </div>
+        )
+      }
     }
 
     return (
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {renderDelta(yCount, yAcv, `vs ${yDateStr}`)}
-        {renderDelta(wCount, wAcv, `vs ${wDateStr}`)}
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        {renderBox('Since yesterday', data?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+        {renderBox('Since last week', data?.delayed_vs_lastweek, 'last_week', wDateStr)}
       </div>
     )
   }
 
   // 4px left accent bar + 32px rounded-lg tinted icon tile
-  const DelayedKpiCard = ({ title, definition, data, icon: Icon, accent, kind }: any) => {
+  const DelayedKpiCard = ({
+    title,
+    definition,
+    data,
+    icon: Icon,
+    accent,
+    kind,
+    isOverdue = false,
+    comparePeriod = 'period_start',
+  }: any) => {
+    const isFuture = summary?.is_future
+    const isNA = isFuture || data?.count === null
+    const cnt = data?.count ?? 0
+    const acvVal = data?.acv ?? 0
+
     const accentBorder = {
       amber: 'border-l-amber-500',
       rose: 'border-l-rose-500',
@@ -165,9 +227,8 @@ function DelayedContent() {
         className={cn(
           'rounded-xl bg-[var(--bg-card)] border border-[var(--border)] border-l-4 shadow-[var(--card-shadow)]',
           accentBorder,
-          'p-4 flex flex-col justify-between h-full items-stretch transition-colors select-none cursor-pointer hover:bg-[var(--bg-secondary)]/50'
+          'p-4 flex flex-col justify-between h-full items-stretch transition-colors select-none'
         )}
-        onClick={() => handleDrill(title, { kind })}
       >
         <div>
           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -183,21 +244,35 @@ function DelayedContent() {
               {definition}
             </p>
           )}
-          <div className="space-y-0.5 mb-2.5">
-            {(metricMode === 'Count' || metricMode === 'Both') && (
-              <div className="text-2xl font-semibold tracking-tight text-[var(--text-primary)] tabular-nums">
-                {formatCount(data?.count || 0)}
-              </div>
-            )}
-            {(metricMode === 'Amount' || metricMode === 'Both') && (
-              <div className="text-sm font-medium text-[var(--text-muted)] tabular-nums">
-                {formatACV(data?.acv || 0)}
-              </div>
-            )}
+          <div
+            className={cn('space-y-0.5 mb-2.5', !isNA && 'cursor-pointer group')}
+            onClick={() => {
+              if (!isNA) {
+                handleDrill(`${title} (${cnt} deals · ${formatACV(acvVal)})`, {
+                  kind,
+                  compare: isOverdue ? undefined : comparePeriod,
+                })
+              }
+            }}
+          >
+            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
+              {isNA ? 'n/a' : formatACV(acvVal)}
+            </div>
+            <div className="text-xs font-medium text-[var(--text-muted)] tabular-nums flex items-center justify-between">
+              <span>{isNA ? 'n/a' : `${formatCount(cnt)} deals`}</span>
+              <span className="text-[10px] font-semibold text-[var(--text-muted)]">
+                {isFuture ? 'n/a' : (data?.baseline_label || 'Current')}
+              </span>
+            </div>
           </div>
         </div>
         <div className="pt-2 border-t border-[var(--border-subtle)]">
-          <DualDeltaDisplay data={data} />
+          <DualBoxDisplay
+            data={data}
+            isOverdue={isOverdue}
+            catTitle={title}
+            catKind={kind}
+          />
         </div>
       </div>
     )
@@ -334,16 +409,86 @@ function DelayedContent() {
         </div>
       )}
 
-      {/* 5 KPI Cards in one row: grid-cols-5 at ≥1280px, 3 at ≥768px, 1 on mobile */}
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 items-stretch">
-        <DelayedKpiCard
-          title="Total Delayed"
-          definition="All renewals in active quarter that are overdue, slipped, or postponed."
-          data={summary.total}
-          icon={Clock}
-          accent="teal"
-          kind="all"
-        />
+      {/* Overall Total on top (Overdue + Slipped + Later Close, deduplicated) */}
+      {(() => {
+        const tot = summary.total
+        const isFuture = summary?.is_future
+        const isNA = isFuture || tot?.count === null
+        const cnt = tot?.count ?? 0
+        const acvVal = tot?.acv ?? 0
+        return (
+          <div className="rounded-xl bg-teal-500/5 dark:bg-teal-950/20 border border-teal-500/30 p-5 flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={cn("cursor-pointer", isNA && "cursor-default")}
+              onClick={() => !isNA && handleDrill(`Total Delayed Renewals (${formatCount(cnt)} deals · ${formatACV(acvVal)})`, { kind: 'all' })}
+              title={isNA ? "Not applicable for selected period" : "Click to view all delayed renewals"}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
+                <span className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
+                  Total Delayed (Overdue + Slipped + Later Close, Deduplicated)
+                </span>
+              </div>
+              <div className="flex items-baseline gap-3">
+                <span className={cn("text-3xl font-extrabold text-[var(--text-primary)] tabular-nums", !isNA && "hover:underline")}>
+                  {isNA ? 'n/a' : formatACV(acvVal)}
+                </span>
+                <span className="text-sm font-semibold text-[var(--text-muted)] tabular-nums">
+                  {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
+                </span>
+              </div>
+            </div>
+
+            {/* Overall delta boxes: Since yesterday & Since last week */}
+            <div className="flex items-center gap-3">
+              {(() => {
+                const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
+                  if (delta === null || delta === undefined || isFuture) {
+                    return (
+                      <div className="p-2.5 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[125px]">
+                        <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                        <div className="font-bold text-sm text-[var(--text-muted)]">n/a</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                      </div>
+                    )
+                  }
+                  const isUp = delta.count > 0 || delta.acv > 0
+                  const isDown = delta.count < 0 || delta.acv < 0
+                  const colorCls = isUp
+                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                    : isDown
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+                  const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
+                  const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
+
+                  return (
+                    <div
+                      className={cn("p-2.5 rounded-lg border cursor-pointer min-w-[125px] transition-all hover:border-teal-500/50", colorCls)}
+                      onClick={() => handleDrill(`Total Delayed (${label} · ${dateStr}) · Net ${cntTxt} · ${acvTxt}`, { kind: 'total_delta', compare: comp })}
+                      title={`Click to view net change vs ${dateStr}`}
+                    >
+                      <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                      <div className="font-bold text-sm tabular-nums">{acvTxt}</div>
+                      <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <>
+                    {renderTotBox('Since yesterday', tot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+                    {renderTotBox('Since last week', tot?.delayed_vs_lastweek, 'last_week', wDateStr)}
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* 4 Category Cards: grid-cols-4 at ≥1280px, 2 at ≥768px, 1 on mobile */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
         <DelayedKpiCard
           title="Overdue"
           definition="Active renewals past expected close date and not yet closed as of snapshot date."
@@ -351,6 +496,7 @@ function DelayedContent() {
           icon={AlertCircle}
           accent="rose"
           kind="overdue"
+          isOverdue={true}
         />
         <DelayedKpiCard
           title="Slipped to Next Year"
@@ -359,6 +505,7 @@ function DelayedContent() {
           icon={CalendarX2}
           accent="amber"
           kind="slipped"
+          comparePeriod="period_start"
         />
         <DelayedKpiCard
           title="Later Close Date"
@@ -367,6 +514,7 @@ function DelayedContent() {
           icon={ArrowRight}
           accent="amber"
           kind="later_close"
+          comparePeriod="period_start"
         />
         <DelayedKpiCard
           title="Lost / Removed"
@@ -375,6 +523,7 @@ function DelayedContent() {
           icon={AlertTriangle}
           accent="slate"
           kind="lost"
+          comparePeriod="period_start"
         />
       </div>
 

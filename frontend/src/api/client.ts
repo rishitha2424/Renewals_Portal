@@ -131,7 +131,7 @@ export function buildFilterParams(filters: Record<string, any> = {}): Record<str
   if (!params.as_of && state.activeSnapshotId) {
     params.as_of = state.activeSnapshotId
   }
-  if (compare === 'yesterday' || compare === 'last_week') {
+  if (compare === 'yesterday' || compare === 'last_week' || compare === 'period_start') {
     params.compare = compare
   }
   return params

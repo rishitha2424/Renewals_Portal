@@ -16,7 +16,7 @@ def _svc(db: Session = Depends(get_db)):
 @router.get("/summary")
 def get_delayed_summary(
     as_of: Optional[str] = Query(None),
-    compare: str = Query("yesterday", pattern="^(yesterday|last_week)$"),
+    compare: str = Query("yesterday", pattern="^(yesterday|last_week|period_start)$"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2DelayedService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
@@ -25,7 +25,7 @@ def get_delayed_summary(
 
 @router.get("/deals")
 def get_delayed_deals(
-    kind: str = Query("all", pattern="^(all|overdue|slipped|later_close|lost|newly_delayed)$"),
+    kind: str = Query("all"),
     region: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -33,7 +33,7 @@ def get_delayed_deals(
     ageing: Optional[str] = Query(None),
     newly_delayed: bool = Query(False),
     as_of: Optional[str] = Query(None),
-    compare: str = Query("yesterday", pattern="^(yesterday|last_week)$"),
+    compare: str = Query("yesterday", pattern="^(yesterday|last_week|period_start)$"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2DelayedService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)

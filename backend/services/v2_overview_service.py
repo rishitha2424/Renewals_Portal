@@ -434,37 +434,55 @@ class V2OverviewService:
         del_later = del_sum.get("later_close", {"count": 0, "acv": 0.0})
         del_rule = del_sum.get("rule_text", "All renewals in active quarter that are overdue, slipped, or postponed.")
 
+        del_lost = del_sum.get("lost", {"count": 0, "acv": 0.0})
         slippage_data = {
             "overall": {
-                "count": del_overall.get("count", 0),
-                "acv": round(float(del_overall.get("acv", 0.0)), 2),
+                "count": del_overall.get("count"),
+                "acv": round(float(del_overall.get("acv")), 2) if del_overall.get("acv") is not None else None,
+                "baseline_label": del_overall.get("baseline_label", "Total Delayed"),
                 "delta_yesterday": del_overall.get("delayed_vs_yesterday"),
                 "delta_lastweek": del_overall.get("delayed_vs_lastweek"),
             },
             "categories": {
                 "slipped": {
                     "label": "Slipped to Next Year / Quarter",
-                    "count": del_slipped.get("count", 0),
-                    "acv": round(float(del_slipped.get("acv", 0.0)), 2),
+                    "count": del_slipped.get("count"),
+                    "acv": round(float(del_slipped.get("acv")), 2) if del_slipped.get("acv") is not None else None,
+                    "baseline_label": del_slipped.get("baseline_label"),
                     "delta_yesterday": del_slipped.get("delayed_vs_yesterday"),
                     "delta_lastweek": del_slipped.get("delayed_vs_lastweek"),
                 },
                 "overdue": {
                     "label": "Overdue Deals",
-                    "count": del_overdue.get("count", 0),
-                    "acv": round(float(del_overdue.get("acv", 0.0)), 2),
+                    "count": del_overdue.get("count"),
+                    "acv": round(float(del_overdue.get("acv")), 2) if del_overdue.get("acv") is not None else None,
+                    "baseline_label": del_overdue.get("baseline_label", "Current"),
                     "delta_yesterday": del_overdue.get("delayed_vs_yesterday"),
                     "delta_lastweek": del_overdue.get("delayed_vs_lastweek"),
                 },
                 "later_close": {
                     "label": "Later Close Date (Postponed)",
-                    "count": del_later.get("count", 0),
-                    "acv": round(float(del_later.get("acv", 0.0)), 2),
+                    "count": del_later.get("count"),
+                    "acv": round(float(del_later.get("acv")), 2) if del_later.get("acv") is not None else None,
+                    "baseline_label": del_later.get("baseline_label"),
                     "delta_yesterday": del_later.get("delayed_vs_yesterday"),
                     "delta_lastweek": del_later.get("delayed_vs_lastweek"),
                 },
+                "lost": {
+                    "label": "Lost / Removed",
+                    "count": del_lost.get("count"),
+                    "acv": round(float(del_lost.get("acv")), 2) if del_lost.get("acv") is not None else None,
+                    "baseline_label": del_lost.get("baseline_label"),
+                    "delta_yesterday": del_lost.get("delayed_vs_yesterday"),
+                    "delta_lastweek": del_lost.get("delayed_vs_lastweek"),
+                },
             },
             "rule_text": del_rule,
+            "is_future": del_sum.get("is_future", False),
+            "period_type": del_sum.get("period_type"),
+            "period_start_baseline_label": del_sum.get("period_start_baseline_label"),
+            "period_start_baseline_date": del_sum.get("period_start_baseline_date"),
+            "period_start_is_partial": del_sum.get("period_start_is_partial", False),
             "yesterday_date": del_sum.get("yesterday_date"),
             "lastweek_date": del_sum.get("lastweek_date"),
         }
@@ -472,9 +490,11 @@ class V2OverviewService:
         # Legacy slippage count for fallback
         _, q_end_date = ScopeService.quarter_bounds(target_fp)
         slip_df = df[pd.to_datetime(df["close_date"], errors="coerce") > pd.Timestamp(q_end_date)] if (not df.empty and "close_date" in df.columns) else pd.DataFrame()
+        leg_cnt = del_slipped.get("count") if del_slipped.get("count") is not None else len(slip_df)
+        leg_acv = del_slipped.get("acv") if del_slipped.get("acv") is not None else _sum(slip_df, "forecast_acv_amount")
         slippage = {
-            "count": del_slipped.get("count", len(slip_df)),
-            "acv": round(float(del_slipped.get("acv", _sum(slip_df, "forecast_acv_amount"))), 2),
+            "count": leg_cnt,
+            "acv": round(float(leg_acv or 0.0), 2),
         }
 
         # ── Yesterday deltas ──────────────────────────────────────────────────
@@ -626,36 +646,38 @@ class V2OverviewService:
                 "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             })
 
-        # 2. Largest overdue deals
-        overdue_df = pd.DataFrame()
-        if not df.empty and "close_date" in df.columns:
-            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
-            overdue_df = df[(cd < snap.snapshot_date) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])].copy()
-        if not overdue_df.empty:
-            overdue_df = overdue_df.sort_values(by="forecast_acv_amount", ascending=False)
-            od_cnt = len(overdue_df)
-            od_tot_acv = round(float(_sum(overdue_df, "forecast_acv_amount")), 2)
-            top_od = overdue_df.iloc[0]
-            top_od_date = pd.to_datetime(top_od["close_date"]).date() if top_od["close_date"] else snap.snapshot_date
-            days_od = max(1, (snap.snapshot_date - top_od_date).days)
+        # 2. Largest overdue deals (using V2DelayedService so it can never disagree)
+        od_deals_res = delayed_svc.get_deals(as_of=fs.as_of or snap.id, kind="overdue", filter_spec=fs)
+        od_deals = od_deals_res.get("deals", [])
+        if od_deals:
+            od_cnt = od_deals_res.get("count", len(od_deals))
+            od_tot_acv = od_deals_res.get("acv", 0.0)
+            sorted_od = sorted(od_deals, key=lambda x: float(x.get("forecast_acv_amount", 0.0) or 0.0), reverse=True)
+            top_od = sorted_od[0]
+            top_od_date_str = str(top_od.get("close_date") or "")
+            try:
+                top_od_date = date.fromisoformat(top_od_date_str[:10])
+                days_od = max(1, (snap.snapshot_date - top_od_date).days)
+            except Exception:
+                days_od = 1
             category_summaries["overdue"] = {
                 "count": od_cnt,
                 "acv": od_tot_acv,
-                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+                "deal_ids": [str(d.get("opportunity_id_18")) for d in sorted_od],
             }
             _add_item({
                 "category_key": "overdue",
                 "category_label": "Overdue deal",
-                "opportunity_id_18": str(top_od["opportunity_id_18"]),
-                "opportunity_name": str(top_od["opportunity_name"]),
-                "account_name": str(top_od["account_name"]),
-                "acv": round(float(top_od["forecast_acv_amount"]), 2),
+                "opportunity_id_18": str(top_od.get("opportunity_id_18")),
+                "opportunity_name": str(top_od.get("opportunity_name")),
+                "account_name": str(top_od.get("account_name")),
+                "acv": round(float(top_od.get("forecast_acv_amount", 0.0) or 0.0), 2),
                 "category_count": od_cnt,
                 "category_acv": od_tot_acv,
                 "badge": f"{days_od}d past close date",
                 "detail": f"{od_cnt} overdue deals totaling ${od_tot_acv:,.2f}",
                 "kind": "overdue",
-                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+                "deal_ids": [str(d.get("opportunity_id_18")) for d in sorted_od],
             })
 
         # 3. Biggest drop vs yesterday
@@ -1051,8 +1073,8 @@ class V2OverviewService:
             filters_applied["compare"] = compare
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
-        if kind.startswith("delayed_") or (kind == "slipped" and not compare):
-            target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else "slipped"
+        if kind == "overdue" or (kind and (kind.startswith("delayed_") or (kind == "slipped" and not compare))):
+            target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else kind
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
             return del_svc.get_deals(
@@ -1122,7 +1144,7 @@ class V2OverviewService:
                             "sub_region": str(tr["canonical_region"]),
                             "business_unit_primary": str(tr["business_unit_primary"]),
                             "close_date": tr["close_date"].isoformat() if hasattr(tr["close_date"], "isoformat") else str(tr["close_date"]) if tr["close_date"] else None,
-                            "delta_group": "Added to Q4",
+                            "delta_group": f"Added to {res.data_slice}",
                             "delta_acv_change": float(tr["forecast_acv_amount"] or 0),
                         }
                         added_deals.append(deal)
@@ -1141,7 +1163,7 @@ class V2OverviewService:
                             "sub_region": str(pr["canonical_region"]),
                             "business_unit_primary": str(pr["business_unit_primary"]),
                             "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
-                            "delta_group": "Left Q4 – moved or lost",
+                            "delta_group": f"Left {res.data_slice} – moved or lost",
                             "delta_acv_change": -float(pr["forecast_acv_amount"] or 0),
                         }
                         left_deals.append(deal)
@@ -1181,13 +1203,13 @@ class V2OverviewService:
 
                 delta_groups = {
                     "added": {
-                        "name": f"Added to Q4 ({len(added_deals)})",
+                        "name": f"Added to {res.data_slice} ({len(added_deals)})",
                         "count": len(added_deals),
                         "acv": added_acv,
                         "deals": added_deals,
                     },
                     "left": {
-                        "name": f"Left Q4 – moved or lost ({len(left_deals)})",
+                        "name": f"Left {res.data_slice} – moved or lost ({len(left_deals)})",
                         "count": len(left_deals),
                         "acv": left_acv,
                         "deals": left_deals,
