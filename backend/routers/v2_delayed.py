@@ -33,7 +33,7 @@ def get_delayed_deals(
     ageing: Optional[str] = Query(None),
     newly_delayed: bool = Query(False),
     as_of: Optional[str] = Query(None),
-    compare: str = Query("yesterday", pattern="^(yesterday|last_week|period_start)$"),
+    compare: Optional[str] = Query(None, pattern="^(yesterday|last_week|period_start)$"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2DelayedService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)

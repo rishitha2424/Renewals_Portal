@@ -42,7 +42,7 @@ function formatDelta(val: number, isCount: boolean) {
   return <span className={color}>{text}</span>
 }
 
-function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
+function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSetting }: any) {
   const isCount = metricMode === 'Count'
   const isBoth = metricMode === 'Both'
   const isAmount = metricMode === 'Amount'
@@ -53,22 +53,27 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate }: any) {
 
   const renderDeltas = () => {
     if (dCust && (dCust.count || dCust.acv)) {
-      const cmpStr = compareDate ? compareDate.substring(5,10) : 'vs'
+      const isLastWeek = compareSetting === 'lastweek' || compareSetting === 'last_week' || (compareDate && data.lastweek_date && compareDate === data.lastweek_date)
+      const cmpLabel = isLastWeek ? 'vs last week' : 'vs yesterday'
       const deltaPart = isCount
         ? formatDelta(dCust.count, true)
         : isAmount
         ? formatDelta(dCust.acv, false)
         : <>{formatDelta(dCust.count, true)} · {formatDelta(dCust.acv, false)}</>
-      return <span>{cmpStr} {deltaPart}</span>
+      return (
+        <span title={compareDate ? formatDate(compareDate) : undefined} className="cursor-help">
+          {cmpLabel} {deltaPart}
+        </span>
+      )
     }
     return (
       <span className="flex flex-col gap-0.5 mt-1 text-[10px] text-[var(--text-muted)] font-medium">
-        <span>
-          vs {data.yesterday_date ? data.yesterday_date.substring(5,10) : 'Yesterday'}{' '}
+        <span title={data.yesterday_date ? formatDate(data.yesterday_date) : undefined} className="cursor-help">
+          vs yesterday{' '}
           {isCount ? formatDelta(dYes?.count, true) : isAmount ? formatDelta(dYes?.acv, false) : <>{formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</>}
         </span>
-        <span>
-          vs {data.lastweek_date ? data.lastweek_date.substring(5,10) : 'Last Week'}{' '}
+        <span title={data.lastweek_date ? formatDate(data.lastweek_date) : undefined} className="cursor-help">
+          vs last week{' '}
           {isCount ? formatDelta(dLast?.count, true) : isAmount ? formatDelta(dLast?.acv, false) : <>{formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</>}
         </span>
       </span>
@@ -252,10 +257,10 @@ export default function Approvals() {
 
       {/* Slim Stat Chips */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}><StatChip label="Approved" data={attachDates(getStatus('Approved'))} icon={CheckCircle2} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}><StatChip label="Pending" data={attachDates(getStatus('Pending Approval'))} icon={Clock} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}><StatChip label="Total" data={attachDates(total)} icon={Sigma} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}><StatChip label="Approved" data={attachDates(getStatus('Approved'))} icon={CheckCircle2} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}><StatChip label="Pending" data={attachDates(getStatus('Pending Approval'))} icon={Clock} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}><StatChip label="Total" data={attachDates(total)} icon={Sigma} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
       </div>
 
       {/* Overview Reconciliation Banner */}
@@ -481,8 +486,8 @@ export default function Approvals() {
                       )}
                     </div>
                     <div className="flex justify-between items-center text-[9px] text-[var(--text-muted)] mt-1 font-medium pl-4">
-                      <span>
-                        vs {yesterday_date ? yesterday_date.substring(5,10) : '1d'}{' '}
+                      <span title={yesterday_date ? formatDate(yesterday_date) : undefined} className="cursor-help">
+                        vs yesterday{' '}
                         {metricMode === 'Count'
                           ? formatDelta(seg.delta_yesterday?.count, true)
                           : metricMode === 'Amount'
@@ -490,8 +495,8 @@ export default function Approvals() {
                           : <>{formatDelta(seg.delta_yesterday?.count, true)} · {formatDelta(seg.delta_yesterday?.acv, false)}</>
                         }
                       </span>
-                      <span>
-                        vs {lastweek_date ? lastweek_date.substring(5,10) : '7d'}{' '}
+                      <span title={lastweek_date ? formatDate(lastweek_date) : undefined} className="cursor-help">
+                        vs last week{' '}
                         {metricMode === 'Count'
                           ? formatDelta(seg.delta_lastweek?.count, true)
                           : metricMode === 'Amount'

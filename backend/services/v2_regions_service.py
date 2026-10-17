@@ -58,19 +58,25 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
         return pd.DataFrame()
     records = []
     for o in opps:
+        reg = _map_region(o.revised_sub_region)
         records.append({
+            "id": o.opportunity_id_18,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
             "account_name": o.account_name,
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
             "forecast_category": _norm_fc(o.forecast_category),
             "business_unit": (o.business_unit_primary or "").strip() or "Unassigned",
+            "business_unit_primary": (o.business_unit_primary or "").strip() or "Unassigned",
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period": o.fiscal_period or "",
             "close_date": o.close_date,
             "approval_status": _norm_approval(o.approval_status),
-            "region": _map_region(o.revised_sub_region),
+            "region": reg,
+            "sub_region": reg,
             "raw_sub_region": o.revised_sub_region or "",
+            "owner": (o.opportunity_owner or "").strip(),
+            "opportunity_owner": (o.opportunity_owner or "").strip(),
         })
     df = pd.DataFrame(records)
     df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
@@ -577,19 +583,40 @@ class V2RegionsService:
         t_idx = set(t_reg["opportunity_id_18"].tolist()) if not t_reg.empty else set()
         c_idx = set(c_reg["opportunity_id_18"].tolist()) if not c_reg.empty else set()
 
+        def _deal_dict(row, opp_id, from_cat=None, to_cat=None, from_st=None, to_st=None):
+            c_d = row.get("close_date")
+            c_str = (c_d.isoformat() if hasattr(c_d, "isoformat") else str(c_d)[:10]) if (c_d is not None and not pd.isna(c_d)) else None
+            d = {
+                "id": opp_id,
+                "opportunity_id_18": opp_id,
+                "opportunity_name": row.get("opportunity_name") or "",
+                "account_name": row.get("account_name") or "",
+                "forecast_acv_amount": float(row.get("forecast_acv_amount") or 0.0),
+                "acv": float(row.get("forecast_acv_amount") or 0.0),
+                "forecast_category": row.get("forecast_category") or "Blank",
+                "approval_status": row.get("approval_status") or "Blank",
+                "region": region,
+                "sub_region": region,
+                "business_unit_primary": row.get("business_unit_primary") or row.get("business_unit") or "",
+                "business_unit": row.get("business_unit_primary") or row.get("business_unit") or "",
+                "close_date": c_str,
+                "owner": row.get("opportunity_owner") or row.get("owner") or "",
+            }
+            if from_cat and to_cat:
+                d["from_category"] = from_cat
+                d["to_category"] = to_cat
+            if from_st and to_st:
+                d["from_status"] = from_st
+                d["to_status"] = to_st
+            return d
+
         # new to slice (in t but not c)
         new_ids = t_idx - c_idx
         new_list = []
         if new_ids:
             for i in new_ids:
                 row = t_reg[t_reg["opportunity_id_18"] == i].iloc[0]
-                new_list.append({
-                    "opportunity_id_18": i,
-                    "opportunity_name": row["opportunity_name"],
-                    "account_name": row["account_name"],
-                    "forecast_acv_amount": float(row["forecast_acv_amount"]),
-                    "forecast_category": row["forecast_category"]
-                })
+                new_list.append(_deal_dict(row, i))
         
         # slipped out (in c but not t)
         slip_ids = c_idx - t_idx
@@ -597,13 +624,7 @@ class V2RegionsService:
         if slip_ids:
             for i in slip_ids:
                 row = c_reg[c_reg["opportunity_id_18"] == i].iloc[0]
-                slip_list.append({
-                    "opportunity_id_18": i,
-                    "opportunity_name": row["opportunity_name"],
-                    "account_name": row["account_name"],
-                    "forecast_acv_amount": float(row["forecast_acv_amount"]),
-                    "forecast_category": row["forecast_category"]
-                })
+                slip_list.append(_deal_dict(row, i))
 
         cat_moves = []
         app_moves = []
@@ -618,12 +639,7 @@ class V2RegionsService:
                     "to_category": t_row["forecast_category"],
                     "count": 1,
                     "acv": float(t_row["forecast_acv_amount"]),
-                    "deals": [{
-                        "opportunity_id_18": i,
-                        "opportunity_name": t_row["opportunity_name"],
-                        "account_name": t_row["account_name"],
-                        "forecast_acv_amount": float(t_row["forecast_acv_amount"]),
-                    }]
+                    "deals": [_deal_dict(t_row, i, from_cat=c_row["forecast_category"], to_cat=t_row["forecast_category"])]
                 })
             
             if t_row["approval_status"] != c_row["approval_status"]:
@@ -632,12 +648,7 @@ class V2RegionsService:
                     "to_status": t_row["approval_status"],
                     "count": 1,
                     "acv": float(t_row["forecast_acv_amount"]),
-                    "deals": [{
-                        "opportunity_id_18": i,
-                        "opportunity_name": t_row["opportunity_name"],
-                        "account_name": t_row["account_name"],
-                        "forecast_acv_amount": float(t_row["forecast_acv_amount"]),
-                    }]
+                    "deals": [_deal_dict(t_row, i, from_st=c_row["approval_status"], to_st=t_row["approval_status"])]
                 })
         
         c_agg = {}

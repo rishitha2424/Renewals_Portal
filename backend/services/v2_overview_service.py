@@ -45,16 +45,6 @@ REGION_MAP: dict[str, str] = {
 }
 CANONICAL_REGIONS = list(REGION_MAP.values())  # preserves insertion order
 ALL_FC = ["Closed", "Commit", "Best Case", "Pipeline", "Blank"]
-POSITIVE_MOVES = [
-    ("Commit",     "Closed"),
-    ("Best Case",  "Commit"),
-    ("Pipeline",   "Best Case"),
-]
-NEGATIVE_MOVES = [
-    ("Commit",     "Best Case"),
-    ("Best Case",  "Pipeline"),
-    # third row is Slippage to 2027 — computed separately, not a FC→FC transition
-]
 APPROVAL_STATUSES = ["Approved", "Pending Approval", "Blank", "Rejected"]
 
 
@@ -245,44 +235,117 @@ class V2OverviewService:
         negative: list[dict] = []
         approval_moves: list[dict] = []
 
-        # Pre-build move buckets
-        pos_buckets: dict[tuple, list] = {m: [] for m in POSITIVE_MOVES}
-        neg_buckets: dict[tuple, list] = {m: [] for m in NEGATIVE_MOVES}
+        # Config order for category movements:
+        CATEGORY_CONFIG_ORDER = ["Closed", "Commit", "Best Case", "Pipeline", "Blank"]
+        APPROVAL_CONFIG_ORDER = ["Approved", "Pending Approval", "Blank", "Rejected"]
+
+        # Derive categories actually present in data
+        present_cats = set()
+        if not today_df.empty and "forecast_category" in today_df.columns:
+            present_cats.update(today_df["forecast_category"].dropna().unique())
+        if not prev_df.empty and "forecast_category" in prev_df.columns:
+            present_cats.update(prev_df["forecast_category"].dropna().unique())
+
+        mapped_present = set()
+        for c in present_cats:
+            c_str = str(c).strip()
+            if c_str in CATEGORY_CONFIG_ORDER:
+                mapped_present.add(c_str)
+            elif c_str:
+                mapped_present.add("Other")
+
+        ordered_cats = [c for c in CATEGORY_CONFIG_ORDER if c in mapped_present]
+        if "Other" in mapped_present and "Other" not in ordered_cats:
+            ordered_cats.append("Other")
+
+        # Standard forecast ladder from config order (preserving Closed for upgrades to Closed so both tables align)
+        ladder = [c for c in CATEGORY_CONFIG_ORDER if c in ("Closed", "Commit", "Best Case", "Pipeline")]
+        for c in ordered_cats:
+            if c not in ladder and c != "Blank":
+                ladder.append(c)
+
+        # Derive adjacent transition pairs dynamically
+        pos_pairs = [(ladder[i+1], ladder[i]) for i in range(len(ladder)-1)]
+        commit_idx = ladder.index("Commit") if "Commit" in ladder else 0
+        neg_pairs = [(ladder[i], ladder[i+1]) for i in range(commit_idx, min(commit_idx + 2, len(ladder)-1))]
+
+        pos_buckets: dict[tuple, list] = {m: [] for m in pos_pairs}
+        neg_buckets: dict[tuple, list] = {m: [] for m in neg_pairs}
         app_buckets: dict[tuple, list] = {}
+
+        def _cat_rank(c: str) -> int:
+            return CATEGORY_CONFIG_ORDER.index(c) if c in CATEGORY_CONFIG_ORDER else 99
 
         for opp_id in common:
             tr = t.loc[opp_id]
             pr = p.loc[opp_id]
-            fc_now  = tr["forecast_category"] if isinstance(tr, pd.Series) else tr.iloc[0]["forecast_category"]
-            fc_prev = pr["forecast_category"] if isinstance(pr, pd.Series) else pr.iloc[0]["forecast_category"]
-            acv     = float(tr["forecast_acv_amount"] if isinstance(tr, pd.Series) else tr.iloc[0]["forecast_acv_amount"])
-            name    = str(tr["opportunity_name"] if isinstance(tr, pd.Series) else tr.iloc[0]["opportunity_name"])
-            region  = str(tr["canonical_region"] if isinstance(tr, pd.Series) else tr.iloc[0]["canonical_region"])
-            ap_now  = str(tr["approval_status"] if isinstance(tr, pd.Series) else tr.iloc[0]["approval_status"])
-            ap_prev = str(pr["approval_status"] if isinstance(pr, pd.Series) else pr.iloc[0]["approval_status"])
+            tr_row = tr if isinstance(tr, pd.Series) else tr.iloc[0]
+            pr_row = pr if isinstance(pr, pd.Series) else pr.iloc[0]
 
-            move_key = (fc_prev, fc_now)
+            fc_now  = str(tr_row["forecast_category"]) if pd.notna(tr_row["forecast_category"]) else "Blank"
+            fc_prev = str(pr_row["forecast_category"]) if pd.notna(pr_row["forecast_category"]) else "Blank"
+            acv     = float(tr_row["forecast_acv_amount"]) if pd.notna(tr_row["forecast_acv_amount"]) else 0.0
+            name    = str(tr_row["opportunity_name"]) if pd.notna(tr_row["opportunity_name"]) else ""
+            acc_name = str(tr_row["account_name"]) if pd.notna(tr_row["account_name"]) else ""
+            bu      = str(tr_row["business_unit_primary"]) if pd.notna(tr_row["business_unit_primary"]) else ""
+            region  = str(tr_row["canonical_region"]) if pd.notna(tr_row["canonical_region"]) else ""
+            ap_now  = str(tr_row["approval_status"]) if pd.notna(tr_row["approval_status"]) else "Blank"
+            ap_prev = str(pr_row["approval_status"]) if pd.notna(pr_row["approval_status"]) else "Blank"
+            c_date  = tr_row["close_date"]
+            close_date_str = (c_date.isoformat() if hasattr(c_date, "isoformat") else str(c_date)[:10]) if (c_date is not None and not pd.isna(c_date)) else None
+
+            base_deal = {
+                "opportunity_id_18": opp_id,
+                "id": opp_id,
+                "opportunity_name": name,
+                "account_name": acc_name,
+                "forecast_acv_amount": acv,
+                "acv": acv,
+                "close_date": close_date_str,
+                "business_unit_primary": bu,
+                "business_unit": bu,
+                "forecast_category": fc_now,
+                "approval_status": ap_now,
+                "region": region,
+                "sub_region": region,
+            }
+
+            fc_prev_mapped = fc_prev if fc_prev in CATEGORY_CONFIG_ORDER else "Other"
+            fc_now_mapped = fc_now if fc_now in CATEGORY_CONFIG_ORDER else "Other"
+
             if fc_prev != fc_now:
-                deal = {"opportunity_id_18": opp_id, "opportunity_name": name,
-                        "region": region, "from_category": fc_prev, "to_category": fc_now, "acv": acv}
+                deal = dict(base_deal)
+                deal["from_category"] = fc_prev
+                deal["to_category"] = fc_now
+                move_key = (fc_prev_mapped, fc_now_mapped)
                 if move_key in pos_buckets:
                     pos_buckets[move_key].append(deal)
                 elif move_key in neg_buckets:
                     neg_buckets[move_key].append(deal)
+                elif _cat_rank(fc_now_mapped) < _cat_rank(fc_prev_mapped):
+                    if move_key not in pos_buckets:
+                        pos_buckets[move_key] = []
+                    pos_buckets[move_key].append(deal)
+                elif _cat_rank(fc_now_mapped) > _cat_rank(fc_prev_mapped):
+                    if move_key not in neg_buckets:
+                        neg_buckets[move_key] = []
+                    neg_buckets[move_key].append(deal)
 
             if ap_now != ap_prev:
-                ak = (ap_prev, ap_now)
+                ap_prev_mapped = ap_prev if ap_prev in APPROVAL_CONFIG_ORDER else "Other"
+                ap_now_mapped = ap_now if ap_now in APPROVAL_CONFIG_ORDER else "Other"
+                ak = (ap_prev_mapped, ap_now_mapped)
                 if ak not in app_buckets:
                     app_buckets[ak] = []
-                app_buckets[ak].append({
-                    "opportunity_id_18": opp_id, "opportunity_name": name,
-                    "from_status": ap_prev, "to_status": ap_now, "acv": acv, "region": region,
-                })
+                deal = dict(base_deal)
+                deal["from_status"] = ap_prev
+                deal["to_status"] = ap_now
+                app_buckets[ak].append(deal)
 
         def _bucket_summary(bucket: list[dict]) -> dict:
             return {
                 "count": len(bucket),
-                "acv": round(sum(d["acv"] for d in bucket), 2),
+                "acv": round(sum(d["forecast_acv_amount"] for d in bucket), 2),
                 "deals": bucket,
             }
 
@@ -296,7 +359,16 @@ class V2OverviewService:
                 "from_category": f, "to_category": t_,
                 **_bucket_summary(deals),
             })
-        for (fa, ta), deals in app_buckets.items():
+
+        # Sort approval moves according to APPROVAL_CONFIG_ORDER
+        def _ap_sort_key(k: tuple[str, str]) -> tuple[int, int]:
+            from_st, to_st = k
+            idx_from = APPROVAL_CONFIG_ORDER.index(from_st) if from_st in APPROVAL_CONFIG_ORDER else 99
+            idx_to = APPROVAL_CONFIG_ORDER.index(to_st) if to_st in APPROVAL_CONFIG_ORDER else 99
+            return (idx_from, idx_to)
+
+        for (fa, ta) in sorted(app_buckets.keys(), key=_ap_sort_key):
+            deals = app_buckets[(fa, ta)]
             approval_moves.append({
                 "from_status": fa, "to_status": ta,
                 **_bucket_summary(deals),
@@ -819,13 +891,21 @@ class V2OverviewService:
                 }
                 for fc in cats.keys()
             },
-            # Section 3 — slippage
+            # Section 3 — slippage & delayed renewals separated
             "slippage_to_2027": {
                 **slippage,
                 "delta_yesterday": slip_delta_yesterday,
                 "delta_lastweek":  slip_delta_lastweek,
             },
             "slippage": slippage_data,
+            "delayed_renewals": del_sum.get("delayed_renewals"),
+            "slippage_section": del_sum.get("slippage"),
+            "lost_card": del_sum.get("lost"),
+            "delayed_renewals_total": del_sum.get("delayed_renewals_total"),
+            "slippage_total": del_sum.get("slippage_total"),
+            "delayed_pct_of_quarter": del_sum.get("delayed_pct_of_quarter"),
+            "slippage_pct_of_quarter": del_sum.get("slippage_pct_of_quarter"),
+            "quarter_total_acv": del_sum.get("quarter_total_acv"),
             "proposal_confirmation_totals": prop_totals,
             "source_checks": {
                 "total": len(snap.checks),
@@ -1073,7 +1153,7 @@ class V2OverviewService:
             filters_applied["compare"] = compare
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
-        if kind == "overdue" or (kind and (kind.startswith("delayed_") or (kind == "slipped" and not compare))):
+        if kind in ("overdue", "slippage_total", "delayed_total", "delayed_renewals_total", "lost", "later_close") or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_") or (kind == "slipped" and not compare))):
             target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else kind
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)

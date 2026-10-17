@@ -15,12 +15,19 @@ interface Deal {
   approval_status: string
   reason_for_approval?: string
   sub_region?: string
+  region?: string
   business_unit_primary?: string
+  business_unit?: string
   close_date?: string
   owner?: string
   stage?: string
   delta_group?: string
   delta_acv_change?: number
+  from_category?: string
+  to_category?: string
+  from_status?: string
+  to_status?: string
+  acv?: number
 }
 
 interface DealListModalProps {
@@ -89,7 +96,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
       if (filterFC !== 'All' && d.forecast_category !== filterFC) return false
       if (filterStatus !== 'All' && d.approval_status !== filterStatus) return false
       if (filterStage !== 'All' && d.stage !== filterStage) return false
-      if (filterRegion !== 'All' && d.sub_region !== filterRegion) return false
+      if (filterRegion !== 'All' && d.sub_region !== filterRegion && (d as any).region !== filterRegion) return false
       if (filterBU !== 'All' && d.business_unit_primary !== filterBU && (d as any).business_unit !== filterBU) return false
       if (filterOwner !== 'All' && d.owner !== filterOwner) return false
       
@@ -117,7 +124,10 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
     return result
   }, [deals, search, filterFC, filterStatus, filterStage, filterRegion, filterBU, filterOwner, sortField, sortDir, deltaGroups, selectedGroup])
 
-  const totalAcv = filteredDeals.reduce((sum, d) => sum + (d.forecast_acv_amount || 0), 0)
+  const isFCMovement = useMemo(() => deals.some(d => d.from_category && d.to_category), [deals])
+  const isAPMovement = useMemo(() => deals.some(d => d.from_status && d.to_status), [deals])
+
+  const totalAcv = filteredDeals.reduce((sum, d) => sum + (d.forecast_acv_amount ?? (d as any).acv ?? 0), 0)
 
   const handleExport = () => {
     const headers = ['Opportunity ID', 'Opportunity Name', 'Account', 'Forecast Category', 'Approval Status', 'ACV', 'Close Date', 'Stage', 'Region', 'BU', 'Owner']
@@ -215,7 +225,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                 {title}
               </h3>
               <p className="text-[var(--text-muted)] text-xs mt-0.5 font-normal">
-                Showing {formatNumber(filteredDeals.length)} deals · <span className="font-semibold text-[var(--text-primary)] tabular-nums">{formatCurrency(totalAcv)}</span>
+                Showing {formatNumber(filteredDeals.length)} {filteredDeals.length === 1 ? 'deal' : 'deals'} · <span className="font-semibold text-[var(--text-primary)] tabular-nums">{formatCurrency(totalAcv)}</span>
               </p>
               {deltaGroups && (
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -334,8 +344,22 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('close_date')}>
                       <div className="flex items-center gap-1">Close Date {sortField === 'close_date' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
-                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Category</th>
-                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Status</th>
+                    {isFCMovement ? (
+                      <>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">From Category</th>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">To Category</th>
+                      </>
+                    ) : isAPMovement ? (
+                      <>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">From Status</th>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">To Status</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Category</th>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Status</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
@@ -359,30 +383,74 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                         <div className="text-[10px] text-[var(--text-muted)] mt-0.5 max-w-[150px] truncate">{d.business_unit_primary || '—'}</div>
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)] tabular-nums">
-                        {formatCurrency(d.forecast_acv_amount)}
+                        {formatCurrency(d.forecast_acv_amount ?? (d as any).acv ?? 0)}
                       </td>
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}
                       </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium"
-                          style={{
-                            backgroundColor: `${FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#cbd5e1'}20`,
-                            color: FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#64748b'
-                          }}
-                        >
-                          {getForecastCategoryLabel(d.forecast_category)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium border ${
-                          d.approval_status === 'Approved' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' :
-                          d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' :
-                          'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
-                        }`}>
-                          {getApprovalStatusLabel(d.approval_status)}
-                        </span>
-                      </td>
+                      {isFCMovement ? (
+                        <>
+                          <td className="px-3 py-2 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${FORECAST_COLORS[d.from_category as keyof typeof FORECAST_COLORS] || '#cbd5e1'}20`,
+                                color: FORECAST_COLORS[d.from_category as keyof typeof FORECAST_COLORS] || '#64748b'
+                              }}
+                            >
+                              {getForecastCategoryLabel(d.from_category)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${FORECAST_COLORS[(d.to_category || d.forecast_category) as keyof typeof FORECAST_COLORS] || '#cbd5e1'}20`,
+                                color: FORECAST_COLORS[(d.to_category || d.forecast_category) as keyof typeof FORECAST_COLORS] || '#64748b'
+                              }}
+                            >
+                              {getForecastCategoryLabel(d.to_category || d.forecast_category)}
+                            </span>
+                          </td>
+                        </>
+                      ) : isAPMovement ? (
+                        <>
+                          <td className="px-3 py-2 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium border bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20">
+                              {getApprovalStatusLabel(d.from_status)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium border ${
+                              (d.to_status || d.approval_status) === 'Approved' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' :
+                              (d.to_status || d.approval_status) === 'Pending Approval' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' :
+                              'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
+                            }`}>
+                              {getApprovalStatusLabel(d.to_status || d.approval_status)}
+                            </span>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2 text-center">
+                            <span className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#cbd5e1'}20`,
+                                color: FORECAST_COLORS[d.forecast_category as keyof typeof FORECAST_COLORS] || '#64748b'
+                              }}
+                            >
+                              {getForecastCategoryLabel(d.forecast_category)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-medium border ${
+                              d.approval_status === 'Approved' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' :
+                              d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' :
+                              'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
+                            }`}>
+                              {getApprovalStatusLabel(d.approval_status)}
+                            </span>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>

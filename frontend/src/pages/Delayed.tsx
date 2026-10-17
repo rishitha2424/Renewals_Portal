@@ -118,8 +118,11 @@ function DelayedContent() {
         )
       }
 
+      const count = Math.abs(delta.count || 0)
+      const acvVal = Math.abs(delta.acv || 0)
+      const hasDeals = count > 0 || acvVal > 0
+
       if (isOverdue) {
-        // Signed net change
         const isUp = delta.count > 0 || delta.acv > 0
         const isDown = delta.count < 0 || delta.acv < 0
 
@@ -127,7 +130,7 @@ function DelayedContent() {
           ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400 hover:border-rose-500/50'
           : isDown
           ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
-          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
 
         let acvText = '$0'
         if (delta.acv > 0) acvText = `+${formatACV(delta.acv)}`
@@ -137,17 +140,21 @@ function DelayedContent() {
         if (delta.count > 0) countText = `+${delta.count} deals`
         else if (delta.count < 0) countText = `${delta.count} deals`
 
+        const periodName = compPeriod === 'yesterday' ? 'yesterday' : 'last week'
+        const drawerTitle = `${catTitle} · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
+
         return (
           <div
-            className={cn('p-2 rounded-lg border cursor-pointer transition-all flex-1', colorClasses)}
+            className={cn('p-2 rounded-lg border transition-all flex-1', colorClasses, hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-60')}
             onClick={(e) => {
               e.stopPropagation()
-              handleDrill(`${catTitle} (${label} · ${dateLabel}) · Net ${countText} · ${acvText}`, {
+              if (!hasDeals) return
+              handleDrill(drawerTitle, {
                 kind: `${catKind}_delta`,
                 compare: compPeriod,
               })
             }}
-            title={`Click to view net change vs ${dateLabel}`}
+            title={hasDeals ? `Click to view deals changed since ${dateLabel}` : `No deals changed since ${dateLabel}`}
           >
             <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
             <div className="font-bold text-xs tabular-nums">{acvText}</div>
@@ -155,26 +162,27 @@ function DelayedContent() {
           </div>
         )
       } else {
-        // Transition event bucket
-        const hasDeals = (delta.count || 0) > 0 || (delta.acv || 0) > 0
         const colorClasses = hasDeals
           ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
-          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
+          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
 
         const acvText = formatACV(delta.acv || 0)
-        const countText = `${delta.count || 0} deals`
+        const countText = `${count} ${count === 1 ? 'deal' : 'deals'}`
+        const periodName = compPeriod === 'yesterday' ? 'yesterday' : 'last week'
+        const drawerTitle = `${catTitle} · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
 
         return (
           <div
-            className={cn('p-2 rounded-lg border cursor-pointer transition-all flex-1', colorClasses)}
+            className={cn('p-2 rounded-lg border transition-all flex-1', colorClasses, hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-60')}
             onClick={(e) => {
               e.stopPropagation()
-              handleDrill(`${catTitle} (${label} · ${dateLabel}) · ${countText} · ${acvText}`, {
+              if (!hasDeals) return
+              handleDrill(drawerTitle, {
                 kind: catKind,
                 compare: compPeriod,
               })
             }}
-            title={`Click to view events since ${dateLabel}`}
+            title={hasDeals ? `Click to view events since ${dateLabel}` : `No deals changed since ${dateLabel}`}
           >
             <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
             <div className="font-bold text-xs tabular-nums">{acvText}</div>
@@ -207,6 +215,7 @@ function DelayedContent() {
     const isNA = isFuture || data?.count === null
     const cnt = data?.count ?? 0
     const acvVal = data?.acv ?? 0
+    const hasDeals = cnt > 0 || acvVal > 0
 
     const accentBorder = {
       amber: 'border-l-amber-500',
@@ -221,6 +230,8 @@ function DelayedContent() {
       slate: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
       teal: 'bg-[#00A3AD]/10 text-[#00A3AD]',
     }[accent as 'amber' | 'rose' | 'slate' | 'teal'] || 'bg-[#00A3AD]/10 text-[#00A3AD]'
+
+    const drawerTitle = `${title} · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
 
     return (
       <div
@@ -245,15 +256,16 @@ function DelayedContent() {
             </p>
           )}
           <div
-            className={cn('space-y-0.5 mb-2.5', !isNA && 'cursor-pointer group')}
+            className={cn('space-y-0.5 mb-2.5', !isNA && hasDeals ? 'cursor-pointer group' : 'cursor-not-allowed opacity-75')}
             onClick={() => {
-              if (!isNA) {
-                handleDrill(`${title} (${cnt} deals · ${formatACV(acvVal)})`, {
+              if (!isNA && hasDeals) {
+                handleDrill(drawerTitle, {
                   kind,
                   compare: isOverdue ? undefined : comparePeriod,
                 })
               }
             }}
+            title={hasDeals ? `Click to view all deals for ${title}` : `0 deals`}
           >
             <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
               {isNA ? 'n/a' : formatACV(acvVal)}
@@ -350,24 +362,18 @@ function DelayedContent() {
   const regionGrid = buildGrid('by_region', 'region')
   const buGrid = buildGrid('by_bu', 'bu')
 
+  const delTot = summary.delayed_renewals?.total || summary.total
+  const slipTot = summary.slippage?.total || summary.slipped
+  const isFuture = summary?.is_future
+
   return (
-    <div className="space-y-6">
-      {/* Aligned Section Header with integrated controls (no second filter bar) */}
+    <div className="space-y-8">
+      {/* Aligned Section Header with integrated controls (no combined banner) */}
       <SectionHeader
-        title="Delayed Renewals"
-        subtitle={`Renewals in ${summary.data_slice} that have slipped, pushed out, or are overdue.`}
+        title="Delayed Renewals & Slippage"
+        subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage, and removals.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            {summary.delayed_pct_of_quarter != null && (
-              <div
-                onClick={() => handleDrill('Total Delayed Renewals', { kind: 'all' })}
-                className="cursor-pointer hover:bg-[var(--bg-secondary)] px-3 py-1.5 rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-500/10 text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5 transition-colors"
-                title="Click to view all delayed renewals"
-              >
-                <span className="font-bold tabular-nums">{summary.delayed_pct_of_quarter}%</span>
-                <span>of Quarter Delayed ({formatACV(summary.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})</span>
-              </div>
-            )}
             <MetricToggle />
             <div className="h-9 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
               <button
@@ -399,132 +405,277 @@ function DelayedContent() {
         }
       />
 
-      {summary.rule_text && (
-        <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50/70 dark:bg-blue-950/20 text-xs text-blue-900 dark:text-blue-300 shadow-xs">
-          <AlertCircle className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
-          <span>
-            <strong className="font-semibold text-blue-950 dark:text-blue-200">Rule: </strong>
-            {summary.rule_text}
-          </span>
+      {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
+          <div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              <span>Delayed Renewals</span>
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late: close date has passed (Overdue) or was pushed later within the same quarter (Postponed).
+            </p>
+          </div>
+          {summary.delayed_pct_of_quarter != null && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
+              {summary.delayed_pct_of_quarter}% of Quarter Total ({formatACV(delTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+            </span>
+          )}
         </div>
-      )}
 
-      {/* Overall Total on top (Overdue + Slipped + Later Close, deduplicated) */}
-      {(() => {
-        const tot = summary.total
-        const isFuture = summary?.is_future
-        const isNA = isFuture || tot?.count === null
-        const cnt = tot?.count ?? 0
-        const acvVal = tot?.acv ?? 0
-        return (
-          <div className="rounded-xl bg-teal-500/5 dark:bg-teal-950/20 border border-teal-500/30 p-5 flex flex-wrap items-center justify-between gap-4">
-            <div
-              className={cn("cursor-pointer", isNA && "cursor-default")}
-              onClick={() => !isNA && handleDrill(`Total Delayed Renewals (${formatCount(cnt)} deals · ${formatACV(acvVal)})`, { kind: 'all' })}
-              title={isNA ? "Not applicable for selected period" : "Click to view all delayed renewals"}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse" />
-                <span className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
-                  Total Delayed (Overdue + Slipped + Later Close, Deduplicated)
-                </span>
-              </div>
-              <div className="flex items-baseline gap-3">
-                <span className={cn("text-3xl font-extrabold text-[var(--text-primary)] tabular-nums", !isNA && "hover:underline")}>
-                  {isNA ? 'n/a' : formatACV(acvVal)}
-                </span>
-                <span className="text-sm font-semibold text-[var(--text-muted)] tabular-nums">
-                  {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
-                </span>
-              </div>
-            </div>
+        {/* Delayed Renewals Total Bar */}
+        {(() => {
+          const isNA = isFuture || delTot?.count === null
+          const cnt = delTot?.count ?? 0
+          const acvVal = delTot?.acv ?? 0
+          const hasDeals = cnt > 0 || acvVal > 0
+          const drawerTitle = `Delayed Renewals · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
 
-            {/* Overall delta boxes: Since yesterday & Since last week */}
-            <div className="flex items-center gap-3">
-              {(() => {
-                const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
-                  if (delta === null || delta === undefined || isFuture) {
+          return (
+            <div className="rounded-xl bg-rose-500/5 dark:bg-rose-950/20 border border-rose-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+              <div
+                className={cn(hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
+                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'delayed_total' })}
+                title={hasDeals ? 'Click to view all delayed renewals' : '0 deals'}
+              >
+                <div className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1">
+                  Delayed Renewals Total
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'hover:underline')}>
+                    {isNA ? 'n/a' : formatACV(acvVal)}
+                  </span>
+                  <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
+                    {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
+                    if (delta === null || delta === undefined || isFuture) {
+                      return (
+                        <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
+                          <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                          <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                        </div>
+                      )
+                    }
+                    const count = Math.abs(delta.count || 0)
+                    const acv = Math.abs(delta.acv || 0)
+                    const hasBoxDeals = count > 0 || acv > 0
+                    const isUp = delta.count > 0 || delta.acv > 0
+                    const isDown = delta.count < 0 || delta.acv < 0
+                    const colorCls = isUp
+                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
+                      : isDown
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+                    const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
+                    const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
+                    const periodName = comp === 'yesterday' ? 'yesterday' : 'last week'
+                    const boxDrawerTitle = `Delayed Renewals · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acv)})`
+
                     return (
-                      <div className="p-2.5 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[125px]">
+                      <div
+                        className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-rose-500/50' : 'cursor-not-allowed opacity-60')}
+                        onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'delayed_total_delta', compare: comp })}
+                        title={hasBoxDeals ? `Click to view deals changed since ${dateStr}` : `No deals changed since ${dateStr}`}
+                      >
                         <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                        <div className="font-bold text-sm text-[var(--text-muted)]">n/a</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                        <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
                       </div>
                     )
                   }
-                  const isUp = delta.count > 0 || delta.acv > 0
-                  const isDown = delta.count < 0 || delta.acv < 0
-                  const colorCls = isUp
-                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-                    : isDown
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-                  const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
-                  const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
 
                   return (
-                    <div
-                      className={cn("p-2.5 rounded-lg border cursor-pointer min-w-[125px] transition-all hover:border-teal-500/50", colorCls)}
-                      onClick={() => handleDrill(`Total Delayed (${label} · ${dateStr}) · Net ${cntTxt} · ${acvTxt}`, { kind: 'total_delta', compare: comp })}
-                      title={`Click to view net change vs ${dateStr}`}
-                    >
-                      <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                      <div className="font-bold text-sm tabular-nums">{acvTxt}</div>
-                      <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
-                    </div>
+                    <>
+                      {renderTotBox('Since yesterday', delTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+                      {renderTotBox('Since last week', delTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
+                    </>
                   )
-                }
-
-                return (
-                  <>
-                    {renderTotBox('Since yesterday', tot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-                    {renderTotBox('Since last week', tot?.delayed_vs_lastweek, 'last_week', wDateStr)}
-                  </>
-                )
-              })()}
+                })()}
+              </div>
             </div>
-          </div>
-        )
-      })()}
+          )
+        })()}
 
-      {/* 4 Category Cards: grid-cols-4 at ≥1280px, 2 at ≥768px, 1 on mobile */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
-        <DelayedKpiCard
-          title="Overdue"
-          definition="Active renewals past expected close date and not yet closed as of snapshot date."
-          data={summary.overdue}
-          icon={AlertCircle}
-          accent="rose"
-          kind="overdue"
-          isOverdue={true}
-        />
-        <DelayedKpiCard
-          title="Slipped to Next Year"
-          definition="Renewals whose fiscal period pushed into a future quarter or fiscal year."
-          data={summary.slipped}
-          icon={CalendarX2}
-          accent="amber"
-          kind="slipped"
-          comparePeriod="period_start"
-        />
-        <DelayedKpiCard
-          title="Later Close Date"
-          definition="Renewals in current quarter whose close date was postponed vs reference date."
-          data={summary.later_close}
-          icon={ArrowRight}
-          accent="amber"
-          kind="later_close"
-          comparePeriod="period_start"
-        />
-        <DelayedKpiCard
-          title="Lost / Removed"
-          definition="Deals previously in the renewal forecast that have been marked deleted or lost."
-          data={summary.lost}
-          icon={AlertTriangle}
-          accent="slate"
-          kind="lost"
-          comparePeriod="period_start"
-        />
+        {/* 2 Delayed KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+          <DelayedKpiCard
+            title="Overdue"
+            definition="Active renewals past expected close date and not yet closed as of snapshot date."
+            data={summary.delayed_renewals?.overdue || summary.overdue}
+            icon={AlertCircle}
+            accent="rose"
+            kind="overdue"
+            isOverdue={true}
+          />
+          <DelayedKpiCard
+            title="Later Close Date"
+            definition="Renewals in current quarter whose close date was postponed vs reference date."
+            data={summary.delayed_renewals?.later_close || summary.later_close}
+            icon={ArrowRight}
+            accent="amber"
+            kind="later_close"
+            comparePeriod="period_start"
+          />
+        </div>
+      </div>
+
+      {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
+          <div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              <span>Slippage</span>
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Deals that moved OUT of the selected quarter into a later one, split by destination.
+            </p>
+          </div>
+          {summary.slippage_pct_of_quarter != null && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
+              {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(slipTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+            </span>
+          )}
+        </div>
+
+        {/* Slippage Total Bar */}
+        {(() => {
+          const isNA = isFuture || slipTot?.count === null
+          const cnt = slipTot?.count ?? 0
+          const acvVal = slipTot?.acv ?? 0
+          const hasDeals = cnt > 0 || acvVal > 0
+          const drawerTitle = `Slippage · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
+
+          return (
+            <div className="rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+              <div
+                className={cn(hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
+                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'slippage_total' })}
+                title={hasDeals ? 'Click to view all slipped deals' : '0 deals'}
+              >
+                <div className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">
+                  Slippage Total
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'hover:underline')}>
+                    {isNA ? 'n/a' : formatACV(acvVal)}
+                  </span>
+                  <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
+                    {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
+                    if (delta === null || delta === undefined || isFuture) {
+                      return (
+                        <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
+                          <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                          <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
+                          <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                        </div>
+                      )
+                    }
+                    const count = Math.abs(delta.count || 0)
+                    const acv = Math.abs(delta.acv || 0)
+                    const hasBoxDeals = count > 0 || acv > 0
+                    const colorCls = hasBoxDeals
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                      : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+                    const acvTxt = formatACV(delta.acv || 0)
+                    const cntTxt = `${count} ${count === 1 ? 'deal' : 'deals'}`
+                    const periodName = comp === 'yesterday' ? 'yesterday' : 'last week'
+                    const boxDrawerTitle = `Slippage · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acv)})`
+
+                    return (
+                      <div
+                        className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60')}
+                        onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'slipped', compare: comp })}
+                        title={hasBoxDeals ? `Click to view deals changed since ${dateStr}` : `No deals changed since ${dateStr}`}
+                      >
+                        <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                        <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <>
+                      {renderTotBox('Since yesterday', slipTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+                      {renderTotBox('Since last week', slipTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
+                    </>
+                  )
+                })()}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* 3 Slippage Destination Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+          <DelayedKpiCard
+            title="Slipped to next fiscal year"
+            definition="The new fiscal year is later than the selected quarter's year (including Q4 moving to Q1)."
+            data={summary.slippage?.slipped_next_year || summary.slipped_next_year}
+            icon={CalendarX2}
+            accent="amber"
+            kind="slipped_next_year"
+            comparePeriod="period_start"
+          />
+          <DelayedKpiCard
+            title="Slipped to next quarter"
+            definition="The new period is the immediately following quarter in the same fiscal year."
+            data={summary.slippage?.slipped_next_quarter || summary.slipped_next_quarter}
+            icon={CalendarX2}
+            accent="amber"
+            kind="slipped_next_quarter"
+            comparePeriod="period_start"
+          />
+          <DelayedKpiCard
+            title="Slipped to a later quarter, same year"
+            definition="Any other later quarter in the same fiscal year."
+            data={summary.slippage?.slipped_later_quarter || summary.slipped_later_quarter}
+            icon={CalendarX2}
+            accent="amber"
+            kind="slipped_later_quarter"
+            comparePeriod="period_start"
+          />
+        </div>
+      </div>
+
+      {/* ────────────────── SECTION 3: LOST / REMOVED ────────────────── */}
+      <div className="space-y-4">
+        <div className="border-b border-[var(--border)] pb-2">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+            <span>Lost / Removed</span>
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            Deals previously in the renewal forecast that have been marked deleted or lost since the baseline period (stays separate from totals).
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+          <DelayedKpiCard
+            title="Lost / Removed"
+            definition="Deals previously in the renewal forecast that have been marked deleted or lost."
+            data={summary.lost}
+            icon={AlertTriangle}
+            accent="slate"
+            kind="lost"
+            comparePeriod="period_start"
+          />
+        </div>
       </div>
 
       {/* Overdue Ageing Breakdown */}
@@ -798,7 +949,7 @@ function DelayedContent() {
         <DealListModal
           title={modalTitle}
           deals={dealsData?.deals || []}
-          initialFilters={{
+          initialFilters={modalFilters.kind ? {} : {
             sub_region: modalFilters.region,
             forecast_category: modalFilters.category,
             approval_status: modalFilters.status,

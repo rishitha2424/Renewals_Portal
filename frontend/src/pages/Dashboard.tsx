@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, Upload, AlertTriangle, TrendingUp, TrendingDown,
   ChevronRight, X, CheckCircle2, ArrowRight, BarChart3, Users, Globe2,
-  ShieldCheck,
+  ShieldCheck, AlertCircle, CalendarX2,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import {
@@ -557,256 +557,452 @@ export default function Dashboard() {
         )
       })()}
 
-      {/* ── SECTION 3 – Slippage & Delayed Renewals ─────────────── */}
-      <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
-        <div className="flex flex-col gap-6">
-          {/* Top Header & Overall Slippage Total */}
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  Slippage & Delayed Renewals
-                </p>
+      {/* ── SECTION 3 – Delayed Renewals & Slippage (Separated) ─────────── */}
+      {(() => {
+        const isFuture = summary?.is_future || summary?.slippage?.is_future
+        const delRenewals = summary?.delayed_renewals
+        const slippageSec = summary?.slippage_section || summary?.slippage
+        const lostSec = summary?.lost_card || summary?.slippage?.categories?.lost
+        const delTot = summary?.delayed_renewals_total || delRenewals?.total
+        const slipTot = summary?.slippage_total || slippageSec?.total || summary?.slippage?.overall
+
+        const yDate = movYesterday?.compare_date || summary?.yesterday_date || summary?.slippage?.yesterday_date
+        const lwDate = movLastWeek?.compare_date || summary?.lastweek_date || summary?.slippage?.lastweek_date
+        const yDateStr = yDate ? formatDate(yDate) : 'yesterday'
+        const lwDateStr = lwDate ? formatDate(lwDate) : 'last week'
+
+        // Helper to render Since yesterday / Since last week boxes
+        const renderSubBox = (
+          label: string,
+          delta: { count: number; acv: number } | null | undefined,
+          dateLabel: string,
+          onBoxClick: () => void,
+          drawerTitle: string,
+          isSignedDelta = false
+        ) => {
+          if (delta === null || delta === undefined || isFuture) {
+            return (
+              <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 cursor-not-allowed opacity-60">
+                <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                <div className="font-bold text-xs text-[var(--text-muted)] tabular-nums">n/a</div>
+                <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
               </div>
-              <p className="text-xs text-[var(--text-muted)] max-w-2xl">
-                {summary?.slippage?.rule_text || "Open deals whose fiscal period is before the current quarter (including previous fiscal year) count as delayed."}
-              </p>
+            )
+          }
+
+          const absCount = Math.abs(delta.count || 0)
+          const absAcv = Math.abs(delta.acv || 0)
+          const hasDeals = absCount > 0 || absAcv > 0
+
+          let acvText = formatCurrency(delta.acv || 0)
+          let countText = `${delta.count || 0} ${Math.abs(delta.count || 0) === 1 ? 'deal' : 'deals'}`
+          let colorCls = 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+
+          if (isSignedDelta) {
+            const isUp = (delta.count || 0) > 0 || (delta.acv || 0) > 0
+            const isDown = (delta.count || 0) < 0 || (delta.acv || 0) < 0
+            colorCls = isUp
+              ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
+              : isDown
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+            acvText = (delta.acv || 0) > 0 ? `+${acvM(delta.acv)}` : (delta.acv || 0) < 0 ? `-${acvM(Math.abs(delta.acv))}` : '$0'
+            countText = (delta.count || 0) > 0 ? `+${delta.count} deals` : (delta.count || 0) < 0 ? `${delta.count} deals` : '0 deals'
+          } else {
+            colorCls = hasDeals
+              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+            acvText = acvM(delta.acv || 0)
+          }
+
+          return (
+            <div
+              className={`p-2 rounded-lg border transition-all ${colorCls} ${hasDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60'}`}
+              onClick={() => hasDeals && onBoxClick()}
+              title={hasDeals ? `Click to view deals changed (${drawerTitle})` : `No deals changed since ${dateLabel}`}
+            >
+              <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+              <div className="font-bold text-xs tabular-nums">{acvText}</div>
+              <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* ── SUBSECTION 1: DELAYED RENEWALS ── */}
+            <div className="card p-6" style={{ borderLeft: '4px solid #F43F5E' }}>
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+                      <h2 className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                        Delayed Renewals
+                      </h2>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] max-w-2xl">
+                      Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late: close date has passed (Overdue) or was pushed later within the same quarter (Postponed).
+                    </p>
+                  </div>
+                  {summary?.delayed_pct_of_quarter != null && (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
+                      {summary.delayed_pct_of_quarter}% of Quarter Total ({acvM(delTot?.acv || 0)} of {acvM(summary.quarter_total_acv || 0)})
+                    </span>
+                  )}
+                </div>
+
+                {/* Delayed Renewals Total Bar */}
+                {(() => {
+                  const isNA = isFuture || delTot?.count === null
+                  const cnt = delTot?.count ?? 0
+                  const acvVal = delTot?.acv ?? 0
+                  const hasDeals = cnt > 0 || acvVal > 0
+                  const mainTitle = `Delayed Renewals · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+                  const yDelta = delTot?.delayed_vs_yesterday
+                  const lwDelta = delTot?.delayed_vs_lastweek
+                  const yCnt = Math.abs(yDelta?.count || 0)
+                  const yAcv = Math.abs(yDelta?.acv || 0)
+                  const lwCnt = Math.abs(lwDelta?.count || 0)
+                  const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+                  const yTitle = `Delayed Renewals · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+                  const lwTitle = `Delayed Renewals · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+                  return (
+                    <div className="rounded-xl bg-rose-500/5 dark:bg-rose-950/20 border border-rose-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+                      <div
+                        className={hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}
+                        onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: 'delayed_total' })}
+                        title={hasDeals ? 'Click to view all delayed renewals' : '0 deals'}
+                      >
+                        <div className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1">
+                          Delayed Renewals Total
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <span className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'hover:underline' : ''}`}>
+                            {isNA ? 'n/a' : acvM(acvVal)}
+                          </span>
+                          <Pill color="rose"><AlertCircle className="w-3.5 h-3.5" />{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), yTitle, true)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), lwTitle, true)}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* 2 Delayed Categories: Overdue & Later Close Date */}
+                {(() => {
+                  const overdueCat = delRenewals?.overdue || summary?.overdue || summary?.slippage?.categories?.overdue
+                  const laterCat = delRenewals?.later_close || summary?.later_close || summary?.slippage?.categories?.later_close
+
+                  const delayedCards = [
+                    {
+                      id: 'overdue',
+                      title: 'Overdue Deals',
+                      data: overdueCat,
+                      isOverdue: true,
+                      kind: 'overdue',
+                      deltaKind: 'delayed_overdue_delta',
+                      baselineLabel: 'Current',
+                    },
+                    {
+                      id: 'later_close',
+                      title: 'Later Close Date (Postponed)',
+                      data: laterCat,
+                      isOverdue: false,
+                      kind: 'later_close',
+                      deltaKind: 'later_close',
+                      baselineLabel: 'Since start of period',
+                    },
+                  ]
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {delayedCards.map(c => {
+                        const cnt = c.data?.count ?? 0
+                        const acvVal = c.data?.acv ?? 0
+                        const isNA = isFuture || c.data?.count === null
+                        const hasDeals = cnt > 0 || acvVal > 0
+                        const mainTitle = `${c.title} · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+                        const yDelta = c.data?.delayed_vs_yesterday ?? c.data?.delta_yesterday
+                        const lwDelta = c.data?.delayed_vs_lastweek ?? c.data?.delta_lastweek
+                        const yCnt = Math.abs(yDelta?.count || 0)
+                        const yAcv = Math.abs(yDelta?.acv || 0)
+                        const lwCnt = Math.abs(lwDelta?.count || 0)
+                        const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+                        const yTitle = `${c.title} · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+                        const lwTitle = `${c.title} · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+                        return (
+                          <div
+                            key={c.id}
+                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{c.title}</span>
+                                <Pill color="rose">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                              </div>
+                              <div
+                                className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                                onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: c.kind, compare: c.isOverdue ? undefined : 'period_start' })}
+                                title={hasDeals ? `Click to view ${c.title}` : '0 deals'}
+                              >
+                                {isNA ? 'n/a' : acvM(acvVal)}
+                              </div>
+                              <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">{c.baselineLabel}</div>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                              {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.deltaKind, compare: 'yesterday' }), yTitle, c.isOverdue)}
+                              {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.deltaKind, compare: 'last_week' }), lwTitle, c.isOverdue)}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
             </div>
 
-            {/* Overall Slippage Total */}
-            {(() => {
-              const overall = summary?.slippage?.overall ?? { count: null, acv: null }
-              const isFuture = summary?.slippage?.is_future
-              const isNA = isFuture || overall.count === null
-              const cnt = overall.count ?? 0
-              const acvVal = overall.acv ?? 0
-              return (
-                <div
-                  className={`px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 transition-all flex items-center gap-4 ${isNA ? 'cursor-default' : 'cursor-pointer hover:border-amber-500/50'}`}
-                  onClick={() => !isNA && openDealsQuery(`Overall Slippage & Delayed Renewals · ${cnt} deals · ${acvM(acvVal)}`, { kind: 'delayed_all' })}
-                  title={isNA ? "Not applicable for selected period" : "Click to view all slipped and delayed deals"}
-                >
+            {/* ── SUBSECTION 2: SLIPPAGE ── */}
+            <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
-                      Total Slipped / Delayed
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                      <h2 className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                        Slippage
+                      </h2>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] max-w-2xl">
+                      Deals that moved OUT of the selected quarter into a later one, split by destination.
+                    </p>
+                  </div>
+                  {summary?.slippage_pct_of_quarter != null && (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                      {summary.slippage_pct_of_quarter}% of Quarter Total ({acvM(slipTot?.acv || 0)} of {acvM(summary.quarter_total_acv || 0)})
                     </span>
-                    <div className={`font-extrabold text-2xl text-amber-600 dark:text-amber-400 tabular-nums ${!isNA ? 'hover:underline' : ''}`}>
-                      {isNA ? 'n/a' : acvM(acvVal)}
+                  )}
+                </div>
+
+                {/* Slippage Total Bar */}
+                {(() => {
+                  const isNA = isFuture || slipTot?.count === null
+                  const cnt = slipTot?.count ?? 0
+                  const acvVal = slipTot?.acv ?? 0
+                  const hasDeals = cnt > 0 || acvVal > 0
+                  const mainTitle = `Slippage · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+                  const yDelta = slipTot?.delayed_vs_yesterday
+                  const lwDelta = slipTot?.delayed_vs_lastweek
+                  const yCnt = Math.abs(yDelta?.count || 0)
+                  const yAcv = Math.abs(yDelta?.acv || 0)
+                  const lwCnt = Math.abs(lwDelta?.count || 0)
+                  const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+                  const yTitle = `Slippage · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+                  const lwTitle = `Slippage · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+                  return (
+                    <div className="rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+                      <div
+                        className={hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}
+                        onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: 'slippage_total' })}
+                        title={hasDeals ? 'Click to view all slipped deals' : '0 deals'}
+                      >
+                        <div className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Slippage Total
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <span className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'hover:underline' : ''}`}>
+                            {isNA ? 'n/a' : acvM(acvVal)}
+                          </span>
+                          <Pill color="amber"><AlertTriangle className="w-3.5 h-3.5" />{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'slipped', compare: 'yesterday' }), yTitle, false)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'slipped', compare: 'last_week' }), lwTitle, false)}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* 3 Destination Cards */}
+                {(() => {
+                  const slipNY = slippageSec?.slipped_next_year || summary?.slipped_next_year
+                  const slipNQ = slippageSec?.slipped_next_quarter || summary?.slipped_next_quarter
+                  const slipLQ = slippageSec?.slipped_later_quarter || summary?.slipped_later_quarter
+
+                  const destCards = [
+                    {
+                      id: 'slipped_next_year',
+                      title: 'Slipped to next fiscal year',
+                      data: slipNY,
+                      kind: 'slipped_next_year',
+                    },
+                    {
+                      id: 'slipped_next_quarter',
+                      title: 'Slipped to next quarter',
+                      data: slipNQ,
+                      kind: 'slipped_next_quarter',
+                    },
+                    {
+                      id: 'slipped_later_quarter',
+                      title: 'Slipped to a later quarter, same year',
+                      data: slipLQ,
+                      kind: 'slipped_later_quarter',
+                    },
+                  ]
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {destCards.map(c => {
+                        const cnt = c.data?.count ?? 0
+                        const acvVal = c.data?.acv ?? 0
+                        const isNA = isFuture || c.data?.count === null
+                        const hasDeals = cnt > 0 || acvVal > 0
+                        const mainTitle = `${c.title} · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+                        const yDelta = c.data?.delayed_vs_yesterday
+                        const lwDelta = c.data?.delayed_vs_lastweek
+                        const yCnt = Math.abs(yDelta?.count || 0)
+                        const yAcv = Math.abs(yDelta?.acv || 0)
+                        const lwCnt = Math.abs(lwDelta?.count || 0)
+                        const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+                        const yTitle = `${c.title} · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+                        const lwTitle = `${c.title} · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+                        return (
+                          <div
+                            key={c.id}
+                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{c.title}</span>
+                                <Pill color="amber">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                              </div>
+                              <div
+                                className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                                onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: c.kind, compare: 'period_start' })}
+                                title={hasDeals ? `Click to view ${c.title}` : '0 deals'}
+                              >
+                                {isNA ? 'n/a' : acvM(acvVal)}
+                              </div>
+                              <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">Since start of period</div>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                              {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.kind, compare: 'yesterday' }), yTitle, false)}
+                              {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.kind, compare: 'last_week' }), lwTitle, false)}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+
+            {/* ── SUBSECTION 3: LOST / REMOVED (Separate Card) ── */}
+            {(() => {
+              const lostData = lostSec || summary?.lost || summary?.slippage?.categories?.lost
+              const cnt = lostData?.count ?? 0
+              const acvVal = lostData?.acv ?? 0
+              const isNA = isFuture || lostData?.count === null
+              const hasDeals = cnt > 0 || acvVal > 0
+              const mainTitle = `Lost / Removed · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+              const yDelta = lostData?.delayed_vs_yesterday
+              const lwDelta = lostData?.delayed_vs_lastweek
+              const yCnt = Math.abs(yDelta?.count || 0)
+              const yAcv = Math.abs(yDelta?.acv || 0)
+              const lwCnt = Math.abs(lwDelta?.count || 0)
+              const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+              const yTitle = `Lost / Removed · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+              const lwTitle = `Lost / Removed · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+              return (
+                <div className="card p-6" style={{ borderLeft: '4px solid #64748B' }}>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                        <h2 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                          Lost / Removed
+                        </h2>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)] max-w-xl">
+                        Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage totals).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}
+                        onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: 'lost', compare: 'period_start' })}
+                        title={hasDeals ? 'Click to view lost/removed deals' : '0 deals'}
+                      >
+                        <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                          Deals Removed
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className={`text-xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'hover:underline' : ''}`}>
+                            {isNA ? 'n/a' : acvM(acvVal)}
+                          </span>
+                          <Pill color="slate">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'lost', compare: 'yesterday' }), yTitle, false)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'lost', compare: 'last_week' }), lwTitle, false)}
+                      </div>
                     </div>
                   </div>
-                  <Pill color="amber"><AlertTriangle className="w-3.5 h-3.5" />{isNA ? 'n/a' : `${cnt} deals`}</Pill>
+                </div>
+              )
+            })()}
+
+            {/* Sub-line for Not yet proposed */}
+            {(() => {
+              const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
+              return (
+                <div
+                  className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
+                  title="Click to view Not yet proposed deals"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
+                    <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
+                    <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                  </div>
+                  <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
+                    View not yet proposed deals →
+                  </span>
                 </div>
               )
             })()}
           </div>
-
-          {/* 3 Slippage Categories */}
-          {(() => {
-            const isFuture = summary?.slippage?.is_future
-            const slipCat = summary?.slippage?.categories?.slipped ?? { count: null, acv: null }
-            const overdueCat = summary?.slippage?.categories?.overdue ?? { count: null, acv: null }
-            const laterCat = summary?.slippage?.categories?.later_close ?? { count: null, acv: null }
-
-            const yDate = movYesterday?.compare_date || summary?.slippage?.yesterday_date
-            const lwDate = movLastWeek?.compare_date || summary?.slippage?.lastweek_date
-
-            const slipCategories = [
-              {
-                id: 'slipped',
-                title: 'Slipped to Next Year / Quarter',
-                count: isFuture ? null : slipCat.count,
-                acv: isFuture ? null : slipCat.acv,
-                baselineLabel: isFuture ? 'n/a' : (slipCat.baseline_label || summary?.slippage?.period_start_baseline_label || 'Since start of period'),
-                mainDrawerKind: 'delayed_slipped',
-                mainCompare: 'period_start',
-                isOverdue: false,
-                yDelta: isFuture ? null : (slipCat.delta_yesterday ?? null),
-                lwDelta: isFuture ? null : (slipCat.delta_lastweek ?? null),
-              },
-              {
-                id: 'overdue',
-                title: 'Overdue Deals',
-                count: isFuture ? null : overdueCat.count,
-                acv: isFuture ? null : overdueCat.acv,
-                baselineLabel: isFuture ? 'n/a' : (overdueCat.baseline_label || 'Current'),
-                mainDrawerKind: 'delayed_overdue',
-                mainCompare: undefined,
-                isOverdue: true,
-                yDelta: isFuture ? null : (overdueCat.delta_yesterday ?? null),
-                lwDelta: isFuture ? null : (overdueCat.delta_lastweek ?? null),
-              },
-              {
-                id: 'later_close',
-                title: 'Later Close Date (Postponed)',
-                count: isFuture ? null : laterCat.count,
-                acv: isFuture ? null : laterCat.acv,
-                baselineLabel: isFuture ? 'n/a' : (laterCat.baseline_label || summary?.slippage?.period_start_baseline_label || 'Since start of period'),
-                mainDrawerKind: 'delayed_later_close',
-                mainCompare: 'period_start',
-                isOverdue: false,
-                yDelta: isFuture ? null : (laterCat.delta_yesterday ?? null),
-                lwDelta: isFuture ? null : (laterCat.delta_lastweek ?? null),
-              },
-            ]
-
-            const renderTrendBox = (
-              label: string,
-              delta: { count: number; acv: number } | null | undefined,
-              comparePeriod: 'yesterday' | 'last_week',
-              dateStr: string | null | undefined,
-              cat: typeof slipCategories[0]
-            ) => {
-              if (delta === null || delta === undefined || isFuture) {
-                return (
-                  <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 opacity-70 cursor-default">
-                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                    <div className="font-bold text-sm text-[var(--text-muted)] tabular-nums">n/a</div>
-                    <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
-                  </div>
-                )
-              }
-
-              if (cat.isOverdue) {
-                // Signed net change for overdue
-                const isUp = delta.count > 0 || delta.acv > 0
-                const isDown = delta.count < 0 || delta.acv < 0
-
-                const colorClasses = isUp
-                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
-                  : isDown
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
-                  : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
-
-                let acvText = '$0'
-                if (delta.acv > 0) {
-                  acvText = `+${acvM(delta.acv)}`
-                } else if (delta.acv < 0) {
-                  acvText = `-${acvM(Math.abs(delta.acv))}`
-                }
-
-                let countText = '0 deals'
-                if (delta.count > 0) {
-                  countText = `+${delta.count} deals`
-                } else if (delta.count < 0) {
-                  countText = `${delta.count} deals`
-                }
-
-                const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
-                const drawerTitle = `${cat.title} (${label}${dateSub}) · Net ${countText} · ${acvText}`
-
-                return (
-                  <div
-                    className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
-                    onClick={() =>
-                      openDealsQuery(drawerTitle, {
-                        kind: `delayed_${cat.id}_delta`,
-                        compare: comparePeriod,
-                      })
-                    }
-                    title={`Click to view ${cat.title} ${label} net movement`}
-                  >
-                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                    <div className="font-bold text-sm tabular-nums">{acvText}</div>
-                    <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
-                  </div>
-                )
-              } else {
-                // Event transitions for Slipped and Later Close
-                const hasDeals = (delta.count || 0) > 0 || (delta.acv || 0) > 0
-                const colorClasses = hasDeals
-                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
-                  : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 hover:border-slate-500/50'
-
-                const acvText = acvM(delta.acv || 0)
-                const countText = `${delta.count || 0} deals`
-                const dateSub = dateStr ? ` (${formatDate(dateStr)})` : ''
-                const drawerTitle = `${cat.title} (${label}${dateSub}) · ${countText} · ${acvText}`
-
-                return (
-                  <div
-                    className={`p-2 rounded-lg border cursor-pointer transition-all ${colorClasses}`}
-                    onClick={() =>
-                      openDealsQuery(drawerTitle, {
-                        kind: `delayed_${cat.id}`,
-                        compare: comparePeriod,
-                      })
-                    }
-                    title={`Click to view ${cat.title} ${label}`}
-                  >
-                    <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                    <div className="font-bold text-sm tabular-nums">{acvText}</div>
-                    <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
-                  </div>
-                )
-              }
-            }
-
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {slipCategories.map(cat => {
-                  const isNA = isFuture || cat.count === null
-                  const cnt = cat.count ?? 0
-                  const acvVal = cat.acv ?? 0
-                  return (
-                    <div
-                      key={cat.id}
-                      className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
-                    >
-                      {/* Main figure for the period */}
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="text-xs font-semibold text-[var(--text-secondary)]">
-                            {cat.title}
-                          </span>
-                          <Pill color="amber">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
-                        </div>
-                        <div
-                          className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${isNA ? 'cursor-default' : 'cursor-pointer hover:underline'}`}
-                          onClick={() => !isNA && openDealsQuery(`${cat.title} (${cnt} deals · ${acvM(acvVal)})`, { kind: cat.mainDrawerKind, compare: cat.mainCompare })}
-                          title={isNA ? "Not applicable for selected period" : `Click to view ${cat.title}`}
-                        >
-                          {isNA ? 'n/a' : acvM(acvVal)}
-                        </div>
-                        <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">
-                          {cat.baselineLabel}
-                        </div>
-                      </div>
-
-                      {/* Trends below it: Since yesterday and Since last week */}
-                      <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                        {renderTrendBox('Since yesterday', cat.yDelta, 'yesterday', yDate, cat)}
-                        {renderTrendBox('Since last week', cat.lwDelta, 'last_week', lwDate, cat)}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-
-          {/* Sub-line for Not yet proposed */}
-          {(() => {
-            const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
-            return (
-              <div
-                className="pt-2 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
-                title="Click to view Not yet proposed deals"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
-                  <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
-                  <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
-                </div>
-                <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
-                  View not yet proposed deals →
-                </span>
-              </div>
-            )
-          })()}
-        </div>
-      </div>
+        )
+      })()}
 
 
       {/* ── SECTION 4 – Forecast Category & Approval Movement ───────────────── */}

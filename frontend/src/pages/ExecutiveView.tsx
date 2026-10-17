@@ -270,18 +270,31 @@ export default function ExecutiveView() {
   const buSumCount = buRows.reduce((acc: number, b: any) => acc + b.count, 0)
   const buSumAcv = buRows.reduce((acc: number, b: any) => acc + b.acv, 0)
 
-  // Delayed summary (Overdue + Slipped + Later Close Date + Lost)
-  const overdue = delayed.overdue || { count: 0, acv: 0 }
-  const slipped = delayed.slipped || { count: 0, acv: 0 }
-  const laterClose = delayed.later_close || { count: 0, acv: 0 }
-  const lost = delayed.lost || { count: 0, acv: 0 }
-  const delayedTotal = delayed.total || {
-    count: overdue.count + slipped.count + laterClose.count + lost.count,
-    acv: overdue.acv + slipped.acv + laterClose.acv + lost.acv,
+  // Delayed summary (Delayed Renewals: Overdue + Later Close Date; Slippage: Slipped by destination; Lost: separate)
+  const delayedRenewals = delayed.delayed_renewals || {}
+  const overdue = delayedRenewals.overdue || delayed.overdue || { count: 0, acv: 0 }
+  const laterClose = delayedRenewals.later_close || delayed.later_close || { count: 0, acv: 0 }
+  const delayedRenewalsTotal = delayed.delayed_renewals_total || delayedRenewals.total || delayed.total || {
+    count: overdue.count + laterClose.count,
+    acv: overdue.acv + laterClose.acv,
   }
 
-  const delayedRowsSumCount = overdue.count + slipped.count + laterClose.count + lost.count
-  const delayedRowsSumAcv = overdue.acv + slipped.acv + laterClose.acv + lost.acv
+  const slippage = delayed.slippage || {}
+  const slippedNextYear = slippage.slipped_next_year || delayed.slipped_next_year || delayed.slipped || { count: 0, acv: 0 }
+  const slippedNextQuarter = slippage.slipped_next_quarter || delayed.slipped_next_quarter || { count: 0, acv: 0 }
+  const slippedLaterQuarter = slippage.slipped_later_quarter || delayed.slipped_later_quarter || { count: 0, acv: 0 }
+  const slippageTotal = delayed.slippage_total || slippage.total || {
+    count: slippedNextYear.count + slippedNextQuarter.count + slippedLaterQuarter.count,
+    acv: slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv,
+  }
+
+  const lost = delayed.lost_card || delayed.lost || { count: 0, acv: 0 }
+
+  const delayedRowsSumCount = overdue.count + laterClose.count
+  const delayedRowsSumAcv = overdue.acv + laterClose.acv
+
+  const slippageRowsSumCount = slippedNextYear.count + slippedNextQuarter.count + slippedLaterQuarter.count
+  const slippageRowsSumAcv = slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv
 
   // Runtime reconciliation checks on all tables
   const mismatchErrors: string[] = []
@@ -295,8 +308,12 @@ export default function ExecutiveView() {
     mismatchErrors.push(`Approval Status table (${approvalSumCount} deals / ${formatCurrency(approvalSumAcv)}) does not reconcile to Portfolio Headline (${totalCount} deals / ${formatCurrency(totalAcv)})`)
   }
 
-  if (delayedRowsSumCount !== delayedTotal.count || Math.abs(delayedRowsSumAcv - delayedTotal.acv) > 0.05) {
-    mismatchErrors.push(`Delayed Renewals table rows (${delayedRowsSumCount} deals / ${formatCurrency(delayedRowsSumAcv)}) do not reconcile to Delayed total (${delayedTotal.count} deals / ${formatCurrency(delayedTotal.acv)})`)
+  if (delayedRowsSumCount !== delayedRenewalsTotal.count || Math.abs(delayedRowsSumAcv - delayedRenewalsTotal.acv) > 0.05) {
+    mismatchErrors.push(`Delayed Renewals table rows (${delayedRowsSumCount} deals / ${formatCurrency(delayedRowsSumAcv)}) do not reconcile to Delayed Renewals total (${delayedRenewalsTotal.count} deals / ${formatCurrency(delayedRenewalsTotal.acv)})`)
+  }
+
+  if (slippageRowsSumCount !== slippageTotal.count || Math.abs(slippageRowsSumAcv - slippageTotal.acv) > 0.05) {
+    mismatchErrors.push(`Slippage table rows (${slippageRowsSumCount} deals / ${formatCurrency(slippageRowsSumAcv)}) do not reconcile to Slippage total (${slippageTotal.count} deals / ${formatCurrency(slippageTotal.acv)})`)
   }
 
   const hasReconciliationMismatch = mismatchErrors.length > 0
@@ -733,14 +750,21 @@ export default function ExecutiveView() {
         </div>
       </section>
 
-      {/* Delayed Renewals summary table */}
-      <section className="mb-6 page-break-avoid">
+      {/* 7. Delayed Renewals & Slippage (Separated per Item 1) */}
+      <section className="mb-6 space-y-6 page-break-avoid">
+        {/* 7a. Delayed Renewals Summary */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-              7. Delayed Renewals Summary
+              7a. Delayed Renewals Summary
             </h2>
+            <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+              {totalAcv > 0 ? `${((delayedRenewalsTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
+            </span>
           </div>
+          <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
+            Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late.
+          </p>
           <table className="w-full text-xs text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
@@ -752,38 +776,106 @@ export default function ExecutiveView() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-amber-900">Overdue Renewals</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(overdue.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(overdue.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Service expiry date has passed current snapshot date</td>
+                <td className="px-4 py-2 font-medium text-rose-900">Overdue Renewals</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatNumber(overdue.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatCurrency(overdue.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Service expiry date has passed snapshot date and not yet closed</td>
               </tr>
               <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-orange-900">Slipped to Next Fiscal Year</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-orange-800">{formatNumber(slipped.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-orange-800">{formatCurrency(slipped.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Expected close pushed into subsequent fiscal year</td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-blue-900">Later Close Date within Quarter</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-blue-800">{formatNumber(laterClose.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-blue-800">{formatCurrency(laterClose.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Expected close pushed out within current quarter</td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-rose-900">Lost / Terminated</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatNumber(lost.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatCurrency(lost.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Cancelled or competitor loss records</td>
+                <td className="px-4 py-2 font-medium text-amber-900">Later Close Date within Quarter</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(laterClose.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(laterClose.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Expected close date postponed later within active quarter</td>
               </tr>
             </tbody>
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total Delayed / At Risk</td>
-                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(delayedTotal.count)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-amber-900">{formatCurrency(delayedTotal.acv)}</td>
-                <td className="px-4 py-2.5 text-slate-500">Monitored renewal contracts requiring escalation</td>
+                <td className="px-4 py-2.5">Total Delayed Renewals</td>
+                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(delayedRenewalsTotal.count)}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-rose-900">{formatCurrency(delayedRenewalsTotal.acv)}</td>
+                <td className="px-4 py-2.5 text-slate-500">Deals staying in quarter but delayed</td>
               </tr>
             </tfoot>
+          </table>
+        </div>
+
+        {/* 7b. Slippage Summary */}
+        <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+              7b. Slippage Summary
+            </h2>
+            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              {totalAcv > 0 ? `${((slippageTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
+            </span>
+          </div>
+          <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
+            Deals that moved OUT of the selected quarter into a later one, split by destination.
+          </p>
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                <th className="px-4 py-2">Destination</th>
+                <th className="px-4 py-2 text-right">Deals</th>
+                <th className="px-4 py-2 text-right">ACV (USD)</th>
+                <th className="px-4 py-2">Destination Description</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr className="hover:bg-slate-50/50">
+                <td className="px-4 py-2 font-medium text-amber-900">Slipped to next fiscal year</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedNextYear.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedNextYear.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">New fiscal year is later than selected quarter year</td>
+              </tr>
+              <tr className="hover:bg-slate-50/50">
+                <td className="px-4 py-2 font-medium text-amber-900">Slipped to next quarter</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedNextQuarter.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedNextQuarter.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Immediately following quarter in the same fiscal year</td>
+              </tr>
+              <tr className="hover:bg-slate-50/50">
+                <td className="px-4 py-2 font-medium text-amber-900">Slipped to a later quarter, same year</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedLaterQuarter.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedLaterQuarter.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Any other later quarter in the same fiscal year</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                <td className="px-4 py-2.5">Total Slippage</td>
+                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(slippageTotal.count)}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
+                <td className="px-4 py-2.5 text-slate-500">All renewals moving into later quarters/years</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* 7c. Lost / Removed (Outside both totals) */}
+        <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+              7c. Lost / Removed Contracts
+            </h2>
+          </div>
+          <table className="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                <th className="px-4 py-2">Category</th>
+                <th className="px-4 py-2 text-right">Deals</th>
+                <th className="px-4 py-2 text-right">ACV (USD)</th>
+                <th className="px-4 py-2">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="hover:bg-slate-50/50">
+                <td className="px-4 py-2 font-medium text-slate-800">Lost / Terminated / Removed</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-slate-800">{formatNumber(lost.count)}</td>
+                <td className="px-4 py-2 text-right font-mono font-semibold text-slate-800">{formatCurrency(lost.acv)}</td>
+                <td className="px-4 py-2 text-slate-500">Deals deleted or lost since the baseline period (excluded from Delayed and Slippage totals)</td>
+              </tr>
+            </tbody>
           </table>
         </div>
       </section>

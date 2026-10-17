@@ -114,7 +114,7 @@ function RegionsContent() {
       })
       return res.data
     },
-    enabled: modalOpen
+    enabled: modalOpen && !modalFilters.deals
   })
 
   // Sorted region comparison table rows
@@ -1295,12 +1295,7 @@ function RegionsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={dealsData?.deals || []}
-          initialFilters={{
-            sub_region: modalFilters.region,
-            forecast_category: modalFilters.category,
-            approval_status: modalFilters.status
-          }}
+          deals={modalFilters.deals || dealsData?.deals || []}
           onSelectOpp={setSelectedOppId}
           onClose={() => setModalOpen(false)}
         />

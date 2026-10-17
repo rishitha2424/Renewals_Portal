@@ -88,13 +88,6 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-emerald-500/10">
-              {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-2.5 text-center text-[var(--text-muted)] italic">
-                    No upgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}
-                  </td>
-                </tr>
-              )}
               {pos.map((row: any, i: number) => (
                 <tr
                   key={i}
@@ -135,6 +128,13 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               </tr>
             </tbody>
           </table>
+          <div className="px-4 py-2 bg-emerald-500/5 border-t border-emerald-500/10 min-h-[34px] flex items-center justify-center text-center text-[11px] text-[var(--text-muted)] italic">
+            {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 ? (
+              <span>No upgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}</span>
+            ) : (
+              <span>&nbsp;</span>
+            )}
+          </div>
         </div>
 
         {/* RED – Negative */}
@@ -153,13 +153,6 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-red-500/10">
-              {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-2.5 text-center text-[var(--text-muted)] italic">
-                    No downgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}
-                  </td>
-                </tr>
-              )}
               {neg.map((row: any, i: number) => (
                 <tr
                   key={i}
@@ -213,6 +206,13 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               </tr>
             </tbody>
           </table>
+          <div className="px-4 py-2 bg-red-500/5 border-t border-red-500/10 min-h-[34px] flex items-center justify-center text-center text-[11px] text-[var(--text-muted)] italic">
+            {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 ? (
+              <span>No downgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}</span>
+            ) : (
+              <span>&nbsp;</span>
+            )}
+          </div>
         </div>
       </div>
 
