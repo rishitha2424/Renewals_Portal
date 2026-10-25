@@ -117,16 +117,11 @@ export default function KpiTile({
     <div className="card p-4 relative overflow-hidden">
       {/* Header with label & sparkline */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <p className="text-xs font-medium text-[var(--text-muted)] truncate">
+        <p className="text-xs font-medium text-[var(--text-muted)] truncate" title={label}>
           {label}
         </p>
         <div className="flex items-center gap-2 flex-shrink-0">
           <MiniSparkline data={sparkData} color={accent} />
-          {icon && (
-            <div className="text-[var(--text-muted)]">
-              {icon}
-            </div>
-          )}
         </div>
       </div>
 
@@ -135,7 +130,7 @@ export default function KpiTile({
         {display()}
       </p>
 
-      {/* Delta chip: Green up / Red down, 6px radius */}
+      {/* Delta chip: Green up / Red down, 6px radius, no glyphs */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {delta != null && (
           <div
@@ -145,7 +140,7 @@ export default function KpiTile({
                 : 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20'
             }`}
           >
-            <span>{isPositive ? '▲' : '▼'}</span>
+            <span>{isPositive ? '+' : '-'}</span>
             <span>
               {format === 'count'
                 ? Math.abs(delta).toLocaleString('en-US')

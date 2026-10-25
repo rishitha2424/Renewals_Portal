@@ -63,7 +63,6 @@ export default function DeltaChip({
         className
       )}
     >
-      {showIcon && !isZero && <span>{isPositive ? '▲' : '▼'}</span>}
       <span>{isPositive ? '+' : isZero ? '' : '-'}{formattedValue}</span>
       {pct && <span className="opacity-75 font-normal">({pct}%)</span>}
       {label && <span className="opacity-70">{label}</span>}

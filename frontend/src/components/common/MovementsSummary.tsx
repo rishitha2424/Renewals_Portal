@@ -224,7 +224,6 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               Approval Movement Table
             </h3>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
-              <Users className="w-3 h-3" />
               {apv.reduce((s: number, r: any) => s + (r.count ?? 0), 0)} Status Changes ({acvM(apvTotal)})
             </span>
           </div>

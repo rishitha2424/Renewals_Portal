@@ -43,11 +43,9 @@ export function deltaClass(val: number): string {
   return 'delta-neutral'
 }
 
-/** Get delta icon */
-export function deltaIcon(val: number): string {
-  if (val > 0) return '▲'
-  if (val < 0) return '▼'
-  return '—'
+/** Get delta icon (plain text, no glyphs) */
+export function deltaIcon(_val: number): string {
+  return ''
 }
 
 /** Format delta value with sign and units */

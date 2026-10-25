@@ -251,9 +251,6 @@ function BusinessUnitsContent() {
       {/* 1. Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-            <Building2 className="w-5 h-5" />
-          </div>
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
@@ -352,77 +349,122 @@ function BusinessUnitsContent() {
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Portfolio ACV */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-[var(--text-muted)]">
-              Total Portfolio ACV
-            </span>
-            <div className="text-2xl font-bold font-mono tabular-nums text-[var(--text-primary)] mt-1.5">
+        <div className="card p-4 flex flex-col justify-between gap-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Total Portfolio ACV">
+                Total Portfolio ACV
+              </span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                {formatCount(total.count)} deals
+              </span>
+            </div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
               {formatACV(total.acv)}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-              {formatCount(total.count)} deals in {data_slice}
+            <div className="text-xs text-[var(--text-muted)]">
+              {data_slice}
             </div>
           </div>
-          <div className="pt-3 mt-3 border-t border-[var(--border)]/70 flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <span>vs Yday: {deltaSpan(totals.grand.delta_yesterday, false)}</span>
-            <span>vs Wk: {deltaSpan(totals.grand.delta_lastweek, false)}</span>
+          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.grand.delta_yesterday, false)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.grand.delta_lastweek, false)}</span>
+            </div>
           </div>
         </div>
 
         {/* Card 2: Active Business Units */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-[var(--text-muted)]">
-              Active Business Units
-            </span>
-            <div className="text-2xl font-bold font-mono tabular-nums text-[var(--text-primary)] mt-1.5">
+        <div className="card p-4 flex flex-col justify-between gap-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Active Business Units">
+                Active Business Units
+              </span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                {numBUs} units
+              </span>
+            </div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
               {numBUs}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+            <div className="text-xs text-[var(--text-muted)]">
               Tracked individually
             </div>
           </div>
-          <div className="pt-3 mt-3 border-t border-[var(--border)]/70 text-xs text-[var(--text-muted)]">
-            Multi-value units distinct (e.g. Roaming; Security)
+          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
+              <span className="text-xs text-[var(--text-muted)]">—</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
+              <span className="text-xs text-[var(--text-muted)]">—</span>
+            </div>
           </div>
         </div>
 
         {/* Card 3: Largest Business Unit */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-[var(--text-muted)]">
-              Largest Business Unit
-            </span>
-            <div className="text-2xl font-bold font-mono text-[var(--text-primary)] mt-1.5 truncate" title={largestBu?.bu || '—'}>
+        <div className="card p-4 flex flex-col justify-between gap-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Largest Business Unit">
+                Largest Business Unit
+              </span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                {largestBuPct}% of total
+              </span>
+            </div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight truncate" title={largestBu?.bu || '—'}>
               {largestBu?.bu || '—'}
             </div>
-            <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-              {largestBuPct}% of total ({formatACV(largestBu?.acv || 0)})
+            <div className="text-xs text-[var(--text-muted)]">
+              {formatACV(largestBu?.acv || 0)}
             </div>
           </div>
-          <div className="pt-3 mt-3 border-t border-[var(--border)]/70 flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <span>vs Yday: {deltaSpan(largestBu?.delta_yesterday, false)}</span>
-            <span>vs Wk: {deltaSpan(largestBu?.delta_lastweek, false)}</span>
+          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_yesterday, false)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_lastweek, false)}</span>
+            </div>
           </div>
         </div>
 
         {/* Card 4: Commit Coverage */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-xs flex flex-col justify-between">
-          <div>
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-[var(--text-muted)]">
-              Commit Coverage
-            </span>
-            <div className="text-2xl font-bold font-mono tabular-nums text-[var(--text-primary)] mt-1.5">
+        <div className="card p-4 flex flex-col justify-between gap-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Commit Coverage">
+                Commit Coverage
+              </span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                {formatACV(totalCommit)} Commit
+              </span>
+            </div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
               {commitCov}%
             </div>
-            <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-              {formatACV(totalCommit)} Commit / Total ACV
+            <div className="text-xs text-[var(--text-muted)]">
+              Commit / Total ACV
             </div>
           </div>
-          <div className="pt-3 mt-3 border-t border-[var(--border)]/70 flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <span>vs Yday: {deltaSpan(totals.categories['Commit']?.delta_yesterday, false)}</span>
-            <span>vs Wk: {deltaSpan(totals.categories['Commit']?.delta_lastweek, false)}</span>
+          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.categories['Commit']?.delta_yesterday, false)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.categories['Commit']?.delta_lastweek, false)}</span>
+            </div>
           </div>
         </div>
       </div>

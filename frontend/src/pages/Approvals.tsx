@@ -67,56 +67,47 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSet
       )
     }
     return (
-      <span className="flex flex-col gap-0.5 mt-1 text-[10px] text-[var(--text-muted)] font-medium">
-        <span title={data.yesterday_date ? formatDate(data.yesterday_date) : undefined} className="cursor-help">
-          vs yesterday{' '}
-          {isCount ? formatDelta(dYes?.count, true) : isAmount ? formatDelta(dYes?.acv, false) : <>{formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</>}
+      <span className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--border-subtle)] text-xs font-normal">
+        <span title={data.yesterday_date ? formatDate(data.yesterday_date) : undefined} className="flex items-center justify-between">
+          <span className="text-[var(--text-muted)]">vs yesterday</span>
+          <span className="tabular-nums">
+            {isCount ? formatDelta(dYes?.count, true) : isAmount ? formatDelta(dYes?.acv, false) : <>{formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</>}
+          </span>
         </span>
-        <span title={data.lastweek_date ? formatDate(data.lastweek_date) : undefined} className="cursor-help">
-          vs last week{' '}
-          {isCount ? formatDelta(dLast?.count, true) : isAmount ? formatDelta(dLast?.acv, false) : <>{formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</>}
+        <span title={data.lastweek_date ? formatDate(data.lastweek_date) : undefined} className="flex items-center justify-between">
+          <span className="text-[var(--text-muted)]">vs last week</span>
+          <span className="tabular-nums">
+            {isCount ? formatDelta(dLast?.count, true) : isAmount ? formatDelta(dLast?.acv, false) : <>{formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</>}
+          </span>
         </span>
       </span>
     )
   }
 
   return (
-    <div className="card px-4 py-3 flex items-center justify-between border border-[var(--border)] transition-transform hover:scale-[1.02]">
-      <div className="flex items-center gap-3 w-full">
-        <div className={`p-2 rounded-xl flex-shrink-0 ${
-          label === 'Approved'
-            ? 'bg-emerald-500/10 text-emerald-500'
-            : label === 'Pending' || label === 'Pending Approval'
-            ? 'bg-amber-500/10 text-amber-500'
-            : label === 'Blank' || label === 'Not submitted'
-            ? 'bg-slate-500/10 text-slate-500'
-            : 'bg-[var(--primary)]/10 text-[var(--primary)]'
-        }`}>
-          <Icon className="w-5 h-5" />
+    <div className="card p-4 flex flex-col justify-between gap-2.5 transition-colors hover:border-[var(--brand-teal)]">
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={label}>{label}</span>
+          <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatNumber(data.count)} deals</span>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
-          {isBoth ? (
-            <div className="flex flex-col mt-0.5">
-              <span className="text-lg font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums" title={formatCurrency(data.acv)}>
-                {acvM(data.acv)}
-              </span>
-              <span className="text-lg font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums">
-                {formatNumber(data.count)} deals
-              </span>
-            </div>
-          ) : isAmount ? (
-            <div className="text-xl font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums" title={formatCurrency(data.acv)}>
+        {isBoth ? (
+          <div className="flex flex-col">
+            <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight" title={formatCurrency(data.acv)}>
               {acvM(data.acv)}
-            </div>
-          ) : (
-            <div className="text-xl font-black text-[var(--text-primary)] leading-tight font-mono tabular-nums">
-              {formatNumber(data.count)} deals
-            </div>
-          )}
-          <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5 font-medium">{renderDeltas()}</div>
-        </div>
+            </span>
+          </div>
+        ) : isAmount ? (
+          <div className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight" title={formatCurrency(data.acv)}>
+            {acvM(data.acv)}
+          </div>
+        ) : (
+          <div className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight">
+            {formatNumber(data.count)} deals
+          </div>
+        )}
       </div>
+      <div>{renderDeltas()}</div>
     </div>
   )
 }

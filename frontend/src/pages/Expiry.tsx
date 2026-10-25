@@ -218,56 +218,58 @@ export default function Expiry() {
       {/* Grand Total & Slippage KPI Strip */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
-          className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
+          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
           onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={`FY${fy1} All-Years Total Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}>
                 FY{fy1} All-Years Total Expiry ({periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})
               </span>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
                 {grandTotal.count} deals
               </span>
             </div>
-            <div className="text-3xl font-black text-[var(--text-primary)] mt-2">
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
               {formatCurrency(grandTotal.acv)}
             </div>
           </div>
-          <div className="flex items-center gap-4 mt-4 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-muted)]">
-            <span>
-              vs Yesterday: <strong className={yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400" : ""}>
-                {yestGrand ? `${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals / ${formatCurrency(yestGrand.acv)}` : '—'}
-              </strong>
-            </span>
-            <span>
-              vs Last Week: <strong className={lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400" : ""}>
-                {lastGrand ? `${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals / ${formatCurrency(lastGrand.acv)}` : '—'}
-              </strong>
-            </span>
+          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
+              <span className={`text-xs tabular-nums text-right ${yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : yestGrand?.acv && yestGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
+                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
+              <span className={`text-xs tabular-nums text-right ${lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : lastGrand?.acv && lastGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
+                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : '—'}
+              </span>
+            </div>
           </div>
         </Card>
 
         <Card
-          className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors cursor-pointer border-l-4 border-l-amber-500"
+          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-amber-500"
           onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
         >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5" /> Slippage to FY{fy2}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-amber-600 dark:text-amber-400 truncate" title={`Slippage to FY${fy2}`}>
+                Slippage to FY{fy2}
               </span>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
                 {sum.slippage?.count ?? 0} deals
               </span>
             </div>
-            <div className="text-3xl font-black text-amber-600 dark:text-amber-400 mt-2">
+            <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400 tracking-tight">
               {formatCurrency(sum.slippage?.acv ?? 0)}
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-muted)] flex items-center justify-between">
-            <span>Close date after FY{fy1} year end</span>
-            <span className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">Click to view slippage deals →</span>
+          <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] flex items-center justify-between">
+            <span className="text-xs text-[var(--text-muted)]">Close date after FY{fy1} year end</span>
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:underline">View slippage deals →</span>
           </div>
         </Card>
       </div>
@@ -307,9 +309,8 @@ export default function Expiry() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <BarChart2 className="w-5 h-5 text-indigo-500" />
-              <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">Expiry Profile</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">Expiry Profile</h2>
+              <span className="text-xs px-2 py-0.5 rounded font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                 {periodMode === 'fiscal' ? 'Fiscal Period · Renewals' : 'Service End Date · Renewals'}
               </span>
             </div>

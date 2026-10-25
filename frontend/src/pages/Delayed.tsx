@@ -243,12 +243,9 @@ function DelayedContent() {
       >
         <div>
           <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
+            <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={title}>
               {title}
             </span>
-            <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconTileClass)}>
-              <Icon className="w-4 h-4" strokeWidth={1.75} />
-            </div>
           </div>
           {definition && (
             <p className="text-[11px] text-[var(--text-muted)] leading-tight mb-2 min-h-[28px] line-clamp-2">

@@ -56,14 +56,11 @@ export function KpiCard({
       )}
     >
       <div>
-        {/* Header: Title and small 32px rounded-lg icon tile */}
+        {/* Header: Title */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <span className="text-xs font-medium text-[var(--text-muted)] truncate">
+          <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={title}>
             {title}
           </span>
-          <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconTileMap[accentColor])}>
-            <Icon className="w-4 h-4" strokeWidth={1.75} />
-          </div>
         </div>
 
         {/* Value: Aligned baseline across all cards */}

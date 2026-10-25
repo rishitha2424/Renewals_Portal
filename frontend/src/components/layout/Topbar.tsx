@@ -194,7 +194,7 @@ export default function Topbar() {
                     const isWorkingDayYesterday = activeSnap?.yesterday_date === s.snapshot_date
                     return (
                       <option key={s.id} value={s.id}>
-                        {s.label} ({formatDate(s.snapshot_date)}){isWorkingDayYesterday ? ' ⚡' : ''}
+                        {s.label} ({formatDate(s.snapshot_date)})
                       </option>
                     )
                   })}

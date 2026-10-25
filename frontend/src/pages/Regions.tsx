@@ -175,14 +175,24 @@ function RegionsContent() {
     setModalOpen(true)
   }
 
-  const renderDelta = (countDelta: number, acvDelta: number, compareStr: string) => {
+  const renderDelta = (countDelta: number, acvDelta: number, compareLabel: string) => {
     const val = metricMode === 'Count' ? countDelta : acvDelta
-    if (val === 0) return <span className="text-gray-400 text-xs">No change vs {compareStr}</span>
-    
+    const label = compareLabel.toLowerCase().includes('last') || compareLabel.toLowerCase().includes('wk')
+      ? 'vs last week'
+      : 'vs yesterday'
+
+    if (val === 0) {
+      return (
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
+          <span>{label}</span>
+          <span className="tabular-nums">—</span>
+        </div>
+      )
+    }
+
     const isPos = val > 0
-    const color = isPos ? 'text-green-500' : 'text-red-500'
-    const Icon = isPos ? ArrowUpRight : ArrowDownRight
-    
+    const color = isPos ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-rose-600 dark:text-rose-400 font-medium'
+
     let text = ''
     if (metricMode === 'Amount') {
       text = (isPos ? '+' : '') + formatACV(acvDelta)
@@ -191,11 +201,11 @@ function RegionsContent() {
     } else {
       text = `${isPos ? '+' : ''}${formatCount(countDelta)} · ${isPos ? '+' : ''}${formatACV(acvDelta)}`
     }
-    
+
     return (
-      <div className={`flex items-center gap-1 text-xs font-medium ${color}`}>
-        <Icon className="w-3 h-3" />
-        <span>{text} vs {compareStr}</span>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-[var(--text-muted)] font-normal">{label}</span>
+        <span className={`tabular-nums ${color}`}>{text}</span>
       </div>
     )
   }
@@ -273,29 +283,34 @@ function RegionsContent() {
       )}
 
       {/* Tiles */}
-      <div className="flex flex-wrap gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <button
           onClick={() => setSelectedRegion('All')}
           className={cn(
-            "flex-1 min-w-[140px] text-left p-4 rounded-xl border transition-all shadow-sm",
+            "card p-4 text-left flex flex-col justify-between gap-2.5 transition-colors cursor-pointer",
             selectedRegion === 'All'
-              ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-2 ring-blue-500/20"
-              : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300"
+              ? "border-[var(--brand-teal)] ring-1 ring-[var(--brand-teal)]"
+              : "hover:border-[var(--brand-teal)]"
           )}
         >
-          <div className="text-sm font-medium text-gray-500 mb-1">All Regions</div>
-          <div 
-            className="text-xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-500 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDrill(`All Regions (${data_slice})`, {})
-            }}
-          >
-            {metricMode === 'Count' ? formatCount(summary.total.count) : 
-             metricMode === 'Amount' ? formatACV(summary.total.acv) : 
-             `${formatCount(summary.total.count)} · ${formatACV(summary.total.acv)}`}
+          <div className="space-y-1.5 w-full">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="All Regions">All Regions</span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total.count)} deals</span>
+            </div>
+            <div 
+              className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDrill(`All Regions (${data_slice})`, {})
+              }}
+            >
+              {metricMode === 'Count' ? formatCount(summary.total.count) : 
+               metricMode === 'Amount' ? formatACV(summary.total.acv) : 
+               `${formatCount(summary.total.count)} · ${formatACV(summary.total.acv)}`}
+            </div>
           </div>
-          <div className="mt-2 space-y-1">
+          <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
             {renderDelta(summary.total.delta_yesterday.count, summary.total.delta_yesterday.acv, yDayStr)}
             {renderDelta(summary.total.delta_lastweek.count, summary.total.delta_lastweek.acv, lwStr)}
           </div>
@@ -310,32 +325,38 @@ function RegionsContent() {
               key={rname}
               onClick={() => setSelectedRegion(rname)}
               className={cn(
-                "flex-1 min-w-[140px] text-left p-4 rounded-xl border transition-all shadow-sm",
+                "card p-4 text-left flex flex-col justify-between gap-2.5 transition-colors cursor-pointer",
                 selectedRegion === rname
-                  ? "bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-2 ring-blue-500/20"
-                  : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-300"
+                  ? "border-[var(--brand-teal)] ring-1 ring-[var(--brand-teal)]"
+                  : "hover:border-[var(--brand-teal)]"
               )}
             >
-              <div className="flex justify-between items-start mb-1">
-                <div className="text-sm font-medium text-gray-500">{rname}</div>
-                {metricMode !== 'Count' && (
-                  <div className="text-xs font-semibold text-blue-600 bg-blue-50 dark:bg-blue-500/10 dark:text-blue-400 px-1.5 py-0.5 rounded">
-                    {reg.pct_acv}%
-                  </div>
-                )}
+              <div className="space-y-1.5 w-full">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={rname}>{rname}</span>
+                  {metricMode !== 'Count' ? (
+                    <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                      {reg.pct_acv}%
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
+                      {formatCount(reg.count)} deals
+                    </span>
+                  )}
+                </div>
+                <div 
+                  className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDrill(`${rname} Deals`, { region: rname })
+                  }}
+                >
+                  {metricMode === 'Count' ? formatCount(reg.count) : 
+                   metricMode === 'Amount' ? formatACV(reg.acv) : 
+                   `${formatCount(reg.count)} · ${formatACV(reg.acv)}`}
+                </div>
               </div>
-              <div 
-                className="text-xl font-bold text-gray-900 dark:text-white cursor-pointer hover:text-blue-500 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDrill(`${rname} Deals`, { region: rname })
-                }}
-              >
-                {metricMode === 'Count' ? formatCount(reg.count) : 
-                 metricMode === 'Amount' ? formatACV(reg.acv) : 
-                 `${formatCount(reg.count)} · ${formatACV(reg.acv)}`}
-              </div>
-              <div className="mt-2 space-y-1">
+              <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
                 {renderDelta(reg.delta_yesterday.count, reg.delta_yesterday.acv, yDayStr)}
                 {renderDelta(reg.delta_lastweek.count, reg.delta_lastweek.acv, lwStr)}
               </div>

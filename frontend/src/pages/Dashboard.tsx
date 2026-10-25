@@ -44,11 +44,10 @@ function DeltaBadge({ val, label }: { val: number | null | undefined; label?: st
   if (val == null) return null
   const up = val >= 0
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-sm ${
-      up ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-         : 'bg-red-500/10 text-red-700 dark:text-red-400'
+    <span className={`inline-flex items-center text-xs font-medium tabular-nums ${
+      up ? 'text-emerald-600 dark:text-emerald-400'
+         : 'text-rose-600 dark:text-rose-400'
     }`}>
-      {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
       {up ? '+' : ''}{val}{label ? ` ${label}` : ''}
     </span>
   )
@@ -58,11 +57,11 @@ function AcvDelta({ val }: { val: number | null | undefined }) {
   if (val == null) return null
   const up = val >= 0
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-sm ${
-      up ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-         : 'bg-red-500/10 text-red-700 dark:text-red-400'
+    <span className={`inline-flex items-center text-xs font-medium tabular-nums ${
+      up ? 'text-emerald-600 dark:text-emerald-400'
+         : 'text-rose-600 dark:text-rose-400'
     }`}>
-      {up ? '▲' : '▼'} {up ? '+' : ''}{acvM(val)}
+      {up ? '+' : ''}{acvM(val)}
     </span>
   )
 }
@@ -352,20 +351,19 @@ export default function Dashboard() {
                 {acvM(total.acv ?? 0)}
               </span>
             )}
-            <Pill color="teal">
-              <Users className="w-3 h-3" />
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
               {total.count ?? 0} Contracts
-            </Pill>
+            </span>
           </div>
-          <p className="text-[11px] text-[var(--text-muted)] mt-2">
+          <p className="text-xs text-[var(--text-muted)] mt-2">
             Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count ?? 0} contracts
           </p>
 
           {/* Trend rows BELOW the total ACV and contract count */}
           <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row gap-4 sm:gap-8">
             {[
-              { label: 'vs Yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
-              { label: 'vs Last Week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
+              { label: 'vs yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
+              { label: 'vs last week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
             ].map(({ label, delta, kind, date }) => {
               const acvVal = delta?.acv ?? 0
               const countVal = delta?.count ?? 0
@@ -375,14 +373,14 @@ export default function Dashboard() {
               const acvColor = isAcvNeutral
                 ? 'text-[var(--text-muted)]'
                 : acvVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-red-600 dark:text-red-400 font-bold'
+                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                : 'text-rose-600 dark:text-rose-400 font-medium'
 
               const countColor = isCountNeutral
                 ? 'text-[var(--text-muted)]'
                 : countVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
-                : 'text-red-600 dark:text-red-400 font-bold'
+                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                : 'text-rose-600 dark:text-rose-400 font-medium'
 
               const acvSign = acvVal > 0 ? '+' : ''
               const countSign = countVal > 0 ? '+' : ''
@@ -394,11 +392,11 @@ export default function Dashboard() {
                   onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
                   title={`Click to view deals with changes ${label}`}
                 >
-                  <span className="text-[var(--text-muted)] font-medium">
+                  <span className="text-[var(--text-muted)] font-normal text-xs">
                     {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}:
                   </span>
                   {delta ? (
-                    <span className="font-mono text-xs flex items-center gap-1.5">
+                    <span className="text-xs tabular-nums flex items-center gap-1.5">
                       <span className={acvColor}>
                         {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
                       </span>
@@ -431,28 +429,27 @@ export default function Dashboard() {
           >
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-                <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider group-hover:text-[var(--brand-teal)] transition-colors">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-tight group-hover:text-[var(--brand-teal)] transition-colors">
                   Coverage (Commit + Best Case):
                 </span>
               </div>
-              <span className="text-sm sm:text-base font-black font-mono text-[var(--text-primary)] tabular-nums group-hover:underline">
+              <span className="text-sm sm:text-base font-bold tabular-nums text-[var(--text-primary)] group-hover:underline">
                 {summary.coverage.pct != null ? `${summary.coverage.pct}%` : '—'}
               </span>
-              <span className="text-xs text-[var(--text-muted)] font-mono">
+              <span className="text-xs text-[var(--text-muted)] tabular-nums">
                 of total ACV ({formatCurrency(summary.coverage.acv)} · {formatNumber(summary.coverage.count)} contracts)
               </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5" title="Percentage-point change vs yesterday">
-                <span className="text-[11px] text-[var(--text-muted)]">vs Yesterday:</span>
+                <span className="text-xs text-[var(--text-muted)]">vs yesterday:</span>
                 {summary.coverage.delta_yesterday_pp != null ? (
                   <span
-                    className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                    className={`tabular-nums font-medium text-xs ${
                       summary.coverage.delta_yesterday_pp >= 0
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
                     {summary.coverage.delta_yesterday_pp >= 0 ? '+' : ''}
@@ -464,13 +461,13 @@ export default function Dashboard() {
               </div>
 
               <div className="flex items-center gap-1.5" title="Percentage-point change vs last week">
-                <span className="text-[11px] text-[var(--text-muted)]">vs Last Week:</span>
+                <span className="text-xs text-[var(--text-muted)]">vs last week:</span>
                 {summary.coverage.delta_lastweek_pp != null ? (
                   <span
-                    className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                    className={`tabular-nums font-medium text-xs ${
                       summary.coverage.delta_lastweek_pp >= 0
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
                     {summary.coverage.delta_lastweek_pp >= 0 ? '+' : ''}
@@ -480,7 +477,7 @@ export default function Dashboard() {
                   <span className="text-[var(--text-muted)]">—</span>
                 )}
               </div>
-              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
                 View deals →
               </span>
             </div>
@@ -513,25 +510,25 @@ export default function Dashboard() {
                     onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: dataKey }, { forecast_category: dataKey })}
                     title={`Click to view ${label} deals`}
                   >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
-                        <Pill color="slate"><Users className="w-3 h-3" />{cat.count} deals</Pill>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={label}>{label}</span>
+                        <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{cat.count} deals</span>
                       </div>
                       {sumLoading
                         ? <div className="h-8 w-28 skeleton-shimmer rounded" />
-                        : <span className="font-extrabold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
+                        : <span className="font-bold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
                       
                       <hr className="border-[var(--border-subtle)]" />
                       
                       <div className="flex flex-col gap-1">
                         {[
-                          { l: 'vs Yesterday', d: cat.delta_yesterday, kind: 'delta_yesterday' },
-                          { l: 'vs Last Week', d: cat.delta_lastweek, kind: 'delta_lastweek' },
+                          { l: 'vs yesterday', d: cat.delta_yesterday, kind: 'delta_yesterday' },
+                          { l: 'vs last week', d: cat.delta_lastweek, kind: 'delta_lastweek' },
                         ].map(({ l, d, kind }) => d ? (
                           <div
                             key={l}
-                            className="flex items-center justify-between text-[11px] p-1 -mx-1 rounded hover:bg-[var(--bg-secondary)] cursor-pointer group/trend"
+                            className="flex items-center justify-between text-xs p-1 -mx-1 rounded hover:bg-[var(--bg-secondary)] cursor-pointer group/trend"
                             onClick={(e) => {
                               e.stopPropagation()
                               openDealsQuery(`${label} Deals (${l}) · ${d.count ?? 0} deals · ${acvM(d.acv ?? 0)}`, { category: dataKey, kind })
@@ -539,10 +536,10 @@ export default function Dashboard() {
                             title={`Click to view ${label} deals that changed ${l}`}
                           >
                             <span className="text-[var(--text-muted)] group-hover/trend:text-[var(--text-primary)]">{l}</span>
-                            <div className="flex gap-1"><DeltaBadge val={d.count} /><AcvDelta val={d.acv} /></div>
+                            <div className="flex items-center gap-1.5 tabular-nums"><DeltaBadge val={d.count} /><span className="text-[var(--text-muted)]">·</span><AcvDelta val={d.acv} /></div>
                           </div>
                         ) : (
-                          <div key={l} className="flex items-center justify-between text-[11px] text-[var(--text-muted)] opacity-60">
+                          <div key={l} className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
                             <span>{l}</span>
                             <span>—</span>
                           </div>
@@ -1066,9 +1063,8 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-base text-[var(--text-primary)]">Regional Trend</h2>
-            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">ACV values in $M</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">ACV values in $M</p>
           </div>
-          <BarChart3 className="w-5 h-5 text-[var(--text-muted)]" />
         </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
           <table className="w-full text-xs">
