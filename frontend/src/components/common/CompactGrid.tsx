@@ -131,7 +131,7 @@ export default function CompactGrid({
         <table className="w-full text-[13px] whitespace-nowrap">
           <thead>
             <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-              <th className="px-3 py-2 text-left font-medium text-[var(--text-muted)]">{rowLabelName}</th>
+              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-medium text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs">{rowLabelName}</th>
               {activeColumns.map(c => {
                 const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                 return (
@@ -147,7 +147,7 @@ export default function CompactGrid({
               return (
                 <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group">
                   <td 
-                    className="px-3 py-2 font-medium bg-[var(--bg-secondary)] border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors h-[36px]"
+                    className="sticky left-0 bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors h-[36px] shadow-xs"
                     onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
                   >
                     {rowLabel}
@@ -227,7 +227,7 @@ export default function CompactGrid({
             })}
             <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-secondary)]">
               <td 
-                className="px-3 py-2 font-semibold border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] h-[36px]"
+                className="sticky left-0 bg-[var(--bg-secondary)] z-10 px-3 py-2 font-semibold border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] h-[36px] shadow-xs"
                 onClick={() => onCellClick(null, null, `${title} Total`)}
               >
                 TOTAL

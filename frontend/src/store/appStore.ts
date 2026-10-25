@@ -84,6 +84,10 @@ interface AppState {
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
 
+  // Mobile Sidebar Drawer
+  mobileSidebarOpen: boolean
+  setMobileSidebarOpen: (open: boolean) => void
+
   // Opportunity drawer
   selectedOppId: string | null
   setSelectedOppId: (id: string | null) => void
@@ -163,6 +167,9 @@ export const useAppStore = create<AppState>()(
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      mobileSidebarOpen: false,
+      setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
 
       selectedOppId: null,
       setSelectedOppId: (id) => set({ selectedOppId: id }),

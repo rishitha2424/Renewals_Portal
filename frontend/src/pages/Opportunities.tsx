@@ -1337,11 +1337,11 @@ export default function Opportunities() {
       {/* ── Detail Drawer (Click any row) ─────────────────────────────────── */}
       {selectedRowData && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex justify-end">
-          <div className="w-full max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
+          <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
             {/* Drawer Header */}
             <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
               <div>
-                <h2 className="font-black text-base text-[var(--text-primary)]">
+                <h2 className="font-black text-sm sm:text-base text-[var(--text-primary)]">
                   {selectedRowData['Opportunity Name'] || 'Deal Detail'}
                 </h2>
                 <p className="text-xs text-[var(--text-muted)] font-mono">
@@ -1351,7 +1351,8 @@ export default function Opportunities() {
               <button
                 type="button"
                 onClick={() => setSelectedRowData(null)}
-                className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                aria-label="Close deal detail"
               >
                 <X className="w-5 h-5" />
               </button>

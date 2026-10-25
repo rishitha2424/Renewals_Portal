@@ -969,7 +969,7 @@ function RegionsContent() {
               <tr>
                 <th 
                   onClick={() => toggleSort('region')}
-                  className="py-3 px-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="sticky left-0 bg-gray-50 dark:bg-gray-900 z-20 py-3 px-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-r border-gray-200 dark:border-gray-700 shadow-xs"
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Region</span>
@@ -1055,7 +1055,7 @@ function RegionsContent() {
                     )}
                   >
                     {/* Region */}
-                    <td className="py-3 px-4">
+                    <td className="sticky left-0 bg-white dark:bg-gray-800 z-10 py-3 px-4 border-r border-gray-200 dark:border-gray-700 shadow-xs">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setSelectedRegion(r.region)}
@@ -1148,7 +1148,7 @@ function RegionsContent() {
             {/* Total / Portfolio Row */}
             <tfoot className="bg-gray-50 dark:bg-gray-900 font-bold border-t-2 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white">
               <tr>
-                <td className="py-3 px-4">
+                <td className="sticky left-0 bg-gray-50 dark:bg-gray-900 z-10 py-3 px-4 border-r border-gray-200 dark:border-gray-700 shadow-xs">
                   <div className="flex items-center gap-2">
                     <span>Portfolio Total</span>
                     <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold bg-gray-200 dark:bg-gray-800 px-1.5 py-0.5 rounded">

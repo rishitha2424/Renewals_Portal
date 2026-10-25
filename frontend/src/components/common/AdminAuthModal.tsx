@@ -43,14 +43,14 @@ export default function AdminAuthModal() {
   return (
     <>
       {isAdmin ? (
-        <div className="h-9 px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
-          <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+        <div className="h-10 px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
+          <ShieldCheck className="w-4 h-4 flex-shrink-0" />
           <span className="hidden xl:inline">Admin</span>
           <button
             type="button"
             onClick={handleLogout}
             title="Sign out as administrator"
-            className="ml-1 hover:text-red-500 transition-colors p-0.5 rounded"
+            className="ml-1 hover:text-red-500 transition-colors p-1 rounded"
             id="admin-sign-out-btn"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -63,11 +63,11 @@ export default function AdminAuthModal() {
             setError(null)
             setIsOpen(true)
           }}
-          className="h-9 px-3 rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0 focus:outline-none"
+          className="h-10 px-3 rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0 focus:outline-none"
           id="admin-sign-in-btn"
           title="Admin sign in"
         >
-          <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <Lock className="w-4 h-4 text-amber-500 flex-shrink-0" />
           <span className="hidden xl:inline">Admin sign in</span>
         </button>
       )}
@@ -75,13 +75,13 @@ export default function AdminAuthModal() {
       {/* Admin Sign-In Modal */}
       <AnimatePresence>
         {isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60">
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="w-full max-w-md bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl p-6 relative overflow-hidden"
+              className="w-full max-w-md max-sm:h-full max-sm:max-w-full max-sm:rounded-none bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl p-6 relative overflow-hidden flex flex-col justify-center"
             >
               <button
                 type="button"

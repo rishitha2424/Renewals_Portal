@@ -567,7 +567,7 @@ function BusinessUnitsContent() {
           <table className="w-full text-xs text-left whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0 z-10">
               <tr>
-                <th className="py-2.5 px-4 font-semibold">Business Unit</th>
+                <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-4 font-semibold border-r border-[var(--border)] shadow-xs">Business Unit</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Total ACV</th>
                 <th className="py-2.5 px-3 font-semibold text-right">% Share</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Commit ACV</th>
@@ -594,7 +594,7 @@ function BusinessUnitsContent() {
                     onClick={() => handleCellClick(r.bu, null, `${r.bu} · All Categories`)}
                     className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
                   >
-                    <td className="py-2.5 px-4 font-semibold text-[var(--text-primary)] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                    <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2.5 px-4 font-semibold text-[var(--text-primary)] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs">
                       {r.bu}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
@@ -639,7 +639,7 @@ function BusinessUnitsContent() {
                 onClick={() => handleCellClick(null, null, 'All Business Units · All Categories')}
                 className="hover:bg-[var(--bg-muted)]/80 cursor-pointer"
               >
-                <td className="py-2.5 px-4 font-bold text-[var(--text-primary)]">TOTAL</td>
+                <td className="sticky left-0 bg-[var(--bg-secondary)] z-10 py-2.5 px-4 font-bold text-[var(--text-primary)] border-r border-[var(--border)] shadow-xs">TOTAL</td>
                 <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
                   {formatCurrency(total.acv)}
                 </td>
@@ -728,7 +728,7 @@ function BusinessUnitsContent() {
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0">
               <tr>
-                <th className="py-2.5 px-3 font-semibold">Opportunity</th>
+                <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-3 font-semibold border-r border-[var(--border)] shadow-xs">Opportunity</th>
                 <th className="py-2.5 px-3 font-semibold">Account</th>
                 <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
                 <th className="py-2.5 px-3 font-semibold text-center">Category</th>
@@ -749,7 +749,7 @@ function BusinessUnitsContent() {
                     onClick={() => setSelectedOppId(d.opportunity_id_18)}
                     className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
                   >
-                    <td className="py-2.5 px-3 font-medium text-[var(--text-primary)] truncate max-w-[260px] group-hover:text-indigo-600 dark:group-hover:text-indigo-400" title={d.opportunity_name}>
+                    <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2.5 px-3 font-medium text-[var(--text-primary)] truncate max-w-[260px] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs" title={d.opportunity_name}>
                       {d.opportunity_name}
                     </td>
                     <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[180px]">{d.account_name}</td>
