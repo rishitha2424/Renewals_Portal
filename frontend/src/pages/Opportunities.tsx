@@ -34,6 +34,7 @@ import { useAppStore } from '@/store/appStore'
 import { formatACV, formatCount } from '@/utils/format'
 import { Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/SectionHeader'
+import SectionNav from '@/components/common/SectionNav'
 import ControlChip from '@/components/ui/ControlChip'
 import showToast from '@/components/ui/Toast'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
@@ -477,10 +478,26 @@ export default function Opportunities() {
     return <PageErrorState message={rowsResp.error} onRetry={() => refetch()} />
   }
 
+  const explorerSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    list.push({ id: 'explorer-header', title: 'Controls & Summary' })
+    list.push({ id: 'explorer-quick-filters', title: 'Quick Filters' })
+    if (showFilterBuilder) {
+      list.push({ id: 'explorer-filter-builder', title: 'Filter Builder' })
+    }
+    if (showColPicker) {
+      list.push({ id: 'explorer-col-picker', title: 'Column Chooser' })
+    }
+    list.push({ id: 'explorer-table', title: 'Data Explorer Table' })
+    return list
+  }, [showFilterBuilder, showColPicker])
+
   return (
     <div className="space-y-4 max-w-full" id="data-explorer-page">
+      <SectionNav sections={explorerSections} />
+
       {/* ── Top Header Strip ─────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--border)]">
+      <div id="explorer-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--border)] scroll-mt-24">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-black text-[var(--text-primary)]">Data Explorer</h1>
@@ -565,7 +582,7 @@ export default function Opportunities() {
       </div>
 
       {/* ── Quick Filter Row (Chips with Row Counts) ─────────────────────── */}
-      <Card padding="sm" className="space-y-3">
+      <Card id="explorer-quick-filters" padding="sm" className="space-y-3 scroll-mt-24">
         {/* Quick Filters Header & Collapse Toggle */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -841,7 +858,7 @@ export default function Opportunities() {
 
       {/* ── Filter Builder Popover / Panel ───────────────────────────────── */}
       {showFilterBuilder && (
-        <Card padding="md" className="space-y-4 border-[#00A3AD]/30 bg-[var(--bg-card)] shadow-lg">
+        <Card id="explorer-filter-builder" padding="md" className="space-y-4 border-[#00A3AD]/30 bg-[var(--bg-card)] shadow-lg scroll-mt-24">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[#00A3AD]" />
@@ -1124,7 +1141,7 @@ export default function Opportunities() {
 
       {/* ── Column Chooser Modal / Drawer ─────────────────────────────────── */}
       {showColPicker && (
-        <Card padding="md" className="space-y-3 bg-[var(--bg-card)] shadow-lg border-teal-500/30">
+        <Card id="explorer-col-picker" padding="md" className="space-y-3 bg-[var(--bg-card)] shadow-lg border-teal-500/30 scroll-mt-24">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
             <div className="flex items-center gap-2">
               <Columns className="w-4 h-4 text-teal-600" />
@@ -1197,7 +1214,7 @@ export default function Opportunities() {
       )}
 
       {/* ── Virtualised / Sticky Header Table ────────────────────────────── */}
-      <Card padding="none" className="overflow-hidden border-[var(--border)] shadow-sm">
+      <Card id="explorer-table" padding="none" className="overflow-hidden border-[var(--border)] shadow-sm scroll-mt-24">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative" id="explorer-table-container">
           <table className="w-full text-xs text-left border-collapse">
             {/* Sticky Header */}

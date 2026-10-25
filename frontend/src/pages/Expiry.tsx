@@ -17,6 +17,7 @@ import DealListModal from '@/components/common/DealListModal'
 import { MovementsSummary } from '@/components/common/MovementsSummary'
 import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
+import SectionNav from '@/components/common/SectionNav'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -145,12 +146,36 @@ export default function Expiry() {
   const yestGrand = deltas1?.yesterday?.grand
   const lastGrand = deltas1?.lastweek?.grand
 
+  const expirySections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (sum?.grand_total) {
+      list.push({ id: 'expiry-totals', title: 'Totals & slippage' })
+    }
+    if (sum?.fiscal_years) {
+      sum.fiscal_years.forEach((fyObj: any) => {
+        if (fyObj.label && sum.grids?.[fyObj.label]) {
+          list.push({ id: `expiry-grid-${fyObj.label}`, title: `FY ${fyObj.label}` })
+        }
+      })
+    }
+    if (sum?.profile_chart && sum.profile_chart.length > 0) {
+      list.push({ id: 'expiry-profile', title: 'Expiry Profile' })
+    }
+    list.push({ id: 'expiry-insights', title: 'Closure & Insights' })
+    if (movementsData) {
+      list.push({ id: 'expiry-movements', title: 'Movements' })
+    }
+    return list
+  }, [sum, movementsData])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6 pb-12"
     >
+      <SectionNav sections={expirySections} />
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-[var(--text-primary)]">Expiry</h1>
@@ -216,7 +241,7 @@ export default function Expiry() {
       )}
 
       {/* Grand Total & Slippage KPI Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
         <Card
           className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
           onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
@@ -280,7 +305,7 @@ export default function Expiry() {
         if (!grid) return null
         const deltas = sum.deltas?.[yLabel]
         return (
-          <div key={yLabel} className="space-y-1">
+          <div key={yLabel} id={`expiry-grid-${yLabel}`} className="space-y-1 scroll-mt-24">
             <CompactGrid
               title={`FY ${yLabel} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
               columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
@@ -305,7 +330,7 @@ export default function Expiry() {
 
 
       {/* Expiry Profile Stacked Column Chart Section */}
-      <Card className="p-5 mt-6 hover:border-[var(--primary)] transition-colors">
+      <Card id="expiry-profile" className="p-5 mt-6 hover:border-[var(--primary)] transition-colors scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <div className="flex items-center gap-2">
@@ -466,7 +491,7 @@ export default function Expiry() {
       </Card>
 
       {/* Insights Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+      <div id="expiry-insights" className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 scroll-mt-24">
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
@@ -588,7 +613,7 @@ export default function Expiry() {
       </div>
 
       {/* Shared Movement Section */}
-      <Card className="p-6 mt-8">
+      <Card id="expiry-movements" className="p-6 mt-8 scroll-mt-24">
         <MovementsSummary
           movements={movementsData}
           onSelectDeals={(title, deals) => {

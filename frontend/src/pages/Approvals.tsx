@@ -33,6 +33,7 @@ import CompactGrid from '@/components/common/CompactGrid'
 import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import Card from '@/components/ui/Card'
+import SectionNav from '@/components/common/SectionNav'
 
 function formatDelta(val: number, isCount: boolean) {
   if (val == null) return null
@@ -228,12 +229,43 @@ export default function Approvals() {
     return { ...r, pct, startPct, color }
   })
 
+  const approvalsSections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (total?.count != null) {
+      list.push({ id: 'approvals-summary', title: 'Approval Status' })
+    }
+    if (funnel && funnel.length > 0) {
+      list.push({ id: 'approvals-funnel', title: 'Funnel Pipeline' })
+    }
+    if (matrix && Object.keys(matrix).length > 0) {
+      list.push({ id: 'approvals-matrix', title: 'Status vs Category' })
+    }
+    if (deal_size_split?.statuses?.length > 0) {
+      list.push({ id: 'approvals-deal-size', title: 'Deal-Size Split' })
+    }
+    if (approval_coverage) {
+      list.push({ id: 'approvals-coverage', title: 'Approval Coverage' })
+    }
+    if (commit_not_approved?.count > 0 || pending_ageing?.count > 0) {
+      list.push({ id: 'approvals-commit-risk', title: 'Commit Risks & Ageing' })
+    }
+    if (approved_trend && approved_trend.length > 0) {
+      list.push({ id: 'approvals-trend', title: 'Approval Trend' })
+    }
+    if ((movements_yesterday && movements_yesterday.length > 0) || (movements_lastweek && movements_lastweek.length > 0) || (movements_custom && movements_custom.length > 0)) {
+      list.push({ id: 'approvals-movements', title: 'Status Movements' })
+    }
+    return list
+  }, [total, funnel, matrix, deal_size_split, approval_coverage, commit_not_approved, pending_ageing, approved_trend, movements_yesterday, movements_lastweek, movements_custom])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6 pb-20"
     >
+      <SectionNav sections={approvalsSections} />
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-[var(--text-primary)] tracking-tight">Approval Funnel</h1>
@@ -247,7 +279,7 @@ export default function Approvals() {
       </div>
 
       {/* Slim Stat Chips */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="approvals-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}><StatChip label="Approved" data={attachDates(getStatus('Approved'))} icon={CheckCircle2} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}><StatChip label="Pending" data={attachDates(getStatus('Pending Approval'))} icon={Clock} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
@@ -275,7 +307,7 @@ export default function Approvals() {
 
       {/* 1. Approval Funnel Pipeline Card */}
       {funnel.length > 0 && (
-        <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors">
+        <Card id="approvals-funnel" className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors scroll-mt-24">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
             <div>
               <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -375,7 +407,7 @@ export default function Approvals() {
       )}
 
       {/* Grid: Donut Chart & Status vs FC Matrix */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div id="approvals-matrix" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-24">
         {/* Left: Donut Chart */}
         <Card className="xl:col-span-5 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
           <h2 className="text-sm font-bold text-[var(--text-primary)] mb-4 cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>Status Share</h2>
@@ -526,7 +558,7 @@ export default function Approvals() {
 
       {/* 2. Deal-Size Split Card */}
       {deal_size_split.statuses?.length > 0 && (
-        <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors">
+        <Card id="approvals-deal-size" className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors scroll-mt-24">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
             <div>
               <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -745,7 +777,7 @@ export default function Approvals() {
       )}
 
       {/* 3. Approval Coverage per FC, Region, BU Card */}
-      <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors">
+      <Card id="approvals-coverage" className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors scroll-mt-24">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -1048,7 +1080,7 @@ export default function Approvals() {
       </Card>
 
       {/* Row: Commit Not Approved & Pending Ageing */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div id="approvals-commit-risk" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-24">
         {/* 4. Commit But Not Approved Table */}
         <Card className="xl:col-span-7 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -1211,7 +1243,7 @@ export default function Approvals() {
 
       {/* 6. Trend of Approved % over recent snapshots Card */}
       {approved_trend.length > 0 && (
-        <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors">
+        <Card id="approvals-trend" className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors scroll-mt-24">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
             <div>
               <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -1254,7 +1286,7 @@ export default function Approvals() {
       )}
 
       {/* Insights Row: Status movements table and companion cards (kept intact) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div id="approvals-movements" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-24">
         {/* Approval status changes table */}
         <Card className="xl:col-span-7 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
           {(() => {

@@ -42,6 +42,7 @@ import {
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import { useAppStore } from '@/store/appStore'
+import SectionNav from '@/components/common/SectionNav'
 
 export type FileSlot = 'comparison_tool' | 'renewals_summary' | string
 
@@ -394,8 +395,25 @@ export default function DataUploads() {
   const suggestedDateMismatch =
     previewData?.suggested_date && previewData.suggested_date !== dataAsOf
 
+  const uploadsSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    list.push({ id: 'uploads-ingestion', title: 'File Ingestion Panel' })
+    if (previewData) {
+      list.push({ id: 'uploads-preview', title: 'Validation & Preview' })
+    }
+    if (uploadHistory && uploadHistory.length > 0) {
+      list.push({ id: 'uploads-history', title: 'Snapshot History' })
+    }
+    if (coverageData) {
+      list.push({ id: 'uploads-coverage', title: 'Working-Day Coverage' })
+    }
+    return list
+  }, [previewData, uploadHistory, coverageData])
+
   return (
     <div className="space-y-6 w-full pb-12">
+      <SectionNav sections={uploadsSections} />
+
       {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[var(--border)]">
@@ -433,7 +451,7 @@ export default function DataUploads() {
           SECTION 1: ADMIN UPLOAD PANEL
           Visible and usable ONLY when signed in as admin; for everyone else show read-only note
       ───────────────────────────────────────────────────────────────────────── */}
-      <section className="space-y-4">
+      <section id="uploads-ingestion" className="space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
             <Layers className="w-4 h-4 text-teal-500" />
@@ -840,8 +858,8 @@ export default function DataUploads() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="space-y-4"
-            id="upload-preview-container"
+            className="space-y-4 scroll-mt-24"
+            id="uploads-preview"
           >
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
@@ -1104,7 +1122,7 @@ export default function DataUploads() {
           Admin-only row actions: set active, replace, delete.
           Everyone can open a snapshot's details.
       ───────────────────────────────────────────────────────────────────────── */}
-      <section className="space-y-4">
+      <section id="uploads-history" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
@@ -1355,7 +1373,7 @@ export default function DataUploads() {
           snapshot each date resolves to.
       ───────────────────────────────────────────────────────────────────────── */}
       {coverageData && (
-        <section className="space-y-4">
+        <section id="uploads-coverage" className="space-y-4 scroll-mt-24">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
               <Calendar className="w-4 h-4 text-teal-500" />

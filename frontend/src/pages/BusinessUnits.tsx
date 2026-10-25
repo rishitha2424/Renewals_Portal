@@ -27,6 +27,7 @@ import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
 import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import SectionNav from '@/components/common/SectionNav'
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
@@ -246,8 +247,25 @@ function BusinessUnitsContent() {
     d.account_name?.toLowerCase().includes(topSearch.toLowerCase())
   )
 
+  const buSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (total?.count != null) {
+      list.push({ id: 'bu-kpi-summary', title: 'KPI Summary' })
+    }
+    if (rows && rows.length > 0) {
+      list.push({ id: 'bu-heatmap-share', title: 'Heatmap & BU Share' })
+      list.push({ id: 'bu-coverage-table', title: 'Portfolio Coverage' })
+    }
+    if (topDeals && topDeals.length > 0) {
+      list.push({ id: 'bu-top-opps', title: 'Top Opportunities' })
+    }
+    return list
+  }, [total, rows, topDeals])
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+    <div className="space-y-6 w-full pb-12">
+      <SectionNav sections={buSections} />
+
       {/* 1. Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
         <div className="flex items-center gap-3">
@@ -347,7 +365,7 @@ function BusinessUnitsContent() {
       </div>
 
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         {/* Card 1: Total Portfolio ACV */}
         <div className="card p-4 flex flex-col justify-between gap-2.5">
           <div className="space-y-1.5">
@@ -470,7 +488,7 @@ function BusinessUnitsContent() {
       </div>
 
       {/* 3. Equal-Height 12-Column Grid: Heatmap (8 cols) + BU Share (4 cols) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
+      <div id="bu-heatmap-share" className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch scroll-mt-24">
         {/* Heatmap Card (8 cols) */}
         <div className="xl:col-span-8 flex flex-col">
           <CompactGrid
@@ -547,7 +565,7 @@ function BusinessUnitsContent() {
       </div>
 
       {/* 4. Portfolio Coverage & Movement Table (Analytical Breakdown replacing duplicate heatmap) */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden">
+      <div id="bu-coverage-table" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden scroll-mt-24">
         <div className="p-4 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -674,7 +692,7 @@ function BusinessUnitsContent() {
       </div>
 
       {/* 5. Top Opportunities Section */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5">
+      <div id="bu-top-opps" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">

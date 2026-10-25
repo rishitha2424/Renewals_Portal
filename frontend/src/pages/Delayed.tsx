@@ -23,6 +23,7 @@ import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import SectionNav from '@/components/common/SectionNav'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 
@@ -363,8 +364,36 @@ function DelayedContent() {
   const slipTot = summary.slippage?.total || summary.slipped
   const isFuture = summary?.is_future
 
+  const delayedSections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (delTot?.count != null) {
+      list.push({ id: 'delayed-renewals-group', title: 'Delayed Renewals' })
+    }
+    if (slipTot?.count != null) {
+      list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
+    }
+    if (summary?.lost) {
+      list.push({ id: 'delayed-lost-group', title: 'Lost / Removed' })
+    }
+    if (summary?.ageing_breakdown?.length) {
+      list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
+    }
+    if (summary?.trend?.length || summary?.newly_delayed) {
+      list.push({ id: 'delayed-trends', title: 'Trends' })
+    }
+    if (summary?.by_region?.length || summary?.by_bu?.length) {
+      list.push({ id: 'delayed-breakdowns', title: 'Region & BU Grids' })
+    }
+    if (summary?.top_deals?.length) {
+      list.push({ id: 'delayed-top-deals', title: 'Top Delayed Deals' })
+    }
+    return list
+  }, [delTot, slipTot, summary])
+
   return (
     <div className="space-y-8">
+      <SectionNav sections={delayedSections} />
+
       {/* Aligned Section Header with integrated controls (no combined banner) */}
       <SectionHeader
         title="Delayed Renewals & Slippage"
@@ -403,7 +432,7 @@ function DelayedContent() {
       />
 
       {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
-      <div className="space-y-4">
+      <div id="delayed-renewals-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
           <div>
             <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -525,7 +554,7 @@ function DelayedContent() {
       </div>
 
       {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
-      <div className="space-y-4">
+      <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
           <div>
             <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -652,7 +681,7 @@ function DelayedContent() {
       </div>
 
       {/* ────────────────── SECTION 3: LOST / REMOVED ────────────────── */}
-      <div className="space-y-4">
+      <div id="delayed-lost-group" className="space-y-4 scroll-mt-24">
         <div className="border-b border-[var(--border)] pb-2">
           <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
@@ -676,7 +705,7 @@ function DelayedContent() {
       </div>
 
       {/* Overdue Ageing Breakdown */}
-      <Card padding="md">
+      <Card id="delayed-ageing" padding="md" className="scroll-mt-24">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Overdue Ageing Breakdown</h2>
@@ -726,7 +755,7 @@ function DelayedContent() {
       </Card>
 
       {/* Historical Trend and Newly Delayed */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div id="delayed-trends" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-24">
         {/* Trend of Delayed ACV */}
         <Card padding="md" className="flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
@@ -813,7 +842,7 @@ function DelayedContent() {
       </div>
 
       {/* Grid Breakdowns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div id="delayed-breakdowns" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-24">
         <Card className="flex flex-col h-[400px]" padding="none">
           <div className="overflow-x-auto h-full p-4">
             <CompactGrid
@@ -854,7 +883,7 @@ function DelayedContent() {
       </div>
 
       {/* Top Delayed Deals Table: 44px rows, px-4 py-3 padding, hairline divider, right-aligned numbers */}
-      <Card padding="none">
+      <Card id="delayed-top-deals" padding="none" className="scroll-mt-24">
         <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>

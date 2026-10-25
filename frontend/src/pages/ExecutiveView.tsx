@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar } from 'lucide-react'
 import {
@@ -21,6 +21,7 @@ import {
   getForecastCategoryLabel,
   getQuarterFromDate,
 } from '@/utils/format'
+import SectionNav from '@/components/common/SectionNav'
 
 export default function ExecutiveView() {
   const { activeSnapshotId, setActiveSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
@@ -318,13 +319,26 @@ export default function ExecutiveView() {
 
   const hasReconciliationMismatch = mismatchErrors.length > 0
 
+  const executiveSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (totalCount > 0 || totalAcv > 0) list.push({ id: 'exec-headline', title: 'Headline' })
+    if (catRows.length > 0) list.push({ id: 'exec-forecast', title: 'Forecast Category' })
+    if (deltaYesterday != null || deltaLastWeek != null) list.push({ id: 'exec-movement', title: 'Baselines' })
+    if (approvalRows.length > 0) list.push({ id: 'exec-approvals', title: 'Approval Status' })
+    if (expiryRows.length > 0) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
+    if (top10Regions.length > 0) list.push({ id: 'exec-regions', title: 'Top Regions' })
+    if (buRows.length > 0) list.push({ id: 'exec-bu', title: 'Business Units' })
+    if (delayedRenewalsTotal.count > 0 || slippageTotal.count > 0) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
+    return list
+  }, [totalCount, totalAcv, catRows, deltaYesterday, deltaLastWeek, approvalRows, expiryRows, top10Regions, buRows, delayedRenewalsTotal, slippageTotal])
+
   const generatedAt = new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'medium',
   })
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-5xl mx-auto" id="executive-report-view">
+    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-6xl mx-auto" id="executive-report-view">
       {/* Print CSS styles */}
       <style>{`
         @media print {
@@ -417,6 +431,9 @@ export default function ExecutiveView() {
         </div>
       </div>
 
+      {/* Dynamic Section Navigation (Screen only) */}
+      <SectionNav sections={executiveSections} className="no-print mb-6" />
+
       {/* Snapshot Date Mismatch Warning */}
       {hasSnapshotDateMismatch && (
         <div className="mb-6 p-4 rounded-lg bg-red-50 border-2 border-red-500 text-red-900 flex items-start gap-3" id="executive-snapshot-mismatch-warning">
@@ -467,11 +484,11 @@ export default function ExecutiveView() {
       </header>
 
       {/* Headline Summary Line */}
-      <div className="mb-6 p-4 rounded-lg bg-slate-50 border border-slate-300 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div id="exec-headline" className="scroll-mt-24 mb-6 p-4 rounded-lg bg-slate-50 border border-slate-300 flex flex-wrap items-center justify-between gap-3 text-sm">
         <div>
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Portfolio Headline</span>
           <span className="font-bold text-slate-800 text-base">
-            Total Active Renewals: <span className="text-[#12284C] font-mono text-lg">{formatNumber(totalCount)} deals</span> &nbsp;|&nbsp; <span className="text-[#00A3AD] font-mono text-lg">{formatCurrency(totalAcv)} Total ACV</span>
+            Total Active Renewals: <span className="text-[#12284C] tabular-nums text-lg">{formatNumber(totalCount)} deals</span> &nbsp;|&nbsp; <span className="text-[#00A3AD] tabular-nums text-lg">{formatCurrency(totalAcv)} Total ACV</span>
           </span>
         </div>
         <div className="text-right text-xs">
@@ -481,132 +498,138 @@ export default function ExecutiveView() {
       </div>
 
       {/* Forecast Category Summary table */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-forecast" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               1. Forecast Category Summary
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Forecast Category</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2 text-right">% of Total ACV</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {catRows.map(r => (
-                <tr key={r.key} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-700">{formatNumber(r.count)}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-600">{r.pct.toFixed(1)}%</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Forecast Category</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2 text-right">% of Total ACV</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total Renewals</td>
-                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(catSumCount)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">{formatCurrency(catSumAcv)}</td>
-                <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {catRows.map(r => (
+                  <tr key={r.key} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.count)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">{r.pct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td className="px-4 py-2.5">Total Renewals</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(catSumCount)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-[#12284C]">{formatCurrency(catSumAcv)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">100.0%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </section>
 
       {/* Movement vs yesterday and vs last week */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-movement" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               2. Movement vs. Historical Baselines
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Baseline Comparison</th>
-                <th className="px-4 py-2">Prior Snapshot Date</th>
-                <th className="px-4 py-2 text-right">Deals Change</th>
-                <th className="px-4 py-2 text-right">ACV Change (USD)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Yesterday</td>
-                <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '')}</td>
-                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                  {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
-                </td>
-                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                  {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
-                </td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Last Week</td>
-                <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '')}</td>
-                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                  {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
-                </td>
-                <td className={`px-4 py-2 text-right font-mono font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                  {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Baseline Comparison</th>
+                  <th className="px-4 py-2">Prior Snapshot Date</th>
+                  <th className="px-4 py-2 text-right">Deals Change</th>
+                  <th className="px-4 py-2 text-right">ACV Change (USD)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Yesterday</td>
+                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '')}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
+                  </td>
+                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
+                  </td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Last Week</td>
+                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '')}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
+                  </td>
+                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                    {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       {/* Approval Status Summary table */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-approvals" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               3. Approval Status Summary
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Approval Status</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2 text-right">% of Total ACV</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {approvalRows.map(r => (
-                <tr key={r.status} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-700">{formatNumber(r.count)}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-600">{r.pct.toFixed(1)}%</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Approval Status</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2 text-right">% of Total ACV</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total</td>
-                <td className="px-4 py-2.5 text-right font-mono">
-                  {formatNumber(approvalSumCount)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">
-                  {formatCurrency(approvalSumAcv)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {approvalRows.map(r => (
+                  <tr key={r.status} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.count)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">{r.pct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td className="px-4 py-2.5">Total</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {formatNumber(approvalSumCount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-[#12284C]">
+                    {formatCurrency(approvalSumAcv)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">100.0%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </section>
 
       {/* Expiry Quarter × Forecast Category table */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-expiry" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
@@ -637,19 +660,19 @@ export default function ExecutiveView() {
                   return (
                     <tr key={r.quarter} className="hover:bg-slate-50/50">
                       <td className="px-3 py-2 font-semibold text-slate-800">{r.label || r.quarter}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                         {commitAcv > 0 ? formatCurrency(commitAcv) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                         {bestCaseAcv > 0 ? formatCurrency(bestCaseAcv) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                         {pipelineAcv > 0 ? formatCurrency(pipelineAcv) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                         {blankAcv > 0 ? formatCurrency(blankAcv) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+                      <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-900">
                         {formatCurrency(rowTotalAcv)}
                       </td>
                     </tr>
@@ -662,96 +685,100 @@ export default function ExecutiveView() {
       </section>
 
       {/* Top 10 Regions by ACV table */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-regions" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               5. Top 10 Regions by ACV
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-3 py-2 w-8 text-center">#</th>
-                <th className="px-3 py-2">Region</th>
-                <th className="px-3 py-2 text-right">Deals</th>
-                <th className="px-3 py-2 text-right">ACV (USD)</th>
-                <th className="px-3 py-2 text-right">% of Total</th>
-                <th className="px-3 py-2 text-right">Commit %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {top10Regions.map((reg: any, i: number) => (
-                <tr key={reg.region} className="hover:bg-slate-50/50">
-                  <td className="px-3 py-2 text-center text-slate-400 font-mono">{i + 1}</td>
-                  <td className="px-3 py-2 font-medium text-slate-800">{reg.region}</td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-700">{formatNumber(reg.count)}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(reg.acv)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-600">
-                    {reg.pct_acv != null ? `${reg.pct_acv.toFixed(1)}%` : totalAcv > 0 ? `${((reg.acv / totalAcv) * 100).toFixed(1)}%` : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-600">
-                    {reg.commit_pct != null ? `${reg.commit_pct.toFixed(1)}%` : '—'}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-3 py-2 w-8 text-center">#</th>
+                  <th className="px-3 py-2">Region</th>
+                  <th className="px-3 py-2 text-right">Deals</th>
+                  <th className="px-3 py-2 text-right">ACV (USD)</th>
+                  <th className="px-3 py-2 text-right">% of Total</th>
+                  <th className="px-3 py-2 text-right">Commit %</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {top10Regions.map((reg: any, i: number) => (
+                  <tr key={reg.region} className="hover:bg-slate-50/50">
+                    <td className="px-3 py-2 text-center text-slate-400 tabular-nums">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">{reg.region}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatNumber(reg.count)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(reg.acv)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                      {reg.pct_acv != null ? `${reg.pct_acv.toFixed(1)}%` : totalAcv > 0 ? `${((reg.acv / totalAcv) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                      {reg.commit_pct != null ? `${reg.commit_pct.toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       {/* Business Unit table */}
-      <section className="mb-6 page-break-avoid">
+      <section id="exec-bu" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               6. Business Unit Breakdown
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Business Unit</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2 text-right">% of Total ACV</th>
-                <th className="px-4 py-2 text-right">Commit %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {buRows.map((b: any) => (
-                <tr key={b.bu} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-slate-800">{b.bu}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-700">{formatNumber(b.count)}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">{formatCurrency(b.acv)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-600">
-                    {b.pct_acv != null ? `${b.pct_acv.toFixed(1)}%` : totalAcv > 0 ? `${((b.acv / totalAcv) * 100).toFixed(1)}%` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-slate-600">
-                    {b.commit_pct != null ? `${b.commit_pct.toFixed(1)}%` : '—'}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Business Unit</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2 text-right">% of Total ACV</th>
+                  <th className="px-4 py-2 text-right">Commit %</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total</td>
-                <td className="px-4 py-2.5 text-right font-mono">
-                  {formatNumber(buSumCount)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-[#12284C]">
-                  {formatCurrency(buSumAcv)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono">100.0%</td>
-                <td className="px-4 py-2.5 text-right font-mono">—</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {buRows.map((b: any) => (
+                  <tr key={b.bu} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 font-medium text-slate-800">{b.bu}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(b.count)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(b.acv)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                      {b.pct_acv != null ? `${b.pct_acv.toFixed(1)}%` : totalAcv > 0 ? `${((b.acv / totalAcv) * 100).toFixed(1)}%` : '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                      {b.commit_pct != null ? `${b.commit_pct.toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td className="px-4 py-2.5">Total</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {formatNumber(buSumCount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-[#12284C]">
+                    {formatCurrency(buSumAcv)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">100.0%</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </section>
 
       {/* 7. Delayed Renewals & Slippage (Separated per Item 1) */}
-      <section className="mb-6 space-y-6 page-break-avoid">
+      <section id="exec-delayed" className="scroll-mt-24 mb-6 space-y-6 page-break-avoid">
         {/* 7a. Delayed Renewals Summary */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
@@ -765,38 +792,40 @@ export default function ExecutiveView() {
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
             Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late.
           </p>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Category</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2">Risk Description</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-rose-900">Overdue Renewals</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatNumber(overdue.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-rose-800">{formatCurrency(overdue.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Service expiry date has passed snapshot date and not yet closed</td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-amber-900">Later Close Date within Quarter</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(laterClose.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(laterClose.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Expected close date postponed later within active quarter</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total Delayed Renewals</td>
-                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(delayedRenewalsTotal.count)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-rose-900">{formatCurrency(delayedRenewalsTotal.acv)}</td>
-                <td className="px-4 py-2.5 text-slate-500">Deals staying in quarter but delayed</td>
-              </tr>
-            </tfoot>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Category</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2">Risk Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-rose-900">Overdue Renewals</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-rose-800">{formatNumber(overdue.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-rose-800">{formatCurrency(overdue.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Service expiry date has passed snapshot date and not yet closed</td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-amber-900">Later Close Date within Quarter</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(laterClose.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(laterClose.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Expected close date postponed later within active quarter</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td className="px-4 py-2.5">Total Delayed Renewals</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(delayedRenewalsTotal.count)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-rose-900">{formatCurrency(delayedRenewalsTotal.acv)}</td>
+                  <td className="px-4 py-2.5 text-slate-500">Deals staying in quarter but delayed</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
         {/* 7b. Slippage Summary */}
@@ -812,44 +841,46 @@ export default function ExecutiveView() {
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
             Deals that moved OUT of the selected quarter into a later one, split by destination.
           </p>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Destination</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2">Destination Description</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-amber-900">Slipped to next fiscal year</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedNextYear.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedNextYear.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">New fiscal year is later than selected quarter year</td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-amber-900">Slipped to next quarter</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedNextQuarter.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedNextQuarter.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Immediately following quarter in the same fiscal year</td>
-              </tr>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-amber-900">Slipped to a later quarter, same year</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatNumber(slippedLaterQuarter.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-amber-800">{formatCurrency(slippedLaterQuarter.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Any other later quarter in the same fiscal year</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                <td className="px-4 py-2.5">Total Slippage</td>
-                <td className="px-4 py-2.5 text-right font-mono">{formatNumber(slippageTotal.count)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
-                <td className="px-4 py-2.5 text-slate-500">All renewals moving into later quarters/years</td>
-              </tr>
-            </tfoot>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Destination</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2">Destination Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to next fiscal year</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedNextYear.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedNextYear.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">New fiscal year is later than selected quarter year</td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to next quarter</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedNextQuarter.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedNextQuarter.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Immediately following quarter in the same fiscal year</td>
+                </tr>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to a later quarter, same year</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedLaterQuarter.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedLaterQuarter.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Any other later quarter in the same fiscal year</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td className="px-4 py-2.5">Total Slippage</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippageTotal.count)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
+                  <td className="px-4 py-2.5 text-slate-500">All renewals moving into later quarters/years</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
         {/* 7c. Lost / Removed (Outside both totals) */}
@@ -859,24 +890,26 @@ export default function ExecutiveView() {
               7c. Lost / Removed Contracts
             </h2>
           </div>
-          <table className="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <th className="px-4 py-2">Category</th>
-                <th className="px-4 py-2 text-right">Deals</th>
-                <th className="px-4 py-2 text-right">ACV (USD)</th>
-                <th className="px-4 py-2">Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="hover:bg-slate-50/50">
-                <td className="px-4 py-2 font-medium text-slate-800">Lost / Terminated / Removed</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-slate-800">{formatNumber(lost.count)}</td>
-                <td className="px-4 py-2 text-right font-mono font-semibold text-slate-800">{formatCurrency(lost.acv)}</td>
-                <td className="px-4 py-2 text-slate-500">Deals deleted or lost since the baseline period (excluded from Delayed and Slippage totals)</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <th className="px-4 py-2">Category</th>
+                  <th className="px-4 py-2 text-right">Deals</th>
+                  <th className="px-4 py-2 text-right">ACV (USD)</th>
+                  <th className="px-4 py-2">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-2 font-medium text-slate-800">Lost / Terminated / Removed</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatNumber(lost.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatCurrency(lost.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Deals deleted or lost since the baseline period (excluded from Delayed and Slippage totals)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -900,7 +933,7 @@ export default function ExecutiveView() {
         </div>
 
         <div className="text-right">
-          <p>Generated: <span className="font-mono text-slate-700">{generatedAt}</span></p>
+          <p>Generated: <span className="tabular-nums text-slate-700">{generatedAt}</span></p>
           <p className="text-[10px] text-slate-400">Mobileum Horizon Renewals Intelligence · Executive Report</p>
         </div>
       </footer>

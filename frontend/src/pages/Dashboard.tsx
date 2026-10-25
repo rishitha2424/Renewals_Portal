@@ -24,6 +24,7 @@ import { PageErrorState } from '@/components/ui/PageErrorState'
 import DealListModal from '@/components/common/DealListModal'
 import FilterBar from '@/components/common/FilterBar'
 import { MovementsSummary } from '@/components/common/MovementsSummary'
+import SectionNav from '@/components/common/SectionNav'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -261,8 +262,36 @@ export default function Dashboard() {
 
   const FC_COLS = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'] as const
 
+  // Dynamically generate overview section links from the data rendered
+  const overviewSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (total) {
+      list.push({ id: 'overview-hero', title: summary?.data_slice ? `${summary.data_slice} Total` : 'Total ACV' })
+    }
+    if (cats && Object.keys(cats).length > 0) {
+      list.push({ id: 'overview-forecast-category', title: 'Forecast category' })
+    }
+    if (summary?.delayed_renewals || summary?.delayed_renewals_total) {
+      list.push({ id: 'overview-delayed-renewals', title: 'Delayed renewals' })
+    }
+    if (summary?.slippage_section || summary?.slippage) {
+      list.push({ id: 'overview-slippage', title: 'Slippage' })
+    }
+    if (movements) {
+      list.push({ id: 'overview-movements', title: 'Movements & changes' })
+    }
+    if (regional?.proposal_confirmation?.length) {
+      list.push({ id: 'overview-proposal-confirmation', title: 'Proposal confirmation' })
+    }
+    if (regional?.regional_trend?.length) {
+      list.push({ id: 'overview-regional-trend', title: 'Regional trend' })
+    }
+    return list
+  }, [summary, total, cats, movements, regional])
+
   return (
     <div className="space-y-6 pb-16 w-full">
+      <SectionNav sections={overviewSections} />
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -334,7 +363,7 @@ export default function Dashboard() {
       )}
 
       {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
-      <div className="card p-6">
+      <div id="overview-hero" className="card p-6 scroll-mt-24">
         <div>
           <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
             TOTAL {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} ACV VALUE
@@ -485,29 +514,33 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── SECTION 2 – Category cards in one row ──────────────────────── */}
+      {/* ── SECTION 2 – Forecast Category Group (Data-driven) ──────────────── */}
       {(() => {
-        const categoryCards = [
-          { key: 'Closed', label: 'Closed', dataKey: 'Closed' },
-          { key: 'Commit', label: 'Commit', dataKey: 'Commit' },
-          { key: 'Best Case', label: 'Best Case', dataKey: 'Best Case' },
-          { key: 'Pipeline', label: 'Pipeline', dataKey: 'Pipeline' },
-        ] as const
+        // Data-driven list of forecast categories present in the snapshot (excluding 'Blank' / 'Not yet proposed', 'total', etc.)
+        const categoryKeys = Object.keys(cats).filter(
+          (k) => k !== 'Blank' && k !== 'Not yet proposed' && k !== 'total' && k !== 'All'
+        )
 
         return (
-          <div>
+          <div id="overview-forecast-category" className="scroll-mt-24 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
+                Forecast category
+              </h2>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {categoryCards.map(({ key, label, dataKey }) => {
-                const cat = cats[dataKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
-                const color = FORECAST_COLORS[dataKey] || '#64748b'
+              {categoryKeys.map((catKey) => {
+                const cat = cats[catKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
+                const label = getForecastCategoryLabel(catKey)
+                const color = FORECAST_COLORS[catKey] || '#64748b'
 
                 return (
                   <motion.div
-                    key={key}
+                    key={catKey}
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                     className="card p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
                     style={{ borderTop: `3px solid ${color}` }}
-                    onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: dataKey }, { forecast_category: dataKey })}
+                    onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: catKey }, { forecast_category: catKey })}
                     title={`Click to view ${label} deals`}
                   >
                     <div className="space-y-2">
@@ -531,7 +564,7 @@ export default function Dashboard() {
                             className="flex items-center justify-between text-xs p-1 -mx-1 rounded hover:bg-[var(--bg-secondary)] cursor-pointer group/trend"
                             onClick={(e) => {
                               e.stopPropagation()
-                              openDealsQuery(`${label} Deals (${l}) · ${d.count ?? 0} deals · ${acvM(d.acv ?? 0)}`, { category: dataKey, kind })
+                              openDealsQuery(`${label} Deals (${l}) · ${d.count ?? 0} deals · ${acvM(d.acv ?? 0)}`, { category: catKey, kind })
                             }}
                             title={`Click to view ${label} deals that changed ${l}`}
                           >
@@ -628,7 +661,7 @@ export default function Dashboard() {
         return (
           <div className="space-y-6">
             {/* ── SUBSECTION 1: DELAYED RENEWALS ── */}
-            <div className="card p-6" style={{ borderLeft: '4px solid #F43F5E' }}>
+            <div id="overview-delayed-renewals" className="card p-6 scroll-mt-24" style={{ borderLeft: '4px solid #F43F5E' }}>
               <div className="flex flex-col gap-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -772,7 +805,7 @@ export default function Dashboard() {
             </div>
 
             {/* ── SUBSECTION 2: SLIPPAGE ── */}
-            <div className="card p-6" style={{ borderLeft: '4px solid #F59E0B' }}>
+            <div id="overview-slippage" className="card p-6 scroll-mt-24" style={{ borderLeft: '4px solid #F59E0B' }}>
               <div className="flex flex-col gap-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -1003,7 +1036,7 @@ export default function Dashboard() {
 
 
       {/* ── SECTION 4 – Forecast Category & Approval Movement ───────────────── */}
-      <div className="card p-6">
+      <div id="overview-movements" className="card p-6 scroll-mt-24">
         <MovementsSummary
           movements={movements}
           compareMode={movCompare}
@@ -1013,7 +1046,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION 6 – Proposal Confirmation ───────────────────────────────── */}
-      <div className="card p-6 space-y-4">
+      <div id="overview-proposal-confirmation" className="card p-6 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-base text-[var(--text-primary)]">Proposal Confirmation</h2>
@@ -1059,7 +1092,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── SECTION 7 – Regional Trend ───────────────────────────────────────── */}
-      <div className="card p-6 space-y-4">
+      <div id="overview-regional-trend" className="card p-6 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-base text-[var(--text-primary)]">Regional Trend</h2>

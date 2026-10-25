@@ -29,6 +29,7 @@ import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
 import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import SectionNav from '@/components/common/SectionNav'
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 
@@ -244,8 +245,24 @@ function RegionsContent() {
   
   const insightLines = getInsightLines()
 
+  const regionsSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (regions && regions.length > 0) {
+      list.push({ id: 'regions-tiles', title: 'Regional Overview' })
+    }
+    if (selectedRegion !== 'All') {
+      list.push({ id: 'regions-deep-dive', title: `${selectedRegion} Deep Dive` })
+    }
+    if (summary?.regions && summary.regions.length > 0) {
+      list.push({ id: 'regions-matrix', title: 'Comparison Matrix' })
+    }
+    return list
+  }, [regions, selectedRegion, summary?.regions])
+
   return (
     <div className="space-y-6 pb-20">
+      <SectionNav sections={regionsSections} />
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -283,7 +300,7 @@ function RegionsContent() {
       )}
 
       {/* Tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <button
           onClick={() => setSelectedRegion('All')}
           className={cn(
@@ -367,7 +384,7 @@ function RegionsContent() {
 
       {/* SELECTED REGION DEEP DIVE */}
       {selectedRegion !== 'All' && (
-        <div className="space-y-6">
+        <div id="regions-deep-dive" className="space-y-6 scroll-mt-24">
           <Card className="p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-6">
             {/* Header with Title and Quick Exit */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-800 gap-3">
@@ -947,7 +964,7 @@ function RegionsContent() {
       )}
 
       {/* REGION COMPARISON TABLE ACROSS ALL REGIONS */}
-      <Card className="p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+      <Card id="regions-matrix" className="p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
