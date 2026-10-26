@@ -146,6 +146,20 @@ function RegionsContent() {
     }
   }
 
+  const regionsSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (summary?.regions && summary.regions.length > 0) {
+      list.push({ id: 'regions-tiles', title: 'Regional Overview' })
+    }
+    if (selectedRegion !== 'All') {
+      list.push({ id: 'regions-deep-dive', title: `${selectedRegion} Deep Dive` })
+    }
+    if (summary?.regions && summary.regions.length > 0) {
+      list.push({ id: 'regions-matrix', title: 'Comparison Matrix' })
+    }
+    return list
+  }, [summary?.regions, selectedRegion])
+
   if (!activeSnapshotId) {
     return <PageNoSnapshotState />
   }
@@ -244,20 +258,6 @@ function RegionsContent() {
   }
   
   const insightLines = getInsightLines()
-
-  const regionsSections = useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (regions && regions.length > 0) {
-      list.push({ id: 'regions-tiles', title: 'Regional Overview' })
-    }
-    if (selectedRegion !== 'All') {
-      list.push({ id: 'regions-deep-dive', title: `${selectedRegion} Deep Dive` })
-    }
-    if (summary?.regions && summary.regions.length > 0) {
-      list.push({ id: 'regions-matrix', title: 'Comparison Matrix' })
-    }
-    return list
-  }, [regions, selectedRegion, summary?.regions])
 
   return (
     <div className="space-y-6 pb-20">

@@ -24,12 +24,18 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo)
+    console.error('[ErrorBoundary caught error]:', error)
+    if (error?.stack) {
+      console.error('[ErrorBoundary stack]:', error.stack)
+    }
+    if (errorInfo?.componentStack) {
+      console.error('[ErrorBoundary componentStack]:', errorInfo.componentStack)
+    }
     this.setState({ errorInfo })
   }
 
   private handleCopy = () => {
-    const text = `${this.state.error?.toString()}\n\n${this.state.errorInfo?.componentStack}`
+    const text = `Error: ${this.state.error?.message || this.state.error?.toString()}\n\nStack:\n${this.state.error?.stack || 'N/A'}\n\nComponent Stack:\n${this.state.errorInfo?.componentStack || 'N/A'}`
     navigator.clipboard.writeText(text)
   }
 
@@ -37,19 +43,38 @@ class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="p-8 flex items-center justify-center min-h-[400px]">
-          <Card className="max-w-lg w-full p-6 text-center shadow-xl border-red-500/20 bg-red-500/5 dark:bg-red-500/10">
+          <Card className="max-w-2xl w-full p-6 text-center shadow-xl border-red-500/20 bg-red-500/5 dark:bg-red-500/10">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-2">This page could not be displayed</h2>
-            <p className="text-sm text-[var(--text-muted)] mb-6">
+            <p className="text-sm text-[var(--text-muted)] mb-4">
               An unexpected error occurred while rendering this page.
             </p>
             
-            <div className="text-left bg-[var(--bg-primary)] p-3 rounded-lg border border-[var(--border)] overflow-auto max-h-40 mb-6">
-              <pre className="text-[10px] font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap">
-                {this.state.error?.toString()}
-              </pre>
+            <div className="text-left bg-[var(--bg-primary)] p-3 rounded-lg border border-[var(--border)] overflow-auto max-h-72 mb-6 space-y-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 block mb-1">Error Message</span>
+                <pre className="text-xs font-mono font-semibold text-red-600 dark:text-red-400 whitespace-pre-wrap select-all">
+                  {this.state.error?.message || this.state.error?.toString()}
+                </pre>
+              </div>
+              {this.state.error?.stack && (
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] block mb-1">Stack Trace</span>
+                  <pre className="text-[10px] font-mono text-[var(--text-muted)] whitespace-pre-wrap select-all max-h-28 overflow-auto">
+                    {this.state.error.stack}
+                  </pre>
+                </div>
+              )}
+              {this.state.errorInfo?.componentStack && (
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block mb-1">Component Stack</span>
+                  <pre className="text-[10px] font-mono text-amber-700 dark:text-amber-300 whitespace-pre-wrap select-all max-h-28 overflow-auto">
+                    {this.state.errorInfo.componentStack}
+                  </pre>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-center gap-3">

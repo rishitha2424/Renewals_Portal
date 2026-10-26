@@ -54,11 +54,11 @@ function MiniSparklineWithHistory({
   points: SnapshotPoint[]
   color: string
 }) {
-  const data = points?.map((p) => p.value) || []
-  const count = data.length
+  const count = points?.length || 0
 
   const path = useMemo(() => {
-    if (count < 2) return null
+    const data = points?.map((p) => p.value) || []
+    if (data.length < 2) return null
     const min = Math.min(...data)
     const max = Math.max(...data)
     const range = max - min || 1
@@ -67,12 +67,12 @@ function MiniSparklineWithHistory({
 
     return data
       .map((val, idx) => {
-        const x = (idx / (count - 1)) * width
+        const x = (idx / (data.length - 1)) * width
         const y = height - ((val - min) / range) * (height - 6) - 3
         return `${x.toFixed(1)},${y.toFixed(1)}`
       })
       .join(' ')
-  }, [data, count])
+  }, [points])
 
   if (!path) {
     return (
@@ -94,7 +94,7 @@ function MiniSparklineWithHistory({
           points={path}
         />
         {/* Draw a subtle dot on the last point */}
-        {data.length > 0 && (
+        {count > 0 && (
           <circle
             cx="68"
             cy={path.split(' ').pop()?.split(',')[1] || '12'}

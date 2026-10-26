@@ -214,6 +214,32 @@ export default function Dashboard() {
   const isError = Boolean(sumErr || movYErr || movLWErr || regErr || summary?.error || movements?.error || regional?.error)
   const errorMessage = (summary?.error || movements?.error || regional?.error) || "Couldn’t load this page. Try again"
 
+  const overviewSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (summary?.total) {
+      list.push({ id: 'overview-hero', title: summary?.data_slice ? `${summary.data_slice} Total` : 'Total ACV' })
+    }
+    if (summary?.categories && Object.keys(summary.categories).length > 0) {
+      list.push({ id: 'overview-forecast-category', title: 'Forecast category' })
+    }
+    if (summary?.delayed_renewals || summary?.delayed_renewals_total) {
+      list.push({ id: 'overview-delayed-renewals', title: 'Delayed renewals' })
+    }
+    if (summary?.slippage_section || summary?.slippage) {
+      list.push({ id: 'overview-slippage', title: 'Slippage' })
+    }
+    if (movements) {
+      list.push({ id: 'overview-movements', title: 'Movements & changes' })
+    }
+    if (regional?.proposal_confirmation?.length) {
+      list.push({ id: 'overview-proposal-confirmation', title: 'Proposal confirmation' })
+    }
+    if (regional?.regional_trend?.length) {
+      list.push({ id: 'overview-regional-trend', title: 'Regional trend' })
+    }
+    return list
+  }, [summary, movements, regional])
+
   if (snapshots.length === 0 && !isLoading) {
     return <PageNoSnapshotState />
   }
@@ -260,33 +286,6 @@ export default function Dashboard() {
   const propRows  = orderRegions(propConf)
   const trendRows = orderRegions(regTrend)
   const trendFcCols = Object.keys(cats).filter(k => k !== 'total' && k !== 'All' && (cats[k]?.count > 0 || (cats[k]?.acv != null && cats[k]?.acv !== 0)))
-
-  // Dynamically generate overview section links from the data rendered
-  const overviewSections = useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (total) {
-      list.push({ id: 'overview-hero', title: summary?.data_slice ? `${summary.data_slice} Total` : 'Total ACV' })
-    }
-    if (cats && Object.keys(cats).length > 0) {
-      list.push({ id: 'overview-forecast-category', title: 'Forecast category' })
-    }
-    if (summary?.delayed_renewals || summary?.delayed_renewals_total) {
-      list.push({ id: 'overview-delayed-renewals', title: 'Delayed renewals' })
-    }
-    if (summary?.slippage_section || summary?.slippage) {
-      list.push({ id: 'overview-slippage', title: 'Slippage' })
-    }
-    if (movements) {
-      list.push({ id: 'overview-movements', title: 'Movements & changes' })
-    }
-    if (regional?.proposal_confirmation?.length) {
-      list.push({ id: 'overview-proposal-confirmation', title: 'Proposal confirmation' })
-    }
-    if (regional?.regional_trend?.length) {
-      list.push({ id: 'overview-regional-trend', title: 'Regional trend' })
-    }
-    return list
-  }, [summary, total, cats, movements, regional])
 
   return (
     <div className="space-y-6 pb-16 w-full">

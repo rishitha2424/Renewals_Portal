@@ -12,6 +12,7 @@ import Opportunities from '@/pages/Opportunities'
 import ExecutiveView from '@/pages/ExecutiveView'
 import DataUploads from '@/pages/DataUploads'
 import LoadingScreen from '@/pages/LoadingScreen'
+import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
 
 export default function App() {
@@ -60,7 +61,14 @@ export default function App() {
       />
       <Routes>
         <Route path="/loading" element={<LoadingScreen />} />
-        <Route path="/executive" element={<ExecutiveView />} />
+        <Route
+          path="/executive"
+          element={
+            <ErrorBoundary>
+              <ExecutiveView />
+            </ErrorBoundary>
+          }
+        />
         <Route element={<Shell />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/expiry" element={<Expiry />} />

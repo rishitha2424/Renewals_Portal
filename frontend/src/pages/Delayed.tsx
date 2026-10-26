@@ -64,6 +64,34 @@ function DelayedContent() {
     enabled: modalOpen,
   })
 
+  const delayedSections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    const delCount = summary?.delayed_renewals?.total?.count ?? summary?.total?.count
+    if (delCount != null) {
+      list.push({ id: 'delayed-renewals-group', title: 'Delayed Renewals' })
+    }
+    const slipCount = summary?.slippage?.total?.count ?? summary?.slipped?.count
+    if (slipCount != null) {
+      list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
+    }
+    if (summary?.lost) {
+      list.push({ id: 'delayed-lost-group', title: 'Lost since start of quarter' })
+    }
+    if (summary?.ageing_breakdown?.length) {
+      list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
+    }
+    if (summary?.trend?.length || summary?.newly_delayed) {
+      list.push({ id: 'delayed-trends', title: 'Trends' })
+    }
+    if (summary?.by_region?.length || summary?.by_bu?.length) {
+      list.push({ id: 'delayed-breakdowns', title: 'Region & BU Grids' })
+    }
+    if (summary?.top_deals?.length) {
+      list.push({ id: 'delayed-top-deals', title: 'Top Delayed Deals' })
+    }
+    return list
+  }, [summary])
+
   if (error || summary?.error) {
     return <PageErrorState message={summary?.error || error?.toString() || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
   }
@@ -365,32 +393,6 @@ function DelayedContent() {
   const delTot = summary.delayed_renewals?.total || summary.total
   const slipTot = summary.slippage?.total || summary.slipped
   const isFuture = summary?.is_future
-
-  const delayedSections = React.useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (delTot?.count != null) {
-      list.push({ id: 'delayed-renewals-group', title: 'Delayed Renewals' })
-    }
-    if (slipTot?.count != null) {
-      list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
-    }
-    if (summary?.lost) {
-      list.push({ id: 'delayed-lost-group', title: 'Lost since start of quarter' })
-    }
-    if (summary?.ageing_breakdown?.length) {
-      list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
-    }
-    if (summary?.trend?.length || summary?.newly_delayed) {
-      list.push({ id: 'delayed-trends', title: 'Trends' })
-    }
-    if (summary?.by_region?.length || summary?.by_bu?.length) {
-      list.push({ id: 'delayed-breakdowns', title: 'Region & BU Grids' })
-    }
-    if (summary?.top_deals?.length) {
-      list.push({ id: 'delayed-top-deals', title: 'Top Delayed Deals' })
-    }
-    return list
-  }, [delTot, slipTot, summary])
 
   return (
     <div className="space-y-8">

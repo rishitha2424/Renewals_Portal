@@ -51,7 +51,7 @@ export default function OpportunitiesListDrawer({
     enabled: isOpen,
   })
 
-  const items = data?.items || []
+  const items = useMemo(() => data?.items || [], [data?.items])
   const totalCount = data?.total || items.length
 
   const filteredAndSortedItems = useMemo(() => {

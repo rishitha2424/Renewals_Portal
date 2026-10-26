@@ -18,6 +18,9 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    sourcemap: 'hidden',
+  },
   test: {
     environment: 'jsdom',
     globals: true,

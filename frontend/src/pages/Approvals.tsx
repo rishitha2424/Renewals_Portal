@@ -153,6 +153,35 @@ export default function Approvals() {
     enabled: modalOpen && !!activeSnapshotId,
   })
 
+  const approvalsSections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (data?.total?.count != null) {
+      list.push({ id: 'approvals-summary', title: 'Approval Status' })
+    }
+    if (data?.funnel && data.funnel.length > 0) {
+      list.push({ id: 'approvals-funnel', title: 'Funnel Pipeline' })
+    }
+    if (data?.matrix && Object.keys(data.matrix).length > 0) {
+      list.push({ id: 'approvals-matrix', title: 'Status vs Category' })
+    }
+    if (data?.deal_size_split?.statuses?.length > 0) {
+      list.push({ id: 'approvals-deal-size', title: 'Deal-Size Split' })
+    }
+    if (data?.approval_coverage) {
+      list.push({ id: 'approvals-coverage', title: 'Approval Coverage' })
+    }
+    if ((data?.commit_not_approved?.count ?? 0) > 0 || (data?.pending_ageing?.count ?? 0) > 0) {
+      list.push({ id: 'approvals-commit-risk', title: 'Commit Risks & Ageing' })
+    }
+    if (data?.approved_trend && data.approved_trend.length > 0) {
+      list.push({ id: 'approvals-trend', title: 'Approval Trend' })
+    }
+    if ((data?.movements_yesterday && data.movements_yesterday.length > 0) || (data?.movements_lastweek && data.movements_lastweek.length > 0) || (data?.movements_custom && data.movements_custom.length > 0)) {
+      list.push({ id: 'approvals-movements', title: 'Status Movements' })
+    }
+    return list
+  }, [data])
+
   if (!activeSnapshotId || snapshots.length === 0) return <PageNoSnapshotState />
   if (isLoading) return <div className="p-8 text-center text-slate-500 animate-pulse">Loading approval data...</div>
   if (error || data?.error) return <PageErrorState message={(error as any)?.message || data?.error || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
@@ -228,35 +257,6 @@ export default function Approvals() {
     const color = r.status === 'Approved' ? '#10B981' : r.status === 'Pending Approval' ? '#F59E0B' : r.status === 'Blank' ? '#94A3B8' : '#ef4444'
     return { ...r, pct, startPct, color }
   })
-
-  const approvalsSections = React.useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (total?.count != null) {
-      list.push({ id: 'approvals-summary', title: 'Approval Status' })
-    }
-    if (funnel && funnel.length > 0) {
-      list.push({ id: 'approvals-funnel', title: 'Funnel Pipeline' })
-    }
-    if (matrix && Object.keys(matrix).length > 0) {
-      list.push({ id: 'approvals-matrix', title: 'Status vs Category' })
-    }
-    if (deal_size_split?.statuses?.length > 0) {
-      list.push({ id: 'approvals-deal-size', title: 'Deal-Size Split' })
-    }
-    if (approval_coverage) {
-      list.push({ id: 'approvals-coverage', title: 'Approval Coverage' })
-    }
-    if (commit_not_approved?.count > 0 || pending_ageing?.count > 0) {
-      list.push({ id: 'approvals-commit-risk', title: 'Commit Risks & Ageing' })
-    }
-    if (approved_trend && approved_trend.length > 0) {
-      list.push({ id: 'approvals-trend', title: 'Approval Trend' })
-    }
-    if ((movements_yesterday && movements_yesterday.length > 0) || (movements_lastweek && movements_lastweek.length > 0) || (movements_custom && movements_custom.length > 0)) {
-      list.push({ id: 'approvals-movements', title: 'Status Movements' })
-    }
-    return list
-  }, [total, funnel, matrix, deal_size_split, approval_coverage, commit_not_approved, pending_ageing, approved_trend, movements_yesterday, movements_lastweek, movements_custom])
 
   return (
     <motion.div

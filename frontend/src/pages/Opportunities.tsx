@@ -126,7 +126,7 @@ export default function Opportunities() {
       } catch (_) {}
       setVisibleColNames(allColumns.map((c) => c.name))
     }
-  }, [allColumns])
+  }, [allColumns, visibleColNames.length])
 
   // Saved Views in localStorage
   const [savedViews, setSavedViews] = useState<SavedExplorerView[]>(() => {
@@ -470,14 +470,6 @@ export default function Opportunities() {
     )
   }, [selectedRowData, allColumns, drawerSearchQuery])
 
-  if (!activeSnapshotId) {
-    return <PageNoSnapshotState />
-  }
-
-  if (rowsResp?.error) {
-    return <PageErrorState message={rowsResp.error} onRetry={() => refetch()} />
-  }
-
   const explorerSections = useMemo(() => {
     const list: { id: string; title: string }[] = []
     list.push({ id: 'explorer-header', title: 'Controls & Summary' })
@@ -491,6 +483,14 @@ export default function Opportunities() {
     list.push({ id: 'explorer-table', title: 'Data Explorer Table' })
     return list
   }, [showFilterBuilder, showColPicker])
+
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
+  }
+
+  if (rowsResp?.error) {
+    return <PageErrorState message={rowsResp.error} onRetry={() => refetch()} />
+  }
 
   return (
     <div className="space-y-4 max-w-full" id="data-explorer-page">

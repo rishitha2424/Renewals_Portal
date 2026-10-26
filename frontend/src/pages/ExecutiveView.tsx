@@ -128,6 +128,19 @@ export default function ExecutiveView() {
     }
   }
 
+  const executiveSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (overviewQuery.data?.total?.count || overviewQuery.data?.total?.acv) list.push({ id: 'exec-headline', title: 'Headline' })
+    if (overviewQuery.data?.categories) list.push({ id: 'exec-forecast', title: 'Forecast Category' })
+    list.push({ id: 'exec-movement', title: 'Baselines' })
+    if (approvalsQuery.data?.statuses?.length) list.push({ id: 'exec-approvals', title: 'Approval Status' })
+    if (expiryQuery.data?.grids) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
+    if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: 'Top Regions' })
+    if (buQuery.data?.rows?.length) list.push({ id: 'exec-bu', title: 'Business Units' })
+    if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
+    return list
+  }, [overviewQuery.data, approvalsQuery.data, expiryQuery.data, regionsQuery.data, buQuery.data, delayedQuery.data])
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-loading">
@@ -324,19 +337,6 @@ export default function ExecutiveView() {
   }
 
   const hasReconciliationMismatch = mismatchErrors.length > 0
-
-  const executiveSections = useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (totalCount > 0 || totalAcv > 0) list.push({ id: 'exec-headline', title: 'Headline' })
-    if (catRows.length > 0) list.push({ id: 'exec-forecast', title: 'Forecast Category' })
-    if (deltaYesterday != null || deltaLastWeek != null) list.push({ id: 'exec-movement', title: 'Baselines' })
-    if (approvalRows.length > 0) list.push({ id: 'exec-approvals', title: 'Approval Status' })
-    if (expiryRows.length > 0) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
-    if (top10Regions.length > 0) list.push({ id: 'exec-regions', title: 'Top Regions' })
-    if (buRows.length > 0) list.push({ id: 'exec-bu', title: 'Business Units' })
-    if (delayedRenewalsTotal.count > 0 || slippageTotal.count > 0) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
-    return list
-  }, [totalCount, totalAcv, catRows, deltaYesterday, deltaLastWeek, approvalRows, expiryRows, top10Regions, buRows, delayedRenewalsTotal, slippageTotal])
 
   const generatedAt = new Date().toLocaleString('en-US', {
     dateStyle: 'medium',

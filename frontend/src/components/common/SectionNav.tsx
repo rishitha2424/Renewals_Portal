@@ -15,6 +15,7 @@ export default function SectionNav({ sections, className = '' }: SectionNavProps
 
   useEffect(() => {
     if (!sections || sections.length < 3) return
+    if (typeof IntersectionObserver === 'undefined') return
 
     // IntersectionObserver to observe sections and highlight active section
     const observer = new IntersectionObserver(

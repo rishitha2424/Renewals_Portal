@@ -106,6 +106,28 @@ export default function Expiry() {
     return (openDealsData?.deals || []).slice(0, 5)
   }, [openDealsData])
 
+  const expirySections = React.useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (sum?.grand_total) {
+      list.push({ id: 'expiry-totals', title: 'Totals & slippage' })
+    }
+    if (sum?.fiscal_years) {
+      sum.fiscal_years.forEach((fyObj: any) => {
+        if (fyObj.label && sum.grids?.[fyObj.label]) {
+          list.push({ id: `expiry-grid-${fyObj.label}`, title: `FY ${fyObj.label}` })
+        }
+      })
+    }
+    if (sum?.profile_chart && sum.profile_chart.length > 0) {
+      list.push({ id: 'expiry-profile', title: 'Expiry Profile' })
+    }
+    list.push({ id: 'expiry-insights', title: 'Closure & Insights' })
+    if (movementsData) {
+      list.push({ id: 'expiry-movements', title: 'Movements' })
+    }
+    return list
+  }, [sum, movementsData])
+
 
   if (!activeSnapshotId || snapshots.length === 0) {
     return <PageNoSnapshotState />
@@ -145,28 +167,6 @@ export default function Expiry() {
   const grandTotal = sum.grand_total || { count: 0, acv: 0 }
   const yestGrand = deltas1?.yesterday?.grand
   const lastGrand = deltas1?.lastweek?.grand
-
-  const expirySections = React.useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (sum?.grand_total) {
-      list.push({ id: 'expiry-totals', title: 'Totals & slippage' })
-    }
-    if (sum?.fiscal_years) {
-      sum.fiscal_years.forEach((fyObj: any) => {
-        if (fyObj.label && sum.grids?.[fyObj.label]) {
-          list.push({ id: `expiry-grid-${fyObj.label}`, title: `FY ${fyObj.label}` })
-        }
-      })
-    }
-    if (sum?.profile_chart && sum.profile_chart.length > 0) {
-      list.push({ id: 'expiry-profile', title: 'Expiry Profile' })
-    }
-    list.push({ id: 'expiry-insights', title: 'Closure & Insights' })
-    if (movementsData) {
-      list.push({ id: 'expiry-movements', title: 'Movements' })
-    }
-    return list
-  }, [sum, movementsData])
 
   return (
     <motion.div

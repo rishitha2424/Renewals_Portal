@@ -55,6 +55,7 @@ export default function ForecastSankey({
   useEffect(() => {
     if (!svgRef.current || flows.length === 0) return
     renderSankeyChart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flows])
 
   const renderSankeyChart = () => {

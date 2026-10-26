@@ -148,6 +148,21 @@ function BusinessUnitsContent() {
     handleCellClick(bu, null, `${bu} · All Categories`)
   }
 
+  const buSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    if (summary?.total?.count != null) {
+      list.push({ id: 'bu-kpi-summary', title: 'KPI Summary' })
+    }
+    if (summary?.rows && summary.rows.length > 0) {
+      list.push({ id: 'bu-heatmap-share', title: 'Heatmap & BU Share' })
+      list.push({ id: 'bu-coverage-table', title: 'Portfolio Coverage' })
+    }
+    if (topOppsData?.deals && topOppsData.deals.length > 0) {
+      list.push({ id: 'bu-top-opps', title: 'Top Opportunities' })
+    }
+    return list
+  }, [summary, topOppsData])
+
   if (!activeSnapshotId) {
     return <PageNoSnapshotState />
   }
@@ -251,21 +266,6 @@ function BusinessUnitsContent() {
     d.opportunity_name?.toLowerCase().includes(topSearch.toLowerCase()) ||
     d.account_name?.toLowerCase().includes(topSearch.toLowerCase())
   )
-
-  const buSections = useMemo(() => {
-    const list: { id: string; title: string }[] = []
-    if (total?.count != null) {
-      list.push({ id: 'bu-kpi-summary', title: 'KPI Summary' })
-    }
-    if (rows && rows.length > 0) {
-      list.push({ id: 'bu-heatmap-share', title: 'Heatmap & BU Share' })
-      list.push({ id: 'bu-coverage-table', title: 'Portfolio Coverage' })
-    }
-    if (topDeals && topDeals.length > 0) {
-      list.push({ id: 'bu-top-opps', title: 'Top Opportunities' })
-    }
-    return list
-  }, [total, rows, topDeals])
 
   return (
     <div className="space-y-6 w-full pb-12">
