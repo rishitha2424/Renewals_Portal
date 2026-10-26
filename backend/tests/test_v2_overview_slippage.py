@@ -102,15 +102,24 @@ def test_overview_slippage_ties_to_delayed_page(client_and_db, period):
         cat_info = ov_cats[cat_key]
         assert "delta_yesterday" in cat_info
         assert "delta_lastweek" in cat_info
-        assert "count" in cat_info["delta_yesterday"]
-        assert "acv" in cat_info["delta_yesterday"]
-        assert "count" in cat_info["delta_lastweek"]
-        assert "acv" in cat_info["delta_lastweek"]
+
+        # When baseline exists, assert count/acv numbers; when no baseline exists, delta must be allowed to be null (n/a)
+        if cat_info["delta_yesterday"] is not None:
+            assert "count" in cat_info["delta_yesterday"]
+            assert "acv" in cat_info["delta_yesterday"]
+            assert not math.isnan(cat_info["delta_yesterday"]["acv"])
+        else:
+            assert cat_info["delta_yesterday"] is None
+
+        if cat_info["delta_lastweek"] is not None:
+            assert "count" in cat_info["delta_lastweek"]
+            assert "acv" in cat_info["delta_lastweek"]
+            assert not math.isnan(cat_info["delta_lastweek"]["acv"])
+        else:
+            assert cat_info["delta_lastweek"] is None
 
         # Ensure no NaN
         assert not math.isnan(cat_info["acv"])
-        assert not math.isnan(cat_info["delta_yesterday"]["acv"])
-        assert not math.isnan(cat_info["delta_lastweek"]["acv"])
 
 
 def test_overview_slippage_drawers(client_and_db):

@@ -724,7 +724,7 @@ class V2OverviewService:
         if od_deals:
             od_cnt = od_deals_res.get("count", len(od_deals))
             od_tot_acv = od_deals_res.get("acv", 0.0)
-            sorted_od = sorted(od_deals, key=lambda x: float(x.get("forecast_acv_amount", 0.0) or 0.0), reverse=True)
+            sorted_od = sorted(od_deals, key=lambda x: (-float(x.get("forecast_acv_amount", 0.0) or 0.0), str(x.get("opportunity_id_18") or "")))
             top_od = sorted_od[0]
             top_od_date_str = str(top_od.get("close_date") or "")
             try:
@@ -819,10 +819,11 @@ class V2OverviewService:
         # 4. Deals closing within window_days with no approval
         closing_14d_df = pd.DataFrame()
         if not df.empty and "close_date" in df.columns:
-            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            cd = pd.to_datetime(df["close_date"], errors="coerce")
+            snap_ts = pd.Timestamp(snap.snapshot_date)
             closing_14d_df = df[
-                (cd >= snap.snapshot_date) &
-                (cd <= snap.snapshot_date + timedelta(days=window_days)) &
+                (cd >= snap_ts) &
+                (cd <= snap_ts + pd.Timedelta(days=window_days)) &
                 (df["approval_status"] != "Approved") &
                 (df["forecast_category"] != "Closed") &
                 (~df["is_deleted_or_lost"])
@@ -1321,16 +1322,17 @@ class V2OverviewService:
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
         elif kind == "overdue":
-            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
-            df = df[(cd < snap.snapshot_date) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])]
+            cd = pd.to_datetime(df["close_date"], errors="coerce")
+            snap_ts = pd.Timestamp(snap.snapshot_date)
+            df = df[(cd < snap_ts) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])]
         elif kind == "closing_14d_unapproved":
-            from datetime import timedelta
             from backend.config import settings
             window_days = getattr(settings, "NEEDS_ATTENTION_WINDOW_DAYS", 14)
-            cd = pd.to_datetime(df["close_date"], errors="coerce").dt.date
+            cd = pd.to_datetime(df["close_date"], errors="coerce")
+            snap_ts = pd.Timestamp(snap.snapshot_date)
             df = df[
-                (cd >= snap.snapshot_date) &
-                (cd <= snap.snapshot_date + timedelta(days=window_days)) &
+                (cd >= snap_ts) &
+                (cd <= snap_ts + pd.Timedelta(days=window_days)) &
                 (df["approval_status"] != "Approved") &
                 (df["forecast_category"] != "Closed") &
                 (~df["is_deleted_or_lost"])
@@ -1401,7 +1403,7 @@ class V2OverviewService:
                 df = df[df["approval_status"] == approval_status]
 
         if not df.empty:
-            df = df.sort_values(by="forecast_acv_amount", ascending=False)
+            df = df.sort_values(by=["forecast_acv_amount", "opportunity_id_18"], ascending=[False, True])
 
         records = []
         for _, r in df.iterrows():

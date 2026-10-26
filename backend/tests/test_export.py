@@ -139,7 +139,7 @@ def test_excel_export_sheets_and_values(client, seeded_session):
             app_data[status] = count
     assert app_data.get("Approved") > 0
     assert app_data.get("Approved - 2nd") > 0
-    assert app_data.get("Pending-Approval") == 31
+    assert (app_data.get("Pending Approval") or app_data.get("Pending-Approval")) == 31
     assert app_data.get("Blank") > 0
     assert app_data.get("Rejected") == 19
     assert app_data.get("Grand Total") == sum(v for k, v in app_data.items() if k != "Grand Total")

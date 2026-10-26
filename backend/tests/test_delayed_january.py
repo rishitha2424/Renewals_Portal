@@ -344,33 +344,36 @@ def test_january_delayed_slipped_deal(jan_client_and_db, monkeypatch):
         overdue_deal_ids = [item["opportunity_id_18"] for item in r_overdue.json().get("deals", [])]
         assert deal.opportunity_id_18 not in overdue_deal_ids
 
-        # (3) Total Delayed equals Overdue + Slipped + Later close date + Lost (all from pandas, never typed numbers)
+        # (3) Under Slippage/Delayed split: Total Delayed equals Overdue + Later close date
+        # Slipped is tracked under d["slipped"] (Slippage), Lost is outside totals under d["lost"]
         expected_later_count = d["later_close"]["count"]
         expected_later_acv = d["later_close"]["acv"]
         expected_lost_count = d["lost"]["count"]
         expected_lost_acv = d["lost"]["acv"]
 
-        expected_total_count = expected_overdue_count + expected_slipped_count + expected_later_count + expected_lost_count
-        expected_total_acv = expected_overdue_acv + expected_slipped_acv + expected_later_acv + expected_lost_acv
+        expected_total_count = expected_overdue_count + expected_later_count
+        expected_total_acv = expected_overdue_acv + expected_later_acv
 
         assert d["total"]["count"] == expected_total_count
         assert abs(d["total"]["acv"] - expected_total_acv) < 0.05
 
-        # Verify sum of component dictionary values
+        # Verify sum of delayed component dictionary values
         sum_components_count = (
             d["overdue"]["count"]
-            + d["slipped"]["count"]
             + d["later_close"]["count"]
-            + d["lost"]["count"]
         )
         sum_components_acv = (
             d["overdue"]["acv"]
-            + d["slipped"]["acv"]
             + d["later_close"]["acv"]
-            + d["lost"]["acv"]
         )
         assert d["total"]["count"] == sum_components_count
         assert abs(d["total"]["acv"] - sum_components_acv) < 0.05
+        # Verify Slipped is tracked independently
+        assert d["slipped"]["count"] == expected_slipped_count
+        assert abs(d["slipped"]["acv"] - expected_slipped_acv) < 0.05
+        # Verify Lost is tracked independently outside totals
+        assert d["lost"]["count"] == expected_lost_count
+        assert abs(d["lost"]["acv"] - expected_lost_acv) < 0.05
     finally:
         # Restore deal's original close date for test isolation
         deal.close_date = orig_close_date

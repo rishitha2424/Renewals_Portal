@@ -125,8 +125,14 @@ def test_delayed_deals_endpoint(client_and_db):
     data_sl = r_sl.json()
     assert data_sl["count"] == len(data_sl["deals"])
 
-    # Sum of disjoint buckets matches total
-    assert data_all["count"] >= data_od["count"] + data_sl["count"]
+    r_later = client.get("/api/v2/delayed/deals?compare=yesterday&kind=later_close&region=Europe&category=Commit")
+    assert r_later.status_code == 200
+    data_later = r_later.json()
+    assert data_later["count"] == len(data_later["deals"])
+
+    # Under Slippage/Delayed split: kind=all represents Delayed Renewals (overdue + later_close)
+    # Slipped is tracked separately under kind=slipped (Slippage)
+    assert data_all["count"] == data_od["count"] + data_later["count"]
     
 def test_lost_deals_endpoint(client_and_db):
     client, _ = client_and_db

@@ -231,9 +231,11 @@ def test_addendum_c_unknown_region_and_new_forecast_category(client_and_db, admi
         forecast_acv_amount=150000.0,
         sales_type="Renewals",
         fiscal_period="Q4-2026",
+        close_date=date(2026, 11, 15),
     )
     db.add(opp)
     db.commit()
+    opp_acv = float(opp.forecast_acv_amount)
     db.close()
 
     r = client.get("/api/v2/overview/summary?as_of=2026-11-01")
@@ -242,7 +244,7 @@ def test_addendum_c_unknown_region_and_new_forecast_category(client_and_db, admi
     assert data["other_region_count"] >= 1
     assert "Upsell Stretch" in data["categories"]
     assert data["categories"]["Upsell Stretch"]["count"] == 1
-    assert data["categories"]["Upsell Stretch"]["acv"] == opp.acv
+    assert data["categories"]["Upsell Stretch"]["acv"] == opp_acv
 
 
 # ==============================================================================

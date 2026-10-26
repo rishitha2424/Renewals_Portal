@@ -65,11 +65,17 @@ def test_executive_view_contracts_sqlite():
         del_total = del_data.get("total", {})
         assert "count" in del_total and "acv" in del_total
 
-        # 3. Risk block components matching Delayed endpoint & Overview Blank
+        # 3. Risk block components: Executive 7a (Delayed), 7b (Slippage), 7c (Lost) match Delayed endpoint
         overdue = del_data.get("overdue", {})
+        later_close = del_data.get("later_close", {})
         slipped = del_data.get("slipped", {})
         lost = del_data.get("lost", {})
-        assert overdue.get("count") + slipped.get("count") + lost.get("count") <= del_total.get("count")
+        # 7a: Total Delayed Renewals equals Overdue + Later close date
+        assert del_total.get("count") == overdue.get("count", 0) + later_close.get("count", 0)
+        assert abs(del_total.get("acv", 0.0) - (overdue.get("acv", 0.0) + later_close.get("acv", 0.0))) < 0.05
+        # 7b & 7c: Slippage and Lost are tracked independently with count and acv
+        assert "count" in slipped and "acv" in slipped
+        assert "count" in lost and "acv" in lost
 
         blank = cats["Blank"]
         assert blank.get("count") == expected_blank_count

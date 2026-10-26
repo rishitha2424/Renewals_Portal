@@ -149,9 +149,12 @@ def test_b7_needs_attention_panel_from_pandas(client_and_db):
     exp_top_cna_deal = commit_unappr.iloc[0]["opportunity_id_18"]
     exp_top_cna_acv = float(commit_unappr.iloc[0]["forecast_acv_amount"])
 
-    # 2. Overdue deals
-    overdue_df = today_scoped[(today_scoped["parsed_close_date"] < snap_date) & (today_scoped["forecast_category"] != "Closed") & (~is_del)].copy()
-    overdue_df = overdue_df.sort_values(by="forecast_acv_amount", ascending=False)
+    # 2. Overdue deals: open, Renewals, not Closed, not deleted/lost, close date before snapshot date; largest ACV first
+    df_today_ren = df_today[df_today["sales_type"] == "Renewals"].copy().drop_duplicates(subset=["opportunity_id_18"], keep="last")
+    is_del_all = df_today_ren[stage_col].astype(str).str.lower().isin(["deleted", "lost"])
+    df_today_ren["parsed_close_date"] = df_today_ren["close_date"].apply(parse_excel_date)
+    overdue_df = df_today_ren[(df_today_ren["parsed_close_date"] < snap_date) & (df_today_ren["forecast_category"] != "Closed") & (~is_del_all)].copy()
+    overdue_df = overdue_df.sort_values(by=["forecast_acv_amount", "opportunity_id_18"], ascending=[False, True])
     exp_od_count = len(overdue_df)
     exp_od_acv = float(overdue_df["forecast_acv_amount"].sum())
     exp_top_od_deal = overdue_df.iloc[0]["opportunity_id_18"]

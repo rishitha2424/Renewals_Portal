@@ -122,7 +122,8 @@ def test_commit_and_dashboard_numbers(client_and_db, validated, admin_headers):
     client, Session = client_and_db
     import pandas as pd
     df_fix = pd.read_excel("data/sample_oct7/Renewal Comparison Tool.xlsx", sheet_name="today")
-    df_active = df_fix[~df_fix["Stage Number"].isin(["9. Closed Lost", "10. Closed Deleted"])]
+    is_del_lost = df_fix["Stage Number"].astype(str).str.lower().isin(["deleted", "lost", "9. closed lost", "10. closed deleted"])
+    df_active = df_fix[~is_del_lost]
 
     r = client.post("/api/snapshots/commit", json={"session_id": validated["session_id"], "replace": False}, headers=admin_headers)
     assert r.status_code == 200, r.text
@@ -147,11 +148,10 @@ def test_commit_and_dashboard_numbers(client_and_db, validated, admin_headers):
     all_active = kpis("all", False)
     all_raw = kpis("all", True)
     assert renewals != all_active != all_raw
-    df_fix = pd.read_excel(FIXTURE_DIR / "Renewal Comparison Tool.xlsx", sheet_name="today")
-    exp_renewals_raw = len(df_fix[df_fix["Opportunity Record Type"] == "Renewal"])
-    exp_all_active = len(df_fix[df_fix["Stage"] != "Closed Lost"])
+    exp_renewals_active = len(df_fix[(df_fix["Sales Type"] == "Renewals") & (~is_del_lost)])
+    exp_all_active = len(df_fix[~is_del_lost])
     exp_all_raw = len(df_fix)
-    assert count_acv(renewals_raw)[0] == exp_renewals_raw
+    assert count_acv(renewals)[0] == exp_renewals_active
     assert count_acv(all_active)[0] == exp_all_active
     assert count_acv(all_raw)[0] == exp_all_raw
 

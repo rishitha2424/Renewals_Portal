@@ -196,13 +196,26 @@ export default function ExecutiveView() {
 
   // Category summary
   const categories = overview.categories || {}
-  const catOrder = ['Commit', 'Best Case', 'Pipeline', 'Blank']
-  const catRows = catOrder.map(catKey => {
-    const d = categories[catKey] || { count: 0, acv: 0 }
-    const label = getForecastCategoryLabel(catKey)
-    const pct = totalAcv > 0 ? (d.acv / totalAcv) * 100 : 0
-    return { key: catKey, label, count: d.count, acv: d.acv, pct }
+  const standardCatOrder = ['Commit', 'Most Likely', 'Best Case', 'Pipeline', 'Blank']
+  const catOrder = [...standardCatOrder]
+  Object.keys(categories).forEach(k => {
+    if (!catOrder.includes(k)) {
+      const blankIdx = catOrder.indexOf('Blank')
+      if (blankIdx >= 0) {
+        catOrder.splice(blankIdx, 0, k)
+      } else {
+        catOrder.push(k)
+      }
+    }
   })
+  const catRows = catOrder
+    .filter(catKey => categories[catKey] !== undefined || (catKey !== 'Most Likely' && standardCatOrder.includes(catKey)))
+    .map(catKey => {
+      const d = categories[catKey] || { count: 0, acv: 0 }
+      const label = getForecastCategoryLabel(catKey)
+      const pct = totalAcv > 0 ? (d.acv / totalAcv) * 100 : 0
+      return { key: catKey, label, count: d.count, acv: d.acv, pct }
+    })
 
   // Movements vs yesterday & vs last week
   const deltaYesterday = total.delta_yesterday || { count: 0, acv: 0, snapshot_date: '' }

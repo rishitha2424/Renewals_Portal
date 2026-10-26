@@ -615,9 +615,9 @@ class AnalyticsService:
                     if prev_st not in ["Approved", "Approved - 2nd"]:
                         newly_approved.append(item_info)
 
-                # Newly pending: currently Pending-Approval, but previously wasn't
-                if curr_st == "Pending-Approval":
-                    if prev_st != "Pending-Approval":
+                # Newly pending: currently Pending Approval, but previously wasn't
+                if curr_st in ["Pending Approval", "Pending-Approval"]:
+                    if prev_st not in ["Pending Approval", "Pending-Approval"]:
                         newly_pending.append(item_info)
 
                 # Newly rejected: currently Rejected, but previously wasn't

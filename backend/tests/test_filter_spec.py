@@ -161,7 +161,7 @@ def test_include_deleted_lost_toggle_and_reconciliation(seeded_client_and_db):
     fixture_path = pathlib.Path("data/sample_oct7/Renewal Comparison Tool.xlsx")
     df = pd.read_excel(fixture_path, sheet_name="today")
     df_q4 = df[(df["Sales Type"] == "Renewals") & (df["Fiscal Period"] == "Q4-2026")]
-    df_q4_active = df_q4[~df_q4["Stage Number"].isin(["9. Closed Lost", "10. Closed Deleted"])]
+    df_q4_active = df_q4[~df_q4["Stage Number"].astype(str).str.lower().isin(["deleted", "lost", "9. closed lost", "10. closed deleted"])]
 
     # With include_deleted_lost = False
     r_off = client.get("/api/v2/overview/summary", params={"include_deleted_lost": False})

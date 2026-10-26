@@ -665,7 +665,7 @@ class ReconciliationEngine:
 
         # Slippage: Overdue
         if "close_date" in t_renewals.columns and "forecast_category" in t_renewals.columns:
-            cd = pd.to_datetime(t_renewals["close_date"], errors="coerce")
+            cd = pd.to_datetime(t_renewals["close_date"], errors="coerce", format="mixed")
             snap_ts = pd.Timestamp.now().normalize()
             od = t_renewals[(cd < snap_ts) & (t_renewals["forecast_category"] != "Closed")] if not cd.empty else pd.DataFrame()
             od_cnt = len(od)
