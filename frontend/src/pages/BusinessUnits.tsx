@@ -207,8 +207,13 @@ function BusinessUnitsContent() {
   const commitCov = total.acv > 0 ? ((totalCommit / total.acv) * 100).toFixed(1) : '0.0'
   const largestBuPct = total.acv > 0 && largestBu ? ((largestBu.acv / total.acv) * 100).toFixed(1) : '0.0'
 
-  // Heatmap rows
-  const displayCategories = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
+  // Heatmap rows - build categories dynamically from snapshot response, omitting categories with no deals
+  const rawCategories = categories && categories.length > 0 ? categories : Object.keys(totals?.categories || {})
+  const displayCategories = rawCategories.filter((c: string) => {
+    const catTotal = totals?.categories?.[c]
+    return catTotal ? (catTotal.count > 0 || (catTotal.acv != null && catTotal.acv !== 0)) : true
+  })
+  const nonCommitCategories = displayCategories.filter((c: string) => c !== 'Commit')
   const gridRows = rows.map((r: any) => ({
     id: r.bu,
     label: r.bu,
@@ -590,9 +595,11 @@ function BusinessUnitsContent() {
                 <th className="py-2.5 px-3 font-semibold text-right">% Share</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Commit ACV</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Commit Cov %</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Best Case</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Pipeline</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Not Yet Proposed</th>
+                {nonCommitCategories.map((c: string) => (
+                  <th key={c} className="py-2.5 px-3 font-semibold text-right">
+                    {c === 'Blank' ? 'Deleted / lost in snapshot' : c}
+                  </th>
+                ))}
                 <th className="py-2.5 px-3 font-semibold text-right">Δ vs Yesterday</th>
                 <th className="py-2.5 px-3 font-semibold text-right">Δ vs Last Week</th>
               </tr>
@@ -602,9 +609,6 @@ function BusinessUnitsContent() {
                 const sharePct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
                 const commitAcv = r.cells?.['Commit']?.acv || 0
                 const commitCovPct = r.acv > 0 ? (commitAcv / r.acv) * 100 : 0
-                const bestCaseAcv = r.cells?.['Best Case']?.acv || 0
-                const pipelineAcv = r.cells?.['Pipeline']?.acv || 0
-                const blankAcv = r.cells?.['Blank']?.acv || 0
 
                 return (
                   <tr
@@ -633,15 +637,11 @@ function BusinessUnitsContent() {
                         {commitCovPct.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-violet-600 dark:text-violet-400">
-                      {formatCurrency(bestCaseAcv)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">
-                      {formatCurrency(pipelineAcv)}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                      {formatCurrency(blankAcv)}
-                    </td>
+                    {nonCommitCategories.map((c: string) => (
+                      <td key={c} className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
+                        {formatCurrency(r.cells?.[c]?.acv || 0)}
+                      </td>
+                    ))}
                     <td className="py-2.5 px-3 text-right font-mono tabular-nums">
                       {deltaSpan(r.delta_yesterday, false)}
                     </td>
@@ -670,15 +670,11 @@ function BusinessUnitsContent() {
                 <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
                   {commitCov}%
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-violet-600 dark:text-violet-400">
-                  {formatCurrency(totals.categories['Best Case']?.acv || 0)}
-                </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                  {formatCurrency(totals.categories['Pipeline']?.acv || 0)}
-                </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-slate-500 dark:text-slate-400">
-                  {formatCurrency(totals.categories['Blank']?.acv || 0)}
-                </td>
+                {nonCommitCategories.map((c: string) => (
+                  <td key={c} className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
+                    {formatCurrency(totals.categories[c]?.acv || 0)}
+                  </td>
+                ))}
                 <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums">
                   {deltaSpan(totals.grand.delta_yesterday, false)}
                 </td>

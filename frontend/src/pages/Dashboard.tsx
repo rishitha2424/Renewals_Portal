@@ -259,8 +259,7 @@ export default function Dashboard() {
 
   const propRows  = orderRegions(propConf)
   const trendRows = orderRegions(regTrend)
-
-  const FC_COLS = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank'] as const
+  const trendFcCols = Object.keys(cats).filter(k => k !== 'total' && k !== 'All' && (cats[k]?.count > 0 || (cats[k]?.acv != null && cats[k]?.acv !== 0)))
 
   // Dynamically generate overview section links from the data rendered
   const overviewSections = useMemo(() => {
@@ -1010,22 +1009,26 @@ export default function Dashboard() {
               )
             })()}
 
-            {/* Sub-line for Not yet proposed */}
+            {/* Sub-line for Deleted / lost in snapshot */}
             {(() => {
               const blankCat = cats['Blank'] ?? { count: 0, acv: 0 }
+              if (blankCat.count === 0 && (!blankCat.acv || blankCat.acv === 0)) return null
               return (
                 <div
                   className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => openDealsQuery(`Not yet proposed Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
-                  title="Click to view Not yet proposed deals"
+                  onClick={() => openDealsQuery(`Deleted / lost in snapshot Deals (${blankCat.count} deals · ${acvM(blankCat.acv)})`, { category: 'Blank' }, { forecast_category: 'Blank' })}
+                  title="Click to view Deleted / lost in snapshot deals"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[var(--text-secondary)]">Not yet proposed:</span>
-                    <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
-                    <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[var(--text-secondary)]">Deleted / lost in snapshot:</span>
+                      <span className="text-xs font-bold font-mono text-[var(--text-primary)]">{acvM(blankCat.acv)}</span>
+                      <span className="text-xs text-[var(--text-muted)]">({blankCat.count} deals)</span>
+                    </div>
+                    <span className="text-[10px] text-[var(--text-muted)]">Deals marked deleted or lost in this snapshot file (counted in snapshot total)</span>
                   </div>
                   <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 hover:underline">
-                    View not yet proposed deals →
+                    View deleted / lost in snapshot deals →
                   </span>
                 </div>
               )
@@ -1105,8 +1108,10 @@ export default function Dashboard() {
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
                 <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total ACV Value</th>
-                {FC_COLS.map(fc => (
-                  <th key={fc} className="text-right px-4 py-3 font-semibold" style={{ color: FORECAST_COLORS[fc] }}>{getForecastCategoryLabel(fc)}</th>
+                {trendFcCols.map(fc => (
+                  <th key={fc} className="text-right px-4 py-3 font-semibold" style={{ color: FORECAST_COLORS[fc] }}>
+                    {fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1115,7 +1120,7 @@ export default function Dashboard() {
                 <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
                   <td className="px-4 py-3 font-medium cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} Deals (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`${row.region} Total (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{acvM(row.total_acv)}</td>
-                  {FC_COLS.map(fc => {
+                  {trendFcCols.map(fc => {
                     const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                     const val = row[k] ?? 0
                     return (
@@ -1123,7 +1128,7 @@ export default function Dashboard() {
                         key={fc}
                         className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
                         style={{ color: FORECAST_COLORS[fc] }}
-                        onClick={() => openDealsQuery(`${row.region} · ${getForecastCategoryLabel(fc)} (${acvM(val)})`, { region: row.region, category: fc }, { sub_region: row.region, forecast_category: fc })}
+                        onClick={() => openDealsQuery(`${row.region} · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { region: row.region, category: fc }, { sub_region: row.region, forecast_category: fc })}
                       >
                         {acvM(val)}
                       </td>
@@ -1134,7 +1139,7 @@ export default function Dashboard() {
               <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
                 <td className="px-4 py-3">Total</td>
                 <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`Total Renewal ACV (${acvM(regTotals.total_acv)})`, {})}>{acvM(regTotals.total_acv)}</td>
-                {FC_COLS.map(fc => {
+                {trendFcCols.map(fc => {
                   const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                   const val = regTotals[k] ?? 0
                   return (
@@ -1142,7 +1147,7 @@ export default function Dashboard() {
                       key={fc}
                       className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
                       style={{ color: FORECAST_COLORS[fc] }}
-                      onClick={() => openDealsQuery(`Total · ${getForecastCategoryLabel(fc)} (${acvM(val)})`, { category: fc }, { forecast_category: fc })}
+                      onClick={() => openDealsQuery(`Total · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { category: fc }, { forecast_category: fc })}
                     >
                       {acvM(val)}
                     </td>

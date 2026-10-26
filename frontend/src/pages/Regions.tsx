@@ -1260,13 +1260,17 @@ function RegionsContent() {
           <div>
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Forecast Category</h3>
             {(() => {
-              const displayFc = ALL_FC
+              const rawFc = summary.categories && summary.categories.length > 0 ? summary.categories : Object.keys(summary.totals?.categories || {})
+              const displayFc = rawFc.filter((fc: string) => {
+                const s = summary.totals?.categories?.[fc]
+                return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
+              })
               return (
                 <CompactGrid
                   title="Regions (Forecast Category)"
                   rowLabelName="Region"
                   columns={displayFc}
-                  columnLabels={{ 'Blank': 'Blanks' }}
+                  columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
                   rows={regions.map((r: any) => ({
                     label: r.region,
                     cells: r.cells,

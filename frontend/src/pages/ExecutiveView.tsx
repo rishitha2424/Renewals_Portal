@@ -194,27 +194,20 @@ export default function ExecutiveView() {
   const distinctDates = Array.from(new Set(responseDates.map(x => x.date)))
   const hasSnapshotDateMismatch = distinctDates.length > 1
 
-  // Category summary
+  // Category summary — dynamically build rows only from categories present in the snapshot response, using backend order
   const categories = overview.categories || {}
-  const standardCatOrder = ['Commit', 'Most Likely', 'Best Case', 'Pipeline', 'Blank']
-  const catOrder = [...standardCatOrder]
-  Object.keys(categories).forEach(k => {
-    if (!catOrder.includes(k)) {
-      const blankIdx = catOrder.indexOf('Blank')
-      if (blankIdx >= 0) {
-        catOrder.splice(blankIdx, 0, k)
-      } else {
-        catOrder.push(k)
-      }
-    }
-  })
-  const catRows = catOrder
-    .filter(catKey => categories[catKey] !== undefined || (catKey !== 'Most Likely' && standardCatOrder.includes(catKey)))
+  const catRows = Object.keys(categories)
+    .filter(catKey => {
+      const d = categories[catKey]
+      return d && (d.count > 0 || (d.acv != null && d.acv !== 0))
+    })
     .map(catKey => {
-      const d = categories[catKey] || { count: 0, acv: 0 }
-      const label = getForecastCategoryLabel(catKey)
+      const d = categories[catKey]
+      const isBlank = catKey === 'Blank' || catKey === 'blank' || catKey === ''
+      const label = isBlank ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(catKey)
+      const hint = isBlank ? 'Deals marked deleted or lost in this snapshot file (counted in snapshot total)' : undefined
       const pct = totalAcv > 0 ? (d.acv / totalAcv) * 100 : 0
-      return { key: catKey, label, count: d.count, acv: d.acv, pct }
+      return { key: catKey, label, hint, count: d.count, acv: d.acv, pct }
     })
 
   // Movements vs yesterday & vs last week
@@ -531,7 +524,10 @@ export default function ExecutiveView() {
               <tbody className="divide-y divide-slate-100">
                 {catRows.map(r => (
                   <tr key={r.key} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-2 font-medium text-slate-800">{r.label}</td>
+                    <td className="px-4 py-2 font-medium text-slate-800">
+                      <div>{r.label}</div>
+                      {r.hint && <div className="text-[10px] text-slate-500 font-normal mt-0.5">{r.hint}</div>}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.count)}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(r.acv)}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-slate-600">{r.pct.toFixed(1)}%</td>
@@ -654,37 +650,30 @@ export default function ExecutiveView() {
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2">Quarter</th>
-                  <th className="px-3 py-2 text-right text-emerald-700">Commit</th>
-                  <th className="px-3 py-2 text-right text-amber-700">Best Case</th>
-                  <th className="px-3 py-2 text-right text-blue-700">Pipeline</th>
-                  <th className="px-3 py-2 text-right text-slate-600">Not Proposed</th>
+                  {catRows.map(cat => (
+                    <th key={cat.key} className="px-3 py-2 text-right">
+                      {cat.label}
+                    </th>
+                  ))}
                   <th className="px-3 py-2 text-right font-bold">Total ACV</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {expiryRows.map((r: any) => {
                   const cells = r.cells || {}
-                  const commitAcv = cells.Commit?.acv || 0
-                  const bestCaseAcv = cells['Best Case']?.acv || 0
-                  const pipelineAcv = cells.Pipeline?.acv || 0
-                  const blankAcv = cells.Blank?.acv || 0
                   const rowTotalAcv = r.total?.acv || 0
 
                   return (
                     <tr key={r.quarter} className="hover:bg-slate-50/50">
                       <td className="px-3 py-2 font-semibold text-slate-800">{r.label || r.quarter}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                        {commitAcv > 0 ? formatCurrency(commitAcv) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                        {bestCaseAcv > 0 ? formatCurrency(bestCaseAcv) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                        {pipelineAcv > 0 ? formatCurrency(pipelineAcv) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                        {blankAcv > 0 ? formatCurrency(blankAcv) : '—'}
-                      </td>
+                      {catRows.map(cat => {
+                        const cellAcv = cells[cat.key]?.acv || 0
+                        return (
+                          <td key={cat.key} className="px-3 py-2 text-right tabular-nums text-slate-700">
+                            {cellAcv > 0 ? formatCurrency(cellAcv) : '—'}
+                          </td>
+                        )
+                      })}
                       <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-900">
                         {formatCurrency(rowTotalAcv)}
                       </td>
@@ -896,13 +885,16 @@ export default function ExecutiveView() {
           </div>
         </div>
 
-        {/* 7c. Lost / Removed (Outside both totals) */}
+        {/* 7c. Lost since start of quarter (Outside both totals) */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-              7c. Lost / Removed Contracts
+              7c. Lost since start of quarter
             </h2>
           </div>
+          <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
+            Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
@@ -915,10 +907,13 @@ export default function ExecutiveView() {
               </thead>
               <tbody>
                 <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-slate-800">Lost / Terminated / Removed</td>
+                  <td className="px-4 py-2 font-medium text-slate-800">
+                    <div>Lost since start of quarter</div>
+                    <div className="text-[10px] text-slate-500 font-normal mt-0.5">Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).</div>
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatNumber(lost.count)}</td>
                   <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatCurrency(lost.acv)}</td>
-                  <td className="px-4 py-2 text-slate-500">Deals deleted or lost since the baseline period (excluded from Delayed and Slippage totals)</td>
+                  <td className="px-4 py-2 text-slate-500">Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).</td>
                 </tr>
               </tbody>
             </table>

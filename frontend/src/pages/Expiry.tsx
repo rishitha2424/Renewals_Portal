@@ -304,11 +304,17 @@ export default function Expiry() {
         const grid = sum.grids?.[yLabel]
         if (!grid) return null
         const deltas = sum.deltas?.[yLabel]
+        const rawCols = (sum.categories && sum.categories.length > 0) ? sum.categories : Object.keys(grid.totals?.category || {})
+        const cols = rawCols.filter((c: string) => {
+          const s = grid.totals?.category?.[c]
+          return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
+        })
         return (
           <div key={yLabel} id={`expiry-grid-${yLabel}`} className="space-y-1 scroll-mt-24">
             <CompactGrid
               title={`FY ${yLabel} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
-              columns={['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']}
+              columns={cols}
+              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
               rows={grid.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
               totals={grid.totals}
               deltas={deltas}

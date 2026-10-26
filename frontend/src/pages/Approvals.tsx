@@ -538,11 +538,16 @@ export default function Approvals() {
         {/* Right: Grid */}
         <div className="xl:col-span-7">
           {(() => {
-            const displayCategories = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
+            const rawCategories = categories && categories.length > 0 ? categories : Object.keys(colSums || {})
+            const displayCategories = rawCategories.filter((c: string) => {
+              const s = colSums[c]
+              return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
+            })
             return (
               <CompactGrid
                 title="Status vs. Forecast Category"
                 columns={displayCategories}
+                columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
                 rows={rowsForGrid}
                 totals={{ category: colSums, grand: { count: total.count, acv: total.acv } }}
                 deltas={deltasForGrid}

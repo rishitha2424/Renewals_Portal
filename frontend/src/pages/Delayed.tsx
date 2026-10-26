@@ -289,19 +289,21 @@ function DelayedContent() {
   }
 
   const buildGrid = (byField: 'by_region' | 'by_bu', clickKey: 'region' | 'bu') => {
-    const categories = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
+    const rawCategories: string[] = Array.from(new Set<string>((summary[byField] || []).flatMap((row: any) => Object.keys(row.categories || {}))))
     const totals = { category: {} as any, grand: { count: 0, acv: 0 } }
     const gridDeltas: any = {}
 
     summary[byField]?.forEach((row: any) => {
       totals.grand.count += row.count
       totals.grand.acv += row.acv
-      categories.forEach((cat) => {
+      rawCategories.forEach((cat: string) => {
         if (!totals.category[cat]) totals.category[cat] = { count: 0, acv: 0 }
         totals.category[cat].count += row.categories?.[cat]?.count || 0
         totals.category[cat].acv += row.categories?.[cat]?.acv || 0
       })
     })
+
+    const categories: string[] = rawCategories.filter((cat: string) => (totals.category[cat]?.count || 0) > 0 || (totals.category[cat]?.acv || 0) !== 0)
 
     const rows = (summary[byField] || []).map((row: any) => {
       const cells: Record<string, { count: number; acv: number }> = {}
@@ -373,7 +375,7 @@ function DelayedContent() {
       list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
     }
     if (summary?.lost) {
-      list.push({ id: 'delayed-lost-group', title: 'Lost / Removed' })
+      list.push({ id: 'delayed-lost-group', title: 'Lost since start of quarter' })
     }
     if (summary?.ageing_breakdown?.length) {
       list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
@@ -680,21 +682,21 @@ function DelayedContent() {
         </div>
       </div>
 
-      {/* ────────────────── SECTION 3: LOST / REMOVED ────────────────── */}
+      {/* ────────────────── SECTION 3: LOST SINCE START OF QUARTER ────────────────── */}
       <div id="delayed-lost-group" className="space-y-4 scroll-mt-24">
         <div className="border-b border-[var(--border)] pb-2">
           <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-            <span>Lost / Removed</span>
+            <span>Lost since start of quarter</span>
           </h2>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Deals previously in the renewal forecast that have been marked deleted or lost since the baseline period (stays separate from totals).
+            Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           <DelayedKpiCard
-            title="Lost / Removed"
-            definition="Deals previously in the renewal forecast that have been marked deleted or lost."
+            title="Lost since start of quarter"
+            definition="Deals deleted or lost since the start of quarter baseline (excluded from delayed totals)."
             data={summary.lost}
             icon={AlertTriangle}
             accent="slate"
@@ -849,6 +851,7 @@ function DelayedContent() {
               title="By Region"
               rowLabelName="Region"
               columns={regionGrid.categories}
+              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
               rows={regionGrid.rows}
               totals={regionGrid.totals}
               deltas={regionGrid.gridDeltas}
@@ -868,6 +871,7 @@ function DelayedContent() {
               title="By Business Unit"
               rowLabelName="Business Unit"
               columns={buGrid.categories}
+              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
               rows={buGrid.rows}
               totals={buGrid.totals}
               deltas={buGrid.gridDeltas}
