@@ -31,7 +31,9 @@ def get_delayed_deals(
     status: Optional[str] = Query(None),
     bu: Optional[str] = Query(None),
     ageing: Optional[str] = Query(None),
-    newly_delayed: bool = Query(False),
+    expiry_year: Optional[int] = Query(None),
+    close_year: Optional[int] = Query(None),
+    review_type: Optional[str] = Query(None),
     as_of: Optional[str] = Query(None),
     compare: Optional[str] = Query(None, pattern="^(yesterday|last_week|period_start)$"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
@@ -47,6 +49,16 @@ def get_delayed_deals(
         status=status,
         bu=bu,
         ageing=ageing,
-        newly_delayed=newly_delayed,
+        expiry_year=expiry_year,
+        close_year=close_year,
+        review_type=review_type,
         filter_spec=filter_spec,
     )
+
+@router.get("/reconciliation")
+def get_delayed_reconciliation(
+    as_of: Optional[str] = Query(None),
+    svc: V2DelayedService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context)
+):
+    return svc.get_reconciliation_vs_manual(snapshot_id=as_of)

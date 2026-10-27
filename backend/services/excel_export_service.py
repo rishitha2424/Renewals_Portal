@@ -792,6 +792,60 @@ class ExcelExportService:
                 ws10.cell(rn, c).border = THIN_BORDER
         autofit_columns(ws10)
 
+        # -------------------------------------------------------------
+        # Sheet 11: Needs review
+        # -------------------------------------------------------------
+        try:
+            from backend.services.v2_delayed_service import V2DelayedService
+            del_svc = V2DelayedService(self.db)
+            nr_res = del_svc.get_deals(as_of=snap.id, kind="needs_review")
+            nr_deals = nr_res.get("deals", [])
+            if nr_deals:
+                ws11 = wb.create_sheet(title="Needs review")
+                headers11 = [
+                    "Review Type",
+                    "Opportunity ID 18 Digit",
+                    "Account Name",
+                    "Opportunity Name",
+                    "Forecast ACV Amount",
+                    "Forecast Category",
+                    "Service Expiry Date",
+                    "Close Date",
+                    "Group",
+                    "Why It Is Here",
+                ]
+                ws11.append(headers11)
+                style_header_row(ws11, len(headers11))
+
+                type_labels = {
+                    "type_1": "Negative or zero ACV",
+                    "type_2": "Expired before quarter but not delayed Group",
+                    "type_3": "Close date far ahead",
+                }
+
+                for d in nr_deals:
+                    t_lbl = type_labels.get(d.get("review_type", ""), d.get("review_type", "Review"))
+                    ws11.append([
+                        t_lbl,
+                        d.get("opportunity_id_18", ""),
+                        d.get("account_name", ""),
+                        d.get("opportunity_name", ""),
+                        float(d.get("forecast_acv_amount") or 0.0),
+                        d.get("forecast_category", ""),
+                        d.get("service_expiry_date", ""),
+                        d.get("close_date", ""),
+                        d.get("group", ""),
+                        d.get("why_it_is_here", ""),
+                    ])
+                    rn = ws11.max_row
+                    ws11.cell(rn, 5).number_format = "$#,##0.00"
+                    for c in range(1, 11):
+                        ws11.cell(rn, c).border = THIN_BORDER
+                autofit_columns(ws11)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Could not append Needs review sheet: %s", exc)
+
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)

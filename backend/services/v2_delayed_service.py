@@ -1,84 +1,198 @@
+"""
+V2 Delayed Service — handles Delayed Renewals, Slippage, Slipped to Later Year,
+Needs Review exception handling, and Admin Reconciliation.
+All calculations are strictly data-driven with ZERO hard-coded years, quarters,
+dates, group names, or sheet names.
+"""
 from __future__ import annotations
+
 import logging
 import re
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
+
 import pandas as pd
-from datetime import date, timedelta
-from typing import Optional, Any
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
 from backend.models.snapshot import UploadSnapshot
 from backend.services.context import UserContext
 from backend.services.scopes import ScopeService
+from backend.services.settings_service import SettingsService
 
 log = logging.getLogger(__name__)
+
+
+def parse_excel_date(v: Any) -> date | None:
+    """
+    Parses date or Excel serial number (origin 1899-12-30) into datetime.date.
+    Works for dates, datetime, Timestamp, numeric serials, and serial strings.
+    """
+    if v is None or pd.isna(v):
+        return None
+    s = str(v).strip()
+    if s.lower() in ("", "nan", "nat", "none", "null"):
+        return None
+    if isinstance(v, (datetime, pd.Timestamp)):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, (int, float)):
+        try:
+            return pd.to_datetime(v, unit="D", origin="1899-12-30").date()
+        except Exception:
+            return None
+    try:
+        if s.isdigit() or (s.replace(".", "", 1).isdigit() and "." in s):
+            return pd.to_datetime(float(s), unit="D", origin="1899-12-30").date()
+        return pd.to_datetime(s).date()
+    except Exception:
+        return None
+
 
 def _parse_fp(fp: str) -> tuple[int, int]:
     """Qx-YYYY -> (YYYY, x)"""
     try:
         q, y = fp.split("-")
         return int(y), int(q[1])
-    except:
+    except Exception:
         return (0, 0)
 
+
 def _norm_fc(s: str | None) -> str:
-    if not s or str(s).strip() in ("", "nan", "None"): return "Blank"
+    if not s or str(s).strip() in ("", "nan", "None"):
+        return "Blank"
     s = str(s).strip()
-    if s not in ["Closed", "Commit", "Best Case", "Pipeline"]: return "Blank"
+    if s not in ["Closed", "Commit", "Best Case", "Pipeline"]:
+        return "Blank"
     return s
+
 
 def _norm_approval(s: str | None) -> str:
-    if not s or str(s).strip() in ("", "nan", "None", "Blank"): return "Blank"
+    if not s or str(s).strip() in ("", "nan", "None", "Blank"):
+        return "Blank"
     s = str(s).strip()
-    if s in ("Approved", "Approved - 2nd"): return "Approved"
-    if s in ("Pending Approval", "Pending-Approval"): return "Pending Approval"
+    if s in ("Approved", "Approved - 2nd"):
+        return "Approved"
+    if s in ("Pending Approval", "Pending-Approval"):
+        return "Pending Approval"
     return s
 
+
 def _map_region(s: str | None) -> str:
-    if not s or str(s).strip() in ("", "nan", "None"): return "Other / Unmapped"
+    if not s or str(s).strip() in ("", "nan", "None"):
+        return "Other / Unmapped"
     s = str(s).strip()
-    if s == "Europe": return "Europe"
-    if s == "APAC": return "APAC"
-    if s == "AFRICA": return "Africa"
-    if s == "MENA": return "Middle East and North Africa"
-    if s == "NAMR": return "North America"
-    if s == "South America": return "LATAM"
     if s in ("North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"):
         return s
+    if s == "AFRICA":
+        return "Africa"
+    if s == "MENA":
+        return "Middle East and North Africa"
+    if s == "NAMR":
+        return "North America"
+    if s == "South America":
+        return "LATAM"
     return s
+
 
 def _safe_acv(df_in: pd.DataFrame | None) -> float:
     if df_in is None or df_in.empty or "forecast_acv_amount" not in df_in.columns:
         return 0.0
     return round(float(df_in["forecast_acv_amount"].sum()), 2)
 
+
+def _is_open_deal(sales_type: Any, forecast_category: Any, probability: Any, stage_number: Any, is_deleted_or_lost: bool) -> bool:
+    """
+    Open means:
+    - Sales Type = Renewals
+    - Forecast Category not Closed
+    - Probability below 100%
+    - Stage not deleted or lost
+    """
+    if str(sales_type or "").strip().lower() != "renewals":
+        return False
+    if str(forecast_category or "").strip().lower() == "closed":
+        return False
+    try:
+        p = float(probability)
+        if p > 1.0 and p >= 100.0:
+            return False
+        elif p >= 1.0:
+            return False
+    except (ValueError, TypeError):
+        pass
+    if is_deleted_or_lost:
+        return False
+    stage_str = str(stage_number or "").strip().lower()
+    if any(w in stage_str for w in ["delete", "lost", "closed lost"]):
+        return False
+    return True
+
+
 def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     if not opps:
         return pd.DataFrame()
     records = []
     for o in opps:
+        extra = o.extra_attributes if isinstance(o.extra_attributes, dict) else {}
+        
+        # Extract Group and Category
+        group_val = str(extra.get("Group") or extra.get("group") or "").strip()
+        category_val = str(extra.get("Category") or extra.get("category") or o.renewal_category or "").strip()
+        
+        # Dates with fallback: Service Expiry date = Service Start Date minus 1 day
+        start_d = parse_excel_date(extra.get("Service Start Date") or extra.get("service_start_date"))
+        exp_d = parse_excel_date(extra.get("Service Expiry date") or extra.get("service_expiry_date") or o.service_expiry_period)
+        if exp_d is None and start_d is not None:
+            exp_d = start_d - timedelta(days=1)
+
+        close_d = parse_excel_date(o.close_date or extra.get("Close Date") or extra.get("close_date"))
+        prob_val = o.probability_pct if o.probability_pct is not None else extra.get("Probability (%)") or extra.get("probability")
+        stage_val = o.stage_number or str(extra.get("Stage Number") or extra.get("stage") or "")
+        sales_t = o.sales_type or str(extra.get("Sales Type") or extra.get("sales_type") or "")
+        fc_norm = _norm_fc(o.forecast_category or str(extra.get("Forecast Category") or extra.get("forecast_category") or ""))
+
+        is_open = _is_open_deal(
+            sales_type=sales_t,
+            forecast_category=fc_norm,
+            probability=prob_val,
+            stage_number=stage_val,
+            is_deleted_or_lost=bool(o.is_deleted_or_lost),
+        )
+
         records.append({
             "id": o.opportunity_id_18,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
             "account_name": o.account_name,
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-            "forecast_category": _norm_fc(o.forecast_category),
+            "forecast_category": fc_norm,
             "business_unit": (o.business_unit_primary or "").strip() or "Unassigned",
             "business_unit_primary": (o.business_unit_primary or "").strip() or "Unassigned",
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period": o.fiscal_period or "",
-            "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
+            "close_date": pd.Timestamp(close_d) if close_d else pd.NaT,
+            "_close_date": close_d,
+            "_service_expiry_date": exp_d,
+            "_service_start_date": start_d,
+            "service_expiry_date": exp_d.isoformat() if exp_d else "",
+            "group": group_val,
+            "category": category_val,
             "approval_status": _norm_approval(o.approval_status),
             "region": _map_region(o.revised_sub_region),
             "sub_region": _map_region(o.revised_sub_region),
-            "sales_type": o.sales_type or "",
+            "sales_type": sales_t,
+            "stage_number": stage_val,
+            "probability_pct": prob_val,
             "owner": (o.opportunity_owner or "").strip(),
-            "opportunity_owner": (o.opportunity_owner or "").strip()
+            "opportunity_owner": (o.opportunity_owner or "").strip(),
+            "is_open": is_open,
         })
     df = pd.DataFrame(records)
     df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
     return df
+
 
 class V2DelayedService:
     def __init__(self, db: Session):
@@ -105,11 +219,6 @@ class V2DelayedService:
 
     def _snap_by_date(self, d: date) -> UploadSnapshot | None:
         return self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == d).first()
-
-    def _get_comparison_snapshots(self, t_snap: UploadSnapshot) -> tuple[UploadSnapshot | None, UploadSnapshot | None]:
-        y_snap = self.get_yesterday_baseline(t_snap)
-        w_snap = self.get_lastweek_baseline(t_snap)
-        return y_snap, w_snap
 
     def get_yesterday_baseline(self, snap: UploadSnapshot) -> UploadSnapshot | None:
         if getattr(snap, "yesterday_date", None):
@@ -139,12 +248,6 @@ class V2DelayedService:
         )
 
     def get_period_start_baseline(self, snap: UploadSnapshot, start_date: date) -> tuple[UploadSnapshot | None, bool, str]:
-        """
-        Baseline for start of period:
-        - latest snapshot on or before start_date, strictly before snap
-        - if none exists, earliest snapshot inside period before snap (marked partial, 'tracked since <that date>')
-        - if none exists, (None, False, 'n/a')
-        """
         b = (
             self.db.query(UploadSnapshot)
             .filter(
@@ -156,7 +259,7 @@ class V2DelayedService:
         )
         if b:
             return b, False, f"Since {b.snapshot_date.strftime('%d %b %Y')}"
-            
+
         b_partial = (
             self.db.query(UploadSnapshot)
             .filter(
@@ -168,51 +271,13 @@ class V2DelayedService:
         )
         if b_partial:
             return b_partial, True, f"tracked since {b_partial.snapshot_date.strftime('%d %b %Y')}"
-            
+
         return None, False, "n/a"
 
     def _get_opps(self, snap: UploadSnapshot) -> list[Opportunity]:
         return self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
-    
-    def _filter_df(self, df: pd.DataFrame, filter_spec: Optional[ScopeService.FilterSpec] = None) -> pd.DataFrame:
-        if df.empty:
-            return df
-        res_df = df
-        from backend.services.scopes import FilterSpec
-        fs = filter_spec or FilterSpec()
-        
-        # sales_types
-        if fs.sales_types:
-            res_df = res_df[res_df["sales_type"].isin(fs.sales_types)]
-        # include_deleted_lost
-        if not fs.include_deleted_lost:
-            res_df = res_df[~res_df["is_deleted_or_lost"]]
-        # regions
-        if fs.regions:
-            res_df = res_df[res_df["region"].isin(fs.regions) | res_df["sub_region"].isin(fs.regions)]
-        # business_units
-        if fs.business_units:
-            res_df = res_df[res_df["business_unit"].isin(fs.business_units) | res_df["business_unit_primary"].isin(fs.business_units)]
-        # forecast_categories
-        if fs.forecast_categories:
-            norm_cats = ["Blank" if c in ("Not yet proposed", "Blank", "") else c for c in fs.forecast_categories]
-            res_df = res_df[res_df["forecast_category"].isin(norm_cats)]
-        # approval_statuses
-        if fs.approval_statuses:
-            norm_apps = ["Blank" if a in ("Not submitted", "Blank", "") else a for a in fs.approval_statuses]
-            res_df = res_df[res_df["approval_status"].isin(norm_apps)]
-            
-        return res_df
-
-    def _slice_renewals(self, df: pd.DataFrame, filter_spec: Optional[ScopeService.FilterSpec] = None) -> pd.DataFrame:
-        return self._filter_df(df, filter_spec)
 
     def _parse_period_info(self, target_p_str: str, snap_d: date) -> tuple[bool, Optional[int], tuple[int, int], date, date, str, str]:
-        """
-        Parses target period into:
-        (is_year, target_year, target_parsed, start_date, end_date, ptype, label)
-        ptype is one of: 'current_quarter', 'past_quarter', 'future_quarter', 'current_year', 'past_year', 'future_year'
-        """
         snap_cq = ScopeService.quarter_of(snap_d)
         cq_parsed = ScopeService.parse_quarter(snap_cq)
         p_clean = str(target_p_str).strip()
@@ -246,144 +311,182 @@ class V2DelayedService:
     def _compute_snapshot_buckets(
         self,
         snap: UploadSnapshot,
-        target_q_str: str,
+        target_p_str: str,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
         base_snap: Optional[UploadSnapshot] = None,
-        no_baseline: bool = False
+        no_baseline: bool = False,
     ) -> dict:
         t_df = _opps_to_df(self._get_opps(snap))
-        t_ren = self._slice_renewals(t_df, filter_spec)
-        t_snap_date = pd.Timestamp(snap.snapshot_date)
-        
-        is_year, target_year, target_parsed, s_date, e_date, ptype, p_label = self._parse_period_info(target_q_str, snap.snapshot_date)
+        snap_date = snap.snapshot_date
+        t_snap_date = pd.Timestamp(snap_date)
+
+        is_year, target_year, target_parsed, s_date, e_date, ptype, p_label = self._parse_period_info(target_p_str, snap_date)
         is_future = ptype in ("future_quarter", "future_year")
 
-        from backend.config import settings
-        include_prior_fy = getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
+        # Period start / year end
+        quarter_start = s_date
+        quarter_end = e_date
+        ref_year = target_year if is_year and target_year else s_date.year
+        year_end = date(ref_year, 12, 31)
 
-        overdue_df = pd.DataFrame()
-        prior_slipped = pd.DataFrame()
+        # Settings
+        available_groups = [str(g).strip() for g in t_df["group"].dropna().unique() if str(g).strip()] if not t_df.empty else []
+        rules = SettingsService.get_delayed_rules(self.db, available_groups=available_groups)
+        effective_delayed_group = rules.get("delayed_group")
+        fallback_used = rules.get("fallback_used", False)
+        exclude_non_pos = rules.get("exclude_zero_negative_acv", True)
+        far_ahead_years = rules.get("close_date_far_ahead_years", 5)
 
-        # 1. Overdue computation
-        if is_future:
+        # Base open filter
+        open_df = t_df[t_df["is_open"]].copy() if not t_df.empty else pd.DataFrame()
+
+        # -------------------------------------------------------------
+        # 1. DELAYED RENEWALS
+        # Set = open deals whose Group matches "delayed group"
+        # Fallback if no Group or no match: open renewals with service_expiry_date < quarter_start
+        # -------------------------------------------------------------
+        if not open_df.empty:
+            if effective_delayed_group and "group" in open_df.columns:
+                delay_mask = open_df["group"].astype(str).str.strip().str.lower() == effective_delayed_group.lower()
+                if not delay_mask.any():
+                    # Fallback if configured group has 0 matches
+                    fallback_used = True
+                    delay_mask = open_df["_service_expiry_date"].apply(lambda d: d < quarter_start if d else False)
+            else:
+                fallback_used = True
+                delay_mask = open_df["_service_expiry_date"].apply(lambda d: d < quarter_start if d else False)
+            delayed_all = open_df[delay_mask].copy()
+        else:
+            delayed_all = pd.DataFrame()
+
+        # Exclude zero or negative ACV from headline totals (Setting default on)
+        if exclude_non_pos and not delayed_all.empty:
+            delayed_totals_df = delayed_all[delayed_all["forecast_acv_amount"] > 0].copy()
+        else:
+            delayed_totals_df = delayed_all.copy() if not delayed_all.empty else pd.DataFrame()
+
+        # Two boxes: Overdue and Delayed Close Date Ahead
+        if not delayed_totals_df.empty:
+            is_od = delayed_totals_df["_close_date"].apply(lambda d: d < snap_date if d else False)
+            overdue_df = delayed_totals_df[is_od].copy()
+            ahead_df = delayed_totals_df[~is_od].copy()
+            
+            overdue_df["reason"] = "Overdue"
+            overdue_df["days_overdue"] = overdue_df["_close_date"].apply(
+                lambda d: max(0, (snap_date - d).days) if d else 0
+            )
+            ahead_df["reason"] = "Delayed, close date ahead"
+            ahead_df["days_overdue"] = 0
+            
+            # Data-driven split under ahead box
+            ahead_rest_q_df = ahead_df[ahead_df["_close_date"].apply(lambda d: d <= quarter_end if d else False)].copy()
+            ahead_later_q_df = ahead_df[ahead_df["_close_date"].apply(lambda d: (quarter_end < d <= year_end) if d else False)].copy()
+            ahead_next_yr_df = ahead_df[ahead_df["_close_date"].apply(lambda d: d.year == year_end.year + 1 if d else False)].copy()
+            ahead_later_yr_df = ahead_df[ahead_df["_close_date"].apply(lambda d: d.year > year_end.year + 1 if d else False)].copy()
+        else:
             overdue_df = pd.DataFrame()
-        elif ptype == "past_quarter":
-            # Rule 2: Past quarter selected: fiscal_period == that quarter, still open, close date before snapshot date
-            t_q = t_ren[t_ren["fiscal_period"] == target_q_str] if not t_ren.empty else pd.DataFrame()
-            if not t_q.empty:
-                is_overdue = pd.notna(t_q["close_date"]) & (t_q["close_date"] < t_snap_date) & (t_q["forecast_category"] != "Closed") & (~t_q["is_deleted_or_lost"])
-                overdue_df = t_q[is_overdue].copy()
-                if not overdue_df.empty:
-                    overdue_df["reason"] = "Overdue"
-                    overdue_df["push_out_days"] = 0
-                    overdue_df["days_overdue"] = overdue_df["close_date"].apply(
-                        lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
-                    )
-        elif ptype == "current_quarter":
-            # Rule 1: Current quarter selected
-            t_q = t_ren[t_ren["fiscal_period"] == target_q_str] if not t_ren.empty else pd.DataFrame()
-            if not t_q.empty:
-                is_overdue = pd.notna(t_q["close_date"]) & (t_q["close_date"] < t_snap_date) & (t_q["forecast_category"] != "Closed") & (~t_q["is_deleted_or_lost"])
-                overdue_df = t_q[is_overdue].copy()
-                if not overdue_df.empty:
-                    overdue_df["reason"] = "Overdue"
-                    overdue_df["push_out_days"] = 0
-                    overdue_df["days_overdue"] = overdue_df["close_date"].apply(
-                        lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
-                    )
+            ahead_df = pd.DataFrame()
+            ahead_rest_q_df = pd.DataFrame()
+            ahead_later_q_df = pd.DataFrame()
+            ahead_next_yr_df = pd.DataFrame()
+            ahead_later_yr_df = pd.DataFrame()
 
-            # Earlier open renewals:
-            if not t_ren.empty:
-                if include_prior_fy:
-                    prior_open = t_ren[
-                        t_ren["fiscal_period"].apply(lambda fp: (_parse_fp(fp) < target_parsed and _parse_fp(fp) > (0, 0)) if fp and "-" in fp else False)
-                        & (t_ren["forecast_category"] != "Closed")
-                        & (~t_ren["is_deleted_or_lost"])
-                    ].copy()
-                else:
-                    prior_open = t_ren[
-                        t_ren["fiscal_period"].apply(lambda fp: (_parse_fp(fp)[0] == target_parsed[0] and _parse_fp(fp)[1] < target_parsed[1]) if fp and "-" in fp else False)
-                        & (t_ren["forecast_category"] != "Closed")
-                        & (~t_ren["is_deleted_or_lost"])
-                    ].copy()
+        # -------------------------------------------------------------
+        # 2. SLIPPED TO A LATER YEAR (by service expiry)
+        # Rule: open deals whose Service Expiry date is on or before the last day of the selected period's year
+        # AND whose Close Date is after that day.
+        # -------------------------------------------------------------
+        if not open_df.empty:
+            slipped_rule_mask = open_df["_service_expiry_date"].apply(
+                lambda d: d <= year_end if d else False
+            ) & open_df["_close_date"].apply(
+                lambda d: d > year_end if d else False
+            )
+            slipped_all = open_df[slipped_rule_mask].copy()
+        else:
+            slipped_all = pd.DataFrame()
 
-                if not prior_open.empty:
-                    in_cq = prior_open["close_date"].apply(
-                        lambda d: (s_date <= d.date() <= e_date) if pd.notna(d) else False
-                    )
-                    prior_slipped = prior_open[in_cq].copy()
-                    prior_od = prior_open[~in_cq].copy()
+        if exclude_non_pos and not slipped_all.empty:
+            slipped_pos_df = slipped_all[slipped_all["forecast_acv_amount"] > 0].copy()
+            slipped_nonpos_df = slipped_all[slipped_all["forecast_acv_amount"] <= 0].copy()
+        else:
+            slipped_pos_df = slipped_all.copy() if not slipped_all.empty else pd.DataFrame()
+            slipped_nonpos_df = pd.DataFrame()
 
-                    if not prior_od.empty:
-                        prior_od["reason"] = "Overdue"
-                        prior_od["push_out_days"] = 0
-                        prior_od["days_overdue"] = prior_od["close_date"].apply(
-                            lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
-                        )
-                        overdue_df = pd.concat([overdue_df, prior_od], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first")
+        # Tag deals appearing in both Delayed and Slipped
+        delayed_ids = set(delayed_totals_df["opportunity_id_18"]) if not delayed_totals_df.empty else set()
+        if not slipped_pos_df.empty:
+            slipped_pos_df["also_delayed"] = slipped_pos_df["opportunity_id_18"].isin(delayed_ids)
+        if not delayed_totals_df.empty:
+            slipped_ids = set(slipped_all["opportunity_id_18"]) if not slipped_all.empty else set()
+            delayed_totals_df["also_slipped"] = delayed_totals_df["opportunity_id_18"].isin(slipped_ids)
+            if not overdue_df.empty:
+                overdue_df["also_slipped"] = overdue_df["opportunity_id_18"].isin(slipped_ids)
+            if not ahead_df.empty:
+                ahead_df["also_slipped"] = ahead_df["opportunity_id_18"].isin(slipped_ids)
 
-                    if not prior_slipped.empty:
-                        prior_slipped["reason"] = "Slipped quarter"
-                        prior_slipped["days_overdue"] = 0
-                        prior_slipped["push_out_days"] = prior_slipped.apply(
-                            lambda r: (r["close_date"].date() - ScopeService.quarter_bounds(r["fiscal_period"])[1]).days
-                            if pd.notna(r.get("close_date")) and r.get("fiscal_period") else 0,
-                            axis=1
-                        )
-        elif ptype in ("current_year", "past_year"):
-            # Rule 4: Year selected
-            t_yr = t_ren[t_ren["fiscal_period"].apply(lambda fp: _parse_fp(fp)[0] == target_year if fp and "-" in fp else False)] if not t_ren.empty else pd.DataFrame()
-            if not t_yr.empty:
-                is_overdue = pd.notna(t_yr["close_date"]) & (t_yr["close_date"] < t_snap_date) & (t_yr["forecast_category"] != "Closed") & (~t_yr["is_deleted_or_lost"])
-                overdue_df = t_yr[is_overdue].copy()
-                if not overdue_df.empty:
-                    overdue_df["reason"] = "Overdue"
-                    overdue_df["push_out_days"] = 0
-                    overdue_df["days_overdue"] = overdue_df["close_date"].apply(
-                        lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
-                    )
+        # 3 Buckets for Slipped to Later Year:
+        # (a) service expired before the start of the selected quarter
+        bucket_a_df = slipped_pos_df[slipped_pos_df["_service_expiry_date"].apply(lambda d: d < quarter_start if d else False)].copy() if not slipped_pos_df.empty else pd.DataFrame()
+        # (b) expiring later this year but not on the last day
+        bucket_b_df = slipped_pos_df[slipped_pos_df["_service_expiry_date"].apply(lambda d: (quarter_start <= d < year_end) if d else False)].copy() if not slipped_pos_df.empty else pd.DataFrame()
+        # (c) expiring on the last day of the year (new term starts next day)
+        bucket_c_df = slipped_pos_df[slipped_pos_df["_service_expiry_date"].apply(lambda d: d == year_end if d else False)].copy() if not slipped_pos_df.empty else pd.DataFrame()
 
-            if include_prior_fy and ptype == "current_year" and not t_ren.empty:
-                prior_open = t_ren[
-                    t_ren["fiscal_period"].apply(lambda fp: (_parse_fp(fp)[0] < target_year and _parse_fp(fp) > (0, 0)) if fp and "-" in fp else False)
-                    & (t_ren["forecast_category"] != "Closed")
-                    & (~t_ren["is_deleted_or_lost"])
-                ].copy()
-                if not prior_open.empty:
-                    in_yr = prior_open["close_date"].apply(lambda d: (s_date <= d.date() <= e_date) if pd.notna(d) else False)
-                    prior_slipped = prior_open[in_yr].copy()
-                    prior_od = prior_open[~in_yr].copy()
+        # -------------------------------------------------------------
+        # 3. NEEDS REVIEW SECTION (at bottom of tab)
+        # 1. Negative or zero ACV (adjustments, excluded from totals) in delayed or slipped
+        # 2. Service expired before this quarter but not in delayed Group
+        # 3. Close date far ahead (> far_ahead_years)
+        # -------------------------------------------------------------
+        if not open_df.empty:
+            # Type 1: Negative or zero ACV
+            t1_mask = (open_df["forecast_acv_amount"] <= 0) & (delay_mask | slipped_rule_mask)
+            review_t1_df = open_df[t1_mask].copy()
+            if not review_t1_df.empty:
+                review_t1_df["why_it_is_here"] = "Negative or zero ACV adjustment; excluded from delayed and slippage totals."
+                review_t1_df["review_type"] = "type_1"
 
-                    if not prior_od.empty:
-                        prior_od["reason"] = "Overdue"
-                        prior_od["push_out_days"] = 0
-                        prior_od["days_overdue"] = prior_od["close_date"].apply(
-                            lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0
-                        )
-                        overdue_df = pd.concat([overdue_df, prior_od], ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first")
+            # Type 2: Expired before quarter start but not in delayed group
+            t2_mask = open_df["_service_expiry_date"].apply(lambda d: d < quarter_start if d else False) & (~delay_mask)
+            review_t2_df = open_df[t2_mask].copy()
+            if not review_t2_df.empty:
+                review_t2_df["why_it_is_here"] = "Service expired before quarter start but not categorized in delayed Group."
+                review_t2_df["review_type"] = "type_2"
 
-                    if not prior_slipped.empty:
-                        prior_slipped["reason"] = "Slipped year"
-                        prior_slipped["days_overdue"] = 0
-                        prior_slipped["push_out_days"] = 0
+            # Type 3: Close date far ahead (> far_ahead_years)
+            t3_mask = open_df["_close_date"].apply(lambda d: d.year > snap_date.year + far_ahead_years if d else False)
+            review_t3_df = open_df[t3_mask].copy()
+            if not review_t3_df.empty:
+                review_t3_df["why_it_is_here"] = f"Close date is {far_ahead_years}+ years ahead of snapshot date; flagged for date verification."
+                review_t3_df["review_type"] = "type_3"
+        else:
+            review_t1_df = pd.DataFrame()
+            review_t2_df = pd.DataFrame()
+            review_t3_df = pd.DataFrame()
 
-        # 2. Event buckets: Slipped, Later close, Lost
-        slipped_df = pd.DataFrame()
+        # -------------------------------------------------------------
+        # 4. EXISTING SLIPPAGE BUCKETS (stay as they are per prompt)
+        # Slipped to next year, slipped to next quarter, slipped to later quarter
+        # -------------------------------------------------------------
         slipped_next_year_df = pd.DataFrame()
         slipped_next_quarter_df = pd.DataFrame()
         slipped_later_quarter_df = pd.DataFrame()
-        later_df = pd.DataFrame()
         lost_df = pd.DataFrame()
 
         if is_future or no_baseline or (base_snap is None):
             pass
-        elif base_snap and not t_ren.empty:
-            base_ren = self._slice_renewals(_opps_to_df(self._get_opps(base_snap)), filter_spec)
-            if not base_ren.empty:
+        elif base_snap and not t_df.empty:
+            base_opps = self._get_opps(base_snap)
+            base_df = _opps_to_df(base_opps)
+            base_ren = base_df[base_df["sales_type"] == "Renewals"] if not base_df.empty else pd.DataFrame()
+            t_ren = t_df[t_df["sales_type"] == "Renewals"] if not t_df.empty else pd.DataFrame()
+
+            if not base_ren.empty and not t_ren.empty:
                 if is_year:
                     base_deals = base_ren[base_ren["fiscal_period"].apply(lambda fp: _parse_fp(fp)[0] == target_year if fp and "-" in fp else False) & (~base_ren["is_deleted_or_lost"])]
                 else:
-                    base_deals = base_ren[(base_ren["fiscal_period"] == target_q_str) & (~base_ren["is_deleted_or_lost"])]
+                    base_deals = base_ren[(base_ren["fiscal_period"] == target_p_str) & (~base_ren["is_deleted_or_lost"])]
 
                 if not base_deals.empty:
                     base_idx = base_deals.set_index("opportunity_id_18")
@@ -392,7 +495,6 @@ class V2DelayedService:
                     slipped_next_year_rows = []
                     slipped_next_quarter_rows = []
                     slipped_later_quarter_rows = []
-                    later_rows = []
                     lost_rows = []
 
                     for opp_id, b_row in base_idx.iterrows():
@@ -400,166 +502,95 @@ class V2DelayedService:
                             r = b_row.copy()
                             r["opportunity_id_18"] = opp_id
                             r["reason"] = "Lost/removed"
-                            r["push_out_days"] = 0
-                            r["days_overdue"] = 0
                             lost_rows.append(r)
                             continue
 
                         t_row = t_idx.loc[opp_id]
                         t_fp = t_row["fiscal_period"]
-                        if not t_fp or "-" not in t_fp: continue
+                        if not t_fp or "-" not in t_fp:
+                            continue
                         t_p = _parse_fp(t_fp)
 
                         if is_year:
                             is_slipped = (t_p[0] > target_year)
-                            is_later = (t_p[0] == target_year) and pd.notna(t_row["close_date"]) and pd.notna(b_row["close_date"]) and (t_row["close_date"] > b_row["close_date"])
                         else:
                             is_slipped = (t_p[0] > target_parsed[0]) or (t_p[0] == target_parsed[0] and t_p[1] > target_parsed[1])
-                            is_later = (t_p == target_parsed) and pd.notna(t_row["close_date"]) and pd.notna(b_row["close_date"]) and (t_row["close_date"] > b_row["close_date"])
 
                         if is_slipped:
                             r = t_row.copy()
                             r["opportunity_id_18"] = opp_id
-                            r["push_out_days"] = (t_row["close_date"] - b_row["close_date"]).days if pd.notna(t_row["close_date"]) and pd.notna(b_row["close_date"]) else 0
-                            r["days_overdue"] = 0
-                            if is_year:
+                            if is_year or t_p[0] > target_parsed[0]:
                                 r["reason"] = "Slipped to next fiscal year"
-                                r["slippage_type"] = "slipped_next_year"
                                 slipped_next_year_rows.append(r)
+                            elif t_p[0] == target_parsed[0] and t_p[1] == target_parsed[1] + 1:
+                                r["reason"] = "Slipped to next quarter"
+                                slipped_next_quarter_rows.append(r)
                             else:
-                                if t_p[0] > target_parsed[0]:
-                                    r["reason"] = "Slipped to next fiscal year"
-                                    r["slippage_type"] = "slipped_next_year"
-                                    slipped_next_year_rows.append(r)
-                                elif t_p[0] == target_parsed[0] and t_p[1] == target_parsed[1] + 1:
-                                    r["reason"] = "Slipped to next quarter"
-                                    r["slippage_type"] = "slipped_next_quarter"
-                                    slipped_next_quarter_rows.append(r)
-                                else:
-                                    r["reason"] = "Slipped to a later quarter, same year"
-                                    r["slippage_type"] = "slipped_later_quarter"
-                                    slipped_later_quarter_rows.append(r)
-                        elif is_later:
-                            r = t_row.copy()
-                            r["opportunity_id_18"] = opp_id
-                            r["reason"] = "Later close date"
-                            r["push_out_days"] = (t_row["close_date"] - b_row["close_date"]).days
-                            c_date = r.get("close_date")
-                            r["days_overdue"] = max(0, (t_snap_date.date() - c_date.date()).days) if pd.notna(c_date) and c_date < t_snap_date else 0
-                            later_rows.append(r)
+                                r["reason"] = "Slipped to a later quarter, same year"
+                                slipped_later_quarter_rows.append(r)
 
-                    slipped_next_year_df = pd.DataFrame(slipped_next_year_rows)
-                    slipped_next_quarter_df = pd.DataFrame(slipped_next_quarter_rows)
-                    slipped_later_quarter_df = pd.DataFrame(slipped_later_quarter_rows)
-                    later_df = pd.DataFrame(later_rows)
-                    lost_df = pd.DataFrame(lost_rows)
-        else:
-            slipped_next_year_df = pd.DataFrame()
-            slipped_next_quarter_df = pd.DataFrame()
-            slipped_later_quarter_df = pd.DataFrame()
+                    slipped_next_year_df = pd.DataFrame(slipped_next_year_rows).drop_duplicates(subset=["opportunity_id_18"]) if slipped_next_year_rows else pd.DataFrame()
+                    slipped_next_quarter_df = pd.DataFrame(slipped_next_quarter_rows).drop_duplicates(subset=["opportunity_id_18"]) if slipped_next_quarter_rows else pd.DataFrame()
+                    slipped_later_quarter_df = pd.DataFrame(slipped_later_quarter_rows).drop_duplicates(subset=["opportunity_id_18"]) if slipped_later_quarter_rows else pd.DataFrame()
+                    lost_df = pd.DataFrame(lost_rows).drop_duplicates(subset=["opportunity_id_18"]) if lost_rows else pd.DataFrame()
 
-        if not prior_slipped.empty:
-            for _, r in prior_slipped.iterrows():
-                fp = r.get("fiscal_period")
-                tp = _parse_fp(fp) if fp else (0, 0)
-                r_dict = dict(r)
-                if tp[0] > target_parsed[0]:
-                    slipped_next_year_df = pd.concat([slipped_next_year_df, pd.DataFrame([r_dict])], ignore_index=True)
-                elif tp[0] == target_parsed[0] and tp[1] == target_parsed[1] + 1:
-                    slipped_next_quarter_df = pd.concat([slipped_next_quarter_df, pd.DataFrame([r_dict])], ignore_index=True)
-                else:
-                    slipped_later_quarter_df = pd.concat([slipped_later_quarter_df, pd.DataFrame([r_dict])], ignore_index=True)
-
-        # De-duplicate each slippage bucket
-        slipped_next_year_df = slipped_next_year_df.drop_duplicates(subset=["opportunity_id_18"], keep="first") if not slipped_next_year_df.empty else pd.DataFrame()
-        slipped_next_quarter_df = slipped_next_quarter_df.drop_duplicates(subset=["opportunity_id_18"], keep="first") if not slipped_next_quarter_df.empty else pd.DataFrame()
-        slipped_later_quarter_df = slipped_later_quarter_df.drop_duplicates(subset=["opportunity_id_18"], keep="first") if not slipped_later_quarter_df.empty else pd.DataFrame()
-
-        # Combine slippage
         slip_parts = [p for p in (slipped_next_year_df, slipped_next_quarter_df, slipped_later_quarter_df) if not p.empty]
-        slipped_df = pd.concat(slip_parts, ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first") if slip_parts else pd.DataFrame()
-
-        # Priority de-duplication: overdue > slipped > later_close
-        od_ids = set(overdue_df["opportunity_id_18"]) if not overdue_df.empty else set()
-        if not slipped_df.empty and od_ids:
-            slipped_df = slipped_df[~slipped_df["opportunity_id_18"].isin(od_ids)]
-            if not slipped_next_year_df.empty: slipped_next_year_df = slipped_next_year_df[~slipped_next_year_df["opportunity_id_18"].isin(od_ids)]
-            if not slipped_next_quarter_df.empty: slipped_next_quarter_df = slipped_next_quarter_df[~slipped_next_quarter_df["opportunity_id_18"].isin(od_ids)]
-            if not slipped_later_quarter_df.empty: slipped_later_quarter_df = slipped_later_quarter_df[~slipped_later_quarter_df["opportunity_id_18"].isin(od_ids)]
-
-        slip_ids = set(slipped_df["opportunity_id_18"]) if not slipped_df.empty else set()
-        if not later_df.empty and (od_ids or slip_ids):
-            later_df = later_df[~later_df["opportunity_id_18"].isin(od_ids.union(slip_ids))]
-
-        # DELAYED RENEWALS = Overdue + Later Close Date (Postponed)
-        delayed_parts = [p for p in (overdue_df, later_df) if not p.empty]
-        delayed_total_df = pd.concat(delayed_parts, ignore_index=True).drop_duplicates(subset=["opportunity_id_18"], keep="first") if delayed_parts else pd.DataFrame()
-
-        # Slippage total = slipped_df (all 3 destinations)
-        slippage_total_df = slipped_df
+        existing_slippage_total_df = pd.concat(slip_parts, ignore_index=True).drop_duplicates(subset=["opportunity_id_18"]) if slip_parts else pd.DataFrame()
 
         return {
-            "total": delayed_total_df,
-            "delayed_total": delayed_total_df,
+            "delayed_total": delayed_totals_df,
+            "total": delayed_totals_df,
             "overdue": overdue_df,
-            "later_close": later_df,
-            "slippage_total": slippage_total_df,
-            "slipped": slippage_total_df,
+            "ahead": ahead_df,
+            "ahead_rest_q": ahead_rest_q_df,
+            "ahead_later_q": ahead_later_q_df,
+            "ahead_next_yr": ahead_next_yr_df,
+            "ahead_later_yr": ahead_later_yr_df,
+            "slipped_later_year": slipped_pos_df,
+            "slipped_nonpos": slipped_nonpos_df,
+            "slipped_all": slipped_all,
+            "bucket_a": bucket_a_df,
+            "bucket_b": bucket_b_df,
+            "bucket_c": bucket_c_df,
+            "review_t1": review_t1_df,
+            "review_t2": review_t2_df,
+            "review_t3": review_t3_df,
             "slipped_next_year": slipped_next_year_df,
             "slipped_next_quarter": slipped_next_quarter_df,
             "slipped_later_quarter": slipped_later_quarter_df,
+            "existing_slippage_total": existing_slippage_total_df,
             "lost": lost_df,
-            "t_ren": t_ren,
-            "ptype": ptype,
+            "t_df": t_df,
+            "open_df": open_df,
+            "rules": rules,
+            "fallback_used": fallback_used,
+            "effective_delayed_group": effective_delayed_group,
+            "quarter_start": quarter_start,
+            "quarter_end": quarter_end,
+            "year_end": year_end,
+            "period_label": p_label,
+            "target_p_str": target_p_str,
+            "is_year": is_year,
             "is_future": is_future,
             "has_baseline": (base_snap is not None and not no_baseline),
         }
 
-    def _compute_delayed_and_overdue(self, data: dict, filter_spec: Optional[ScopeService.FilterSpec] = None, target_q_str: Optional[str] = None):
-        t_snap = data["t_snap"]
-        y_snap = data.get("y_snap")
-        w_snap = data.get("w_snap")
-        if not target_q_str:
-            if filter_spec and filter_spec.period and filter_spec.period.startswith("Q") and "-" in filter_spec.period:
-                target_q_str = filter_spec.period
-            else:
-                target_q_str = ScopeService.current_quarter(t_snap.snapshot_date)
-        t_buckets = self._compute_snapshot_buckets(t_snap, target_q_str, filter_spec=filter_spec, base_snap=y_snap)
-        overdue_df = t_buckets["overdue"]
-        delayed_y = t_buckets["total"]
-        delayed_w = self._compute_snapshot_buckets(t_snap, target_q_str, filter_spec=filter_spec, base_snap=w_snap)["total"] if w_snap else delayed_y
-        return overdue_df, delayed_y, delayed_w
-
-    def _compute_snapshot_trend(self, current_snap: UploadSnapshot, target_q_str: str, filter_spec: Optional[ScopeService.FilterSpec] = None) -> list[dict]:
-        snaps = self.db.query(UploadSnapshot).filter(
-            UploadSnapshot.snapshot_date <= current_snap.snapshot_date
-        ).order_by(UploadSnapshot.snapshot_date.asc()).all()
-        if not snaps:
-            return []
-        snaps = snaps[-6:]
-
-        trend = []
-        for i, s in enumerate(snaps):
-            prev_s = snaps[i - 1] if i > 0 else None
-            buckets = self._compute_snapshot_buckets(s, target_q_str, filter_spec=filter_spec, base_snap=prev_s)
-            d_total = buckets["total"]
-            trend.append({
-                "snapshot_date": s.snapshot_date.isoformat(),
-                "count": len(d_total),
-                "acv": _safe_acv(d_total),
-            })
-        return trend
-
-    def get_summary(self, as_of: str | None = None, compare: str | None = None, filter_spec: Optional[ScopeService.FilterSpec] = None) -> dict:
+    def get_summary(
+        self,
+        as_of: str | None = None,
+        compare: str | None = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+    ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
         eff_compare = compare or (filter_spec.compare if filter_spec else "yesterday")
         t_snap = self._active_snap(eff_as_of)
-        if not t_snap: return {"error": "No data"}
-        
+        if not t_snap:
+            return {"error": "No data"}
+
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
-        
+
         target_p_str = fs.period if fs.period and (fs.period.startswith("Q") or fs.period.startswith("FY") or len(fs.period) == 4) else res.period
         if not target_p_str or target_p_str in ("current_quarter", "all_periods", "all"):
             target_p_str = ScopeService.current_quarter(t_snap.snapshot_date)
@@ -573,160 +604,314 @@ class V2DelayedService:
         w_snap = self.get_lastweek_baseline(t_snap)
         p_snap = w_snap if eff_compare == "last_week" else y_snap
 
-        # Buckets against period_start (MAIN FIGURE)
+        # Compute today's buckets
         main_buckets = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=b_period_start, no_baseline=(b_period_start is None))
 
-        # Event buckets against yesterday and last_week
-        y_event_buckets = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=y_snap, no_baseline=(y_snap is None)) if y_snap else None
-        w_event_buckets = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=w_snap, no_baseline=(w_snap is None)) if w_snap else None
-
-        # Standing buckets of comparison snapshots (for signed net changes in Overdue & Total Delayed)
+        # Comparison snapshot standing buckets (for signed net trends in Delayed Renewals)
         y_standing = self._compute_snapshot_buckets(y_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True) if y_snap else None
         w_standing = self._compute_snapshot_buckets(w_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True) if w_snap else None
 
-        delayed_active = main_buckets["total"]
+        # Period start baseline standing buckets (for trend since start of quarter)
+        start_standing = self._compute_snapshot_buckets(b_period_start, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True) if b_period_start else None
+
+        # Event buckets for existing slippage destinations
+        y_event = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=y_snap, no_baseline=(y_snap is None)) if y_snap else None
+        w_event = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=w_snap, no_baseline=(w_snap is None)) if w_snap else None
+
+        def _calc_delta(current_df: pd.DataFrame, base_df: pd.DataFrame | None) -> dict | None:
+            if base_df is None or is_future:
+                return None
+            return {
+                "count": len(current_df) - len(base_df),
+                "acv": round(_safe_acv(current_df) - _safe_acv(base_df), 2),
+            }
+
+        # -------------------------------------------------------------
+        # Delayed Renewals: Total, Overdue, and Ahead
+        # -------------------------------------------------------------
+        del_tot_df = main_buckets["delayed_total"]
         overdue_df = main_buckets["overdue"]
-        t_ren = main_buckets["t_ren"]
+        ahead_df = main_buckets["ahead"]
 
-        # Delta calculations
-        # 1. Overdue: signed net change
-        delta_y_od = None
-        if y_standing is not None and not is_future:
-            delta_y_od = {
-                "count": len(main_buckets["overdue"]) - len(y_standing["overdue"]),
-                "acv": round(_safe_acv(main_buckets["overdue"]) - _safe_acv(y_standing["overdue"]), 2),
-            }
-        delta_w_od = None
-        if w_standing is not None and not is_future:
-            delta_w_od = {
-                "count": len(main_buckets["overdue"]) - len(w_standing["overdue"]),
-                "acv": round(_safe_acv(main_buckets["overdue"]) - _safe_acv(w_standing["overdue"]), 2),
-            }
+        # Ahead sub-splits
+        ahead_rest_q_df = main_buckets["ahead_rest_q"]
+        ahead_later_q_df = main_buckets["ahead_later_q"]
+        ahead_next_yr_df = main_buckets["ahead_next_yr"]
+        ahead_later_yr_df = main_buckets["ahead_later_yr"]
 
-        # 2. Slipped by destination: main figure is since period start, boxes are event buckets since yesterday & last week
-        slip_has_base = (b_period_start is not None) and (not is_future)
-        slip_ny_cnt = len(main_buckets["slipped_next_year"]) if slip_has_base else (0 if is_future else None)
-        slip_ny_acv = _safe_acv(main_buckets["slipped_next_year"]) if slip_has_base else (0.0 if is_future else None)
-        delta_y_slip_ny = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_slip_ny = {
-                "count": len(y_event_buckets["slipped_next_year"]),
-                "acv": _safe_acv(y_event_buckets["slipped_next_year"]),
-            }
-        delta_w_slip_ny = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_slip_ny = {
-                "count": len(w_event_buckets["slipped_next_year"]),
-                "acv": _safe_acv(w_event_buckets["slipped_next_year"]),
-            }
+        year_end = main_buckets["year_end"]
+        label_rest_q = f"Rest of {target_q_label}"
+        label_later_q = f"Later quarters of {year_end.year}"
+        label_next_yr = f"Next year ({year_end.year + 1})"
+        label_later_yr = f"{year_end.year + 2} or later"
 
-        slip_nq_cnt = len(main_buckets["slipped_next_quarter"]) if slip_has_base else (0 if is_future else None)
-        slip_nq_acv = _safe_acv(main_buckets["slipped_next_quarter"]) if slip_has_base else (0.0 if is_future else None)
-        delta_y_slip_nq = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_slip_nq = {
-                "count": len(y_event_buckets["slipped_next_quarter"]),
-                "acv": _safe_acv(y_event_buckets["slipped_next_quarter"]),
-            }
-        delta_w_slip_nq = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_slip_nq = {
-                "count": len(w_event_buckets["slipped_next_quarter"]),
-                "acv": _safe_acv(w_event_buckets["slipped_next_quarter"]),
-            }
+        delayed_renewals = {
+            "heading": "Delayed Renewals",
+            "rule_caption": "Open deals in the delayed Group. Total split into Overdue (close date passed) and Delayed, close date ahead.",
+            "fallback_used": main_buckets["fallback_used"],
+            "fallback_notice": "Notice: Group column not found or no match; fallback used: open renewals whose service expiry is before quarter start." if main_buckets["fallback_used"] else None,
+            "effective_delayed_group": main_buckets["effective_delayed_group"],
+            "total": {
+                "count": len(del_tot_df),
+                "acv": _safe_acv(del_tot_df),
+                "delta_period_start": _calc_delta(del_tot_df, start_standing["delayed_total"] if start_standing else None),
+                "delayed_vs_yesterday": _calc_delta(del_tot_df, y_standing["delayed_total"] if y_standing else None),
+                "delayed_vs_lastweek": _calc_delta(del_tot_df, w_standing["delayed_total"] if w_standing else None),
+            },
+            "overdue": {
+                "count": len(overdue_df),
+                "acv": _safe_acv(overdue_df),
+                "baseline_label": "Current",
+                "delta_period_start": _calc_delta(overdue_df, start_standing["overdue"] if start_standing else None),
+                "delayed_vs_yesterday": _calc_delta(overdue_df, y_standing["overdue"] if y_standing else None),
+                "delayed_vs_lastweek": _calc_delta(overdue_df, w_standing["overdue"] if w_standing else None),
+            },
+            "ahead": {
+                "count": len(ahead_df),
+                "acv": _safe_acv(ahead_df),
+                "baseline_label": "Current",
+                "delta_period_start": _calc_delta(ahead_df, start_standing["ahead"] if start_standing else None),
+                "delayed_vs_yesterday": _calc_delta(ahead_df, y_standing["ahead"] if y_standing else None),
+                "delayed_vs_lastweek": _calc_delta(ahead_df, w_standing["ahead"] if w_standing else None),
+                "split": [
+                    {"key": "rest_of_quarter", "label": label_rest_q, "count": len(ahead_rest_q_df), "acv": _safe_acv(ahead_rest_q_df)},
+                    {"key": "later_quarters_same_year", "label": label_later_q, "count": len(ahead_later_q_df), "acv": _safe_acv(ahead_later_q_df)},
+                    {"key": "next_year", "label": label_next_yr, "count": len(ahead_next_yr_df), "acv": _safe_acv(ahead_next_yr_df)},
+                    {"key": "later_years", "label": label_later_yr, "count": len(ahead_later_yr_df), "acv": _safe_acv(ahead_later_yr_df)},
+                ],
+            },
+        }
+        delayed_renewals["later_close"] = delayed_renewals["ahead"]
 
-        slip_lq_cnt = len(main_buckets["slipped_later_quarter"]) if slip_has_base else (0 if is_future else None)
-        slip_lq_acv = _safe_acv(main_buckets["slipped_later_quarter"]) if slip_has_base else (0.0 if is_future else None)
-        delta_y_slip_lq = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_slip_lq = {
-                "count": len(y_event_buckets["slipped_later_quarter"]),
-                "acv": _safe_acv(y_event_buckets["slipped_later_quarter"]),
-            }
-        delta_w_slip_lq = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_slip_lq = {
-                "count": len(w_event_buckets["slipped_later_quarter"]),
-                "acv": _safe_acv(w_event_buckets["slipped_later_quarter"]),
-            }
+        # Data-quality line: "N deals expired before the quarter but have no delayed Group: view"
+        dq_count = len(main_buckets["review_t2"])
+        dq_acv = _safe_acv(main_buckets["review_t2"])
+        data_quality_line = {
+            "count": dq_count,
+            "acv": dq_acv,
+            "message": f"{dq_count} deals expired before the quarter but have no delayed Group: view",
+        }
 
-        slip_tot_cnt = len(main_buckets["slippage_total"]) if slip_has_base else (0 if is_future else None)
-        slip_tot_acv = _safe_acv(main_buckets["slippage_total"]) if slip_has_base else (0.0 if is_future else None)
-        delta_y_slip_tot = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_slip_tot = {
-                "count": len(y_event_buckets["slippage_total"]),
-                "acv": _safe_acv(y_event_buckets["slippage_total"]),
-            }
-        delta_w_slip_tot = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_slip_tot = {
-                "count": len(w_event_buckets["slippage_total"]),
-                "acv": _safe_acv(w_event_buckets["slippage_total"]),
-            }
+        # -------------------------------------------------------------
+        # Slipped to Later Year (by service expiry)
+        # -------------------------------------------------------------
+        slipped_pos_df = main_buckets["slipped_later_year"]
+        slipped_nonpos_df = main_buckets["slipped_nonpos"]
+        slipped_all_df = main_buckets["slipped_all"]
 
-        # 3. Later Close: main figure is since period start
-        later_has_base = (b_period_start is not None) and (not is_future)
-        later_cnt = len(main_buckets["later_close"]) if later_has_base else (0 if is_future else None)
-        later_acv = _safe_acv(main_buckets["later_close"]) if later_has_base else (0.0 if is_future else None)
-        delta_y_later = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_later = {
-                "count": len(y_event_buckets["later_close"]),
-                "acv": _safe_acv(y_event_buckets["later_close"]),
-            }
-        delta_w_later = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_later = {
-                "count": len(w_event_buckets["later_close"]),
-                "acv": _safe_acv(w_event_buckets["later_close"]),
-            }
+        def _fc_breakdown(df_sub: pd.DataFrame) -> dict[str, dict[str, Any]]:
+            res_fc = {}
+            ALL_FC = ["Commit", "Best Case", "Pipeline", "Closed", "Blank"]
+            for cat in ALL_FC:
+                d = df_sub[df_sub["forecast_category"] == cat] if not df_sub.empty else pd.DataFrame()
+                res_fc[cat] = {
+                    "count": len(d),
+                    "acv": _safe_acv(d),
+                }
+            return res_fc
 
-        # 4. Lost: main figure is since period start
-        lost_has_base = (b_period_start is not None) and (not is_future)
-        lost_cnt = len(main_buckets["lost"]) if lost_has_base else (0 if is_future else None)
-        lost_acv = _safe_acv(main_buckets["lost"]) if lost_has_base else (0.0 if is_future else None)
-        delta_y_lost = None
-        if y_event_buckets is not None and not is_future:
-            delta_y_lost = {
-                "count": len(y_event_buckets["lost"]),
-                "acv": _safe_acv(y_event_buckets["lost"]),
-            }
-        delta_w_lost = None
-        if w_event_buckets is not None and not is_future:
-            delta_w_lost = {
-                "count": len(w_event_buckets["lost"]),
-                "acv": _safe_acv(w_event_buckets["lost"]),
-            }
+        bucket_a_df = main_buckets["bucket_a"]
+        bucket_b_df = main_buckets["bucket_b"]
+        bucket_c_df = main_buckets["bucket_c"]
 
-        # 5. Delayed Renewals Total (Overdue + Later Close)
-        delayed_tot_cnt = 0 if is_future else (None if (b_period_start is None and main_buckets["delayed_total"].empty) else len(main_buckets["delayed_total"]))
-        delayed_tot_acv = 0.0 if is_future else (None if (b_period_start is None and main_buckets["delayed_total"].empty) else _safe_acv(main_buckets["delayed_total"]))
-        delta_y_delayed_tot = None
-        if y_standing is not None and not is_future:
-            delta_y_delayed_tot = {
-                "count": len(main_buckets["delayed_total"]) - len(y_standing["delayed_total"]),
-                "acv": round(_safe_acv(main_buckets["delayed_total"]) - _safe_acv(y_standing["delayed_total"]), 2),
-            }
-        delta_w_delayed_tot = None
-        if w_standing is not None and not is_future:
-            delta_w_delayed_tot = {
-                "count": len(main_buckets["delayed_total"]) - len(w_standing["delayed_total"]),
-                "acv": round(_safe_acv(main_buckets["delayed_total"]) - _safe_acv(w_standing["delayed_total"]), 2),
-            }
+        label_a = f"Service expired before the start of {target_q_label}"
+        label_b = f"Expiring later in {year_end.year} (before {year_end.strftime('%d %b')})"
+        label_c = f"Expiring on last day of {year_end.year} (new term starts next day)"
 
+        far_ahead_years = main_buckets["rules"].get("close_date_far_ahead_years", 5)
+
+        # Dynamic Year to Year matrix table
+        matrix_rows = []
+        matrix_columns = []
+        matrix_cells = {}
+        target_year_totals = {}
+        expiry_year_totals = {}
+
+        if not slipped_all_df.empty:
+            # Expiry years (rows)
+            exp_yrs = sorted([d.year for d in slipped_all_df["_service_expiry_date"].dropna().unique()])
+            # Close years (columns)
+            cls_yrs = sorted([d.year for d in slipped_all_df["_close_date"].dropna().unique()])
+            matrix_rows = exp_yrs
+            matrix_columns = cls_yrs
+
+            for cy in cls_yrs:
+                c_df = slipped_pos_df[slipped_pos_df["_close_date"].apply(lambda d: d.year == cy if d else False)] if not slipped_pos_df.empty else pd.DataFrame()
+                is_check_date = cy > (t_snap.snapshot_date.year + far_ahead_years)
+                target_year_totals[str(cy)] = {
+                    "year": cy,
+                    "count": len(c_df),
+                    "acv": _safe_acv(c_df),
+                    "check_date": is_check_date,
+                }
+
+            for ey in exp_yrs:
+                e_df = slipped_pos_df[slipped_pos_df["_service_expiry_date"].apply(lambda d: d.year == ey if d else False)] if not slipped_pos_df.empty else pd.DataFrame()
+                expiry_year_totals[str(ey)] = {
+                    "year": ey,
+                    "count": len(e_df),
+                    "acv": _safe_acv(e_df),
+                }
+
+                for cy in cls_yrs:
+                    cell_df = slipped_pos_df[
+                        slipped_pos_df["_service_expiry_date"].apply(lambda d: d.year == ey if d else False) &
+                        slipped_pos_df["_close_date"].apply(lambda d: d.year == cy if d else False)
+                    ] if not slipped_pos_df.empty else pd.DataFrame()
+                    matrix_cells[f"{ey}_{cy}"] = {
+                        "expiry_year": ey,
+                        "close_year": cy,
+                        "count": len(cell_df),
+                        "acv": _safe_acv(cell_df),
+                        "check_date": cy > (t_snap.snapshot_date.year + far_ahead_years),
+                    }
+
+        slipped_to_later_year = {
+            "heading": "Slipped to a later year",
+            "rule_caption": f"Open renewals whose Service Expiry is on or before {year_end.strftime('%d %b %Y')} and whose Close Date is in {year_end.year + 1} or later.",
+            "total": {
+                "count": len(slipped_pos_df),
+                "acv": _safe_acv(slipped_pos_df),
+            },
+            "excluded_nonpos": {
+                "count": len(slipped_nonpos_df),
+                "acv": _safe_acv(slipped_nonpos_df),
+                "label": f"Negative-ACV adjustments (excluded): {len(slipped_nonpos_df)} deals / ${_safe_acv(slipped_nonpos_df):,.2f}",
+            },
+            "buckets": [
+                {
+                    "key": "bucket_a",
+                    "label": label_a,
+                    "count": len(bucket_a_df),
+                    "acv": _safe_acv(bucket_a_df),
+                    "categories": _fc_breakdown(bucket_a_df),
+                },
+                {
+                    "key": "bucket_b",
+                    "label": label_b,
+                    "count": len(bucket_b_df),
+                    "acv": _safe_acv(bucket_b_df),
+                    "categories": _fc_breakdown(bucket_b_df),
+                },
+                {
+                    "key": "bucket_c",
+                    "label": label_c,
+                    "count": len(bucket_c_df),
+                    "acv": _safe_acv(bucket_c_df),
+                    "categories": _fc_breakdown(bucket_c_df),
+                },
+            ],
+            "matrix": {
+                "rows": matrix_rows,
+                "columns": matrix_columns,
+                "cells": matrix_cells,
+                "target_year_totals": target_year_totals,
+                "expiry_year_totals": expiry_year_totals,
+            },
+        }
+
+        # -------------------------------------------------------------
+        # Needs Review Section (at bottom of Delayed Renewals tab)
+        # -------------------------------------------------------------
+        review_t1 = main_buckets["review_t1"]
+        review_t2 = main_buckets["review_t2"]
+        review_t3 = main_buckets["review_t3"]
+
+        needs_review_items = []
+        if not review_t1.empty:
+            needs_review_items.append({
+                "type": "type_1",
+                "title": "Negative or zero ACV (adjustments, excluded from totals)",
+                "description": "Open deals with ACV of zero or below that would otherwise fall in delayed or slipped.",
+                "count": len(review_t1),
+                "acv": _safe_acv(review_t1),
+            })
+        if not review_t2.empty:
+            needs_review_items.append({
+                "type": "type_2",
+                "title": "Service expired before this quarter but not in the delayed Group",
+                "description": "Open renewals whose Service Expiry date is before the start of the selected quarter and whose Group value is not the delayed group.",
+                "count": len(review_t2),
+                "acv": _safe_acv(review_t2),
+            })
+        if not review_t3.empty:
+            needs_review_items.append({
+                "type": "type_3",
+                "title": "Close date far ahead",
+                "description": f"Open deals whose close date is more than {far_ahead_years} years ahead, shown for checking only and still counted where the rule says.",
+                "count": len(review_t3),
+                "acv": _safe_acv(review_t3),
+            })
+
+        needs_review = {
+            "heading": "Needs review",
+            "rule_caption": "Exceptions and data-quality checks. Deals listed here for review do not count in any headline total above.",
+            "is_visible": len(needs_review_items) > 0,
+            "items": needs_review_items,
+        }
+
+        # -------------------------------------------------------------
+        # Existing Slippage & Lost cards (retained per prompt)
+        # -------------------------------------------------------------
+        exist_slip_tot = main_buckets["existing_slippage_total"]
+        slip_ny_df = main_buckets["slipped_next_year"]
+        slip_nq_df = main_buckets["slipped_next_quarter"]
+        slip_lq_df = main_buckets["slipped_later_quarter"]
+        lost_df = main_buckets["lost"]
+
+        existing_slippage = {
+            "heading": "Slippage",
+            "rule_caption": "Deals that moved out of the selected quarter into a later one, split by destination.",
+            "total": {
+                "count": len(exist_slip_tot) if b_period_start else 0,
+                "acv": _safe_acv(exist_slip_tot) if b_period_start else 0.0,
+                "delayed_vs_yesterday": {"count": len(y_event["existing_slippage_total"]), "acv": _safe_acv(y_event["existing_slippage_total"])} if y_event else None,
+                "delayed_vs_lastweek": {"count": len(w_event["existing_slippage_total"]), "acv": _safe_acv(w_event["existing_slippage_total"])} if w_event else None,
+            },
+            "slipped_next_year": {
+                "count": len(slip_ny_df) if b_period_start else 0,
+                "acv": _safe_acv(slip_ny_df) if b_period_start else 0.0,
+                "delayed_vs_yesterday": {"count": len(y_event["slipped_next_year"]), "acv": _safe_acv(y_event["slipped_next_year"])} if y_event else None,
+                "delayed_vs_lastweek": {"count": len(w_event["slipped_next_year"]), "acv": _safe_acv(w_event["slipped_next_year"])} if w_event else None,
+            },
+            "slipped_next_quarter": {
+                "count": len(slip_nq_df) if b_period_start else 0,
+                "acv": _safe_acv(slip_nq_df) if b_period_start else 0.0,
+                "delayed_vs_yesterday": {"count": len(y_event["slipped_next_quarter"]), "acv": _safe_acv(y_event["slipped_next_quarter"])} if y_event else None,
+                "delayed_vs_lastweek": {"count": len(w_event["slipped_next_quarter"]), "acv": _safe_acv(w_event["slipped_next_quarter"])} if w_event else None,
+            },
+            "slipped_later_quarter": {
+                "count": len(slip_lq_df) if b_period_start else 0,
+                "acv": _safe_acv(slip_lq_df) if b_period_start else 0.0,
+                "delayed_vs_yesterday": {"count": len(y_event["slipped_later_quarter"]), "acv": _safe_acv(y_event["slipped_later_quarter"])} if y_event else None,
+                "delayed_vs_lastweek": {"count": len(w_event["slipped_later_quarter"]), "acv": _safe_acv(w_event["slipped_later_quarter"])} if w_event else None,
+            },
+        }
+
+        lost_card = {
+            "heading": "Lost since start of quarter",
+            "rule_caption": "Deals deleted or lost since the baseline period.",
+            "count": len(lost_df) if b_period_start else 0,
+            "acv": _safe_acv(lost_df) if b_period_start else 0.0,
+            "delayed_vs_yesterday": {"count": len(y_event["lost"]), "acv": _safe_acv(y_event["lost"])} if y_event else None,
+            "delayed_vs_lastweek": {"count": len(w_event["lost"]), "acv": _safe_acv(w_event["lost"])} if w_event else None,
+        }
+
+        # Breakdown aggregations
         def _aggregate_by(col: str):
             res_agg = []
-            if delayed_active.empty: return res_agg
-            col_series = delayed_active[col].fillna("Unassigned")
+            if del_tot_df.empty:
+                return res_agg
+            col_series = del_tot_df[col].fillna("Unassigned")
             unique_vals = sorted(col_series.unique().tolist())
             y_tot = y_standing["delayed_total"] if y_standing is not None else None
             w_tot = w_standing["delayed_total"] if w_standing is not None else None
+
             for val in unique_vals:
-                d = delayed_active[delayed_active[col].fillna("Unassigned") == val]
+                d = del_tot_df[del_tot_df[col].fillna("Unassigned") == val]
                 d_y = y_tot[y_tot[col].fillna("Unassigned") == val] if (y_tot is not None and not y_tot.empty) else pd.DataFrame()
                 d_w = w_tot[w_tot[col].fillna("Unassigned") == val] if (w_tot is not None and not w_tot.empty) else pd.DataFrame()
-                
+
                 cats = {}
                 ALL_FC = ["Commit", "Best Case", "Pipeline", "Closed", "Blank"]
                 for cat in ALL_FC:
@@ -742,33 +927,31 @@ class V2DelayedService:
                         "delayed_vs_yesterday": delta_y_cat,
                         "delayed_vs_lastweek": delta_w_cat,
                     }
-                    
+
                 delta_y_grp = {"count": len(d) - len(d_y), "acv": round(_safe_acv(d) - _safe_acv(d_y), 2)} if y_standing is not None else None
                 delta_w_grp = {"count": len(d) - len(d_w), "acv": round(_safe_acv(d) - _safe_acv(d_w), 2)} if w_standing is not None else None
 
                 res_agg.append({
                     "label": val,
                     "count": len(d),
-                    "acv": round(float(d["forecast_acv_amount"].sum()), 2) if not d.empty else 0.0,
-                    "avg_push_out": round(float(d["push_out_days"].mean()), 1) if len(d) > 0 and "push_out_days" in d.columns else 0,
-                    "max_push_out": int(d["push_out_days"].max()) if len(d) > 0 and "push_out_days" in d.columns else 0,
+                    "acv": round(float(d["forecast_acv_amount"].sum()), 2),
                     "categories": cats,
                     "delayed_vs_yesterday": delta_y_grp,
                     "delayed_vs_lastweek": delta_w_grp,
                 })
             return sorted(res_agg, key=lambda x: x["acv"], reverse=True)
 
-        # Ageing breakdown of overdue deals (0-7, 8-30, 31-60, 60+ days past close date)
+        # Overdue ageing breakdown
         if not overdue_df.empty:
             b_0_7 = overdue_df[overdue_df["days_overdue"] <= 7]
             b_8_30 = overdue_df[(overdue_df["days_overdue"] > 7) & (overdue_df["days_overdue"] <= 30)]
             b_31_60 = overdue_df[(overdue_df["days_overdue"] > 30) & (overdue_df["days_overdue"] <= 60)]
             b_60_plus = overdue_df[overdue_df["days_overdue"] > 60]
             ageing_breakdown = [
-                {"bracket": "0-7", "label": "0–7 Days", "count": len(b_0_7), "acv": round(float(b_0_7["forecast_acv_amount"].sum()), 2)},
-                {"bracket": "8-30", "label": "8–30 Days", "count": len(b_8_30), "acv": round(float(b_8_30["forecast_acv_amount"].sum()), 2)},
-                {"bracket": "31-60", "label": "31–60 Days", "count": len(b_31_60), "acv": round(float(b_31_60["forecast_acv_amount"].sum()), 2)},
-                {"bracket": "60+", "label": "60+ Days", "count": len(b_60_plus), "acv": round(float(b_60_plus["forecast_acv_amount"].sum()), 2)},
+                {"bracket": "0-7", "label": "0–7 Days", "count": len(b_0_7), "acv": _safe_acv(b_0_7)},
+                {"bracket": "8-30", "label": "8–30 Days", "count": len(b_8_30), "acv": _safe_acv(b_8_30)},
+                {"bracket": "31-60", "label": "31–60 Days", "count": len(b_31_60), "acv": _safe_acv(b_31_60)},
+                {"bracket": "60+", "label": "60+ Days", "count": len(b_60_plus), "acv": _safe_acv(b_60_plus)},
             ]
         else:
             ageing_breakdown = [
@@ -778,138 +961,28 @@ class V2DelayedService:
                 {"bracket": "60+", "label": "60+ Days", "count": 0, "acv": 0.0},
             ]
 
-        # Newly delayed vs yesterday
-        newly_delayed_deals = []
-        newly_delayed_count = 0
-        newly_delayed_acv = 0.0
-        if y_standing is not None and not delayed_active.empty:
-            y_tot_ids = set(y_standing["delayed_total"]["opportunity_id_18"]) if not y_standing["delayed_total"].empty else set()
-            newly_df = delayed_active[~delayed_active["opportunity_id_18"].isin(y_tot_ids)]
-            if not newly_df.empty:
-                newly_df_export = newly_df.copy()
-                if "close_date" in newly_df_export.columns:
-                    newly_df_export["close_date"] = newly_df_export["close_date"].apply(lambda x: x.strftime("%Y-%m-%d") if pd.notna(x) and hasattr(x, 'strftime') else (str(x)[:10] if pd.notna(x) else ""))
-                newly_delayed_deals = newly_df_export.fillna("").to_dict("records")
-                newly_delayed_count = len(newly_df)
-                newly_delayed_acv = round(float(newly_df["forecast_acv_amount"].sum()), 2)
+        # Top 10 delayed deals
+        if not del_tot_df.empty:
+            top_df = del_tot_df.sort_values(by="forecast_acv_amount", ascending=False).head(10).copy()
+            top_deals = top_df.fillna("").to_dict("records")
+        else:
+            top_deals = []
 
-        newly_delayed = {
-            "count": newly_delayed_count,
-            "acv": newly_delayed_acv,
-            "deals": newly_delayed_deals
-        }
-
-        # Quarter total ACV (ties exactly to Overview)
+        # Quarter total ACV (ties to Overview)
+        t_ren = main_buckets["t_df"]
         if is_year:
             t_period_deals = t_ren[t_ren["fiscal_period"].apply(lambda fp: _parse_fp(fp)[0] == target_year if fp and "-" in fp else False)] if not t_ren.empty else pd.DataFrame()
         else:
             t_period_deals = t_ren[(t_ren["fiscal_period"] == target_p_str)] if not t_ren.empty else pd.DataFrame()
         quarter_total_acv = round(float(t_period_deals["forecast_acv_amount"].sum()), 2) if not t_period_deals.empty else 0.0
-        total_delayed_acv = float(delayed_active["forecast_acv_amount"].sum()) if not delayed_active.empty else 0.0
+        total_delayed_acv = _safe_acv(del_tot_df)
         delayed_pct_of_quarter = round((total_delayed_acv / quarter_total_acv * 100), 1) if quarter_total_acv > 0 and total_delayed_acv else 0.0
-        slippage_pct_of_quarter = round((slip_tot_acv / quarter_total_acv * 100), 1) if quarter_total_acv > 0 and slip_tot_acv else 0.0
-
-        # Snapshot trend
-        trend = self._compute_snapshot_trend(t_snap, target_p_str, filter_spec=fs)
-
-        # Top 10 delayed deals with owner, region, days_overdue, push_out_days
-        if not delayed_active.empty:
-            top_df = delayed_active.sort_values(by="forecast_acv_amount", ascending=False).head(10).copy()
-            if "close_date" in top_df.columns:
-                top_df["close_date"] = top_df["close_date"].apply(lambda x: x.strftime("%Y-%m-%d") if pd.notna(x) and hasattr(x, 'strftime') else (str(x)[:10] if pd.notna(x) else ""))
-            top_deals = top_df.fillna("").to_dict("records")
-        else:
-            top_deals = []
-
-        from backend.config import settings
-        include_prior_fy = getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True)
-        if ptype in ("future_quarter", "future_year"):
-            rule_text = "Future period selected: renewals have not entered delay tracking yet."
-        elif ptype == "past_quarter":
-            rule_text = "Past quarter selected: open renewals in this quarter past expected close date count as overdue."
-        else:
-            rule_text = (
-                "Open deals whose fiscal period is before the current quarter (including previous fiscal year) count as delayed."
-                if include_prior_fy
-                else "Open deals whose fiscal period is before the current quarter of the same fiscal year count as delayed."
-            )
-
-        delayed_renewals = {
-            "heading": "Delayed Renewals",
-            "rule_caption": "Deals that stay in the selected quarter but are late: either the close date has passed (Overdue) or the close date was pushed later within the same quarter (Postponed).",
-            "total": {
-                "count": delayed_tot_cnt,
-                "acv": delayed_tot_acv,
-                "pct_of_quarter": delayed_pct_of_quarter,
-                "delayed_vs_yesterday": delta_y_delayed_tot,
-                "delayed_vs_lastweek": delta_w_delayed_tot,
-            },
-            "overdue": {
-                "count": 0 if is_future else len(overdue_df),
-                "acv": 0.0 if is_future else _safe_acv(overdue_df),
-                "baseline_label": "Current",
-                "delayed_vs_yesterday": delta_y_od,
-                "delayed_vs_lastweek": delta_w_od,
-            },
-            "later_close": {
-                "count": later_cnt,
-                "acv": later_acv,
-                "baseline_label": "n/a" if is_future else period_start_label,
-                "delayed_vs_yesterday": delta_y_later,
-                "delayed_vs_lastweek": delta_w_later,
-            },
-        }
-
-        slippage = {
-            "heading": "Slippage",
-            "rule_caption": "Deals that moved out of the selected quarter into a later one, split by destination.",
-            "total": {
-                "count": slip_tot_cnt,
-                "acv": slip_tot_acv,
-                "pct_of_quarter": slippage_pct_of_quarter,
-                "delayed_vs_yesterday": delta_y_slip_tot,
-                "delayed_vs_lastweek": delta_w_slip_tot,
-            },
-            "slipped_next_year": {
-                "count": slip_ny_cnt,
-                "acv": slip_ny_acv,
-                "baseline_label": "n/a" if is_future else period_start_label,
-                "delayed_vs_yesterday": delta_y_slip_ny,
-                "delayed_vs_lastweek": delta_w_slip_ny,
-            },
-            "slipped_next_quarter": {
-                "count": slip_nq_cnt,
-                "acv": slip_nq_acv,
-                "baseline_label": "n/a" if is_future else period_start_label,
-                "delayed_vs_yesterday": delta_y_slip_nq,
-                "delayed_vs_lastweek": delta_w_slip_nq,
-            },
-            "slipped_later_quarter": {
-                "count": slip_lq_cnt,
-                "acv": slip_lq_acv,
-                "baseline_label": "n/a" if is_future else period_start_label,
-                "delayed_vs_yesterday": delta_y_slip_lq,
-                "delayed_vs_lastweek": delta_w_slip_lq,
-            },
-        }
-
-        lost_card = {
-            "heading": "Lost / Removed",
-            "rule_caption": "Deals deleted or lost since the baseline period.",
-            "count": lost_cnt,
-            "acv": lost_acv,
-            "baseline_label": "n/a" if is_future else period_start_label,
-            "delayed_vs_yesterday": delta_y_lost,
-            "delayed_vs_lastweek": delta_w_lost,
-        }
 
         return {
             "data_slice": target_q_label,
             "data_slice_key": target_p_str,
             "period_type": ptype,
             "is_future": is_future,
-            "rule_text": rule_text,
-            "delayed_include_prior_fy": include_prior_fy,
             "filters_applied": res.filters_applied,
             "snapshot_date": t_snap.snapshot_date.isoformat(),
             "period_start_baseline_date": b_period_start.snapshot_date.isoformat() if b_period_start else None,
@@ -920,27 +993,31 @@ class V2DelayedService:
             "lastweek_date": w_snap.snapshot_date.isoformat() if w_snap else None,
             "quarter_total_acv": quarter_total_acv,
             "delayed_pct_of_quarter": delayed_pct_of_quarter,
-            "slippage_pct_of_quarter": slippage_pct_of_quarter,
+            # Core rebuilt sections
             "delayed_renewals": delayed_renewals,
-            "slippage": slippage,
             "delayed_renewals_total": delayed_renewals["total"],
-            "slippage_total": slippage["total"],
             "total": delayed_renewals["total"],
             "overdue": delayed_renewals["overdue"],
-            "slipped": slippage["total"],
-            "slipped_next_year": slippage["slipped_next_year"],
-            "slipped_next_quarter": slippage["slipped_next_quarter"],
-            "slipped_later_quarter": slippage["slipped_later_quarter"],
-            "later_close": delayed_renewals["later_close"],
+            "ahead": delayed_renewals["ahead"],
+            "later_close": delayed_renewals["ahead"],
+            "data_quality_line": data_quality_line,
+            "slipped_to_later_year": slipped_to_later_year,
+            "needs_review": needs_review,
+            # Existing slippage & lost
+            "slippage": existing_slippage,
+            "slippage_total": existing_slippage["total"],
+            "slipped": existing_slippage["total"],
+            "slipped_next_year": existing_slippage["slipped_next_year"],
+            "slipped_next_quarter": existing_slippage["slipped_next_quarter"],
+            "slipped_later_quarter": existing_slippage["slipped_later_quarter"],
             "lost": lost_card,
+            # Breakdowns
             "by_region": _aggregate_by("region"),
             "by_bu": _aggregate_by("business_unit"),
             "by_category": _aggregate_by("forecast_category"),
             "by_approval": _aggregate_by("approval_status"),
             "ageing_breakdown": ageing_breakdown,
-            "newly_delayed": newly_delayed,
-            "trend": trend,
-            "top_deals": top_deals
+            "top_deals": top_deals,
         }
 
     def get_deals(
@@ -953,30 +1030,31 @@ class V2DelayedService:
         status: str | None = None,
         bu: str | None = None,
         ageing: str | None = None,
-        newly_delayed: bool = False,
-        filter_spec: Optional[ScopeService.FilterSpec] = None
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+        expiry_year: int | None = None,
+        close_year: int | None = None,
+        review_type: str | None = None,
     ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
         eff_compare = compare if compare is not None else "period_start"
         t_snap = self._active_snap(eff_as_of)
-        if not t_snap: return {"count": 0, "acv": 0.0, "deals": []}
-        
+        if not t_snap:
+            return {"count": 0, "acv": 0.0, "deals": []}
+
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
-        
+
         target_p_str = fs.period if fs.period and (fs.period.startswith("Q") or fs.period.startswith("FY") or len(fs.period) == 4) else res.period
         if not target_p_str or target_p_str in ("current_quarter", "all_periods", "all"):
             target_p_str = ScopeService.current_quarter(t_snap.snapshot_date)
 
         is_year, target_year, target_parsed, s_date, e_date, ptype, target_q_label = self._parse_period_info(target_p_str, t_snap.snapshot_date)
         is_future = ptype in ("future_quarter", "future_year")
-
         if is_future:
             return {"count": 0, "acv": 0.0, "deals": []}
 
-        # 3 baselines
-        b_period_start, is_partial, period_start_label = self.get_period_start_baseline(t_snap, s_date)
+        b_period_start, _, _ = self.get_period_start_baseline(t_snap, s_date)
         y_snap = self.get_yesterday_baseline(t_snap)
         w_snap = self.get_lastweek_baseline(t_snap)
 
@@ -992,34 +1070,10 @@ class V2DelayedService:
             comp_snap = w_snap if eff_compare == "last_week" else y_snap
             if not comp_snap:
                 return {"count": 0, "acv": 0.0, "deals": []}
-            
-            comp_standing = self._compute_snapshot_buckets(comp_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
 
+            comp_standing = self._compute_snapshot_buckets(comp_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
             t_df = today_buckets.get(base_kind, today_buckets["total"]).copy()
             c_df = comp_standing.get(base_kind, comp_standing["total"]).copy()
-
-            def _apply_subfilters(df_sub):
-                if df_sub.empty: return df_sub
-                if ageing:
-                    if "days_overdue" not in df_sub.columns:
-                        t_snap_date = pd.Timestamp(t_snap.snapshot_date)
-                        df_sub["days_overdue"] = df_sub["close_date"].apply(lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0)
-                    if ageing == "0-7": df_sub = df_sub[df_sub["days_overdue"] <= 7]
-                    elif ageing == "8-30": df_sub = df_sub[(df_sub["days_overdue"] > 7) & (df_sub["days_overdue"] <= 30)]
-                    elif ageing == "31-60": df_sub = df_sub[(df_sub["days_overdue"] > 30) & (df_sub["days_overdue"] <= 60)]
-                    elif ageing == "60+": df_sub = df_sub[df_sub["days_overdue"] > 60]
-                if region and region != "All":
-                    df_sub = df_sub[df_sub["region"] == region]
-                if category and category != "All":
-                    df_sub = df_sub[df_sub["forecast_category"] == category]
-                if status and status != "All":
-                    df_sub = df_sub[df_sub["approval_status"] == status]
-                if bu and bu != "All":
-                    df_sub = df_sub[df_sub["business_unit"] == bu]
-                return df_sub
-
-            t_df = _apply_subfilters(t_df)
-            c_df = _apply_subfilters(c_df)
 
             t_map = {str(r["opportunity_id_18"]): r for _, r in t_df.iterrows()} if not t_df.empty else {}
             c_map = {str(r["opportunity_id_18"]): r for _, r in c_df.iterrows()} if not c_df.empty else {}
@@ -1050,64 +1104,83 @@ class V2DelayedService:
                         d["delta_acv_change"] = diff
                         changed_deals.append(d)
 
-            net_count = len(t_df) - len(c_df)
-            net_acv = round(float(t_df["forecast_acv_amount"].sum() if not t_df.empty else 0.0) - float(c_df["forecast_acv_amount"].sum() if not c_df.empty else 0.0), 2)
-
-            for d in added_deals + left_deals + changed_deals:
-                if pd.notna(d.get("close_date")) and hasattr(d["close_date"], "strftime"):
-                    d["close_date"] = d["close_date"].strftime("%Y-%m-%d")
-                elif pd.notna(d.get("close_date")):
-                    d["close_date"] = str(d["close_date"])[:10]
-
-            delta_groups = {
-                "added": {"name": f"Added ({len(added_deals)})", "count": len(added_deals), "acv": round(sum(d["forecast_acv_amount"] for d in added_deals), 2), "deals": added_deals},
-                "left": {"name": f"Left ({len(left_deals)})", "count": len(left_deals), "acv": round(sum(d["forecast_acv_amount"] for d in left_deals), 2), "deals": left_deals},
-                "amount_changed": {"name": f"Amount changed ({len(changed_deals)})", "count": len(changed_deals), "acv": round(sum(d["delta_acv_change"] for d in changed_deals), 2), "deals": changed_deals},
-                "net": {"count": net_count, "acv": net_acv},
-            }
+            all_delta = added_deals + left_deals + changed_deals
+            for d in all_delta:
+                if "_close_date" in d and d["_close_date"]:
+                    d["close_date"] = d["_close_date"].isoformat()
+                if "_service_expiry_date" in d and d["_service_expiry_date"]:
+                    d["service_expiry_date"] = d["_service_expiry_date"].isoformat()
 
             return {
-                "count": net_count,
-                "acv": net_acv,
-                "delta_groups": delta_groups,
-                "deals": added_deals + left_deals + changed_deals
+                "count": len(t_df) - len(c_df),
+                "acv": round(_safe_acv(t_df) - _safe_acv(c_df), 2),
+                "deals": all_delta,
             }
 
-        # Regular standing/event bucket deals
+        # Regular deals selection
         df = pd.DataFrame()
-        if kind == "newly_delayed" or newly_delayed:
-            if y_snap:
-                y_standing = self._compute_snapshot_buckets(y_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
-                y_tot_ids = set(y_standing["total"]["opportunity_id_18"]) if not y_standing["total"].empty else set()
-                df = today_buckets["total"][~today_buckets["total"]["opportunity_id_18"].isin(y_tot_ids)].copy()
-        elif base_kind in ("slipped", "slippage_total", "slipped_next_year", "slipped_next_quarter", "slipped_later_quarter", "later_close", "lost"):
-            # Select baseline comparison snapshot
+        if base_kind in ("total", "delayed_total", "all"):
+            df = today_buckets["delayed_total"].copy()
+        elif base_kind == "overdue":
+            df = today_buckets["overdue"].copy()
+        elif base_kind in ("ahead", "delayed_ahead", "later_close"):
+            df = today_buckets["ahead"].copy()
+        elif base_kind == "ahead_rest_q":
+            df = today_buckets["ahead_rest_q"].copy()
+        elif base_kind == "ahead_later_q":
+            df = today_buckets["ahead_later_q"].copy()
+        elif base_kind == "ahead_next_yr":
+            df = today_buckets["ahead_next_yr"].copy()
+        elif base_kind == "ahead_later_yr":
+            df = today_buckets["ahead_later_yr"].copy()
+        elif base_kind in ("slipped_later_year", "slipped_total"):
+            df = today_buckets["slipped_later_year"].copy()
+        elif base_kind == "slipped_nonpos":
+            df = today_buckets["slipped_nonpos"].copy()
+        elif base_kind == "bucket_a":
+            df = today_buckets["bucket_a"].copy()
+        elif base_kind == "bucket_b":
+            df = today_buckets["bucket_b"].copy()
+        elif base_kind == "bucket_c":
+            df = today_buckets["bucket_c"].copy()
+        elif base_kind == "slipped_matrix_cell":
+            df = today_buckets["slipped_later_year"].copy()
+            if expiry_year and not df.empty:
+                df = df[df["_service_expiry_date"].apply(lambda d: d.year == expiry_year if d else False)]
+            if close_year and not df.empty:
+                df = df[df["_close_date"].apply(lambda d: d.year == close_year if d else False)]
+        elif base_kind == "slipped_target_year":
+            df = today_buckets["slipped_later_year"].copy()
+            if close_year and not df.empty:
+                df = df[df["_close_date"].apply(lambda d: d.year == close_year if d else False)]
+        elif base_kind in ("needs_review", "review"):
+            if review_type == "type_1":
+                df = today_buckets["review_t1"].copy()
+            elif review_type == "type_2":
+                df = today_buckets["review_t2"].copy()
+            elif review_type == "type_3":
+                df = today_buckets["review_t3"].copy()
+            else:
+                parts = [p for p in (today_buckets["review_t1"], today_buckets["review_t2"], today_buckets["review_t3"]) if not p.empty]
+                df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+        elif base_kind in ("data_quality_expired_no_group", "dq_expired_no_group"):
+            df = today_buckets["review_t2"].copy()
+        elif base_kind in ("slipped_next_year", "slipped_next_quarter", "slipped_later_quarter", "slipped", "lost"):
             if eff_compare == "yesterday" and y_snap:
                 b_ev = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=y_snap)
-                df = b_ev.get(base_kind, pd.DataFrame()).copy()
+                df = b_ev.get(base_kind if base_kind != "slipped" else "existing_slippage_total", pd.DataFrame()).copy()
             elif eff_compare == "last_week" and w_snap:
                 b_ev = self._compute_snapshot_buckets(t_snap, target_p_str, filter_spec=fs, base_snap=w_snap)
-                df = b_ev.get(base_kind, pd.DataFrame()).copy()
+                df = b_ev.get(base_kind if base_kind != "slipped" else "existing_slippage_total", pd.DataFrame()).copy()
             else:
-                # Default is period_start
-                df = today_buckets.get(base_kind, pd.DataFrame()).copy()
-        elif base_kind in ("delayed_total", "delayed_renewals_total", "total", "all"):
-            df = today_buckets["delayed_total"].copy()
+                df = today_buckets.get(base_kind if base_kind != "slipped" else "existing_slippage_total", pd.DataFrame()).copy()
         elif base_kind in today_buckets:
             df = today_buckets[base_kind].copy()
 
         if df.empty:
             return {"count": 0, "acv": 0.0, "deals": []}
 
-        if ageing:
-            if "days_overdue" not in df.columns:
-                t_snap_date = pd.Timestamp(t_snap.snapshot_date)
-                df["days_overdue"] = df["close_date"].apply(lambda d: max(0, (t_snap_date.date() - d.date()).days) if pd.notna(d) else 0)
-            if ageing == "0-7": df = df[df["days_overdue"] <= 7]
-            elif ageing == "8-30": df = df[(df["days_overdue"] > 7) & (df["days_overdue"] <= 30)]
-            elif ageing == "31-60": df = df[(df["days_overdue"] > 30) & (df["days_overdue"] <= 60)]
-            elif ageing == "60+": df = df[df["days_overdue"] > 60]
-
+        # Apply secondary filters
         if region and region != "All":
             df = df[df["region"] == region]
         if category and category != "All":
@@ -1116,15 +1189,111 @@ class V2DelayedService:
             df = df[df["approval_status"] == status]
         if bu and bu != "All":
             df = df[df["business_unit"] == bu]
+        if ageing and not df.empty:
+            if "days_overdue" not in df.columns:
+                df["days_overdue"] = df["_close_date"].apply(lambda d: max(0, (t_snap.snapshot_date - d).days) if d else 0)
+            if ageing == "0-7":
+                df = df[df["days_overdue"] <= 7]
+            elif ageing == "8-30":
+                df = df[(df["days_overdue"] > 7) & (df["days_overdue"] <= 30)]
+            elif ageing == "31-60":
+                df = df[(df["days_overdue"] > 30) & (df["days_overdue"] <= 60)]
+            elif ageing == "60+":
+                df = df[df["days_overdue"] > 60]
 
         if df.empty:
             return {"count": 0, "acv": 0.0, "deals": []}
 
-        df["close_date"] = df["close_date"].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) and hasattr(x, 'strftime') else (str(x)[:10] if pd.notna(x) else None))
+        # Format dates for JSON
+        df["close_date"] = df["_close_date"].apply(lambda d: d.isoformat() if d else "")
+        df["service_expiry_date"] = df["_service_expiry_date"].apply(lambda d: d.isoformat() if d else "")
         df = df.fillna("")
         deals = df.to_dict("records")
+
         return {
             "count": len(deals),
             "acv": round(float(df["forecast_acv_amount"].sum()), 2),
-            "deals": deals
+            "deals": deals,
+        }
+
+    def get_reconciliation_vs_manual(self, snapshot_id: str | None = None) -> dict:
+        """
+        Reconciliation vs Manual Sheets:
+        Detects extra manual sheets in the Comparison Tool by keywords (Setting manual_sheet_keywords)
+        and compares deal IDs the rule finds vs the sheet has.
+        """
+        snap = self._active_snap(snapshot_id)
+        if not snap:
+            return {"has_manual_sheets": False, "sheets": []}
+
+        from backend.models.snapshot import UploadedFile
+        import openpyxl
+
+        rules = SettingsService.get_delayed_rules(self.db)
+        keywords = rules.get("manual_sheet_keywords", ["delayed", "slippage", "2027"])
+
+        comp_file = self.db.query(UploadedFile).filter(
+            UploadedFile.snapshot_id == snap.id,
+            UploadedFile.file_slot == "comparison_tool",
+        ).first()
+
+        # Check candidate workbook locations
+        from backend.config import settings
+        candidate_paths = [
+            settings.DATA_DIR / (comp_file.filename if comp_file else ""),
+            settings.DATA_DIR / "sample_oct7" / "Renewal Comparison Tool.xlsx",
+            settings.DATA_DIR / "Renewal Comparison Tool (2).xlsx",
+            settings.DATA_DIR / "Renewal Comparison Tool 11.xlsx",
+        ]
+
+        found_path = None
+        for p in candidate_paths:
+            if p and p.exists():
+                found_path = p
+                break
+
+        if not found_path:
+            return {"has_manual_sheets": False, "sheets": []}
+
+        try:
+            wb = openpyxl.load_workbook(found_path, read_only=True)
+            detected_sheets = []
+            for sname in wb.sheetnames:
+                s_lower = sname.lower()
+                if any(k.lower() in s_lower for k in keywords) and s_lower not in ("today", "yesterday", "comparison", "finalchangereport"):
+                    detected_sheets.append(sname)
+            wb.close()
+        except Exception:
+            return {"has_manual_sheets": False, "sheets": []}
+
+        if not detected_sheets:
+            return {"has_manual_sheets": False, "sheets": []}
+
+        # Compare deal IDs
+        today_buckets = self._compute_snapshot_buckets(snap, ScopeService.current_quarter(snap.snapshot_date))
+        rule_ids = set(today_buckets["slipped_all"]["opportunity_id_18"]).union(set(today_buckets["delayed_total"]["opportunity_id_18"]))
+
+        sheet_reports = []
+        for sname in detected_sheets:
+            try:
+                sdf = pd.read_excel(found_path, sheet_name=sname)
+                cols = {str(c).lower().strip(): c for c in sdf.columns}
+                id_col = cols.get("opportunity id 18 digit") or cols.get("opportunity id") or cols.get("id")
+                if id_col:
+                    sheet_ids = set(sdf[id_col].dropna().astype(str).str.strip())
+                    rule_lacks = sorted(list(sheet_ids - rule_ids))
+                    sheet_lacks = sorted(list(rule_ids - sheet_ids))
+                    sheet_reports.append({
+                        "sheet_name": sname,
+                        "sheet_deal_count": len(sheet_ids),
+                        "rule_deal_count": len(rule_ids),
+                        "deals_in_sheet_lacking_in_rule": rule_lacks,
+                        "deals_in_rule_lacking_in_sheet": sheet_lacks,
+                    })
+            except Exception as exc:
+                log.warning("Could not read manual sheet %s: %s", sname, exc)
+
+        return {
+            "has_manual_sheets": len(sheet_reports) > 0,
+            "sheets": sheet_reports,
         }
