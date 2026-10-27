@@ -300,23 +300,17 @@ export default function ExecutiveView() {
   }
 
   const slippage = delayed.slippage || {}
-  const slippedNextYear = slippage.slipped_next_year || delayed.slipped_next_year || delayed.slipped || { count: 0, acv: 0 }
-  const slippedNextQuarter = slippage.slipped_next_quarter || delayed.slipped_next_quarter || { count: 0, acv: 0 }
-  const slippedLaterQuarter = slippage.slipped_later_quarter || delayed.slipped_later_quarter || { count: 0, acv: 0 }
-  const slippageTotal = delayed.slippage_total || slippage.total || {
-    count: slippedNextYear.count + slippedNextQuarter.count + slippedLaterQuarter.count,
-    acv: slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv,
-  }
-
-  const slippedToLaterYear = delayed.slipped_to_later_year
+  const slippageTotal = slippage.total || delayed.slippage_total || { count: 0, acv: 0 }
+  const slippedFromList = slippage.slipped_from || []
+  const slippageCategories = slippage.categories || {}
 
   const lost = delayed.lost_card || delayed.lost || { count: 0, acv: 0 }
 
   const delayedRowsSumCount = overdue.count + delayedAhead.count
   const delayedRowsSumAcv = overdue.acv + delayedAhead.acv
 
-  const slippageRowsSumCount = slippedNextYear.count + slippedNextQuarter.count + slippedLaterQuarter.count
-  const slippageRowsSumAcv = slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv
+  const slippageRowsSumCount = slippedFromList.reduce((acc: number, r: any) => acc + (r.count || 0), 0)
+  const slippageRowsSumAcv = slippedFromList.reduce((acc: number, r: any) => acc + (r.acv || 0), 0)
 
   // Runtime reconciliation checks on all tables
   const mismatchErrors: string[] = []
@@ -832,55 +826,71 @@ export default function ExecutiveView() {
           </div>
         </div>
 
-        {/* 7b. Slippage Summary */}
+        {/* 7b. Slippage */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-              7b. Slippage Summary
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+                7b. Slippage
+              </h2>
+              {slippage.type_filter_note && (
+                <span className="text-[10px] text-slate-500 font-normal">
+                  ({slippage.type_filter_note})
+                </span>
+              )}
+            </div>
             <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              {totalAcv > 0 ? `${((slippageTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
+              {formatNumber(slippageTotal.count)} deals · {formatCurrency(slippageTotal.acv)}
             </span>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
-            Deals that moved OUT of the selected quarter into a later one, split by destination.
+            {slippage.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close next year.'}
           </p>
+
+          {/* Category breakdown */}
+          {Object.keys(slippageCategories).length > 0 && (
+            <div className="px-4 py-2 bg-slate-50/30 border-b border-slate-100 flex flex-wrap gap-4 text-xs">
+              {['Commit', 'Best Case', 'Pipeline', 'Blank'].map(cat => {
+                const cVal = slippageCategories[cat] || { count: 0, acv: 0 }
+                if (!cVal.count && !cVal.acv) return null
+                const label = cat === 'Blank' ? 'Not yet proposed' : cat
+                return (
+                  <div key={cat} className="text-[11px] text-slate-600">
+                    <span className="font-medium text-slate-800">{label}:</span>{' '}
+                    <span className="tabular-nums font-semibold">{formatNumber(cVal.count)}</span> ({formatCurrency(cVal.acv)})
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Slipped from table */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="px-4 py-2">Destination</th>
+                  <th className="px-4 py-2">Slipped From (Service Expiry Year)</th>
                   <th className="px-4 py-2 text-right">Deals</th>
                   <th className="px-4 py-2 text-right">ACV (USD)</th>
-                  <th className="px-4 py-2">Destination Description</th>
+                  <th className="px-4 py-2">Expected Close Year</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to next fiscal year</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedNextYear.count)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedNextYear.acv)}</td>
-                  <td className="px-4 py-2 text-slate-500">New fiscal year is later than selected quarter year</td>
-                </tr>
-                <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to next quarter</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedNextQuarter.count)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedNextQuarter.acv)}</td>
-                  <td className="px-4 py-2 text-slate-500">Immediately following quarter in the same fiscal year</td>
-                </tr>
-                <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-amber-900">Slipped to a later quarter, same year</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(slippedLaterQuarter.count)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(slippedLaterQuarter.acv)}</td>
-                  <td className="px-4 py-2 text-slate-500">Any other later quarter in the same fiscal year</td>
-                </tr>
+                {slippedFromList.map((sf: any) => (
+                  <tr key={sf.expiry_year} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 font-medium text-amber-900">From {sf.expiry_year}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(sf.count)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(sf.acv)}</td>
+                    <td className="px-4 py-2 text-slate-500">Closing in {slippage.next_year || 'next year'}</td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
                   <td className="px-4 py-2.5">Total Slippage</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippageTotal.count)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
-                  <td className="px-4 py-2.5 text-slate-500">All renewals moving into later quarters/years</td>
+                  <td className="px-4 py-2.5 text-slate-500">Expected to close in {slippage.next_year || 'next year'}</td>
                 </tr>
               </tfoot>
             </table>
@@ -922,63 +932,7 @@ export default function ExecutiveView() {
           </div>
         </div>
 
-        {/* 7d. Slipped to a later year (by service expiry) */}
-        {slippedToLaterYear && (
-          <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-                7d. Slipped to a later year (by service expiry)
-              </h2>
-              <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                {formatNumber(slippedToLaterYear.total.count)} deals · {formatCurrency(slippedToLaterYear.total.acv)}
-              </span>
-            </div>
-            <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
-              Open renewals with Service Expiry on or before active year end closing in later years. Deals in both sections tagged also delayed (totals never combined).
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                    <th className="px-4 py-2">Bucket</th>
-                    <th className="px-4 py-2 text-right">Deals</th>
-                    <th className="px-4 py-2 text-right">ACV (USD)</th>
-                    <th className="px-4 py-2">Description</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {Object.entries(slippedToLaterYear.buckets || {}).map(([bKey, bVal]: [string, any]) => (
-                    <tr key={bKey} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-2 font-medium text-slate-800">{bVal.label}</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatNumber(bVal.count)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatCurrency(bVal.acv)}</td>
-                      <td className="px-4 py-2 text-slate-500">
-                        {bKey === 'expired_before_quarter' ? 'Service expired prior to selected quarter' :
-                         bKey === 'expiring_later_this_year' ? 'Expiring later in active year' : 'Expiring on last day of active year'}
-                      </td>
-                    </tr>
-                  ))}
-                  {slippedToLaterYear.excluded_adjustments?.count > 0 && (
-                    <tr className="bg-amber-50/40 text-amber-900">
-                      <td className="px-4 py-2 font-medium">Negative-ACV adjustments (excluded)</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-semibold">{formatNumber(slippedToLaterYear.excluded_adjustments.count)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-semibold">{formatCurrency(slippedToLaterYear.excluded_adjustments.acv)}</td>
-                      <td className="px-4 py-2 text-amber-700">Excluded from headline totals by rule</td>
-                    </tr>
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                    <td className="px-4 py-2.5">Total Slipped to Later Year</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippedToLaterYear.total.count)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-indigo-900">{formatCurrency(slippedToLaterYear.total.acv)}</td>
-                    <td className="px-4 py-2.5 text-slate-500">Open renewals moving to later fiscal years</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )}
+
       </section>
 
       {/* Footer */}

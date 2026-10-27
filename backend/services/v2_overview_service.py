@@ -893,17 +893,11 @@ class V2OverviewService:
                 for fc in cats.keys()
             },
             # Section 3 — slippage & delayed renewals separated
-            "slippage_to_2027": {
-                **slippage,
-                "delta_yesterday": slip_delta_yesterday,
-                "delta_lastweek":  slip_delta_lastweek,
-            },
-            "slippage": slippage_data,
+            "slippage": del_sum.get("slippage"),
+            "slippage_section": del_sum.get("slippage"),
             "delayed_renewals": del_sum.get("delayed_renewals"),
             "delayed_renewals_total": del_sum.get("delayed_renewals_total"),
-            "slipped_to_later_year": del_sum.get("slipped_to_later_year"),
             "needs_review": del_sum.get("needs_review"),
-            "slippage_section": del_sum.get("slippage"),
             "lost_card": del_sum.get("lost"),
             "slippage_total": del_sum.get("slippage_total"),
             "delayed_pct_of_quarter": del_sum.get("delayed_pct_of_quarter"),

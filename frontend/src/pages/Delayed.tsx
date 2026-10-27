@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   Clock,
@@ -9,6 +9,10 @@ import {
   ArrowDownRight,
   Minus,
   AlertTriangle,
+  Settings,
+  Check,
+  RotateCcw,
+  X,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import api from '@/api/client'
@@ -31,6 +35,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
 function DelayedContent() {
+  const queryClient = useQueryClient()
   const { activeSnapshotId, globalFilters } = useAppStore()
   const metricMode = (useAppStore((s: any) => s.metricMode) || 'Amount') as MetricMode
 
@@ -40,6 +45,11 @@ function DelayedContent() {
   const [modalTitle, setModalTitle] = useState('')
   const [modalFilters, setModalFilters] = useState<any>({})
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
+
+  // Admin Type Filter Settings state
+  const [showTypeModal, setShowTypeModal] = useState(false)
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(['MR', 'R'])
+  const [savingSettings, setSavingSettings] = useState(false)
 
   const { compare: _ignored, ...filters } = globalFilters
 
@@ -52,6 +62,13 @@ function DelayedContent() {
       return res.data
     },
   })
+
+  // Synchronize selected types from summary settings when loaded
+  React.useEffect(() => {
+    if (summary?.included_type_codes && Array.isArray(summary.included_type_codes)) {
+      setSelectedTypes(summary.included_type_codes)
+    }
+  }, [summary?.included_type_codes])
 
   const { data: dealsData } = useQuery({
     queryKey: ['v2-delayed-deals', activeSnapshotId, compare, filters, modalFilters],
@@ -70,10 +87,7 @@ function DelayedContent() {
     if (delCount != null) {
       list.push({ id: 'delayed-renewals-group', title: 'Delayed Renewals' })
     }
-    if (summary?.slipped_to_later_year?.total?.count != null) {
-      list.push({ id: 'delayed-slipped-later-year', title: 'Slipped to a later year' })
-    }
-    const slipCount = summary?.slippage?.total?.count ?? summary?.slipped?.count
+    const slipCount = summary?.slippage?.total?.count ?? summary?.slippage?.count ?? summary?.slipped?.count
     if (slipCount != null) {
       list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
     }
@@ -95,7 +109,7 @@ function DelayedContent() {
     if (summary?.reconciliation?.sheets?.length) {
       list.push({ id: 'delayed-reconciliation', title: 'Reconciliation vs Manual Sheets' })
     }
-    if (summary?.needs_review?.has_exceptions && summary?.needs_review?.types?.some((t: any) => t.count > 0)) {
+    if (summary?.needs_review?.items?.length || (summary?.needs_review?.has_exceptions && summary?.needs_review?.types?.some((t: any) => t.count > 0))) {
       list.push({ id: 'delayed-needs-review', title: 'Needs review' })
     }
     return list
@@ -521,6 +535,15 @@ function DelayedContent() {
         subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage, and removals.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowTypeModal(true)}
+              className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1.5"
+              title="Configure included deal types for Delayed and Slippage"
+            >
+              <Settings className="w-3.5 h-3.5 text-slate-500" />
+              <span>Type Filter</span>
+            </button>
             <MetricToggle />
             <div className="h-9 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
               <button
@@ -561,7 +584,10 @@ function DelayedContent() {
               <span>Delayed Renewals</span>
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
+              Service has ended, renewal not closed yet.
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Delayed renewals depend on snapshot as-of date, not selected period. · {summary.type_filter_note || 'MR and R types only'}
             </p>
           </div>
           {summary.delayed_pct_of_quarter != null && (
@@ -579,21 +605,21 @@ function DelayedContent() {
           </div>
         )}
 
-        {/* Data Quality Line */}
+        {/* Other types excluded notice */}
         {(() => {
-          const dq = summary.delayed_renewals?.data_quality || summary.data_quality
-          if (!dq || dq.count <= 0) return null
+          const othItem = summary.needs_review?.items?.find((i: any) => i.type === 'other_types')
+          if (!othItem || othItem.count <= 0) return null
           return (
-            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-slate-500/10 border border-slate-500/20 text-slate-700 dark:text-slate-300 text-xs">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
                 <span>
-                  <strong>{dq.count} {dq.count === 1 ? 'deal' : 'deals'}</strong> expired before the quarter but have no delayed Group ({formatACV(dq.acv)})
+                  Other types excluded: <strong>{othItem.count} {othItem.count === 1 ? 'deal' : 'deals'} / {formatACV(othItem.acv)}</strong> (shown in Needs review)
                 </span>
               </div>
               <button
-                onClick={() => handleDrill('Deals expired before quarter without delayed Group', { kind: 'data_quality_expired_not_delayed' })}
-                className="underline hover:text-amber-900 dark:hover:text-amber-100 font-semibold cursor-pointer text-xs ml-3 whitespace-nowrap"
+                onClick={() => handleDrill('Other types excluded from Delayed', { kind: 'needs_review', review_type: 'other_types' })}
+                className="underline hover:text-slate-900 dark:hover:text-white font-semibold cursor-pointer text-xs ml-3 whitespace-nowrap"
               >
                 view deals →
               </button>
@@ -685,7 +711,7 @@ function DelayedContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
           <DelayedKpiCard
             title="Overdue"
-            definition="Active renewals past expected close date and not yet closed as of snapshot date."
+            definition="Close date has passed."
             data={summary.delayed_renewals?.overdue || summary.overdue}
             icon={AlertCircle}
             accent="rose"
@@ -694,7 +720,7 @@ function DelayedContent() {
           />
           <DelayedAheadCard
             title="Delayed, close date ahead"
-            definition="Delayed renewals whose close date is still ahead (not yet overdue as of snapshot date)."
+            definition="Close date is still to come."
             data={summary.delayed_renewals?.ahead || summary.ahead || summary.delayed_renewals?.later_close || summary.later_close}
             kind="delayed_ahead"
             onDrillSplit={(label: string, splitKey: string) => handleDrill(label, { kind: 'delayed_ahead_split', split_key: splitKey })}
@@ -702,256 +728,97 @@ function DelayedContent() {
         </div>
       </div>
 
-      {/* ────────────────── SECTION 2: SLIPPED TO A LATER YEAR ────────────────── */}
-      {summary.slipped_to_later_year && (
-        <div id="delayed-slipped-later-year" className="space-y-4 scroll-mt-24">
-          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                  Slipped to a later year (by service expiry)
-                </h2>
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
-                  {summary.slipped_to_later_year.total.count} deals · {formatACV(summary.slipped_to_later_year.total.acv)}
-                </span>
-              </div>
-              <p className="text-xs text-[var(--text-muted)] mt-1">
-                Open renewals whose Service Expiry date is on or before the last day of the selected period's year and whose Close Date is after that day.
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="text-[11px] font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
-                Deals in both sections tagged <strong>also delayed</strong> · Totals never combined
-              </span>
-            </div>
-          </div>
-
-          {/* Negative ACV line if any */}
-          {summary.slipped_to_later_year.excluded_adjustments?.count > 0 && (
-            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 text-xs">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  Negative-ACV adjustments (excluded): <strong>{summary.slipped_to_later_year.excluded_adjustments.count} {summary.slipped_to_later_year.excluded_adjustments.count === 1 ? 'deal' : 'deals'}</strong> / {formatACV(summary.slipped_to_later_year.excluded_adjustments.acv)}
-                </span>
-              </div>
-              <button
-                onClick={() => handleDrill('Negative-ACV adjustments (excluded)', { kind: 'slipped_excluded_adjustments' })}
-                className="underline font-semibold hover:text-amber-900 dark:hover:text-amber-200 cursor-pointer text-xs"
-              >
-                view deals →
-              </button>
-            </div>
-          )}
-
-          {/* 3 Buckets */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(summary.slipped_to_later_year.buckets || {}).map(([bKey, bData]: [string, any]) => {
-              const bCount = bData.count || 0
-              const bAcv = bData.acv || 0
-              const hasBDeals = bCount > 0 || bAcv > 0
-              return (
-                <div
-                  key={bKey}
-                  className="rounded-xl bg-[var(--bg-card)] border border-[var(--border)] border-l-4 border-l-indigo-500 p-4 flex flex-col justify-between"
-                >
-                  <div>
-                    <span className="text-xs font-semibold text-[var(--text-secondary)] line-clamp-1" title={bData.label}>
-                      {bData.label}
-                    </span>
-                    <div
-                      className={cn('mt-2 mb-2', hasBDeals ? 'cursor-pointer group' : 'cursor-default opacity-75')}
-                      onClick={() => hasBDeals && handleDrill(`Bucket: ${bData.label}`, { kind: 'slipped_bucket', bucket_key: bKey })}
-                    >
-                      <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
-                        {formatACV(bAcv)}
-                      </div>
-                      <div className="text-xs text-[var(--text-muted)] font-medium tabular-nums">
-                        {formatCount(bCount)} deals
-                      </div>
-                    </div>
-                  </div>
-                  {/* Category breakdown pills */}
-                  {bData.categories && (
-                    <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-wrap gap-1.5 mt-2">
-                      {Object.entries(bData.categories).map(([catName, catVal]: [string, any]) => (
-                        catVal.count > 0 ? (
-                          <span
-                            key={catName}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] tabular-nums"
-                            title={`${catName}: ${catVal.count} deals · ${formatACV(catVal.acv)}`}
-                          >
-                            {catName}: {catVal.count}
-                          </span>
-                        ) : null
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* From Year x to Year Matrix */}
-          {summary.slipped_to_later_year.matrix && (
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--card-shadow)] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-2">
-                <div>
-                  <h3 className="text-sm font-bold text-[var(--text-primary)]">
-                    Service Expiry Year to Close Year Matrix
-                  </h3>
-                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    Rows = service expiry year; Columns = expected close year. Click any cell to view deals.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 font-medium">
-                    ⚠️ check date: close date &gt; 5 years ahead
-                  </span>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="table-enterprise text-xs">
-                  <thead>
-                    <tr>
-                      <th className="text-left font-semibold text-[var(--text-secondary)]">Expiry Year</th>
-                      {(summary.slipped_to_later_year.matrix.close_years || []).map((yr: string) => {
-                        const targetTot = summary.slipped_to_later_year.matrix.target_year_totals?.[yr]
-                        const isFar = targetTot?.far_ahead
-                        return (
-                          <th key={yr} className="text-right font-semibold text-[var(--text-secondary)]">
-                            <div className="flex items-center justify-end gap-1">
-                              <span>{yr}</span>
-                              {isFar && (
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold" title="Close date far ahead">
-                                  check date
-                                </span>
-                              )}
-                            </div>
-                          </th>
-                        )
-                      })}
-                      <th className="text-right font-bold text-[var(--text-primary)] bg-[var(--bg-secondary)]/50">Total Slipped</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(summary.slipped_to_later_year.matrix.rows || []).map((row: any) => (
-                      <tr key={row.expiry_year} className="hover:bg-[var(--bg-secondary)]/40 transition-colors">
-                        <td className="font-semibold text-[var(--text-primary)]">{row.expiry_year}</td>
-                        {(summary.slipped_to_later_year.matrix.close_years || []).map((yr: string) => {
-                          const cell = row.close_years?.[yr] || { count: 0, acv: 0.0 }
-                          const hasCell = cell.count > 0 || cell.acv > 0
-                          return (
-                            <td
-                              key={yr}
-                              className={cn(
-                                'text-right tabular-nums transition-colors',
-                                hasCell ? 'cursor-pointer hover:bg-indigo-500/10 font-medium text-[var(--text-primary)]' : 'text-[var(--text-muted)] opacity-50'
-                              )}
-                              onClick={() => hasCell && handleDrill(`Service Expiry ${row.expiry_year} → Closing in ${yr}`, {
-                                kind: 'slipped_matrix_cell',
-                                expiry_year: row.expiry_year,
-                                close_year: yr,
-                              })}
-                              title={hasCell ? `Click to view ${cell.count} deals (${formatACV(cell.acv)})` : '0 deals'}
-                            >
-                              {hasCell ? (
-                                <div>
-                                  <div className="font-semibold">{formatACV(cell.acv)}</div>
-                                  <div className="text-[10px] text-[var(--text-muted)]">{cell.count} {cell.count === 1 ? 'deal' : 'deals'}</div>
-                                </div>
-                              ) : '—'}
-                            </td>
-                          )
-                        })}
-                        <td
-                          className="text-right font-bold tabular-nums text-[var(--text-primary)] bg-[var(--bg-secondary)]/40 cursor-pointer hover:underline"
-                          onClick={() => row.total?.count > 0 && handleDrill(`Service Expiry ${row.expiry_year} → All Later Years`, {
-                            kind: 'slipped_matrix_cell',
-                            expiry_year: row.expiry_year,
-                          })}
-                        >
-                          <div>{formatACV(row.total?.acv || 0)}</div>
-                          <div className="text-[10px] text-[var(--text-muted)] font-normal">{row.total?.count || 0} deals</div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
-                      <td className="text-left text-[var(--text-primary)]">Total Slipped into Year</td>
-                      {(summary.slipped_to_later_year.matrix.close_years || []).map((yr: string) => {
-                        const targetTot = summary.slipped_to_later_year.matrix.target_year_totals?.[yr] || { count: 0, acv: 0.0 }
-                        const hasTot = targetTot.count > 0 || targetTot.acv > 0
-                        return (
-                          <td
-                            key={yr}
-                            className={cn('text-right tabular-nums', hasTot ? 'cursor-pointer hover:underline text-indigo-600 dark:text-indigo-400' : 'text-[var(--text-muted)]')}
-                            onClick={() => hasTot && handleDrill(`All Deals Slipped into ${yr}`, {
-                              kind: 'slipped_target_year',
-                              close_year: yr,
-                            })}
-                            title={hasTot ? `Click to view all deals closing in ${yr}` : '0 deals'}
-                          >
-                            <div>{formatACV(targetTot.acv)}</div>
-                            <div className="text-[10px] font-normal">{targetTot.count} deals</div>
-                          </td>
-                        )
-                      })}
-                      <td className="text-right tabular-nums text-indigo-700 dark:text-indigo-300">
-                        <div>{formatACV(summary.slipped_to_later_year.matrix.total?.acv || 0)}</div>
-                        <div className="text-[10px] font-normal">{summary.slipped_to_later_year.matrix.total?.count || 0} deals</div>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
       <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
           <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-              <span>Slippage</span>
-            </h2>
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">
+                Slippage
+              </h2>
+              {summary.slippage?.total?.count != null && (
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                  {summary.slippage.total.count} deals · {formatACV(summary.slippage.total.acv)}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Deals that moved OUT of the selected quarter into a later one, split by destination.
+              {summary.slippage?.rule_caption || `Renewals whose service ended ${summary.slippage?.selected_year || ''} or earlier but are now expected to close in ${summary.slippage?.next_year || ''}.`}
+            </p>
+            <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+              <span>{summary.slippage?.type_filter_note || summary.type_filter_note || 'MR and R types only'}</span>
+              <button
+                type="button"
+                onClick={() => setShowTypeModal(true)}
+                className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline cursor-pointer font-medium"
+              >
+                Edit included types
+              </button>
             </p>
           </div>
           {summary.slippage_pct_of_quarter != null && (
             <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
-              {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(slipTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+              {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(summary.slippage?.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
             </span>
           )}
         </div>
 
-        {/* Slippage Total Bar */}
+        {/* Slippage Total Box with Deltas */}
         {(() => {
-          const isNA = isFuture || slipTot?.count === null
-          const cnt = slipTot?.count ?? 0
-          const acvVal = slipTot?.acv ?? 0
+          const isNA = isFuture || summary.slippage?.total?.count === null
+          const cnt = summary.slippage?.total?.count ?? 0
+          const acvVal = summary.slippage?.total?.acv ?? 0
           const hasDeals = cnt > 0 || acvVal > 0
-          const drawerTitle = `Slippage · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
+          const drawerTitle = `Slippage (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
+
+          const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week' | 'period_start', dateStr: string) => {
+            if (delta === null || delta === undefined || isFuture) {
+              return (
+                <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
+                  <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                  <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                </div>
+              )
+            }
+            const dCount = delta.count || 0
+            const dAcv = delta.acv || 0
+            const hasBoxDeals = dCount !== 0 || dAcv !== 0
+            const colorCls = dAcv > 0 || dCount > 0
+              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+              : dAcv < 0 || dCount < 0
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+            const acvTxt = dAcv > 0 ? `+${formatACV(dAcv)}` : dAcv < 0 ? `-${formatACV(Math.abs(dAcv))}` : '$0'
+            const cntTxt = dCount > 0 ? `+${dCount} deals` : dCount < 0 ? `${dCount} deals` : '0 deals'
+            const boxDrawerTitle = `Slippage · ${label} (${Math.abs(dCount)} deals · ${formatACV(Math.abs(dAcv))})`
+
+            return (
+              <div
+                className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60')}
+                onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'slippage', compare: comp })}
+                title={hasBoxDeals ? `Click to view deals changed vs ${dateStr}` : `No change vs ${dateStr}`}
+              >
+                <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
+                <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
+                <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
+              </div>
+            )
+          }
 
           return (
             <div className="rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
               <div
-                className={cn(hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
-                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'slippage_total' })}
+                className={cn(hasDeals && !isNA ? 'cursor-pointer group' : 'cursor-not-allowed opacity-75')}
+                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'slippage' })}
                 title={hasDeals ? 'Click to view all slipped deals' : '0 deals'}
               >
                 <div className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">
                   Slippage Total
                 </div>
                 <div className="flex items-baseline gap-3">
-                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'hover:underline')}>
+                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'group-hover:underline')}>
                     {isNA ? 'n/a' : formatACV(acvVal)}
                   </span>
                   <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
@@ -960,84 +827,96 @@ function DelayedContent() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
-                    if (delta === null || delta === undefined || isFuture) {
-                      return (
-                        <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
-                          <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                          <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
-                          <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
-                        </div>
-                      )
-                    }
-                    const count = Math.abs(delta.count || 0)
-                    const acv = Math.abs(delta.acv || 0)
-                    const hasBoxDeals = count > 0 || acv > 0
-                    const colorCls = hasBoxDeals
-                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-                      : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-                    const acvTxt = formatACV(delta.acv || 0)
-                    const cntTxt = `${count} ${count === 1 ? 'deal' : 'deals'}`
-                    const periodName = comp === 'yesterday' ? 'yesterday' : 'last week'
-                    const boxDrawerTitle = `Slippage · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acv)})`
-
-                    return (
-                      <div
-                        className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60')}
-                        onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'slipped', compare: comp })}
-                        title={hasBoxDeals ? `Click to view deals changed since ${dateStr}` : `No deals changed since ${dateStr}`}
-                      >
-                        <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                        <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <>
-                      {renderTotBox('Since yesterday', slipTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-                      {renderTotBox('Since last week', slipTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
-                    </>
-                  )
-                })()}
+              <div className="flex flex-wrap items-center gap-2">
+                {renderTotBox('Vs start of year', summary.slippage?.total?.delta_period_start, 'period_start', 'start of year')}
+                {renderTotBox('Vs yesterday', summary.slippage?.total?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+                {renderTotBox('Vs last week', summary.slippage?.total?.delayed_vs_lastweek, 'last_week', wDateStr)}
               </div>
             </div>
           )
         })()}
 
-        {/* 3 Slippage Destination Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-          <DelayedKpiCard
-            title="Slipped to next fiscal year"
-            definition="The new fiscal year is later than the selected quarter's year (including Q4 moving to Q1)."
-            data={summary.slippage?.slipped_next_year || summary.slipped_next_year}
-            icon={CalendarX2}
-            accent="amber"
-            kind="slipped_next_year"
-            comparePeriod="period_start"
-          />
-          <DelayedKpiCard
-            title="Slipped to next quarter"
-            definition="The new period is the immediately following quarter in the same fiscal year."
-            data={summary.slippage?.slipped_next_quarter || summary.slipped_next_quarter}
-            icon={CalendarX2}
-            accent="amber"
-            kind="slipped_next_quarter"
-            comparePeriod="period_start"
-          />
-          <DelayedKpiCard
-            title="Slipped to a later quarter, same year"
-            definition="Any other later quarter in the same fiscal year."
-            data={summary.slippage?.slipped_later_quarter || summary.slipped_later_quarter}
-            icon={CalendarX2}
-            accent="amber"
-            kind="slipped_later_quarter"
-            comparePeriod="period_start"
-          />
-        </div>
+        {/* Forecast Category Split */}
+        {summary.slippage?.categories && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {['Commit', 'Best Case', 'Pipeline', 'Blank'].map((cat) => {
+              const cData = summary.slippage.categories[cat] || { count: 0, acv: 0 }
+              const label = cat === 'Blank' ? 'Not yet proposed' : cat
+              const hasC = (cData.count || 0) > 0 || (cData.acv || 0) > 0
+              return (
+                <div
+                  key={cat}
+                  onClick={() => hasC && handleDrill(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
+                  className={cn(
+                    'p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] transition-colors',
+                    hasC ? 'cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5' : 'opacity-60 cursor-default'
+                  )}
+                >
+                  <div className="text-xs font-semibold text-[var(--text-secondary)]">{label}</div>
+                  <div className="text-xl font-bold text-[var(--text-primary)] tabular-nums mt-1">
+                    {formatACV(cData.acv || 0)}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] tabular-nums mt-0.5">
+                    {cData.count || 0} {(cData.count || 0) === 1 ? 'deal' : 'deals'}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Slipped From Table */}
+        {summary.slippage?.slipped_from && summary.slippage.slipped_from.length > 0 && (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-[var(--card-shadow)]">
+            <div className="px-4 py-3 bg-[var(--bg-secondary)]/50 border-b border-[var(--border)] flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                  Slipped from
+                </span>
+                <span className="text-xs text-[var(--text-muted)] ml-2">
+                  Service expiry year breakdown
+                </span>
+              </div>
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Click any row to view deals in drawer
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
+                    <th className="px-4 py-2.5">Service Expiry Year</th>
+                    <th className="px-4 py-2.5 text-right">Deals</th>
+                    <th className="px-4 py-2.5 text-right">ACV</th>
+                    <th className="px-4 py-2.5">Expected Close</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {summary.slippage.slipped_from.map((sf: any) => (
+                    <tr
+                      key={sf.expiry_year}
+                      onClick={() => handleDrill(`Slipped from ${sf.expiry_year}`, { kind: 'slipped_from_year', expiry_year: sf.expiry_year })}
+                      className="hover:bg-amber-500/5 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-2.5 font-semibold text-[var(--text-primary)]">
+                        From {sf.expiry_year}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                        {sf.count}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-[var(--text-primary)]">
+                        {formatACV(sf.acv)}
+                      </td>
+                      <td className="px-4 py-2.5 text-[var(--text-muted)]">
+                        Closing in {summary.slippage?.next_year || 'next year'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ────────────────── SECTION 3: LOST SINCE START OF QUARTER ────────────────── */}
@@ -1266,8 +1145,7 @@ function DelayedContent() {
                 <th className="text-left">Region</th>
                 <th className="text-left">Owner</th>
                 <th className="text-left">Reason</th>
-                <th className="text-right">Days Overdue</th>
-                <th className="text-right">Push Out (Days)</th>
+                <th className="text-right">Days Overdue / to Close</th>
                 <th className="text-right">ACV</th>
               </tr>
             </thead>
@@ -1294,27 +1172,24 @@ function DelayedContent() {
                         'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
                         deal.reason === 'Overdue'
                           ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
-                          : deal.reason === 'Slipped quarter'
-                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-900/30'
-                          : deal.reason === 'Lost/removed'
-                          ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                          : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-900/30'
+                          : 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-900/30'
                       )}
                     >
-                      {deal.reason}
+                      {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
                     </span>
                   </td>
                   <td className="text-right tabular-nums">
                     {deal.days_overdue > 0 ? (
                       <span className="font-semibold text-rose-600 dark:text-rose-400">
-                        {deal.days_overdue}d
+                        {deal.days_overdue}d overdue
+                      </span>
+                    ) : deal.days_to_close > 0 ? (
+                      <span className="font-medium text-teal-600 dark:text-teal-400">
+                        {deal.days_to_close}d to close
                       </span>
                     ) : (
                       <span className="text-[var(--text-muted)]">—</span>
                     )}
-                  </td>
-                  <td className="text-right text-[var(--text-muted)] tabular-nums">
-                    {deal.push_out_days > 0 ? `+${deal.push_out_days}d` : '—'}
                   </td>
                   <td className="text-right font-medium text-[var(--text-primary)] tabular-nums">
                     {formatACV(deal.forecast_acv_amount)}
@@ -1323,7 +1198,7 @@ function DelayedContent() {
               ))}
               {(!summary.top_deals || summary.top_deals.length === 0) && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-[var(--text-muted)]">
+                  <td colSpan={6} className="py-8 text-center text-[var(--text-muted)]">
                     No delayed deals found.
                   </td>
                 </tr>
@@ -1380,61 +1255,65 @@ function DelayedContent() {
       )}
 
       {/* ────────────────── BOTTOM SECTION: NEEDS REVIEW ────────────────── */}
-      {summary.needs_review?.has_exceptions && summary.needs_review?.types?.some((t: any) => t.count > 0) && (
-        <div id="delayed-needs-review" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 scroll-mt-24 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-amber-500/20 pb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                <h2 className="text-base font-bold text-[var(--text-primary)]">
-                  Needs review
-                </h2>
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                  {summary.needs_review.total_count} {summary.needs_review.total_count === 1 ? 'deal' : 'deals'}
-                </span>
+      {(() => {
+        const reviewList = (summary.needs_review?.items || summary.needs_review?.types || []).filter((t: any) => t.count > 0)
+        if (reviewList.length === 0) return null
+        return (
+          <div id="delayed-needs-review" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 scroll-mt-24 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-amber-500/20 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  <h2 className="text-base font-bold text-[var(--text-primary)]">
+                    Needs review
+                  </h2>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                    {summary.needs_review?.total_count || reviewList.reduce((acc: number, x: any) => acc + (x.count || 0), 0)} deals
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Deals requiring inspection. None of these deals count in any headline totals above.
+                </p>
               </div>
-              <p className="text-xs text-[var(--text-muted)] mt-1">
-                Deals requiring inspection. None of these deals count in any headline totals above.
-              </p>
+              <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                Total Exception ACV: {formatACV(summary.needs_review?.total_acv ?? reviewList.reduce((acc: number, x: any) => acc + (x.acv || 0), 0))}
+              </div>
             </div>
-            <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-              Total Exception ACV: {formatACV(summary.needs_review.total_acv)}
-            </div>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="table-enterprise text-xs">
-              <thead>
-                <tr>
-                  <th className="text-left font-semibold">Review Type</th>
-                  <th className="text-right font-semibold">Deals</th>
-                  <th className="text-right font-semibold">ACV</th>
-                  <th className="text-left font-semibold">Explanation</th>
-                  <th className="text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {summary.needs_review.types?.filter((t: any) => t.count > 0).map((t: any) => (
-                  <tr key={t.type_id} className="hover:bg-amber-500/10 transition-colors">
-                    <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
-                    <td className="text-right font-semibold tabular-nums">{t.count}</td>
-                    <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
-                    <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.explanation}</td>
-                    <td className="text-right">
-                      <button
-                        onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type_id })}
-                        className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
-                      >
-                        View deals →
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="table-enterprise text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left font-semibold">Review Type</th>
+                    <th className="text-right font-semibold">Deals</th>
+                    <th className="text-right font-semibold">ACV</th>
+                    <th className="text-left font-semibold">Explanation</th>
+                    <th className="text-right font-semibold">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {reviewList.map((t: any) => (
+                    <tr key={t.type || t.type_id || t.title} className="hover:bg-amber-500/10 transition-colors">
+                      <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
+                      <td className="text-right font-semibold tabular-nums">{t.count}</td>
+                      <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
+                      <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.description || t.explanation}</td>
+                      <td className="text-right">
+                        <button
+                          onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id })}
+                          className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
+                        >
+                          View deals →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {modalOpen && (
         <DealListModal
@@ -1449,6 +1328,114 @@ function DelayedContent() {
           onSelectOpp={setSelectedOppId}
           onClose={() => setModalOpen(false)}
         />
+      )}
+
+      {/* ────────────────── ADMIN: TYPE FILTER SETTINGS MODAL ────────────────── */}
+      {showTypeModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">
+                  Type Filter Settings (Delayed & Slippage)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTypeModal(false)}
+                className="p-1 rounded-lg hover:bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                Select which deal types are counted in Delayed Renewals and Slippage. Deals with other types will be shown in Needs Review under <strong>"Other types (not counted)"</strong>.
+              </p>
+
+              <div>
+                <label className="text-xs font-semibold text-[var(--text-secondary)] block mb-2">
+                  Included Deal Type Codes:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(summary?.available_types?.length ? summary.available_types : ['CR', 'MR', 'PL', 'R', 'RS', 'TL', 'UP']).map((code: string) => {
+                    const isChecked = selectedTypes.includes(code)
+                    return (
+                      <button
+                        type="button"
+                        key={code}
+                        onClick={() => {
+                          setSelectedTypes((prev) =>
+                            prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+                          )
+                        }}
+                        className={cn(
+                          'flex items-center justify-between px-3 py-2.5 rounded-lg border text-xs font-medium transition-all text-left cursor-pointer',
+                          isChecked
+                            ? 'border-teal-500 bg-teal-500/10 text-teal-900 dark:text-teal-200 font-semibold'
+                            : 'border-[var(--border)] bg-[var(--bg-secondary)]/40 text-[var(--text-muted)] hover:bg-[var(--surface-hover)]'
+                        )}
+                      >
+                        <span className="font-mono">{code}</span>
+                        {isChecked && <Check className="w-4 h-4 text-teal-600 dark:text-teal-400" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-[var(--bg-secondary)]/60 border border-[var(--border)] text-[11px] text-[var(--text-muted)]">
+                Active note: <strong className="text-[var(--text-primary)]">{selectedTypes.length > 0 ? `${selectedTypes.join(' and ')} types only` : 'No types included'}</strong>
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setSelectedTypes(['MR', 'R'])}
+                className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset (MR, R)
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTypeModal(false)}
+                  className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs font-medium hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingSettings || selectedTypes.length === 0}
+                  onClick={async () => {
+                    try {
+                      setSavingSettings(true)
+                      await api.put('/settings', {
+                        key: 'included_type_codes',
+                        value: JSON.stringify(selectedTypes),
+                      })
+                      await queryClient.invalidateQueries({ queryKey: ['v2-delayed-summary'] })
+                      await queryClient.invalidateQueries({ queryKey: ['v2-delayed-deals'] })
+                      await queryClient.invalidateQueries({ queryKey: ['v2-overview'] })
+                      setShowTypeModal(false)
+                    } catch (err) {
+                      console.error('Failed to update settings', err)
+                    } finally {
+                      setSavingSettings(false)
+                    }
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {savingSettings ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />

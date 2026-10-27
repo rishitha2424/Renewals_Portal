@@ -133,6 +133,8 @@ class ScopeResolution:
 
 
 class ScopeService:
+    FilterSpec = FilterSpec
+
     @staticmethod
     def quarter_of(d: date) -> str:
         """Returns the fiscal quarter of a date matching pattern Q[1-4]-\\d{4}."""
@@ -157,14 +159,20 @@ class ScopeService:
         return f"{q} FY{y[-2:]}"
 
     @staticmethod
-    def current_quarter(snapshot_date: date) -> str:
+    def current_quarter(snapshot_date: Optional[date] = None) -> str:
+        if snapshot_date is None:
+            snapshot_date = date.today()
         return ScopeService.quarter_of(snapshot_date)
 
     @staticmethod
     def parse_quarter(q_str: str) -> Tuple[int, int]:
-        m = re.match(r"^Q([1-4])-(\d{4})$", str(q_str).strip(), re.IGNORECASE)
+        s = str(q_str).strip()
+        m = re.match(r"^Q([1-4])-(\d{4})$", s, re.IGNORECASE)
         if m:
             return int(m.group(2)), int(m.group(1))
+        m_rev = re.match(r"^(\d{4})-Q([1-4])$", s, re.IGNORECASE)
+        if m_rev:
+            return int(m_rev.group(1)), int(m_rev.group(2))
         return (9999, 9)
 
     @staticmethod
@@ -190,8 +198,10 @@ class ScopeService:
         if not q_str or "-" not in q_str:
             return date(1970, 1, 1), date(1970, 1, 1)
         q_part, y_part = q_str.split("-")
-        q = int(q_part[1])
-        y = int(y_part)
+        if q_part.isdigit() and (y_part.upper().startswith("Q") or "Q" in y_part.upper()):
+            q_part, y_part = y_part, q_part
+        q = int(re.sub(r"\D", "", q_part))
+        y = int(re.sub(r"\D", "", y_part))
         
         start_month = settings.FISCAL_YEAR_START_MONTH
         

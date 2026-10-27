@@ -62,36 +62,56 @@ _EXCEL_EPOCH = datetime(1899, 12, 30)
 def parse_excel_datetime(val) -> datetime | None:
     """Convert any date-like cell value to datetime, or None.
     Handles Timestamp/datetime/date, Excel serial numbers, ISO and US text.
-    Zero/blank/"nan" are treated as missing."""
-    if val is None:
+    Any date serial at or below zero, or an empty cell, is treated as missing (None).
+    Years below 1900 (such as 1899 from Excel serial 0) are treated as missing (None)."""
+    if val is None or pd.isna(val):
+        return None
+    if isinstance(val, (int, float)):
+        if val <= 0:
+            return None
+        if 18000 <= val <= 73415:
+            dt = _EXCEL_EPOCH + timedelta(days=val)
+            return dt if dt.year >= 1900 else None
         return None
     if isinstance(val, pd.Timestamp):
-        return None if pd.isna(val) else val.to_pydatetime()
+        if pd.isna(val) or val.year < 1900:
+            return None
+        return val.to_pydatetime()
     if isinstance(val, datetime):
-        return val
+        return val if val.year >= 1900 else None
     if isinstance(val, date):
-        return datetime(val.year, val.month, val.day)
-    if isinstance(val, float) and pd.isna(val):
-        return None
+        return datetime(val.year, val.month, val.day) if val.year >= 1900 else None
     s = str(val).strip()
-    if not s or s.lower() in ("nan", "nat", "none", "0", "0.0"):
+    if not s or s.lower() in ("nan", "nat", "none", "null", "0", "0.0", "blank"):
         return None
-    # Excel serial number (plausible range 1950-2100)
-    if re.fullmatch(r"\d{4,6}(\.\d+)?", s):
-        n = float(s)
-        if 18000 <= n <= 73415:
-            return _EXCEL_EPOCH + timedelta(days=n)
+    if s.startswith("-"):
         return None
+    # Excel serial number
+    if re.fullmatch(r"\d{1,6}(\.\d+)?", s):
+        try:
+            n = float(s)
+            if n <= 0:
+                return None
+            if 18000 <= n <= 73415:
+                dt = _EXCEL_EPOCH + timedelta(days=n)
+                return dt if dt.year >= 1900 else None
+            return None
+        except Exception:
+            return None
     try:
         ts = pd.to_datetime(s, errors="coerce")
-        return None if pd.isna(ts) else ts.to_pydatetime()
+        if pd.isna(ts) or ts.year < 1900:
+            return None
+        return ts.to_pydatetime()
     except Exception:
         return None
 
 
 def parse_excel_date(val) -> date | None:
     dt = parse_excel_datetime(val)
-    return dt.date() if dt else None
+    if dt and dt.year >= 1900:
+        return dt.date()
+    return None
 
 
 def clean_record(rec: dict) -> dict:

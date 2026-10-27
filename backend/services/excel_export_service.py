@@ -793,11 +793,50 @@ class ExcelExportService:
         autofit_columns(ws10)
 
         # -------------------------------------------------------------
-        # Sheet 11: Needs review
+        # Sheets 11 & 12: Slippage & Needs review
         # -------------------------------------------------------------
         try:
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
+
+            # Slippage sheet
+            slip_res = del_svc.get_deals(as_of=snap.id, kind="slippage")
+            slip_deals = slip_res.get("deals", [])
+            if slip_deals:
+                ws_slip = wb.create_sheet(title="Slippage")
+                headers_slip = [
+                    "Opportunity ID 18 Digit",
+                    "Account Name",
+                    "Opportunity Name",
+                    "Forecast ACV Amount",
+                    "Forecast Category",
+                    "Service Expiry Date",
+                    "Close Date",
+                    "Region",
+                    "Owner",
+                ]
+                ws_slip.append(headers_slip)
+                style_header_row(ws_slip, len(headers_slip))
+
+                for d in slip_deals:
+                    ws_slip.append([
+                        d.get("opportunity_id_18", ""),
+                        d.get("account_name", ""),
+                        d.get("opportunity_name", ""),
+                        float(d.get("forecast_acv_amount") or 0.0),
+                        d.get("forecast_category", ""),
+                        d.get("service_expiry_date", ""),
+                        d.get("close_date", ""),
+                        d.get("region", ""),
+                        d.get("owner") or d.get("opportunity_owner", ""),
+                    ])
+                    rn = ws_slip.max_row
+                    ws_slip.cell(rn, 4).number_format = "$#,##0.00"
+                    for c in range(1, 10):
+                        ws_slip.cell(rn, c).border = THIN_BORDER
+                autofit_columns(ws_slip)
+
+            # Needs review sheet
             nr_res = del_svc.get_deals(as_of=snap.id, kind="needs_review")
             nr_deals = nr_res.get("deals", [])
             if nr_deals:
@@ -818,9 +857,13 @@ class ExcelExportService:
                 style_header_row(ws11, len(headers11))
 
                 type_labels = {
+                    "far_ahead": "Close date more than a year ahead",
+                    "other_types": "Other types (not counted)",
+                    "negative_acv": "Negative or zero ACV",
+                    "expired_no_group": "Service expired before quarter but no delayed Group",
                     "type_1": "Negative or zero ACV",
-                    "type_2": "Expired before quarter but not delayed Group",
-                    "type_3": "Close date far ahead",
+                    "type_2": "Service expired before quarter but no delayed Group",
+                    "type_3": "Close date more than a year ahead",
                 }
 
                 for d in nr_deals:
@@ -844,7 +887,7 @@ class ExcelExportService:
                 autofit_columns(ws11)
         except Exception as exc:
             import logging
-            logging.getLogger(__name__).warning("Could not append Needs review sheet: %s", exc)
+            logging.getLogger(__name__).warning("Could not append Slippage / Needs review sheet: %s", exc)
 
         output = io.BytesIO()
         wb.save(output)

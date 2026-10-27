@@ -23,8 +23,9 @@ def get_all_settings(
     db: Session = Depends(get_db),
     ctx: UserContext = Depends(get_user_context),
 ):
-    # Detect available groups from active snapshot's opportunities
+    # Detect available groups and available deal types from active snapshot's opportunities
     available_groups: list[str] = []
+    available_types: list[str] = []
     active_snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
     if not active_snap:
         active_snap = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
@@ -32,14 +33,27 @@ def get_all_settings(
     if active_snap:
         opps = db.query(Opportunity).filter(Opportunity.snapshot_id == active_snap.id).all()
         groups_set: set[str] = set()
+        types_set: set[str] = set()
         for o in opps:
             if o.extra_attributes and isinstance(o.extra_attributes, dict):
                 g = o.extra_attributes.get("Group") or o.extra_attributes.get("group")
                 if g and str(g).strip() and str(g).strip().lower() not in ("nan", "none"):
                     groups_set.add(str(g).strip())
+                t = o.extra_attributes.get("Type") or o.extra_attributes.get("type")
+                if t and str(t).strip() and str(t).strip().lower() not in ("nan", "none"):
+                    code = str(t).split("-")[0].strip().upper()
+                    if code:
+                        types_set.add(code)
+            elif o.sales_type:
+                code = str(o.sales_type).split("-")[0].strip().upper()
+                if code:
+                    types_set.add(code)
         available_groups = sorted(list(groups_set))
+        available_types = sorted(list(types_set))
 
-    return SettingsService.get_all_settings(db, available_groups=available_groups)
+    return SettingsService.get_all_settings(
+        db, available_groups=available_groups, available_types=available_types
+    )
 
 
 @router.put("")

@@ -17,6 +17,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": "",  # Empty indicates auto-detect (word "delay" in Group column)
         "description": "Group column value representing Delayed Renewals. Leave empty for automatic detection.",
     },
+    "included_type_codes": {
+        "value": json.dumps(["MR", "R"]),
+        "description": "Deal Type codes to include in Delayed Renewals and Slippage (default MR, R). Deals with other codes are reviewed separately.",
+    },
     "exclude_zero_negative_acv": {
         "value": "true",
         "description": "Exclude deals with zero or negative ACV from headline totals.",
@@ -26,7 +30,7 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "description": "Flag deals with close dates further than this number of years ahead for review.",
     },
     "manual_sheet_keywords": {
-        "value": json.dumps(["delayed", "slippage", "2027"]),
+        "value": json.dumps(["delayed", "slippage"]),
         "description": "Keywords used to detect extra manual sheets in workbooks for admin reconciliation.",
     },
 }
@@ -83,7 +87,11 @@ class SettingsService:
         return row
 
     @staticmethod
-    def get_all_settings(db: Session, available_groups: list[str] | None = None) -> dict[str, Any]:
+    def get_all_settings(
+        db: Session,
+        available_groups: list[str] | None = None,
+        available_types: list[str] | None = None,
+    ) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for k, default_meta in DEFAULT_SETTINGS.items():
             val = SettingsService.get_setting(db, k)
@@ -106,10 +114,28 @@ class SettingsService:
         result["delayed_group"]["effective_value"] = resolved_group
         result["delayed_group"]["is_auto_detected"] = not bool(configured_group.strip())
         result["delayed_group"]["available_groups"] = available_groups or []
+
+        # Resolve included type codes
+        raw_types = result.get("included_type_codes", {}).get("value", '["MR", "R"]')
+        try:
+            parsed_types = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
+            type_list = [str(x).strip().upper() for x in parsed_types if str(x).strip()] or ["MR", "R"]
+        except Exception:
+            type_list = ["MR", "R"]
+
+        result["included_type_codes"]["effective_value"] = type_list
+        result["included_type_codes"]["available_types"] = available_types or []
+        note = " and ".join(type_list) + " types only" if type_list else "All types"
+        result["included_type_codes"]["note"] = note
+
         return result
 
     @staticmethod
-    def get_delayed_rules(db: Session, available_groups: list[str] | None = None) -> dict[str, Any]:
+    def get_delayed_rules(
+        db: Session,
+        available_groups: list[str] | None = None,
+        available_types: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Returns parsed, typed rules for delayed renewals & slippage calculations.
         """
@@ -125,21 +151,32 @@ class SettingsService:
         exclude_non_pos = SettingsService.get_setting(db, "exclude_zero_negative_acv", "true").lower() in ("true", "1", "yes")
 
         try:
+            raw_types = SettingsService.get_setting(db, "included_type_codes", '["MR", "R"]')
+            parsed = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
+            included_types = [str(x).strip().upper() for x in parsed if str(x).strip()] or ["MR", "R"]
+        except Exception:
+            included_types = ["MR", "R"]
+
+        type_note = " and ".join(included_types) + " types only" if included_types else "All types"
+
+        try:
             far_ahead_years = int(SettingsService.get_setting(db, "close_date_far_ahead_years", "5"))
         except (ValueError, TypeError):
             far_ahead_years = 5
 
         try:
-            manual_keywords = json.loads(SettingsService.get_setting(db, "manual_sheet_keywords", '["delayed", "slippage", "2027"]'))
+            manual_keywords = json.loads(SettingsService.get_setting(db, "manual_sheet_keywords", '["delayed", "slippage"]'))
             if not isinstance(manual_keywords, list):
-                manual_keywords = ["delayed", "slippage", "2027"]
+                manual_keywords = ["delayed", "slippage"]
         except Exception:
-            manual_keywords = ["delayed", "slippage", "2027"]
+            manual_keywords = ["delayed", "slippage"]
 
         return {
             "delayed_group": effective_group,
             "is_auto_detected": not bool(configured_group),
             "fallback_used": effective_group is None,
+            "included_type_codes": included_types,
+            "type_filter_note": type_note,
             "exclude_zero_negative_acv": exclude_non_pos,
             "close_date_far_ahead_years": far_ahead_years,
             "manual_sheet_keywords": manual_keywords,

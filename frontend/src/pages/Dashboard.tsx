@@ -151,7 +151,7 @@ export default function Dashboard() {
 
   const openDealsQuery = async (
     title: string,
-    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string; deal_ids?: string; as_of?: string },
+    params: { category?: string; region?: string; approval_status?: string; kind?: string; compare?: string; deal_ids?: string; as_of?: string; expiry_year?: number; [key: string]: any },
     initialFilters?: any
   ) => {
     try {
@@ -814,7 +814,10 @@ export default function Dashboard() {
                       </h2>
                     </div>
                     <p className="text-xs text-[var(--text-muted)] max-w-2xl">
-                      Deals that moved OUT of the selected quarter into a later one, split by destination.
+                      {slippageSec?.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close next year.'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {slippageSec?.type_filter_note || 'MR and R types only'}
                     </p>
                   </div>
                   {summary?.slippage_pct_of_quarter != null && (
@@ -832,6 +835,7 @@ export default function Dashboard() {
                   const hasDeals = cnt > 0 || acvVal > 0
                   const mainTitle = `Slippage · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
 
+                  const startDelta = slipTot?.delta_period_start
                   const yDelta = slipTot?.delayed_vs_yesterday
                   const lwDelta = slipTot?.delayed_vs_lastweek
                   const yCnt = Math.abs(yDelta?.count || 0)
@@ -860,125 +864,85 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'slipped', compare: 'yesterday' }), yTitle, false)}
-                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'slipped', compare: 'last_week' }), lwTitle, false)}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {renderSubBox('Since start of year', startDelta, 'period start', () => openDealsQuery(mainTitle, { kind: 'slippage_total' }), mainTitle, false)}
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'slippage_total', compare: 'yesterday' }), yTitle, false)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'slippage_total', compare: 'last_week' }), lwTitle, false)}
                       </div>
                     </div>
                   )
                 })()}
 
-                {/* 3 Destination Cards */}
-                {(() => {
-                  const slipNY = slippageSec?.slipped_next_year || summary?.slipped_next_year
-                  const slipNQ = slippageSec?.slipped_next_quarter || summary?.slipped_next_quarter
-                  const slipLQ = slippageSec?.slipped_later_quarter || summary?.slipped_later_quarter
-
-                  const destCards = [
-                    {
-                      id: 'slipped_next_year',
-                      title: 'Slipped to next fiscal year',
-                      data: slipNY,
-                      kind: 'slipped_next_year',
-                    },
-                    {
-                      id: 'slipped_next_quarter',
-                      title: 'Slipped to next quarter',
-                      data: slipNQ,
-                      kind: 'slipped_next_quarter',
-                    },
-                    {
-                      id: 'slipped_later_quarter',
-                      title: 'Slipped to a later quarter, same year',
-                      data: slipLQ,
-                      kind: 'slipped_later_quarter',
-                    },
-                  ]
-
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {destCards.map(c => {
-                        const cnt = c.data?.count ?? 0
-                        const acvVal = c.data?.acv ?? 0
-                        const isNA = isFuture || c.data?.count === null
-                        const hasDeals = cnt > 0 || acvVal > 0
-                        const mainTitle = `${c.title} · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
-
-                        const yDelta = c.data?.delayed_vs_yesterday
-                        const lwDelta = c.data?.delayed_vs_lastweek
-                        const yCnt = Math.abs(yDelta?.count || 0)
-                        const yAcv = Math.abs(yDelta?.acv || 0)
-                        const lwCnt = Math.abs(lwDelta?.count || 0)
-                        const lwAcv = Math.abs(lwDelta?.acv || 0)
-
-                        const yTitle = `${c.title} · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
-                        const lwTitle = `${c.title} · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
-
-                        return (
-                          <div
-                            key={c.id}
-                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between gap-2 mb-1.5">
-                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{c.title}</span>
-                                <Pill color="amber">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
-                              </div>
-                              <div
-                                className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
-                                onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: c.kind, compare: 'period_start' })}
-                                title={hasDeals ? `Click to view ${c.title}` : '0 deals'}
-                              >
-                                {isNA ? 'n/a' : acvM(acvVal)}
-                              </div>
-                              <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">Since start of period</div>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                              {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.kind, compare: 'yesterday' }), yTitle, false)}
-                              {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.kind, compare: 'last_week' }), lwTitle, false)}
-                            </div>
+                {/* Forecast Category Split */}
+                {slippageSec?.categories && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {['Commit', 'Best Case', 'Pipeline', 'Blank'].map(cat => {
+                      const cData = slippageSec.categories[cat] || { count: 0, acv: 0 }
+                      const label = cat === 'Blank' ? 'Not yet proposed' : cat
+                      const hasC = (cData.count || 0) > 0 || (cData.acv || 0) > 0
+                      return (
+                        <div
+                          key={cat}
+                          onClick={() => hasC && openDealsQuery(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
+                          className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] transition-colors ${hasC ? 'cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5' : 'opacity-60 cursor-default'}`}
+                        >
+                          <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{label}</div>
+                          <div className="text-lg font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
+                            {acvM(cData.acv || 0)}
                           </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
+                          <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                            {cData.count || 0} {(cData.count || 0) === 1 ? 'deal' : 'deals'}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
-                {/* Compact Card: Slipped to a later year (by service expiry) */}
-                {summary?.slipped_to_later_year && (
-                  <div className="mt-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
-                          Slipped to a later year (by service expiry)
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded">
-                          also delayed tagged
-                        </span>
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Open renewals with Service Expiry in or before active year closing in a later year.
-                      </p>
-                      {summary.slipped_to_later_year.excluded_adjustments?.count > 0 && (
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                          Negative-ACV adjustments (excluded): {summary.slipped_to_later_year.excluded_adjustments.count} deals / {acvM(summary.slipped_to_later_year.excluded_adjustments.acv)}
-                        </p>
-                      )}
+                {/* Slipped From Table */}
+                {slippageSec?.slipped_from && slippageSec.slipped_from.length > 0 && (
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+                    <div className="px-4 py-2.5 bg-[var(--bg-secondary)]/50 border-b border-[var(--border)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                        Slipped From
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        Service Expiry Year Breakdown
+                      </span>
                     </div>
-                    <div
-                      className="cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-3 shrink-0"
-                      onClick={() => openDealsQuery(`Slipped to a later year (${summary.slipped_to_later_year.total.count} deals · ${acvM(summary.slipped_to_later_year.total.acv)})`, { kind: 'slipped_later_year' })}
-                    >
-                      <div className="text-right">
-                        <div className="text-xl font-black text-[var(--text-primary)] tabular-nums">
-                          {acvM(summary.slipped_to_later_year.total.acv)}
-                        </div>
-                        <div className="text-xs text-[var(--text-muted)] font-medium">
-                          {summary.slipped_to_later_year.total.count} deals
-                        </div>
-                      </div>
-                      <ArrowRight className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
+                            <th className="px-4 py-2">Service Expiry Year</th>
+                            <th className="px-4 py-2 text-right">Deals</th>
+                            <th className="px-4 py-2 text-right">ACV</th>
+                            <th className="px-4 py-2">Expected Close</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {slippageSec.slipped_from.map((sf: any) => (
+                            <tr
+                              key={sf.expiry_year}
+                              onClick={() => openDealsQuery(`Slipped from ${sf.expiry_year}`, { kind: 'slipped_from_year', expiry_year: sf.expiry_year })}
+                              className="hover:bg-amber-500/5 cursor-pointer transition-colors"
+                            >
+                              <td className="px-4 py-2 font-medium text-[var(--text-primary)]">
+                                From {sf.expiry_year}
+                              </td>
+                              <td className="px-4 py-2 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                                {sf.count}
+                              </td>
+                              <td className="px-4 py-2 text-right font-semibold tabular-nums text-[var(--text-primary)]">
+                                {acvM(sf.acv)}
+                              </td>
+                              <td className="px-4 py-2 text-[var(--text-muted)]">
+                                Closing in {slippageSec.next_year || 'next year'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

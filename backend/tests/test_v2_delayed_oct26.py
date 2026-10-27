@@ -88,13 +88,20 @@ def _load_and_compute_pandas_ground_truth(file_path: Path, snap_date: date):
     q_end = date(yr_num, m_end, last_day)
     yr_end = date(yr_num, 12, 31)
 
-    # Delayed Renewals (group contains delay, positive ACV)
+    type_col = cols.get("type")
+    if type_col and type_col in df_open.columns:
+        type_codes = df_open[type_col].astype(str).str.split("-").str[0].str.strip().str.upper()
+    else:
+        type_codes = pd.Series(["MR"] * len(df_open), index=df_open.index)
+    mr_r_mask = type_codes.isin(["MR", "R"])
+
+    # Delayed Renewals (group contains delay, positive ACV, MR and R types)
     if group_col and group_col in df_open.columns:
         delay_mask = df_open[group_col].astype(str).str.lower().str.contains("delay")
     else:
         delay_mask = df_open["_exp_d"].apply(lambda d: d < q_start if d else False)
 
-    df_delayed = df_open[delay_mask].copy()
+    df_delayed = df_open[delay_mask & mr_r_mask].copy()
     df_delayed_pos = df_delayed[df_delayed[acv_col] > 0].copy()
     df_overdue = df_delayed_pos[df_delayed_pos["_close_d"] < snap_date].copy()
     df_ahead = df_delayed_pos[df_delayed_pos["_close_d"] >= snap_date].copy()
@@ -104,20 +111,24 @@ def _load_and_compute_pandas_ground_truth(file_path: Path, snap_date: date):
     ahead_next_yr = df_ahead[df_ahead["_close_d"].apply(lambda d: d.year == yr_num + 1 if d else False)]
     ahead_later_yr = df_ahead[df_ahead["_close_d"].apply(lambda d: d.year > yr_num + 1 if d else False)]
 
-    # Slipped to a later year
-    slip_mask = df_open["_exp_d"].apply(lambda d: d <= yr_end if d else False) & df_open["_close_d"].apply(lambda d: d > yr_end if d else False)
+    # Slipped to a later year (MR and R types, expiry <= yr_end, close date in yr_num + 1)
+    slip_mask = (
+        df_open["_exp_d"].apply(lambda d: d <= yr_end if d else False) &
+        df_open["_close_d"].apply(lambda d: d.year == yr_num + 1 if d else False) &
+        mr_r_mask
+    )
     df_slipped_all = df_open[slip_mask].copy()
     df_slipped_pos = df_slipped_all[df_slipped_all[acv_col] > 0].copy()
     df_slipped_nonpos = df_slipped_all[df_slipped_all[acv_col] <= 0].copy()
 
-    bucket_a = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: d < q_start if d else False)]
-    bucket_b = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: (q_start <= d < yr_end) if d else False)]
-    bucket_c = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: d == yr_end if d else False)]
+    bucket_a = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: d.year == yr_num - 1 if d else False)]
+    bucket_b = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: d.year == yr_num if d else False)]
+    bucket_c = df_slipped_pos[df_slipped_pos["_exp_d"].apply(lambda d: d.year < yr_num - 1 if d else False)]
 
     # Needs review
     review_t1 = df_open[(df_open[acv_col] <= 0) & (delay_mask | slip_mask)].copy()
     review_t2 = df_open[df_open["_exp_d"].apply(lambda d: d < q_start if d else False) & (~delay_mask)].copy()
-    review_t3 = df_open[df_open["_close_d"].apply(lambda d: d.year > snap_date.year + 5 if d else False)].copy()
+    review_t3 = df_open[df_open["_close_d"].apply(lambda d: d.year > snap_date.year + 1 if d else False)].copy()
 
     return {
         "df_open": df_open,
@@ -221,6 +232,7 @@ def test_independent_pandas_oct26_file_verification():
     correctly executes all date parsers, categorizations, and rules.
     """
     candidates = [
+        Path("data/Renewal Comparison Tool (1).xlsx"),
         Path("data/Renewal Comparison Tool.xlsx"),
         Path("data/sample_oct7/Renewal Comparison Tool.xlsx"),
         Path("data/Renewal Comparison Tool 11.xlsx"),
