@@ -74,20 +74,21 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
         mask_open = mask_open & (pd.to_numeric(df_raw[prob_col], errors="coerce").fillna(0) < 100)
     if stage_col:
         stage_str = df_raw[stage_col].astype(str).str.lower()
-        mask_open = mask_open & (~stage_str.str.contains("delete|lost|closed lost", na=False))
+        mask_open = mask_open & (~stage_str.str.contains("delete|lost|closed lost|won & closed|9. won", na=False))
 
     df_open = df_raw[mask_open].copy()
 
     # Dates
     c_dates = df_open[close_col].apply(parse_excel_date)
-    exp_dates = df_open[exp_col].apply(parse_excel_date)
-    if start_col:
-        start_dates = df_open[start_col].apply(parse_excel_date)
-        fallback_exp = start_dates.apply(lambda d: d - timedelta(days=1) if d else None)
-        exp_dates = exp_dates.fillna(fallback_exp)
+    raw_exp = df_open[exp_col].apply(parse_excel_date)
+    raw_start = df_open[start_col].apply(parse_excel_date) if start_col else pd.Series(None, index=df_open.index)
+    fallback_exp = raw_start.apply(lambda d: d - timedelta(days=1) if d else None)
+    exp_dates = raw_exp.fillna(fallback_exp)
 
     df_open["_close_d"] = c_dates
     df_open["_exp_d"] = exp_dates
+    df_open["_raw_exp"] = raw_exp
+    df_open["_raw_start"] = raw_start
 
     # Types MR and R
     if type_col and type_col in df_open.columns:
@@ -136,6 +137,15 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
     )
     df_far_ahead = df_open[far_ahead_mask].copy()
 
+    # Missing service dates: open, included type (MR/R), both missing dates, ACV > 0
+    missing_dates_mask = (
+        raw_exp.isna() &
+        raw_start.isna() &
+        mr_r_mask &
+        (df_open[acv_col] > 0)
+    )
+    df_missing_dates = df_open[missing_dates_mask].copy()
+
     # Other types (excluded from Delayed by Settings MR and R only)
     df_other_types = df_open[delay_mask & (df_open[acv_col] > 0) & (~mr_r_mask)].copy()
 
@@ -149,6 +159,8 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
         "slippage_count": len(df_slippage),
         "slippage_acv": round(float(df_slippage[acv_col].sum()), 2),
         "slipped_from": slipped_from,
+        "missing_service_dates_count": len(df_missing_dates),
+        "missing_service_dates_acv": round(float(df_missing_dates[acv_col].sum()), 2),
         "far_ahead_count": len(df_far_ahead),
         "far_ahead_acv": round(float(df_far_ahead[acv_col].sum()), 2),
         "other_types_count": len(df_other_types),
@@ -189,6 +201,10 @@ def test_oct26_exact_numbers(db, active_snap):
 
     # 3. Needs Review items
     items = {item["type"]: item for item in summary["needs_review"]["items"]}
+    assert "missing_service_dates" in items
+    assert items["missing_service_dates"]["count"] == gt["missing_service_dates_count"]
+    assert abs(items["missing_service_dates"]["acv"] - gt["missing_service_dates_acv"]) < 0.02
+
     assert "far_ahead" in items
     assert items["far_ahead"]["count"] == gt["far_ahead_count"]
     assert abs(items["far_ahead"]["acv"] - gt["far_ahead_acv"]) < 0.02
@@ -227,17 +243,22 @@ def test_deals_drill_endpoints(db, active_snap):
     assert d_slip["count"] == gt["slippage_count"]
     assert abs(d_slip["acv"] - gt["slippage_acv"]) < 0.02
 
-    # 3. Needs review far_ahead
+    # 3. Needs review missing_service_dates
+    d_msd = svc.get_deals(as_of=snap_id, kind="needs_review", review_type="missing_service_dates", filter_spec=fs)
+    assert d_msd["count"] == gt["missing_service_dates_count"]
+    assert abs(d_msd["acv"] - gt["missing_service_dates_acv"]) < 0.02
+
+    # 4. Needs review far_ahead
     d_far = svc.get_deals(as_of=snap_id, kind="needs_review", review_type="far_ahead", filter_spec=fs)
     assert d_far["count"] == gt["far_ahead_count"]
     assert abs(d_far["acv"] - gt["far_ahead_acv"]) < 0.02
 
-    # 4. Needs review other_types
+    # 5. Needs review other_types
     d_oth = svc.get_deals(as_of=snap_id, kind="needs_review", review_type="other_types", filter_spec=fs)
     assert d_oth["count"] == gt["other_types_count"]
     assert abs(d_oth["acv"] - gt["other_types_acv"]) < 0.02
 
-    # 5. Newly delayed
+    # 6. Newly delayed
     d_new = svc.get_deals(as_of=snap_id, kind="newly_delayed", filter_spec=fs)
     y_snap = svc.get_yesterday_baseline(active_snap)
     target_p_str = ScopeService.quarter_of(active_snap.snapshot_date)
@@ -343,3 +364,51 @@ def test_fallback_notice_when_group_missing(db, active_snap):
     assert buckets_dropped["fallback_used"] is True
     assert len(buckets_dropped["delayed_total"]) > 0
     assert buckets_dropped["delayed_total"]["forecast_acv_amount"].sum() > 0
+
+
+def test_needs_review_excel_export_and_no_duplicates(db, active_snap):
+    """
+    Validates that:
+    1. The Needs review Excel export sheet includes 'Missing service dates'
+    2. Count and ACV match the pandas ground truth expectation
+    3. Zero or negative ACV deals stay in 'Negative or zero ACV'
+    4. No deal appears in two rows (strict deduplication)
+    """
+    import io
+    import openpyxl
+    from backend.services.excel_export_service import ExcelExportService
+
+    gt = _compute_pandas_fixture_ground_truth(active_snap.snapshot_date)
+    exporter = ExcelExportService(db)
+    buf, filename = exporter.generate_excel(snapshot_id=active_snap.id, scope="renewals")
+
+    wb = openpyxl.load_workbook(buf)
+    assert "Needs review" in wb.sheetnames
+    ws = wb["Needs review"]
+
+    rows = list(ws.iter_rows(values_only=True))
+    assert len(rows) > 1
+    headers = [str(h).strip() for h in rows[0]]
+    rev_idx = headers.index("Review Type")
+    id_idx = headers.index("Opportunity ID 18 Digit")
+    acv_idx = headers.index("Forecast ACV Amount")
+
+    data_rows = rows[1:]
+    # Check no duplicates across Needs review
+    opp_ids = [r[id_idx] for r in data_rows if r[id_idx]]
+    assert len(opp_ids) == len(set(opp_ids)), "A deal appeared in more than one Needs Review row"
+
+    # Missing service dates row check
+    msd_rows = [r for r in data_rows if r[rev_idx] == "Missing service dates"]
+    assert len(msd_rows) == gt["missing_service_dates_count"]
+    msd_acv = sum(float(r[acv_idx] or 0.0) for r in msd_rows)
+    assert abs(msd_acv - gt["missing_service_dates_acv"]) < 0.02
+
+    # Zero or negative ACV check: all negative_acv rows have ACV <= 0, others > 0
+    for r in data_rows:
+        acv = float(r[acv_idx] or 0.0)
+        rev_type = r[rev_idx]
+        if rev_type == "Negative or zero ACV":
+            assert acv <= 0.0
+        elif rev_type == "Missing service dates":
+            assert acv > 0.0

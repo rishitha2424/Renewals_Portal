@@ -81,26 +81,24 @@ def _is_open_deal(sales_type: Any, forecast_category: Any, probability: Any, sta
     Open means:
     - Sales Type = Renewals
     - Forecast Category not Closed
+    - Stage not deleted, lost, or won/closed
     - Probability below 100%
-    - Stage not deleted or lost
     """
     if str(sales_type or "").strip().lower() != "renewals":
         return False
     if str(forecast_category or "").strip().lower() == "closed":
         return False
+    stage_str = str(stage_number or "").strip().lower()
+    if any(w in stage_str for w in ["delete", "lost", "closed lost", "won & closed", "9. won"]):
+        return False
+    if is_deleted_or_lost:
+        return False
     try:
         p = float(probability)
-        if p > 1.0 and p >= 100.0:
-            return False
-        elif p >= 1.0:
+        if p >= 100.0:
             return False
     except (ValueError, TypeError):
         pass
-    if is_deleted_or_lost:
-        return False
-    stage_str = str(stage_number or "").strip().lower()
-    if any(w in stage_str for w in ["delete", "lost", "closed lost"]):
-        return False
     return True
 
 
@@ -420,11 +418,23 @@ class V2DelayedService:
 
         # -------------------------------------------------------------
         # 3. NEEDS REVIEW SECTION
-        # 1. Close date more than a year ahead
-        # 2. Other types (not counted) - from Delayed and Slippage
-        # 3. Negative or zero ACV
-        # 4. Service expired before quarter but no delayed Group
+        # 1. Missing service dates (open, included type, expiry and start both missing, positive ACV)
+        # 2. Close date more than a year ahead
+        # 3. Other types (not counted) - from Delayed and Slippage
+        # 4. Negative or zero ACV
+        # 5. Service expired before quarter but no delayed Group
         # -------------------------------------------------------------
+        missing_dates_mask = (
+            open_df["_service_expiry_date"].isna() &
+            open_df["_service_start_date"].isna() &
+            open_df["type_code"].isin(included_type_codes) &
+            (open_df["forecast_acv_amount"] > 0)
+        ) if not open_df.empty else pd.Series(dtype=bool)
+        review_missing_dates_df = open_df[missing_dates_mask].copy() if not open_df.empty else pd.DataFrame()
+        if not review_missing_dates_df.empty:
+            review_missing_dates_df["why_it_is_here"] = "Service Start Date and Service Expiry Date are both missing or zero."
+            review_missing_dates_df["review_type"] = "missing_service_dates"
+
         if not review_far_close_df.empty:
             review_far_close_df["why_it_is_here"] = f"Close date is {selected_year + 2} or later (more than a year ahead of {selected_year})."
             review_far_close_df["review_type"] = "far_ahead"
@@ -501,6 +511,7 @@ class V2DelayedService:
             "slippage_df": slipped_pos_df,
             "slipped_nonpos": slipped_nonpos_df,
             "slipped_other_type": slipped_other_type_df,
+            "review_missing_dates": review_missing_dates_df,
             "review_far_close": review_far_close_df,
             "review_other_types": review_other_types_df,
             "review_nonpos": review_nonpos_df,
@@ -702,12 +713,21 @@ class V2DelayedService:
         # -------------------------------------------------------------
         # Needs Review Section
         # -------------------------------------------------------------
+        review_missing_dates = main_buckets.get("review_missing_dates", pd.DataFrame())
         review_far_close = main_buckets["review_far_close"]
         review_other_types = main_buckets["review_other_types"]
         review_nonpos = main_buckets["review_nonpos"]
         review_expired_no_group = main_buckets["review_expired_no_group"]
 
         needs_review_items = []
+        if not review_missing_dates.empty:
+            needs_review_items.append({
+                "type": "missing_service_dates",
+                "title": "Missing service dates",
+                "description": "Open renewals of included types with no usable service dates (both start and expiry missing or zero).",
+                "count": len(review_missing_dates),
+                "acv": _safe_acv(review_missing_dates),
+            })
         if not review_far_close.empty:
             needs_review_items.append({
                 "type": "far_ahead",
@@ -1066,14 +1086,16 @@ class V2DelayedService:
             df = today_buckets["ahead_next_yr"].copy()
         elif base_kind == "ahead_later_yr":
             df = today_buckets["ahead_later_yr"].copy()
-        elif base_kind in ("slippage", "slipped", "slipped_total", "slipped_to_later_year"):
+        elif base_kind in ("slippage", "slipped", "slipped_total", "slippage_total", "slipped_to_later_year"):
             df = today_buckets["slippage"].copy()
         elif base_kind == "slipped_from_year":
             df = today_buckets["slippage"].copy()
             if expiry_year and not df.empty:
                 df = df[df["_service_expiry_date"].apply(lambda d: d.year == expiry_year if d else False)]
         elif base_kind in ("needs_review", "review"):
-            if review_type in ("far_ahead", "type_1"):
+            if review_type in ("missing_service_dates", "missing_dates"):
+                df = today_buckets.get("review_missing_dates", pd.DataFrame()).copy()
+            elif review_type in ("far_ahead", "type_1"):
                 df = today_buckets["review_far_close"].copy()
             elif review_type in ("other_types", "type_2"):
                 df = today_buckets["review_other_types"].copy()
@@ -1082,8 +1104,10 @@ class V2DelayedService:
             elif review_type in ("expired_no_group", "type_4"):
                 df = today_buckets["review_expired_no_group"].copy()
             else:
-                parts = [p for p in (today_buckets["review_far_close"], today_buckets["review_other_types"], today_buckets["review_nonpos"], today_buckets["review_expired_no_group"]) if not p.empty]
+                parts = [p for p in (today_buckets.get("review_missing_dates", pd.DataFrame()), today_buckets["review_far_close"], today_buckets["review_other_types"], today_buckets["review_nonpos"], today_buckets["review_expired_no_group"]) if not p.empty]
                 df = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+        elif base_kind in ("missing_service_dates", "missing_dates"):
+            df = today_buckets.get("review_missing_dates", pd.DataFrame()).copy()
         elif base_kind == "other_types_delayed":
             df = today_buckets["delayed_other_type"].copy()
         elif base_kind == "other_types_slippage":

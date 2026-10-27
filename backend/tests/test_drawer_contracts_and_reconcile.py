@@ -81,32 +81,23 @@ def test_delayed_and_overview_drawer_contracts(api_client):
         assert d_slip_tot["count"] == slip_tot_cnt
         assert pytest.approx(d_slip_tot["acv"], abs=0.05) == slip_tot_acv
 
-        # 5. Slipped to next FY
-        s_ny_cnt = del_data["slippage"]["slipped_next_year"]["count"]
-        s_ny_acv = del_data["slippage"]["slipped_next_year"]["acv"]
-        r_s_ny = client.get(f"/api/v2/delayed/deals?kind=slipped_next_year&compare=period_start&as_of={as_of}", headers=headers)
-        assert r_s_ny.status_code == 200
-        d_s_ny = r_s_ny.json()
-        assert d_s_ny["count"] == s_ny_cnt
-        assert pytest.approx(d_s_ny["acv"], abs=0.05) == s_ny_acv
-
-        # 6. Slipped to next Q
-        s_nq_cnt = del_data["slippage"]["slipped_next_quarter"]["count"]
-        s_nq_acv = del_data["slippage"]["slipped_next_quarter"]["acv"]
-        r_s_nq = client.get(f"/api/v2/delayed/deals?kind=slipped_next_quarter&compare=period_start&as_of={as_of}", headers=headers)
-        assert r_s_nq.status_code == 200
-        d_s_nq = r_s_nq.json()
-        assert d_s_nq["count"] == s_nq_cnt
-        assert pytest.approx(d_s_nq["acv"], abs=0.05) == s_nq_acv
-
-        # 7. Slipped to later Q, same year
-        s_lq_cnt = del_data["slippage"]["slipped_later_quarter"]["count"]
-        s_lq_acv = del_data["slippage"]["slipped_later_quarter"]["acv"]
-        r_s_lq = client.get(f"/api/v2/delayed/deals?kind=slipped_later_quarter&compare=period_start&as_of={as_of}", headers=headers)
-        assert r_s_lq.status_code == 200
-        d_s_lq = r_s_lq.json()
-        assert d_s_lq["count"] == s_lq_cnt
-        assert pytest.approx(d_s_lq["acv"], abs=0.05) == s_lq_acv
+        # 5. Slipped from years
+        if "slipped_from" in del_data["slippage"]:
+            for sf in del_data["slippage"]["slipped_from"]:
+                ey = sf["expiry_year"]
+                r_ey = client.get(f"/api/v2/delayed/deals?kind=slipped_from_year&expiry_year={ey}&as_of={as_of}", headers=headers)
+                assert r_ey.status_code == 200
+                d_ey = r_ey.json()
+                assert d_ey["count"] == sf["count"]
+                assert pytest.approx(d_ey["acv"], abs=0.05) == sf["acv"]
+        elif "slipped_next_year" in del_data["slippage"]:
+            s_ny_cnt = del_data["slippage"]["slipped_next_year"]["count"]
+            s_ny_acv = del_data["slippage"]["slipped_next_year"]["acv"]
+            r_s_ny = client.get(f"/api/v2/delayed/deals?kind=slipped_next_year&compare=period_start&as_of={as_of}", headers=headers)
+            assert r_s_ny.status_code == 200
+            d_s_ny = r_s_ny.json()
+            assert d_s_ny["count"] == s_ny_cnt
+            assert pytest.approx(d_s_ny["acv"], abs=0.05) == s_ny_acv
 
         # 8. Lost / Removed
         lost_cnt = del_data["lost"]["count"]
@@ -267,11 +258,15 @@ def test_executive_reconciliation_across_snapshots():
 
             # 6. Slippage destinations sum to Slippage Total
             slip_tot = del_s["slippage_total"]
-            s_ny = del_s["slippage"]["slipped_next_year"]
-            s_nq = del_s["slippage"]["slipped_next_quarter"]
-            s_lq = del_s["slippage"]["slipped_later_quarter"]
-            slip_rows_cnt = (s_ny["count"] or 0) + (s_nq["count"] or 0) + (s_lq["count"] or 0)
-            slip_rows_acv = (s_ny["acv"] or 0.0) + (s_nq["acv"] or 0.0) + (s_lq["acv"] or 0.0)
+            if "slipped_from" in del_s["slippage"]:
+                slip_rows_cnt = sum(sf["count"] for sf in del_s["slippage"]["slipped_from"])
+                slip_rows_acv = sum(sf["acv"] for sf in del_s["slippage"]["slipped_from"])
+            else:
+                s_ny = del_s["slippage"].get("slipped_next_year", {"count": 0, "acv": 0.0})
+                s_nq = del_s["slippage"].get("slipped_next_quarter", {"count": 0, "acv": 0.0})
+                s_lq = del_s["slippage"].get("slipped_later_quarter", {"count": 0, "acv": 0.0})
+                slip_rows_cnt = (s_ny["count"] or 0) + (s_nq["count"] or 0) + (s_lq["count"] or 0)
+                slip_rows_acv = (s_ny["acv"] or 0.0) + (s_nq["acv"] or 0.0) + (s_lq["acv"] or 0.0)
             if slip_tot["count"] is not None:
                 assert slip_rows_cnt == slip_tot["count"]
                 assert pytest.approx(slip_rows_acv, abs=0.05) == slip_tot["acv"]

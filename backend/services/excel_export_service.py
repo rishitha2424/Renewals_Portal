@@ -857,6 +857,7 @@ class ExcelExportService:
                 style_header_row(ws11, len(headers11))
 
                 type_labels = {
+                    "missing_service_dates": "Missing service dates",
                     "far_ahead": "Close date more than a year ahead",
                     "other_types": "Other types (not counted)",
                     "negative_acv": "Negative or zero ACV",
