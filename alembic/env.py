@@ -24,10 +24,13 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from backend.config import settings
 from backend.database import Base
-from backend.models import opportunity, snapshot, change_log, daily_summary  # noqa: F401
+from backend.models import opportunity, snapshot, change_log, daily_summary, custom_column  # noqa: F401
 
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", settings.sqlalchemy_database_url)
+db_url = config.get_main_option("sqlalchemy.url")
+if not db_url or "driver://" in db_url:
+    db_url = settings.sqlalchemy_database_url
+    config.set_main_option("sqlalchemy.url", db_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -66,8 +69,10 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    section = config.get_section(config.config_ini_section, {})
+    section["sqlalchemy.url"] = config.get_main_option("sqlalchemy.url")
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

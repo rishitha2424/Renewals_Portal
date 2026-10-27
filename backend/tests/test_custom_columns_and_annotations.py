@@ -407,3 +407,126 @@ def test_backup_service_and_pruning(test_db_session, tmp_path, monkeypatch):
     # Run daily backup
     file_path = backup_svc.run_daily_backup()
     assert open(file_path, "r", encoding="utf-8").read() != ""
+
+
+# ---------------------------------------------------------------------------
+# 7. Explorer Filtering and Search on Custom Columns
+# ---------------------------------------------------------------------------
+def test_explorer_filter_and_search_custom_columns(test_db_session):
+    from backend.services.explorer_service import ExplorerService, FilterRule
+    from backend.services.opportunity_service import OpportunityService
+
+    snap = UploadSnapshot(
+        id="snap-filter-test",
+        label="Filter Test",
+        snapshot_date=date(2026, 10, 26),
+        is_active_today=True,
+        column_order=["Opportunity ID 18 Digit", "Opportunity Name"],
+    )
+    test_db_session.add(snap)
+    test_db_session.commit()
+
+    opp_a = Opportunity(
+        id="opp-filter-a",
+        snapshot_id=snap.id,
+        opportunity_id_18="006ALPHA001",
+        opportunity_name="Deal Alpha Inc",
+        forecast_acv_amount=100000.0,
+        extra_attributes={"Opportunity ID 18 Digit": "006ALPHA001", "Opportunity Name": "Deal Alpha Inc"},
+    )
+    opp_b = Opportunity(
+        id="opp-filter-b",
+        snapshot_id=snap.id,
+        opportunity_id_18="006BETA002",
+        opportunity_name="Deal Beta Corp",
+        forecast_acv_amount=50000.0,
+        extra_attributes={"Opportunity ID 18 Digit": "006BETA002", "Opportunity Name": "Deal Beta Corp"},
+    )
+    test_db_session.add_all([opp_a, opp_b])
+    test_db_session.commit()
+
+    annot_svc = AnnotationService(test_db_session)
+    col = annot_svc.create_column("Deal Strategy", "text")
+    annot_svc.set_deal_value(opp_a.opportunity_id_18, col.key, "Key Strategic Priority")
+    annot_svc.set_deal_value(opp_b.opportunity_id_18, col.key, "Standard Routine")
+
+    # 1. ExplorerService filter rule on custom column
+    exp_svc = ExplorerService(test_db_session)
+    rule = FilterRule(column="Deal Strategy", operator="contains", value="Strategic")
+    rows, count, acv = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[rule])
+
+    assert count == 1
+    assert rows[0]["_opp_id_18"] == "006ALPHA001"
+    assert rows[0]["Deal Strategy"] == "Key Strategic Priority"
+
+    # 2. Data Explorer search: Data Explorer queries snapshot rows and filters across
+    # deal fields AND custom column values (by label, key, and _annotations)
+    all_rows, total_cnt, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    assert total_cnt == 2
+
+    search_query = "Strategic"
+    # Search implementation that Data Explorer frontend/consumer applies to rows:
+    matched_rows = [
+        r for r in all_rows
+        if search_query.lower() in str(r.get("Opportunity Name", "")).lower()
+        or search_query.lower() in str(r.get("Opportunity ID 18 Digit", "")).lower()
+        or search_query.lower() in str(r.get("Deal Strategy", "")).lower()
+        or search_query.lower() in str(r.get(col.key, "")).lower()
+        or search_query.lower() in str(r.get("_annotations", {}).get(col.key, {}).get("value", "")).lower()
+    ]
+    assert len(matched_rows) == 1
+    assert matched_rows[0]["_opp_id_18"] == "006ALPHA001"
+    assert matched_rows[0]["Deal Strategy"] == "Key Strategic Priority"
+
+    # Also verify search via OpportunityService.list_opportunities includes custom column values
+    from backend.services.context import ADMIN_CONTEXT
+    opp_svc = OpportunityService(test_db_session)
+    search_res = opp_svc.list_opportunities(ADMIN_CONTEXT, snapshot_id=snap.id, search="Strategic")
+    assert search_res["total"] >= 1
+    search_ids = [d["opportunity_id_18"] for d in search_res["items"]]
+    assert "006ALPHA001" in search_ids
+
+
+# ---------------------------------------------------------------------------
+# 8. Migration SQLite and PostgreSQL Compatibility
+# ---------------------------------------------------------------------------
+def test_migration_compatibility(tmp_path):
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic import command
+    from alembic.script import ScriptDirectory
+    import sqlalchemy as sa
+
+    renewals_db_path = Path(__file__).resolve().parent.parent.parent / "renewals.db"
+    renewals_mtime_before = renewals_db_path.stat().st_mtime if renewals_db_path.exists() else None
+
+    ini_path = str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
+    alembic_cfg = Config(ini_path)
+    script = ScriptDirectory.from_config(alembic_cfg)
+    rev_0005 = script.get_revision("0005_custom_columns")
+    assert rev_0005 is not None
+
+    # Run alembic upgrade to head on a fresh SQLite DB file
+    db_file = tmp_path / "migration_test.db"
+    db_url = f"sqlite:///{db_file}"
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    # Confirm that no test touched renewals.db
+    if renewals_db_path.exists() and renewals_mtime_before is not None:
+        assert renewals_db_path.stat().st_mtime == renewals_mtime_before, "renewals.db must not be touched during migration tests"
+
+    # Verify tables are created on the fresh database
+    test_engine = create_engine(db_url)
+    insp = sa.inspect(test_engine)
+    table_names = insp.get_table_names()
+    assert "custom_columns" in table_names
+    assert "deal_annotations" in table_names
+    assert "annotation_audit" in table_names
+    assert "alembic_version" in table_names
+
+    # Check columns on custom_columns
+    cols = {c["name"] for c in insp.get_columns("custom_columns")}
+    assert {"id", "key", "label", "type", "sort_order", "is_deleted"}.issubset(cols)
+
+

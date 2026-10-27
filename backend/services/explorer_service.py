@@ -441,26 +441,26 @@ class ExplorerService:
                 q_annot = self.db.query(DealAnnotation.opportunity_id_18).filter(DealAnnotation.column_key == custom_col.key)
                 if op == "contains":
                     sub = q_annot.filter(DealAnnotation.value.ilike(f"%{val}%")).subquery()
-                    return Opportunity.opportunity_id_18.in_(sub)
+                    return Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in ("equals", "=", "=="):
                     sub = q_annot.filter(DealAnnotation.value == str(val)).subquery()
-                    return Opportunity.opportunity_id_18.in_(sub)
+                    return Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in ("not equals", "!=", "≠"):
                     sub = q_annot.filter(DealAnnotation.value == str(val)).subquery()
-                    return or_(~Opportunity.opportunity_id_18.in_(sub), Opportunity.opportunity_id_18 == None)
+                    return or_(~Opportunity.opportunity_id_18.in_(sub.select()), Opportunity.opportunity_id_18 == None)
                 elif op == "starts with":
                     sub = q_annot.filter(DealAnnotation.value.ilike(f"{val}%")).subquery()
-                    return Opportunity.opportunity_id_18.in_(sub)
+                    return Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in ("is empty", "empty"):
                     sub = q_annot.filter(and_(DealAnnotation.value != None, DealAnnotation.value != "")).subquery()
-                    return ~Opportunity.opportunity_id_18.in_(sub)
+                    return ~Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in ("is not empty", "not empty"):
                     sub = q_annot.filter(and_(DealAnnotation.value != None, DealAnnotation.value != "")).subquery()
-                    return Opportunity.opportunity_id_18.in_(sub)
+                    return Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in ("in list", "in"):
                     items = [x.strip() for x in val.split(",")] if isinstance(val, str) else [str(x).strip() for x in val]
                     sub = q_annot.filter(DealAnnotation.value.in_(items)).subquery()
-                    return Opportunity.opportunity_id_18.in_(sub)
+                    return Opportunity.opportunity_id_18.in_(sub.select())
                 elif op in (">", "greater than"):
                     sub = q_annot.filter(cast(DealAnnotation.value, Float) > float(val)).subquery()
                     return Opportunity.opportunity_id_18.in_(sub)

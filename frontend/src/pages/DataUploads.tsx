@@ -38,6 +38,8 @@ import {
   setActiveSnapshot,
   getSnapshot,
   getHealth,
+  downloadFullExcel,
+  exportAnnotationsBackup,
 } from '@/api/client'
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
@@ -135,6 +137,52 @@ export default function DataUploads() {
 
   // Setting active state
   const [settingActiveId, setSettingActiveId] = useState<string | null>(null)
+  const [isExportingBackup, setIsExportingBackup] = useState(false)
+
+  const handleExportAnnotations = async () => {
+    if (isExportingBackup) return
+    setIsExportingBackup(true)
+    try {
+      const data = await exportAnnotationsBackup()
+      const jsonStr = JSON.stringify(data, null, 2)
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      link.setAttribute('download', `annotations_backup_${timestamp}.json`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      showToast.success('Annotations backup exported successfully')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || err?.message || 'Backup export failed')
+    } finally {
+      setIsExportingBackup(false)
+    }
+  }
+
+  const handleDownloadFullExcelSnapshot = async (snapId: string, snapDate: string) => {
+    try {
+      showToast.success('Export', `Preparing full Excel export for ${snapDate}...`)
+      const { data, filename } = await downloadFullExcel(snapId)
+      const blob = new Blob([data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      showToast.success('Download complete', `Downloaded ${filename}`)
+    } catch (err: any) {
+      showToast.error('Download failed', err?.response?.data?.detail || err?.message || 'Download failed')
+    }
+  }
 
   // ── Expandable table toggle in Preview ──────────────────────────────────────
   const [previewChecksExpanded, setPreviewChecksExpanded] = useState(true)
@@ -1164,6 +1212,24 @@ export default function DataUploads() {
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleExportAnnotations}
+                disabled={isExportingBackup}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs font-bold transition-colors shadow-sm disabled:opacity-50"
+                title="Export JSON backup of all custom columns, deal annotations, and audit logs"
+                id="uploads-export-annotations-btn"
+              >
+                {isExportingBackup ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Database className="w-3.5 h-3.5" />
+                )}
+                <span>Export Annotations</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1320,6 +1386,17 @@ export default function DataUploads() {
                             title="Open snapshot details"
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Download full Excel button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadFullExcelSnapshot(h.id, h.snapshot_date)}
+                            className="p-1.5 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 border border-[var(--border)] transition-colors"
+                            title={`Download full Excel for ${h.snapshot_date} (with custom columns)`}
+                            id={`uploads-download-full-excel-${h.id}`}
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Admin-only write controls */}

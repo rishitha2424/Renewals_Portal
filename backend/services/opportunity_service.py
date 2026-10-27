@@ -109,7 +109,7 @@ class OpportunityService:
                     Opportunity.account_name.ilike(pattern),
                     Opportunity.opportunity_id_18.ilike(pattern),
                     Opportunity.opportunity_owner.ilike(pattern),
-                    Opportunity.opportunity_id_18.in_(annot_sub),
+                    Opportunity.opportunity_id_18.in_(annot_sub.select()),
                 )
             except Exception:
                 search_cond = or_(
