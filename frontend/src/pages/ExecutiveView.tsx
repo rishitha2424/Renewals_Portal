@@ -290,13 +290,13 @@ export default function ExecutiveView() {
   const buSumCount = buRows.reduce((acc: number, b: any) => acc + b.count, 0)
   const buSumAcv = buRows.reduce((acc: number, b: any) => acc + b.acv, 0)
 
-  // Delayed summary (Delayed Renewals: Overdue + Later Close Date; Slippage: Slipped by destination; Lost: separate)
+  // Delayed summary (Delayed Renewals: Overdue + Delayed, close date ahead; Slippage: Slipped by destination; Lost: separate)
   const delayedRenewals = delayed.delayed_renewals || {}
   const overdue = delayedRenewals.overdue || delayed.overdue || { count: 0, acv: 0 }
-  const laterClose = delayedRenewals.later_close || delayed.later_close || { count: 0, acv: 0 }
+  const delayedAhead = delayedRenewals.ahead || delayedRenewals.later_close || delayed.ahead || delayed.later_close || { count: 0, acv: 0 }
   const delayedRenewalsTotal = delayed.delayed_renewals_total || delayedRenewals.total || delayed.total || {
-    count: overdue.count + laterClose.count,
-    acv: overdue.acv + laterClose.acv,
+    count: overdue.count + delayedAhead.count,
+    acv: overdue.acv + delayedAhead.acv,
   }
 
   const slippage = delayed.slippage || {}
@@ -308,10 +308,12 @@ export default function ExecutiveView() {
     acv: slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv,
   }
 
+  const slippedToLaterYear = delayed.slipped_to_later_year
+
   const lost = delayed.lost_card || delayed.lost || { count: 0, acv: 0 }
 
-  const delayedRowsSumCount = overdue.count + laterClose.count
-  const delayedRowsSumAcv = overdue.acv + laterClose.acv
+  const delayedRowsSumCount = overdue.count + delayedAhead.count
+  const delayedRowsSumAcv = overdue.acv + delayedAhead.acv
 
   const slippageRowsSumCount = slippedNextYear.count + slippedNextQuarter.count + slippedLaterQuarter.count
   const slippageRowsSumAcv = slippedNextYear.acv + slippedNextQuarter.acv + slippedLaterQuarter.acv
@@ -792,7 +794,7 @@ export default function ExecutiveView() {
             </span>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
-            Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late.
+            Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
@@ -812,10 +814,10 @@ export default function ExecutiveView() {
                   <td className="px-4 py-2 text-slate-500">Service expiry date has passed snapshot date and not yet closed</td>
                 </tr>
                 <tr className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2 font-medium text-amber-900">Later Close Date within Quarter</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(laterClose.count)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(laterClose.acv)}</td>
-                  <td className="px-4 py-2 text-slate-500">Expected close date postponed later within active quarter</td>
+                  <td className="px-4 py-2 font-medium text-amber-900">Delayed, close date ahead</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(delayedAhead.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(delayedAhead.acv)}</td>
+                  <td className="px-4 py-2 text-slate-500">Delayed renewals whose close date is still ahead (not yet overdue)</td>
                 </tr>
               </tbody>
               <tfoot>
@@ -919,6 +921,64 @@ export default function ExecutiveView() {
             </table>
           </div>
         </div>
+
+        {/* 7d. Slipped to a later year (by service expiry) */}
+        {slippedToLaterYear && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+                7d. Slipped to a later year (by service expiry)
+              </h2>
+              <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                {formatNumber(slippedToLaterYear.total.count)} deals · {formatCurrency(slippedToLaterYear.total.acv)}
+              </span>
+            </div>
+            <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
+              Open renewals with Service Expiry on or before active year end closing in later years. Deals in both sections tagged also delayed (totals never combined).
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <th className="px-4 py-2">Bucket</th>
+                    <th className="px-4 py-2 text-right">Deals</th>
+                    <th className="px-4 py-2 text-right">ACV (USD)</th>
+                    <th className="px-4 py-2">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {Object.entries(slippedToLaterYear.buckets || {}).map(([bKey, bVal]: [string, any]) => (
+                    <tr key={bKey} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-2 font-medium text-slate-800">{bVal.label}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatNumber(bVal.count)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-slate-800">{formatCurrency(bVal.acv)}</td>
+                      <td className="px-4 py-2 text-slate-500">
+                        {bKey === 'expired_before_quarter' ? 'Service expired prior to selected quarter' :
+                         bKey === 'expiring_later_this_year' ? 'Expiring later in active year' : 'Expiring on last day of active year'}
+                      </td>
+                    </tr>
+                  ))}
+                  {slippedToLaterYear.excluded_adjustments?.count > 0 && (
+                    <tr className="bg-amber-50/40 text-amber-900">
+                      <td className="px-4 py-2 font-medium">Negative-ACV adjustments (excluded)</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold">{formatNumber(slippedToLaterYear.excluded_adjustments.count)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold">{formatCurrency(slippedToLaterYear.excluded_adjustments.acv)}</td>
+                      <td className="px-4 py-2 text-amber-700">Excluded from headline totals by rule</td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
+                    <td className="px-4 py-2.5">Total Slipped to Later Year</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippedToLaterYear.total.count)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-indigo-900">{formatCurrency(slippedToLaterYear.total.acv)}</td>
+                    <td className="px-4 py-2.5 text-slate-500">Open renewals moving to later fiscal years</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Footer */}

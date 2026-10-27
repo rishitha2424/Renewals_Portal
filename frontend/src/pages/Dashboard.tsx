@@ -670,7 +670,7 @@ export default function Dashboard() {
                       </h2>
                     </div>
                     <p className="text-xs text-[var(--text-muted)] max-w-2xl">
-                      Overdue + Later Close Date (Postponed). Deals that stay in the selected quarter but are late: close date has passed (Overdue) or was pushed later within the same quarter (Postponed).
+                      Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
                     </p>
                   </div>
                   {summary?.delayed_pct_of_quarter != null && (
@@ -724,10 +724,10 @@ export default function Dashboard() {
                   )
                 })()}
 
-                {/* 2 Delayed Categories: Overdue & Later Close Date */}
+                {/* 2 Delayed Categories: Overdue & Delayed, close date ahead */}
                 {(() => {
                   const overdueCat = delRenewals?.overdue || summary?.overdue || summary?.slippage?.categories?.overdue
-                  const laterCat = delRenewals?.later_close || summary?.later_close || summary?.slippage?.categories?.later_close
+                  const laterCat = delRenewals?.ahead || delRenewals?.later_close || summary?.ahead || summary?.later_close || summary?.slippage?.categories?.ahead || summary?.slippage?.categories?.later_close
 
                   const delayedCards = [
                     {
@@ -740,12 +740,12 @@ export default function Dashboard() {
                       baselineLabel: 'Current',
                     },
                     {
-                      id: 'later_close',
-                      title: 'Later Close Date (Postponed)',
+                      id: 'delayed_ahead',
+                      title: 'Delayed, close date ahead',
                       data: laterCat,
                       isOverdue: false,
-                      kind: 'later_close',
-                      deltaKind: 'later_close',
+                      kind: 'delayed_ahead',
+                      deltaKind: 'delayed_ahead',
                       baselineLabel: 'Since start of period',
                     },
                   ]
@@ -944,6 +944,44 @@ export default function Dashboard() {
                     </div>
                   )
                 })()}
+
+                {/* Compact Card: Slipped to a later year (by service expiry) */}
+                {summary?.slipped_to_later_year && (
+                  <div className="mt-4 p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                          Slipped to a later year (by service expiry)
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded">
+                          also delayed tagged
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Open renewals with Service Expiry in or before active year closing in a later year.
+                      </p>
+                      {summary.slipped_to_later_year.excluded_adjustments?.count > 0 && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                          Negative-ACV adjustments (excluded): {summary.slipped_to_later_year.excluded_adjustments.count} deals / {acvM(summary.slipped_to_later_year.excluded_adjustments.acv)}
+                        </p>
+                      )}
+                    </div>
+                    <div
+                      className="cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-3 shrink-0"
+                      onClick={() => openDealsQuery(`Slipped to a later year (${summary.slipped_to_later_year.total.count} deals · ${acvM(summary.slipped_to_later_year.total.acv)})`, { kind: 'slipped_later_year' })}
+                    >
+                      <div className="text-right">
+                        <div className="text-xl font-black text-[var(--text-primary)] tabular-nums">
+                          {acvM(summary.slipped_to_later_year.total.acv)}
+                        </div>
+                        <div className="text-xs text-[var(--text-muted)] font-medium">
+                          {summary.slipped_to_later_year.total.count} deals
+                        </div>
+                      </div>
+                      <ArrowRight className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -28,6 +28,11 @@ interface Deal {
   from_status?: string
   to_status?: string
   acv?: number
+  service_expiry_date?: string
+  service_start_date?: string
+  group?: string
+  why_here?: string
+  also_delayed?: boolean
 }
 
 interface DealListModalProps {
@@ -330,17 +335,26 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                 <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">No deals found</h4>
                 <p className="text-xs text-[var(--text-muted)] max-w-sm">Try adjusting your filters or search query to find what you're looking for.</p>
               </div>
-            ) : (
+            ) : (() => {
+              const hasServiceExpiry = filteredDeals.some(d => Boolean(d.service_expiry_date))
+              const hasWhyHere = filteredDeals.some(d => Boolean(d.why_here))
+
+              return (
               <table className="w-full text-xs text-left whitespace-nowrap">
                 <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] z-10">
                   <tr>
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('opportunity_name')}>
                       <div className="flex items-center gap-1">Opportunity {sortField === 'opportunity_name' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
-                    <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Account / BU</th>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Account / Group</th>
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-right cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('forecast_acv_amount')}>
                       <div className="flex items-center justify-end gap-1">ACV {sortField === 'forecast_acv_amount' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
+                    {hasServiceExpiry && (
+                      <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('service_expiry_date' as any)}>
+                        <div className="flex items-center gap-1">Service Expiry {sortField === ('service_expiry_date' as any) ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
+                      </th>
+                    )}
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('close_date')}>
                       <div className="flex items-center gap-1">Close Date {sortField === 'close_date' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
@@ -360,6 +374,9 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                         <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Status</th>
                       </>
                     )}
+                    {hasWhyHere && (
+                      <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Why it is here</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
@@ -373,18 +390,32 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                       }}
                     >
                       <td className="px-3 py-2">
-                        <div className="font-medium text-[var(--text-primary)] max-w-xs truncate" title={d.opportunity_name || d.opportunity_id_18}>
-                          {d.opportunity_name || d.opportunity_id_18}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium text-[var(--text-primary)] max-w-xs truncate" title={d.opportunity_name || d.opportunity_id_18}>
+                            {d.opportunity_name || d.opportunity_id_18}
+                          </span>
+                          {d.also_delayed && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/25">
+                              also delayed
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-[var(--text-muted)] mt-0.5 font-mono">{d.opportunity_id_18}</div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="font-normal text-[var(--text-primary)] max-w-[150px] truncate" title={d.account_name}>{d.account_name || '—'}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] mt-0.5 max-w-[150px] truncate">{d.business_unit_primary || '—'}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] mt-0.5 max-w-[150px] truncate">
+                          {d.group ? <span className="font-medium text-slate-700 dark:text-slate-300">Group: {d.group}</span> : (d.business_unit_primary || '—')}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)] tabular-nums">
                         {formatCurrency(d.forecast_acv_amount ?? (d as any).acv ?? 0)}
                       </td>
+                      {hasServiceExpiry && (
+                        <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
+                          {formatDate(d.service_expiry_date)}
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}
                       </td>
@@ -451,11 +482,18 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                           </td>
                         </>
                       )}
+                      {hasWhyHere && (
+                        <td className="px-3 py-2 text-xs text-[var(--text-secondary)] max-w-xs whitespace-normal">
+                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                            {d.why_here || '—'}
+                          </span>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
+              )})()}
           </div>
         </motion.div>
       </motion.div>
