@@ -22,6 +22,9 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  Sliders,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react'
 import {
   getExplorerColumns,
@@ -29,7 +32,13 @@ import {
   exportExplorerData,
   getExplorerReconcile,
   getExplorerQuickFilters,
+  getCustomColumns,
+  downloadFullExcel,
+  CustomColumnItem,
 } from '@/api/client'
+import { ManageColumnsModal } from '@/components/explorer/ManageColumnsModal'
+import { DealNotesDrawer } from '@/components/explorer/DealNotesDrawer'
+import { EditableCell } from '@/components/explorer/EditableCell'
 import { useAppStore } from '@/store/appStore'
 import { formatACV, formatCount } from '@/utils/format'
 import { Card } from '@/components/ui/Card'
@@ -45,6 +54,11 @@ export interface ColumnMeta {
   name: string
   position: number
   type: 'text' | 'number' | 'currency' | 'date' | 'boolean'
+  is_custom?: boolean
+  key?: string
+  custom_type?: string
+  dropdown_options?: string[]
+  source_header?: string | null
 }
 
 export interface FilterRule {
@@ -104,6 +118,12 @@ export default function Opportunities() {
   })
   const allColumns: ColumnMeta[] = useMemo(() => colsResp?.columns || [], [colsResp])
 
+  // Custom columns query
+  const { data: customColsList = [], refetch: refetchCustomCols } = useQuery<CustomColumnItem[]>({
+    queryKey: ['custom-columns'],
+    queryFn: () => getCustomColumns(false),
+  })
+
   // 2. Fetch Quick Filter distinct options
   const { data: quickFiltersData } = useQuery({
     queryKey: ['explorer-quick-filters', activeSnapshotId],
@@ -113,18 +133,28 @@ export default function Opportunities() {
   // Visible columns selection (defaults to all columns in original order)
   const [visibleColNames, setVisibleColNames] = useState<string[]>([])
   useEffect(() => {
-    if (allColumns.length > 0 && visibleColNames.length === 0) {
-      try {
-        const saved = localStorage.getItem('mobileum_explorer_columns')
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setVisibleColNames(parsed)
-            return
+    if (allColumns.length > 0) {
+      if (visibleColNames.length === 0) {
+        try {
+          const saved = localStorage.getItem('mobileum_explorer_columns')
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const customColNames = allColumns.filter((c) => c.is_custom).map((c) => c.name)
+              const combined = [...parsed, ...customColNames.filter((n) => !parsed.includes(n))]
+              setVisibleColNames(combined)
+              return
+            }
           }
+        } catch (_) {}
+        setVisibleColNames(allColumns.map((c) => c.name))
+      } else {
+        const customColNames = allColumns.filter((c) => c.is_custom).map((c) => c.name)
+        const missing = customColNames.filter((n) => !visibleColNames.includes(n))
+        if (missing.length > 0) {
+          setVisibleColNames((prev) => [...prev, ...missing])
         }
-      } catch (_) {}
-      setVisibleColNames(allColumns.map((c) => c.name))
+      }
     }
   }, [allColumns, visibleColNames.length])
 
@@ -159,6 +189,7 @@ export default function Opportunities() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   // UI state
+  const isAdmin = useAppStore((s) => s.isAdmin)
   const [showFilterBuilder, setShowFilterBuilder] = useState<boolean>(false)
   const [showColPicker, setShowColPicker] = useState<boolean>(false)
   const [colSearchQuery, setColSearchQuery] = useState<string>('')
@@ -166,6 +197,11 @@ export default function Opportunities() {
   const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false)
   const [drawerSearchQuery, setDrawerSearchQuery] = useState<string>('')
   const [isExporting, setIsExporting] = useState<boolean>(false)
+  const [showManageCols, setShowManageCols] = useState<boolean>(false)
+  const [notesDeal, setNotesDeal] = useState<any | null>(null)
+  const [showNotesDrawer, setShowNotesDrawer] = useState<boolean>(false)
+  const [isDownloadingFull, setIsDownloadingFull] = useState<boolean>(false)
+  const [dealSearchQuery, setDealSearchQuery] = useState<string>('')
   // Quick filters collapse toggle (starts collapsed once any filter is active)
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState<boolean>(false)
   const prevActiveRef = useRef<boolean>(false)
@@ -248,8 +284,24 @@ export default function Opportunities() {
   const totalCount = rowsResp?.total_count ?? 0
   const totalACV = rowsResp?.total_acv ?? 0.0
 
+  // Filter rows by quick search (includes Opportunity Name, ID, Account, and all custom columns)
+  const filteredRows = useMemo(() => {
+    if (!dealSearchQuery.trim()) return rows
+    const q = dealSearchQuery.toLowerCase()
+    return rows.filter((row: any) => {
+      if (String(row['Opportunity Name'] || '').toLowerCase().includes(q)) return true
+      if (String(row['Opportunity ID 18 Digit'] || row._opp_id_18 || '').toLowerCase().includes(q)) return true
+      if (String(row['Account Name'] || '').toLowerCase().includes(q)) return true
+      for (const col of customColsList) {
+        const val = row[col.label] ?? row[col.key] ?? row._annotations?.[col.key]?.value
+        if (val != null && String(val).toLowerCase().includes(q)) return true
+      }
+      return false
+    })
+  }, [rows, dealSearchQuery, customColsList])
+
   // Total pages
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const totalPages = Math.max(1, Math.ceil((dealSearchQuery.trim() ? filteredRows.length : totalCount) / pageSize))
 
   // Handle Quick filter toggles
   const toggleQuickFilter = (
@@ -321,6 +373,31 @@ export default function Opportunities() {
     const original = allColumns.map((c) => c.name)
     setVisibleColNames(original)
     localStorage.setItem('mobileum_explorer_columns', JSON.stringify(original))
+  }
+
+  // Download full Excel handler
+  const handleDownloadFullExcel = async () => {
+    if (isDownloadingFull) return
+    setIsDownloadingFull(true)
+    try {
+      const { data, filename } = await downloadFullExcel(activeSnapshotId)
+      const blob = new Blob([data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      showToast.success(`Downloaded ${filename}`)
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || err?.message || 'Download failed')
+    } finally {
+      setIsDownloadingFull(false)
+    }
   }
 
   // Export handlers
@@ -523,8 +600,47 @@ export default function Opportunities() {
           </p>
         </div>
 
-        {/* Top Action Buttons: Column Picker, Filter Builder, Export */}
+        {/* Top Action Buttons: Search, Column Picker, Filter Builder, Manage Columns, Export */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Search across deals & custom columns */}
+          <div className="flex items-center gap-1.5 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-2.5 py-1.5 text-xs">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              placeholder="Search deals & notes..."
+              value={dealSearchQuery}
+              onChange={(e) => {
+                setDealSearchQuery(e.target.value)
+                setPage(1)
+              }}
+              className="bg-transparent text-xs text-[var(--text-primary)] outline-none w-36 sm:w-48 placeholder:text-[var(--text-muted)]"
+              id="explorer-deals-search-input"
+            />
+            {dealSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setDealSearchQuery('')}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* Manage Columns (Admin only) */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowManageCols(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-all"
+              id="explorer-manage-columns-btn"
+              title="Add, edit, reorder or delete custom columns & notes"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Manage Columns</span>
+            </button>
+          )}
+
           {/* Column Picker Button */}
           <button
             type="button"
@@ -537,7 +653,7 @@ export default function Opportunities() {
             id="explorer-columns-btn"
           >
             <Columns className="w-3.5 h-3.5" />
-            <span>Columns ({visibleColNames.length}/172)</span>
+            <span>Columns ({visibleColNames.length}/{allColumns.length})</span>
           </button>
 
           {/* Filter Builder Toggle */}
@@ -553,6 +669,23 @@ export default function Opportunities() {
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span>Filter Builder {filters.length > 0 && `(${filters.length})`}</span>
+          </button>
+
+          {/* Download Full Excel (includes all custom columns & notes) */}
+          <button
+            type="button"
+            onClick={handleDownloadFullExcel}
+            disabled={isDownloadingFull}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+            id="explorer-download-full-excel-btn"
+            title="Download full Excel workbook with custom columns appended"
+          >
+            {isDownloadingFull ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            )}
+            <span>Download Full Excel</span>
           </button>
 
           {/* Export CSV */}
@@ -1261,14 +1394,14 @@ export default function Opportunities() {
                     </div>
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={visibleColNames.length + 1} className="py-16 text-center text-xs text-[var(--text-muted)]">
                     No deals match the selected criteria. Try adjusting the filters above.
                   </td>
                 </tr>
               ) : (
-                rows.map((row: any, rIdx: number) => {
+                filteredRows.map((row: any, rIdx: number) => {
                   const rowNum = (page - 1) * pageSize + rIdx + 1
                   return (
                     <tr
@@ -1276,13 +1409,63 @@ export default function Opportunities() {
                       onClick={() => setSelectedRowData(row)}
                       className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                     >
-                      {/* Pinned first column */}
-                      <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 px-3 py-2 text-center font-mono text-[var(--text-muted)] border-r border-[var(--border)]">
-                        {rowNum}
+                      {/* Pinned first column with Notes button */}
+                      <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 px-2 py-2 text-center font-mono text-[var(--text-muted)] border-r border-[var(--border)]">
+                        <div className="flex items-center justify-between gap-1">
+                          <span>{rowNum}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setNotesDeal(row)
+                              setShowNotesDrawer(true)
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[#00A3AD] hover:text-[#008f98] transition-colors"
+                            title="Notes & Custom Fields"
+                            id={`row-notes-btn-${row._opp_id_18 || rowNum}`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
 
                       {/* Dynamic columns */}
                       {visibleColNames.map((colName) => {
+                        const colMeta = allColumns.find((c) => c.name === colName || c.key === colName)
+                        const isCustom = colMeta?.is_custom || customColsList.some((c) => c.label === colName || c.key === colName)
+                        const customCol = customColsList.find((c) => c.label === colName || c.key === colName)
+
+                        if (isCustom && customCol) {
+                          const oppId = row['Opportunity ID 18 Digit'] || row._opp_id_18 || row.opportunity_id_18 || ''
+                          const currentAnnot = row._annotations?.[customCol.key] || {
+                            opportunity_id_18: oppId,
+                            column_key: customCol.key,
+                            value: row[colName] ?? row[customCol.key] ?? null,
+                            source: 'app',
+                            version: 1,
+                          }
+                          return (
+                            <td
+                              key={colName}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2 py-1.5 whitespace-nowrap border-r border-[var(--border)] last:border-r-0"
+                            >
+                              <EditableCell
+                                opportunityId={oppId}
+                                columnKey={customCol.key}
+                                columnLabel={customCol.label}
+                                columnType={customCol.type}
+                                dropdownOptions={customCol.dropdown_options}
+                                currentAnnotation={currentAnnot}
+                                isAdmin={isAdmin}
+                                onAnnotationUpdated={() => {
+                                  refetch()
+                                }}
+                              />
+                            </td>
+                          )
+                        }
+
                         const val = row[colName]
                         return (
                           <td
@@ -1576,6 +1759,31 @@ export default function Opportunities() {
           </Card>
         </div>
       )}
+
+      {/* ── Manage Columns Modal ─────────────────────────────────────────── */}
+      <ManageColumnsModal
+        isOpen={showManageCols}
+        onClose={() => setShowManageCols(false)}
+        snapshotId={activeSnapshotId}
+        onColumnsChanged={() => {
+          refetchCustomCols()
+          refetch()
+        }}
+      />
+
+      {/* ── Deal Notes Drawer ────────────────────────────────────────────── */}
+      <DealNotesDrawer
+        isOpen={showNotesDrawer}
+        onClose={() => {
+          setShowNotesDrawer(false)
+          setNotesDeal(null)
+        }}
+        deal={notesDeal}
+        columns={customColsList}
+        onAnnotationsChanged={() => {
+          refetch()
+        }}
+      />
     </div>
   )
 }

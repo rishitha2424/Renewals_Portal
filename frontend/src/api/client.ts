@@ -469,3 +469,140 @@ export const getHealth = async () => {
   return res.data
 }
 
+// ── Custom Columns & Deal Annotations ────────────────────────────────────
+export interface CustomColumnItem {
+  id: string
+  key: string
+  label: string
+  type: string
+  dropdown_options: string[]
+  sort_order: number
+  source_header?: string | null
+  is_deleted: boolean
+  created_by: string
+  created_at: string
+}
+
+export interface DealAnnotationItem {
+  id?: string
+  opportunity_id_18: string
+  column_key: string
+  value: string | null
+  source: 'excel' | 'app'
+  updated_by: string
+  updated_at: string
+  version: number
+}
+
+export interface AnnotationAuditItem {
+  id: string
+  entity_type?: string
+  entity_id?: string
+  column_key?: string | null
+  opportunity_id_18?: string | null
+  action: string
+  old_value?: string | null
+  new_value?: string | null
+  user_id?: string
+  changed_by?: string
+  timestamp?: string
+  created_at?: string
+  extra_info?: any
+}
+
+export const getCustomColumns = async (includeDeleted: boolean = false): Promise<CustomColumnItem[]> => {
+  const res = await api.get('/custom-columns', { params: { include_deleted: includeDeleted } })
+  return res.data.columns || []
+}
+
+export const createCustomColumn = async (data: {
+  label: string
+  type: string
+  dropdown_options?: string[]
+  sort_order?: number
+  source_header?: string | null
+}): Promise<CustomColumnItem> => {
+  const res = await api.post('/custom-columns', data)
+  return res.data.column
+}
+
+export const updateCustomColumn = async (
+  columnId: string,
+  data: {
+    label?: string
+    type?: string
+    dropdown_options?: string[]
+    sort_order?: number
+    source_header?: string | null
+  }
+): Promise<CustomColumnItem> => {
+  const res = await api.patch(`/custom-columns/${columnId}`, data)
+  return res.data.column
+}
+
+export const deleteCustomColumn = async (columnId: string): Promise<void> => {
+  await api.delete(`/custom-columns/${columnId}`)
+}
+
+export const getDetectedHeaders = async (snapshotId?: string | null): Promise<string[]> => {
+  const params: any = {}
+  if (snapshotId) params.snapshot_id = snapshotId
+  const res = await api.get('/custom-columns/detected-headers', { params })
+  return res.data.headers || []
+}
+
+export const getDealAnnotations = async (
+  opportunityId: string
+): Promise<Record<string, DealAnnotationItem>> => {
+  const res = await api.get(`/custom-columns/deals/${opportunityId}/annotations`)
+  return res.data.annotations || {}
+}
+
+export const setDealAnnotation = async (
+  opportunityId: string,
+  columnKey: string,
+  value: any,
+  expectedVersion?: number
+): Promise<any> => {
+  const res = await api.put(`/custom-columns/deals/${opportunityId}/annotations/${columnKey}`, {
+    value,
+    expected_version: expectedVersion,
+  })
+  return res.data
+}
+
+export const deleteDealAnnotation = async (
+  opportunityId: string,
+  columnKey: string
+): Promise<any> => {
+  const res = await api.delete(`/custom-columns/deals/${opportunityId}/annotations/${columnKey}`)
+  return res.data
+}
+
+export const getDealAudit = async (opportunityId: string): Promise<AnnotationAuditItem[]> => {
+  const res = await api.get(`/custom-columns/deals/${opportunityId}/audit`)
+  return res.data.audit || []
+}
+
+export const exportAnnotationsBackup = async (): Promise<any> => {
+  const res = await api.get('/custom-columns/backup/export')
+  return res.data
+}
+
+export const downloadFullExcel = async (snapshotId?: string | null): Promise<{ data: Blob; filename: string }> => {
+  const params: any = {}
+  if (snapshotId) params.snapshot_id = snapshotId
+  const res = await api.get('/custom-columns/export-full-excel', {
+    params,
+    responseType: 'blob',
+  })
+  let filename = 'Renewals_Full_Export.xlsx'
+  const disp = res.headers['content-disposition']
+  if (disp && disp.includes('filename=')) {
+    const match = disp.match(/filename=["']?([^"';]+)["']?/)
+    if (match && match[1]) filename = match[1]
+  }
+  return { data: res.data, filename }
+}
+
+
