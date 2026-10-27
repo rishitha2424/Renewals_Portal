@@ -230,6 +230,42 @@ class ExplorerService:
                 "position": pos + 1,
                 "type": inferred_type,
             })
+
+        # Append custom columns
+        try:
+            from backend.models.custom_column import CustomColumn
+            custom_cols = (
+                self.db.query(CustomColumn)
+                .filter(CustomColumn.is_deleted == False)
+                .order_by(CustomColumn.sort_order.asc(), CustomColumn.created_at.asc())
+                .all()
+            )
+            cur_pos = len(col_names) + 1
+            for cc in custom_cols:
+                ctype = cc.type.lower()
+                if ctype == "number":
+                    exp_type = "number"
+                elif ctype == "date":
+                    exp_type = "date"
+                elif ctype == "checkbox":
+                    exp_type = "boolean"
+                else:
+                    exp_type = "text"
+
+                columns_meta.append({
+                    "name": cc.label,
+                    "key": cc.key,
+                    "position": cur_pos,
+                    "type": exp_type,
+                    "is_custom": True,
+                    "custom_type": cc.type,
+                    "dropdown_options": cc.dropdown_options or [],
+                    "source_header": cc.source_header,
+                })
+                cur_pos += 1
+        except Exception as exc:
+            pass
+
         return columns_meta
 
     def _infer_column_type(self, col: str, sample_opps: List[Opportunity]) -> str:
@@ -393,6 +429,53 @@ class ExplorerService:
         val = rule.value
         val_to = rule.value_to
 
+        # Check if column is a custom column
+        try:
+            from backend.models.custom_column import CustomColumn, DealAnnotation
+            custom_col = (
+                self.db.query(CustomColumn)
+                .filter(CustomColumn.is_deleted == False, or_(CustomColumn.key == col, CustomColumn.label == col))
+                .first()
+            )
+            if custom_col:
+                q_annot = self.db.query(DealAnnotation.opportunity_id_18).filter(DealAnnotation.column_key == custom_col.key)
+                if op == "contains":
+                    sub = q_annot.filter(DealAnnotation.value.ilike(f"%{val}%")).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("equals", "=", "=="):
+                    sub = q_annot.filter(DealAnnotation.value == str(val)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("not equals", "!=", "≠"):
+                    sub = q_annot.filter(DealAnnotation.value == str(val)).subquery()
+                    return or_(~Opportunity.opportunity_id_18.in_(sub), Opportunity.opportunity_id_18 == None)
+                elif op == "starts with":
+                    sub = q_annot.filter(DealAnnotation.value.ilike(f"{val}%")).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("is empty", "empty"):
+                    sub = q_annot.filter(and_(DealAnnotation.value != None, DealAnnotation.value != "")).subquery()
+                    return ~Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("is not empty", "not empty"):
+                    sub = q_annot.filter(and_(DealAnnotation.value != None, DealAnnotation.value != "")).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("in list", "in"):
+                    items = [x.strip() for x in val.split(",")] if isinstance(val, str) else [str(x).strip() for x in val]
+                    sub = q_annot.filter(DealAnnotation.value.in_(items)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in (">", "greater than"):
+                    sub = q_annot.filter(cast(DealAnnotation.value, Float) > float(val)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in (">=", "≥", "greater than or equal"):
+                    sub = q_annot.filter(cast(DealAnnotation.value, Float) >= float(val)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("<", "less than"):
+                    sub = q_annot.filter(cast(DealAnnotation.value, Float) < float(val)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+                elif op in ("<=", "≤", "less than or equal"):
+                    sub = q_annot.filter(cast(DealAnnotation.value, Float) <= float(val)).subquery()
+                    return Opportunity.opportunity_id_18.in_(sub)
+        except Exception:
+            pass
+
         # Text operators
         if op == "contains":
             expr = get_column_text_expr(col)
@@ -534,8 +617,27 @@ class ExplorerService:
 
         col_order = self.get_column_order(snap)
         rows_data = []
+
+        # Annotations enrichment
+        try:
+            from backend.services.annotation_service import AnnotationService
+            annot_svc = AnnotationService(self.db)
+            opp_ids = [o.opportunity_id_18 for o in opps if o.opportunity_id_18]
+            deal_annots = annot_svc.enrich_deals_with_annotations(opp_ids)
+            custom_cols = annot_svc.list_columns(include_deleted=False)
+        except Exception:
+            deal_annots = {}
+            custom_cols = []
+
         for o in opps:
             row_dict = self._merge_opportunity_record(o, col_order)
+            annots_for_deal = deal_annots.get(o.opportunity_id_18 or "", {})
+            row_dict["_annotations"] = annots_for_deal
+            # Populate custom columns by label and key for direct cell lookup
+            for cc in custom_cols:
+                val = annots_for_deal.get(cc.key, {}).get("value")
+                row_dict[cc.label] = val
+                row_dict[cc.key] = val
             rows_data.append(row_dict)
 
         return rows_data, total_count, total_acv

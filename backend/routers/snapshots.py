@@ -355,7 +355,7 @@ def commit_upload(
     svc = IngestService(db)
     try:
         snap = svc.commit_upload(ctx, session_id, replace=replace, make_active=make_active)
-        return {
+        res = {
             "status": "ok",
             "snapshot_id": snap.id,
             "snapshot_date": snap.snapshot_date.isoformat(),
@@ -363,6 +363,9 @@ def commit_upload(
             "active_row_count": snap.active_row_count,
             "is_active_today": snap.is_active_today,
         }
+        if hasattr(snap, "_annotation_summary"):
+            res["annotation_summary"] = snap._annotation_summary
+        return res
     except ValueError as exc:
         msg = str(exc)
         if "replace=True" in msg:

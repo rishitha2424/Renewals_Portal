@@ -328,7 +328,12 @@ def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
     expired_headers = {"Authorization": f"Bearer {expired_token}"}
 
     for method, path in write_routes:
-        test_path = path.replace("{snapshot_id}", "fake-snapshot-id-123")
+        test_path = (
+            path.replace("{snapshot_id}", "fake-snapshot-id-123")
+            .replace("{column_id}", "fake-col-id")
+            .replace("{opportunity_id}", "fake-opp-id")
+            .replace("{column_key}", "fake-col-key")
+        )
 
         # 1. Without auth header -> 401
         r_no_auth = client.request(method, test_path)

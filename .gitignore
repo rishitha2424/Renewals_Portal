@@ -73,3 +73,6 @@ data/sample_oct7/
 /*.py
 /scratch/
 
+
+backups/
+data/backups/

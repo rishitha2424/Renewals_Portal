@@ -97,14 +97,28 @@ class OpportunityService:
             q = q.filter(Opportunity.forecast_acv_amount <= max_acv)
         if search:
             pattern = f"%{search}%"
-            q = q.filter(
-                or_(
+            try:
+                from backend.models.custom_column import DealAnnotation
+                annot_sub = (
+                    self.db.query(DealAnnotation.opportunity_id_18)
+                    .filter(DealAnnotation.value.ilike(pattern))
+                    .subquery()
+                )
+                search_cond = or_(
+                    Opportunity.opportunity_name.ilike(pattern),
+                    Opportunity.account_name.ilike(pattern),
+                    Opportunity.opportunity_id_18.ilike(pattern),
+                    Opportunity.opportunity_owner.ilike(pattern),
+                    Opportunity.opportunity_id_18.in_(annot_sub),
+                )
+            except Exception:
+                search_cond = or_(
                     Opportunity.opportunity_name.ilike(pattern),
                     Opportunity.account_name.ilike(pattern),
                     Opportunity.opportunity_id_18.ilike(pattern),
                     Opportunity.opportunity_owner.ilike(pattern),
                 )
-            )
+            q = q.filter(search_cond)
 
         return q, snap
 
@@ -182,8 +196,15 @@ class OpportunityService:
         offset = (page - 1) * page_size
         items = q.offset(offset).limit(page_size).all()
 
+        try:
+            from backend.services.annotation_service import AnnotationService
+            annot_svc = AnnotationService(self.db)
+            deal_annots = annot_svc.enrich_deals_with_annotations([o.opportunity_id_18 for o in items if o.opportunity_id_18])
+        except Exception:
+            deal_annots = {}
+
         return {
-            "items": [self._to_dict(o) for o in items],
+            "items": [{**self._to_dict(o), "_annotations": deal_annots.get(o.opportunity_id_18 or "", {})} for o in items],
             "total": total,
             "page": page,
             "page_size": page_size,

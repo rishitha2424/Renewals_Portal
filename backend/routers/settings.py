@@ -56,11 +56,13 @@ def get_all_settings(
     )
 
 
-@router.put("")
+from backend.services.context import UserContext, get_user_context, require_admin_context
+
+@router.put("", dependencies=[Depends(require_admin_context)])
 def update_setting(
     payload: SettingUpdatePayload = Body(...),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
     updated = SettingsService.set_setting(
         db, key=payload.key, value=payload.value, description=payload.description

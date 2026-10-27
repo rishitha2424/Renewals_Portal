@@ -40,5 +40,5 @@ def get_db():
 
 def init_db():
     """Create all tables (called at startup)."""
-    from backend.models import opportunity, snapshot, change_log, daily_summary, setting  # noqa: F401
+    from backend.models import opportunity, snapshot, change_log, daily_summary, setting, custom_column  # noqa: F401
     Base.metadata.create_all(bind=engine)

@@ -827,6 +827,34 @@ class IngestService:
         except Exception as exc:
             log.warning("Could not persist source reconciliation checks for snapshot %s: %s", snap.id, exc)
 
+        # Apply custom columns upload annotations rules
+        annotation_summary = {"filled": 0, "kept": 0, "updated": 0, "skipped": 0, "deals_not_found": 0}
+        try:
+            from backend.services.annotation_service import AnnotationService
+            annot_svc = AnnotationService(self.db)
+            annotation_summary = annot_svc.apply_upload_annotations(
+                today_raw, user_id=getattr(ctx, "user_id", "upload_service") or "upload_service"
+            )
+            log.info(
+                "Custom column annotations import summary: filled=%d, kept=%d, updated=%d, skipped=%d, deals_not_found=%d",
+                annotation_summary["filled"],
+                annotation_summary["kept"],
+                annotation_summary["updated"],
+                annotation_summary["skipped"],
+                annotation_summary["deals_not_found"],
+            )
+        except Exception as exc:
+            log.warning("Could not apply custom column annotations during upload: %s", exc)
+
+        # Run daily annotation backup
+        try:
+            from backend.services.annotation_backup_service import AnnotationBackupService
+            AnnotationBackupService(self.db).run_daily_backup()
+        except Exception as exc:
+            log.warning("Daily annotation backup failed during upload: %s", exc)
+
+        snap._annotation_summary = annotation_summary
+
         try:
             self.db.commit()
             _delete_session(session_id)
