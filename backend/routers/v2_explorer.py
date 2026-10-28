@@ -110,6 +110,84 @@ def export_explorer_data(
     )
 
 
+@router.post("/download")
+def download_explorer_data(
+    payload: ExplorerRowsRequest,
+    as_of: Optional[str] = Query(None),
+    format: str = Query("xlsx"),
+    rows: str = Query("all"),
+    db: Session = Depends(get_db),
+):
+    """
+    Unified Data Explorer download endpoint:
+    - Format: 'xlsx' or 'csv'
+    - Rows: 'all' (all snapshot rows) or 'filtered' (only rows matching current filters)
+    Preserves exact 172 columns, original row order, and appends added custom columns.
+    """
+    from backend.services.full_excel_export_service import FullExcelExportService
+    from sqlalchemy import and_
+    from backend.models.opportunity import Opportunity
+
+    svc = ExplorerService(db)
+    resolved_as_of = as_of or (payload.filter_spec.as_of if payload.filter_spec else None)
+    snap = svc.resolve_snapshot(resolved_as_of)
+    if not snap:
+        raise HTTPException(status_code=404, detail="No snapshot found.")
+
+    opp_ids = None
+    if (rows or "").strip().lower() == "filtered":
+        conditions = [Opportunity.snapshot_id == snap.id]
+        more_conds = svc.build_conditions(payload.filter_spec, payload.filters, payload.or_filters)
+        conditions.extend(more_conds)
+        matching = db.query(Opportunity.opportunity_id_18).filter(and_(*conditions)).all()
+        opp_ids = [m[0] for m in matching if m[0]]
+
+    export_svc = FullExcelExportService(db)
+    buf, filename, media_type = export_svc.generate_export(
+        snapshot_id=snap.id,
+        opp_ids=opp_ids,
+        export_format=format,
+    )
+    return StreamingResponse(
+        buf,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.get("/download")
+def download_explorer_data_get(
+    as_of: Optional[str] = Query(None),
+    format: str = Query("xlsx"),
+    rows: str = Query("all"),
+    db: Session = Depends(get_db),
+):
+    from backend.services.full_excel_export_service import FullExcelExportService
+
+    svc = ExplorerService(db)
+    snap = svc.resolve_snapshot(as_of)
+    if not snap:
+        raise HTTPException(status_code=404, detail="No snapshot found.")
+
+    export_svc = FullExcelExportService(db)
+    buf, filename, media_type = export_svc.generate_export(
+        snapshot_id=snap.id,
+        opp_ids=None,
+        export_format=format,
+    )
+    return StreamingResponse(
+        buf,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
 @router.get("/reconcile")
 def reconcile_explorer_get(
     as_of: Optional[str] = Query(None),

@@ -301,6 +301,8 @@ def test_addendum_d_mutating_routes_require_admin(client_and_db, admin_headers):
         "/api/v2/explorer/rows",
         "/v2/explorer/export",
         "/api/v2/explorer/export",
+        "/v2/explorer/download",
+        "/api/v2/explorer/download",
         "/v2/explorer/reconcile",
         "/api/v2/explorer/reconcile",
     }
