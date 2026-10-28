@@ -71,10 +71,11 @@ def reset_login_failures(ip: str) -> None:
     _LOGIN_FAILURES.pop(ip, None)
 
 
-def sign_admin_token() -> str:
+def sign_admin_token(user_name: str = "Admin") -> str:
     """Create a signed, expiring admin token."""
     payload = {
         "sub": "admin",
+        "name": user_name.strip() if user_name else "Admin",
         "role": "admin",
         "exp": int(time.time()) + (settings.ADMIN_TOKEN_EXPIRE_HOURS * 3600),
         "iat": int(time.time()),
@@ -86,32 +87,35 @@ def sign_admin_token() -> str:
     return f"{payload_b64}.{sig_b64}"
 
 
-def verify_admin_token(token: str) -> bool:
-    """Validate token signature and expiration."""
+def decode_admin_token(token: str) -> dict | None:
+    """Validate token signature and expiration, returning payload dict or None."""
     if not token or "." not in token:
-        return False
+        return None
     parts = token.split(".")
     if len(parts) != 2:
-        return False
+        return None
     payload_b64, sig_b64 = parts
     try:
-        # Recompute sig
         key = settings.ADMIN_SECRET_KEY.encode("utf-8")
         expected_sig = hmac.new(key, payload_b64.encode("utf-8"), hashlib.sha256).digest()
         expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode("utf-8").rstrip("=")
         if not hmac.compare_digest(sig_b64, expected_sig_b64):
-            return False
+            return None
 
-        # Check payload and expiry
         padded = payload_b64 + "=" * (-len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
         if payload.get("sub") != "admin":
-            return False
+            return None
         if payload.get("exp", 0) < time.time():
-            return False
-        return True
+            return None
+        return payload
     except Exception:
-        return False
+        return None
+
+
+def verify_admin_token(token: str) -> bool:
+    """Validate token signature and expiration."""
+    return decode_admin_token(token) is not None
 
 
 def get_token_from_request(request: Request) -> Optional[str]:
@@ -129,8 +133,11 @@ def get_token_from_request(request: Request) -> Optional[str]:
 def get_user_context(request: Request) -> UserContext:
     """Public read context. If valid admin token is present, returns admin context; otherwise guest."""
     token = get_token_from_request(request)
-    if token and verify_admin_token(token):
-        return UserContext(user_id="admin", display_name="Administrator", roles=["admin"], is_admin=True)
+    if token:
+        payload = decode_admin_token(token)
+        if payload:
+            user_name = payload.get("name") or "admin"
+            return UserContext(user_id=user_name, display_name=user_name, roles=["admin", "viewer"], is_admin=True)
     return UserContext(user_id="guest", display_name="Viewer", roles=["viewer"], is_admin=False)
 
 
@@ -150,13 +157,15 @@ def require_admin_context(request: Request) -> UserContext:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_admin_token(token):
+    payload = decode_admin_token(token)
+    if not payload:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or expired admin token. Please sign in again.",
         )
 
-    return UserContext(user_id="admin", display_name="Administrator", roles=["admin"], is_admin=True)
+    user_name = payload.get("name") or "admin"
+    return UserContext(user_id=user_name, display_name=user_name, roles=["admin", "viewer"], is_admin=True)
 
 
 # Keep ADMIN_CONTEXT available for testing utilities if needed

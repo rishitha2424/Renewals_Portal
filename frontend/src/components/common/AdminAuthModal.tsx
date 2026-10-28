@@ -2,27 +2,37 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Lock, LogOut, ShieldCheck, X, Loader2 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
-import { adminLogin, adminLogout } from '@/api/client'
+import { adminLogin, adminLogout, getAdminStatus } from '@/api/client'
 import { showToast } from '@/components/ui/Toast'
 
 export default function AdminAuthModal() {
-  const { isAdmin, setIsAdmin } = useAppStore()
+  const { isAdmin, adminName, setIsAdmin } = useAppStore()
   const [isOpen, setIsOpen] = useState(false)
+  const [name, setName] = useState(adminName || '')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!password.trim()) return
+    const cleanName = name.trim()
+    if (!cleanName || cleanName.length < 2 || cleanName.length > 60) {
+      setError("Please enter your name (2 to 60 characters).")
+      return
+    }
+    if (!password.trim()) {
+      setError("Please enter the administrator password.")
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const res = await adminLogin(password)
-      setIsAdmin(true, res.token)
+      const res = await adminLogin(password, cleanName)
+      const statusRes = await getAdminStatus().catch(() => ({ security_warnings: [] }))
+      setIsAdmin(true, res.token, res.user_name || cleanName, statusRes.security_warnings || [])
       setPassword('')
       setIsOpen(false)
-      showToast.success('Admin Signed In', 'Full upload and management permissions unlocked.')
+      showToast.success('Admin Signed In', `Welcome ${res.user_name || cleanName}. Full management permissions unlocked.`)
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Invalid admin credentials or server configuration.'
       setError(msg)
@@ -36,7 +46,7 @@ export default function AdminAuthModal() {
     try {
       await adminLogout()
     } catch (_) {}
-    setIsAdmin(false, null)
+    setIsAdmin(false, null, null, [])
     showToast.info('Signed Out', 'Returned to read-only viewer mode.')
   }
 
@@ -45,7 +55,7 @@ export default function AdminAuthModal() {
       {isAdmin ? (
         <div className="h-10 px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
           <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-          <span className="hidden xl:inline">Admin</span>
+          <span className="hidden xl:inline">{adminName || 'Admin'}</span>
           <button
             type="button"
             onClick={handleLogout}
@@ -97,15 +107,35 @@ export default function AdminAuthModal() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm text-[var(--text-primary)] tracking-tight">
-                    Administrator Authentication
+                    Administrator Sign In
                   </h3>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    Authorized access for data ingestion and snapshot management
+                    Enter your name and password. Your name will be recorded in the change log for every edit.
                   </p>
                 </div>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1">
+                    Your Name (Required, 2–60 characters)
+                  </label>
+                  <div>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Jane Doe"
+                      className="w-full px-3 py-2 rounded-md text-xs bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-[#00A3AD] transition-colors"
+                      autoFocus
+                      required
+                      minLength={2}
+                      maxLength={60}
+                      id="admin-name-input"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] mb-1">
                     Admin Password
@@ -117,7 +147,6 @@ export default function AdminAuthModal() {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter administrator password..."
                       className="w-full px-3 py-2 rounded-md text-xs bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] outline-none focus:border-[#00A3AD] transition-colors font-mono"
-                      autoFocus
                       required
                       id="admin-password-input"
                     />

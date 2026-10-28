@@ -58,8 +58,8 @@ export const deleteSnapshot = (snapshotId: string) =>
 export const setActiveSnapshot = (snapshotId: string) =>
   api.post(`/snapshots/${snapshotId}/set-active`).then(r => r.data)
 
-export const adminLogin = (password: string) =>
-  api.post('/admin/login', { password }).then(r => r.data)
+export const adminLogin = (password: string, name?: string) =>
+  api.post('/admin/login', { password, name: name || 'Admin' }).then(r => r.data)
 
 export const adminLogout = () =>
   api.post('/admin/logout').then(r => r.data)
@@ -479,6 +479,7 @@ export interface CustomColumnItem {
   sort_order: number
   source_header?: string | null
   is_deleted: boolean
+  values_count?: number
   created_by: string
   created_at: string
 }
@@ -520,10 +521,16 @@ export const createCustomColumn = async (data: {
   type: string
   dropdown_options?: string[]
   sort_order?: number
-  source_header?: string | null
 }): Promise<CustomColumnItem> => {
   const res = await api.post('/custom-columns', data)
   return res.data.column
+}
+
+export const bulkCreateCustomColumns = async (
+  columns: { label: string; type: string; dropdown_options?: string[] }[]
+): Promise<CustomColumnItem[]> => {
+  const res = await api.post('/custom-columns/bulk', { columns })
+  return res.data.columns || []
 }
 
 export const updateCustomColumn = async (
@@ -533,22 +540,80 @@ export const updateCustomColumn = async (
     type?: string
     dropdown_options?: string[]
     sort_order?: number
-    source_header?: string | null
   }
 ): Promise<CustomColumnItem> => {
   const res = await api.patch(`/custom-columns/${columnId}`, data)
   return res.data.column
 }
 
-export const deleteCustomColumn = async (columnId: string): Promise<void> => {
-  await api.delete(`/custom-columns/${columnId}`)
+export const renameCustomColumn = async (columnId: string, label: string): Promise<CustomColumnItem> => {
+  const res = await api.post(`/custom-columns/${columnId}/rename`, { label })
+  return res.data.column
 }
 
-export const getDetectedHeaders = async (snapshotId?: string | null): Promise<string[]> => {
-  const params: any = {}
-  if (snapshotId) params.snapshot_id = snapshotId
-  const res = await api.get('/custom-columns/detected-headers', { params })
-  return res.data.headers || []
+export const moveCustomColumn = async (columnId: string, direction: 'left' | 'right'): Promise<CustomColumnItem[]> => {
+  const res = await api.post(`/custom-columns/${columnId}/move`, { direction })
+  return res.data.columns || []
+}
+
+export const restoreCustomColumn = async (columnId: string): Promise<CustomColumnItem> => {
+  const res = await api.post(`/custom-columns/${columnId}/restore`)
+  return res.data.column
+}
+
+export const deleteCustomColumn = async (columnId: string): Promise<{ deleted: boolean; column: CustomColumnItem; values_count: number }> => {
+  const res = await api.delete(`/custom-columns/${columnId}`)
+  return res.data
+}
+
+export const getGlobalAuditLog = async (params: {
+  user?: string
+  column?: string
+  deal?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+}): Promise<{ audit: AnnotationAuditItem[]; count: number }> => {
+  const res = await api.get('/custom-columns/audit', { params })
+  return res.data
+}
+
+export const downloadGlobalAuditLog = async (params: {
+  user?: string
+  column?: string
+  deal?: string
+  date_from?: string
+  date_to?: string
+}): Promise<{ data: Blob; filename: string }> => {
+  const res = await api.get('/custom-columns/audit/export', {
+    params,
+    responseType: 'blob',
+  })
+  return { data: res.data, filename: 'change_log.csv' }
+}
+
+export const downloadExplorerData = async (params: {
+  as_of?: string | null
+  format: 'xlsx' | 'csv'
+  rows: 'all' | 'filtered'
+  payload: any
+}): Promise<{ data: Blob; filename: string }> => {
+  const queryParams: any = {
+    format: params.format,
+    rows: params.rows,
+  }
+  if (params.as_of) queryParams.as_of = params.as_of
+  const res = await api.post('/v2/explorer/download', params.payload, {
+    params: queryParams,
+    responseType: 'blob',
+  })
+  let filename = `Renewals_Export.${params.format}`
+  const disp = res.headers['content-disposition']
+  if (disp && disp.includes('filename=')) {
+    const match = disp.match(/filename=["']?([^"';]+)["']?/)
+    if (match && match[1]) filename = match[1]
+  }
+  return { data: res.data, filename }
 }
 
 export const getDealAnnotations = async (

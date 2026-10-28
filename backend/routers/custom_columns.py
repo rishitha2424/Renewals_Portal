@@ -30,7 +30,16 @@ class CreateColumnRequest(BaseModel):
     type: str = Field(..., description="Column type")
     dropdown_options: Optional[list[str]] = Field(None, description="Options for dropdown type")
     sort_order: Optional[int] = Field(None, description="Display sort order")
-    source_header: Optional[str] = Field(None, description="Linked Excel header name")
+
+
+class BulkCreateColumnItem(BaseModel):
+    label: str = Field(..., description="Display label for column")
+    type: str = Field("text", description="Column type")
+    dropdown_options: Optional[list[str]] = Field(None, description="Options for dropdown type")
+
+
+class BulkCreateColumnRequest(BaseModel):
+    columns: list[BulkCreateColumnItem] = Field(..., description="List of columns to create")
 
 
 class UpdateColumnRequest(BaseModel):
@@ -38,7 +47,14 @@ class UpdateColumnRequest(BaseModel):
     type: Optional[str] = None
     dropdown_options: Optional[list[str]] = None
     sort_order: Optional[int] = None
-    source_header: Optional[str] = None
+
+
+class RenameColumnRequest(BaseModel):
+    label: str = Field(..., description="New display label for column")
+
+
+class MoveColumnRequest(BaseModel):
+    direction: str = Field(..., description="Move direction: 'left' or 'right'")
 
 
 class SetDealAnnotationRequest(BaseModel):
@@ -55,7 +71,7 @@ def _backup_svc(db: Session = Depends(get_db)) -> AnnotationBackupService:
 
 
 # -----------------------------------------------------------------
-# Custom Columns Endpoints
+# Custom Columns Endpoints (Added Columns Only)
 # -----------------------------------------------------------------
 @router.get("")
 def list_custom_columns(
@@ -65,7 +81,12 @@ def list_custom_columns(
 ):
     """List custom columns in sort order."""
     cols = svc.list_columns(include_deleted=include_deleted)
-    return {"columns": [c.to_dict() for c in cols]}
+    result = []
+    for c in cols:
+        d = c.to_dict()
+        d["values_count"] = svc.count_column_values(c.key)
+        result.append(d)
+    return {"columns": result}
 
 
 @router.post("", dependencies=[Depends(require_admin_context)])
@@ -82,10 +103,34 @@ def create_custom_column(
             col_type=body.type,
             dropdown_options=body.dropdown_options,
             sort_order=body.sort_order,
-            source_header=body.source_header,
             user_id=user_id,
         )
         return {"column": col.to_dict()}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/bulk", dependencies=[Depends(require_admin_context)])
+def bulk_create_custom_columns(
+    body: BulkCreateColumnRequest,
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Bulk create multiple custom columns at once (Admin only)."""
+    try:
+        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        created = []
+        for item in body.columns:
+            if not item.label or not item.label.strip():
+                continue
+            col = svc.create_column(
+                label=item.label,
+                col_type=item.type,
+                dropdown_options=item.dropdown_options,
+                user_id=user_id,
+            )
+            created.append(col.to_dict())
+        return {"columns": created}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -106,10 +151,56 @@ def update_custom_column(
             col_type=body.type,
             dropdown_options=body.dropdown_options,
             sort_order=body.sort_order,
-            source_header=body.source_header,
             user_id=user_id,
         )
         return {"column": col.to_dict()}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/{column_id}/rename", dependencies=[Depends(require_admin_context)])
+def rename_custom_column(
+    column_id: str,
+    body: RenameColumnRequest,
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Rename custom column (Admin only)."""
+    try:
+        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        col = svc.rename_column(col_id_or_key=column_id, new_label=body.label, user_id=user_id)
+        return {"column": col.to_dict()}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/{column_id}/move", dependencies=[Depends(require_admin_context)])
+def move_custom_column(
+    column_id: str,
+    body: MoveColumnRequest,
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Move custom column left or right (Admin only)."""
+    try:
+        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        cols = svc.move_column(col_id_or_key=column_id, direction=body.direction, user_id=user_id)
+        return {"columns": [c.to_dict() for c in cols]}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/{column_id}/restore", dependencies=[Depends(require_admin_context)])
+def restore_custom_column(
+    column_id: str,
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Restore a soft-deleted custom column and its stored values (Admin only)."""
+    try:
+        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        col = svc.restore_column(column_id, user_id=user_id)
+        return {"restored": True, "column": col.to_dict()}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -123,21 +214,86 @@ def delete_custom_column(
     """Soft delete custom column (Admin only)."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
-        col = svc.delete_column(column_id, user_id=user_id)
-        return {"deleted": True, "column": col.to_dict()}
+        col, n_values = svc.delete_column(column_id, user_id=user_id)
+        return {"deleted": True, "column": col.to_dict(), "values_count": n_values}
     except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/detected-headers")
-def get_detected_headers(
-    snapshot_id: Optional[str] = Query(None),
+@router.get("/audit", dependencies=[Depends(require_admin_context)])
+def get_global_audit_log(
+    user: Optional[str] = Query(None),
+    column: Optional[str] = Query(None),
+    deal: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    limit: int = Query(500),
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Get unique Excel headers detected in the latest uploaded file."""
-    headers = svc.get_detected_headers(snapshot_id=snapshot_id)
-    return {"headers": headers}
+    """Global change log table with filters for user, column, deal, date range (Admin only)."""
+    entries = svc.get_audit_log(
+        user=user,
+        column=column,
+        deal=deal,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    return {"audit": entries, "count": len(entries)}
+
+
+@router.get("/audit/export", dependencies=[Depends(require_admin_context)])
+def export_global_audit_log(
+    user: Optional[str] = Query(None),
+    column: Optional[str] = Query(None),
+    deal: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Download the change log as CSV (Admin only)."""
+    import csv
+    import io
+    entries = svc.get_audit_log(
+        user=user,
+        column=column,
+        deal=deal,
+        date_from=date_from,
+        date_to=date_to,
+        limit=10000,
+    )
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Timestamp (UTC)",
+        "User",
+        "Deal Account",
+        "Deal Name",
+        "Opportunity ID",
+        "Column",
+        "Action",
+        "Old Value",
+        "New Value",
+    ])
+    for e in entries:
+        writer.writerow([
+            e.get("timestamp", ""),
+            e.get("user_id", ""),
+            e.get("account_name", ""),
+            e.get("opportunity_name", ""),
+            e.get("opportunity_id_18", ""),
+            e.get("column_label", e.get("column_key", "")),
+            e.get("action", ""),
+            e.get("old_value", ""),
+            e.get("new_value", ""),
+        ])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="change_log.csv"'},
+    )
 
 
 # -----------------------------------------------------------------
