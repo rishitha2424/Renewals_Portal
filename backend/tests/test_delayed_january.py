@@ -90,6 +90,29 @@ def jan_client_and_db(tmp_path_factory):
     app.dependency_overrides.clear()
 
 
+def _get_jan_ren_df(opps):
+    records = []
+    for o in opps:
+        extra = o.extra_attributes if isinstance(o.extra_attributes, dict) else {}
+        stg = str(o.stage_number or extra.get("Stage Number") or "").strip().lower()
+        grp = str(extra.get("Group") or extra.get("group") or "")
+        typ = str(extra.get("Type") or extra.get("type") or "")
+        is_lost_stage = any(w in stg for w in ["lost", "closed lost", "won & closed", "9. won", "delete"])
+        records.append({
+            "id": o.opportunity_id_18,
+            "fiscal_period": o.fiscal_period or "",
+            "forecast_category": o.forecast_category or "",
+            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+            "sales_type": o.sales_type or "",
+            "is_deleted_or_lost": bool(o.is_deleted_or_lost) or is_lost_stage,
+            "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
+            "group": grp,
+            "type": typ,
+        })
+    df = pd.DataFrame(records).drop_duplicates(subset=["id"], keep="last")
+    return df[(df["sales_type"] == "Renewals") & (~df["is_deleted_or_lost"])]
+
+
 def test_january_delayed_with_prior_fy_enabled(jan_client_and_db, monkeypatch):
     """
     When DELAYED_INCLUDE_PRIOR_FY is True, open deals from prior fiscal year count as delayed.
@@ -110,25 +133,16 @@ def test_january_delayed_with_prior_fy_enabled(jan_client_and_db, monkeypatch):
         opps = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
         assert len(opps) > 0
 
-        records = [
-            {
-                "id": o.opportunity_id_18,
-                "fiscal_period": o.fiscal_period or "",
-                "forecast_category": o.forecast_category or "",
-                "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-                "sales_type": o.sales_type or "",
-                "is_deleted_or_lost": bool(o.is_deleted_or_lost),
-                "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
-            }
-            for o in opps
-        ]
-        df = pd.DataFrame(records).drop_duplicates(subset=["id"], keep="last")
-        ren_df = df[(df["sales_type"] == "Renewals") & (~df["is_deleted_or_lost"])]
+        ren_df = _get_jan_ren_df(opps)
+        delay_mask = ren_df["group"].str.lower().str.contains("delay")
+        type_mask = ren_df["type"].str.upper().apply(lambda t: t.split("-")[0].strip() in ["MR", "R"])
 
-        # Deals overdue in current quarter (if any)
+        # Deals overdue in current quarter (if any matching delayed rules)
         cq_overdue = ren_df[
             (ren_df["fiscal_period"] == target_q)
             & (ren_df["forecast_category"] != "Closed")
+            & delay_mask
+            & type_mask
             & pd.notna(ren_df["close_date"])
             & (ren_df["close_date"] < pd.Timestamp(jan_date))
         ]
@@ -177,25 +191,16 @@ def test_january_delayed_with_prior_fy_disabled(jan_client_and_db, monkeypatch):
     try:
         snap = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == jan_date).first()
         opps = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
-        records = [
-            {
-                "id": o.opportunity_id_18,
-                "fiscal_period": o.fiscal_period or "",
-                "forecast_category": o.forecast_category or "",
-                "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-                "sales_type": o.sales_type or "",
-                "is_deleted_or_lost": bool(o.is_deleted_or_lost),
-                "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
-            }
-            for o in opps
-        ]
-        df = pd.DataFrame(records).drop_duplicates(subset=["id"], keep="last")
-        ren_df = df[(df["sales_type"] == "Renewals") & (~df["is_deleted_or_lost"])]
+        ren_df = _get_jan_ren_df(opps)
+        delay_mask = ren_df["group"].str.lower().str.contains("delay")
+        type_mask = ren_df["type"].str.upper().apply(lambda t: t.split("-")[0].strip() in ["MR", "R"])
 
-        # Deals overdue in current quarter (if any)
+        # Deals overdue in current quarter (if any matching delayed rules)
         cq_overdue = ren_df[
             (ren_df["fiscal_period"] == target_q)
             & (ren_df["forecast_category"] != "Closed")
+            & delay_mask
+            & type_mask
             & pd.notna(ren_df["close_date"])
             & (ren_df["close_date"] < pd.Timestamp(jan_date))
         ]
@@ -267,25 +272,16 @@ def test_january_delayed_slipped_deal(jan_client_and_db, monkeypatch):
 
         # Compute ground truth reference directly from DB with pandas (zero hardcoded numbers)
         opps = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
-        records = [
-            {
-                "id": o.opportunity_id_18,
-                "fiscal_period": o.fiscal_period or "",
-                "forecast_category": o.forecast_category or "",
-                "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-                "sales_type": o.sales_type or "",
-                "is_deleted_or_lost": bool(o.is_deleted_or_lost),
-                "close_date": pd.to_datetime(o.close_date) if o.close_date else pd.NaT,
-            }
-            for o in opps
-        ]
-        df = pd.DataFrame(records).drop_duplicates(subset=["id"], keep="last")
-        ren_df = df[(df["sales_type"] == "Renewals") & (~df["is_deleted_or_lost"])]
+        ren_df = _get_jan_ren_df(opps)
+        delay_mask = ren_df["group"].str.lower().str.contains("delay")
+        type_mask = ren_df["type"].str.upper().apply(lambda t: t.split("-")[0].strip() in ["MR", "R"])
 
         # CQ overdue deals: close date before snapshot date
         cq_overdue = ren_df[
             (ren_df["fiscal_period"] == target_q)
             & (ren_df["forecast_category"] != "Closed")
+            & delay_mask
+            & type_mask
             & pd.notna(ren_df["close_date"])
             & (ren_df["close_date"] < pd.Timestamp(jan_date))
         ]

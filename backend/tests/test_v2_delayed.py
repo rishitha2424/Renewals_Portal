@@ -62,6 +62,14 @@ def client_and_db(tmp_path_factory):
             assert cr.status_code == 200, cr.text
 
         yield client, Session
+    app.dependency_overrides.clear()
+    engine.dispose()
+    if root_db.exists() and tmp_path_factory:
+        try:
+            if os.path.exists(db_path):
+                os.remove(db_path)
+        except Exception:
+            pass
 
 def test_delayed_summary_yesterday(client_and_db):
     client, _ = client_and_db

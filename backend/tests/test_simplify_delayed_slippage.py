@@ -104,19 +104,18 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
     else:
         delay_mask = df_open["_exp_d"].apply(lambda d: d < snap_date if d else False)
 
-    df_delayed_cand = df_open[delay_mask & (df_open[acv_col] > 0)].copy()
+    df_delayed_cand = df_open[delay_mask].copy()
     df_delayed = df_delayed_cand[df_delayed_cand["_type_code"].isin(["MR", "R"])].copy()
     df_overdue = df_delayed[df_delayed["_close_d"] < snap_date].copy()
     df_ahead = df_delayed[df_delayed["_close_d"] >= snap_date].copy()
 
-    # Slippage (expiry <= snap year, close year == snap year + 1, MR/R, positive ACV)
+    # Slippage (expiry <= snap year, close year == snap year + 1, MR/R, negatives included)
     selected_year = snap_date.year
     next_year = selected_year + 1
     slip_mask = (
         df_open["_exp_d"].apply(lambda d: d.year <= selected_year if d else False) &
         df_open["_close_d"].apply(lambda d: d.year == next_year if d else False) &
-        mr_r_mask &
-        (df_open[acv_col] > 0)
+        mr_r_mask
     )
     df_slippage = df_open[slip_mask].copy()
 
@@ -128,26 +127,32 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
             "acv": round(float(sub[acv_col].sum()), 2),
         }
 
-    # Needs review: far ahead (close year >= selected_year + 2)
+    # Needs review: deduplicated sequentially
+    seen_review_ids = set()
+
+    # 1. Missing service dates
+    missing_dates_mask = raw_exp.isna() & raw_start.isna() & mr_r_mask
+    df_missing_dates = df_open[missing_dates_mask].copy()
+    seen_review_ids.update(df_missing_dates[id_col].dropna().tolist())
+
+    # 2. Far ahead (close year >= selected_year + 2, including negative NCC deal)
     far_ahead_mask = (
         df_open["_exp_d"].apply(lambda d: d.year <= selected_year if d else False) &
         df_open["_close_d"].apply(lambda d: d.year >= selected_year + 2 if d else False) &
         mr_r_mask &
-        (df_open[acv_col] > 0)
+        (~df_open[id_col].isin(seen_review_ids))
     )
     df_far_ahead = df_open[far_ahead_mask].copy()
+    seen_review_ids.update(df_far_ahead[id_col].dropna().tolist())
 
-    # Missing service dates: open, included type (MR/R), both missing dates, ACV > 0
-    missing_dates_mask = (
-        raw_exp.isna() &
-        raw_start.isna() &
-        mr_r_mask &
-        (df_open[acv_col] > 0)
-    )
-    df_missing_dates = df_open[missing_dates_mask].copy()
+    # 3. Other types (excluded from Delayed by Settings MR and R only)
+    other_types_mask = delay_mask & (~mr_r_mask) & (~df_open[id_col].isin(seen_review_ids))
+    df_other_types = df_open[other_types_mask].copy()
+    seen_review_ids.update(df_other_types[id_col].dropna().tolist())
 
-    # Other types (excluded from Delayed by Settings MR and R only)
-    df_other_types = df_open[delay_mask & (df_open[acv_col] > 0) & (~mr_r_mask)].copy()
+    # 4. Negative or zero ACV row (already included in totals above)
+    neg_mask = (df_open[acv_col] <= 0) & (~df_open[id_col].isin(seen_review_ids))
+    df_neg_acv = df_open[neg_mask].copy()
 
     return {
         "delayed_count": len(df_delayed),
@@ -165,6 +170,8 @@ def _compute_pandas_fixture_ground_truth(snap_date: date):
         "far_ahead_acv": round(float(df_far_ahead[acv_col].sum()), 2),
         "other_types_count": len(df_other_types),
         "other_types_acv": round(float(df_other_types[acv_col].sum()), 2),
+        "negative_acv_count": len(df_neg_acv),
+        "negative_acv_acv": round(float(df_neg_acv[acv_col].sum()), 2),
     }
 
 
@@ -356,14 +363,14 @@ def test_fallback_notice_when_group_missing(db, active_snap):
     buckets_blank = svc._compute_snapshot_buckets(MockSnap(), target_p_str, preloaded_df=df_blank_group)
     assert buckets_blank["fallback_used"] is True
     assert len(buckets_blank["delayed_total"]) > 0
-    assert buckets_blank["delayed_total"]["forecast_acv_amount"].sum() > 0
+    assert buckets_blank["delayed_total"]["forecast_acv_amount"].sum() != 0
 
     # Case 2: Group column is completely missing from DataFrame
     df_dropped_group = df_raw.copy().drop(columns=["group"])
     buckets_dropped = svc._compute_snapshot_buckets(MockSnap(), target_p_str, preloaded_df=df_dropped_group)
     assert buckets_dropped["fallback_used"] is True
     assert len(buckets_dropped["delayed_total"]) > 0
-    assert buckets_dropped["delayed_total"]["forecast_acv_amount"].sum() > 0
+    assert buckets_dropped["delayed_total"]["forecast_acv_amount"].sum() != 0
 
 
 def test_needs_review_excel_export_and_no_duplicates(db, active_snap):

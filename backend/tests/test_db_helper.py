@@ -17,11 +17,17 @@ def get_test_engine_and_session(test_name: str, tmp_path_factory=None):
             test_db_url = test_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
         engine = create_engine(test_db_url, pool_pre_ping=True)
     else:
-        if tmp_path_factory:
-            db_path = tmp_path_factory.mktemp("db") / f"{test_name}.db"
-            db_url = f"sqlite:///{db_path}"
-        else:
-            db_url = f"sqlite:///./{test_name}.db"
+        import tempfile
+        from pathlib import Path
+        temp_dir = Path(tempfile.gettempdir())
+        # Clean up any previously created helper test databases to prevent disk exhaustion
+        for old_f in temp_dir.glob("test_helper_*.db*"):
+            try:
+                old_f.unlink()
+            except Exception:
+                pass
+        db_path = temp_dir / f"test_helper_{test_name}.db"
+        db_url = f"sqlite:///{db_path}"
         engine = create_engine(db_url, connect_args={"check_same_thread": False})
     
     # Drop and re-create schema for clean test isolation

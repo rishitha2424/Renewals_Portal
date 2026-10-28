@@ -177,6 +177,13 @@ def oct26_client_and_db(tmp_path_factory):
 
     with TestClient(app) as client:
         yield client, Session, headers
+    app.dependency_overrides.clear()
+    engine.dispose()
+    try:
+        if db_path.exists():
+            db_path.unlink()
+    except Exception:
+        pass
 
 
 def test_delayed_rebuild_matches_independent_pandas(oct26_client_and_db):

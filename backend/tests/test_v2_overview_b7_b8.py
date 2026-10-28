@@ -38,6 +38,7 @@ def client_and_db(tmp_path_factory):
         assert cr.status_code == 200, cr.text
 
         yield test_client
+    app.dependency_overrides.clear()
 
 
 def test_b8_coverage_line_from_pandas(client_and_db):

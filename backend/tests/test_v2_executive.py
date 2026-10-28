@@ -34,9 +34,11 @@ def test_executive_view_contracts_sqlite():
     expected_blank_count = len(df_blank)
     expected_blank_acv = float(df_blank["Forecast ACV Amount"].fillna(0).sum())
 
-    with TestClient(app) as client:
-        # 1. Overview summary check
-        r_ov = client.get("/api/v2/overview/summary?as_of=2026-10-07")
+    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as client:
+            # 1. Overview summary check
+            r_ov = client.get("/api/v2/overview/summary?as_of=2026-10-07")
         assert r_ov.status_code == 200, r_ov.text
         ov_data = r_ov.json()
 
@@ -80,3 +82,5 @@ def test_executive_view_contracts_sqlite():
         blank = cats["Blank"]
         assert blank.get("count") == expected_blank_count
         assert abs(blank.get("acv") - expected_blank_acv) < 0.1
+    finally:
+        app.dependency_overrides.clear()

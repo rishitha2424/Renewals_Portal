@@ -53,6 +53,7 @@ def client_and_db(tmp_path_factory):
         assert cr.status_code == 200, cr.text
 
         yield test_client
+    app.dependency_overrides.clear()
 
 class TestExpirySummary:
     def test_full_grid(self, client_and_db, oct7_fixture_df):

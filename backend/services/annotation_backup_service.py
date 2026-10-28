@@ -22,19 +22,16 @@ SETTING_KEY_RETENTION = "annotation_backup_retention_days"
 
 
 def get_backup_directory() -> Path:
-    """Determine backup directory location next to the database or in data/backups."""
-    # If SQLite file path in DATABASE_URL
-    db_url = settings.sqlalchemy_database_url
-    if db_url.startswith("sqlite"):
-        # e.g. sqlite:///./data/renewals.db or sqlite:////app/data/renewals.db
-        clean = db_url.replace("sqlite:///", "").replace("sqlite://", "")
-        db_file = Path(clean)
-        backup_dir = db_file.parent / "backups" / "annotations"
+    """Determine backup directory location configurable via env or next to the SQLite database file."""
+    env_path = os.getenv("ANNOTATION_BACKUP_PATH")
+    if env_path:
+        backup_dir = Path(env_path)
     else:
-        # Railway or Postgres volume: check environment variable ANNOTATION_BACKUP_PATH or data/backups
-        env_path = os.getenv("ANNOTATION_BACKUP_PATH")
-        if env_path:
-            backup_dir = Path(env_path)
+        db_url = settings.sqlalchemy_database_url
+        if db_url.startswith("sqlite"):
+            clean = db_url.replace("sqlite:///", "").replace("sqlite://", "")
+            db_file = Path(clean)
+            backup_dir = db_file.parent / "backups" / "annotations"
         else:
             backup_dir = Path("data") / "backups" / "annotations"
 
@@ -47,7 +44,15 @@ class AnnotationBackupService:
         self.db = db
 
     def get_retention_days(self) -> int:
-        val = SettingsService.get_setting(self.db, SETTING_KEY_RETENTION, str(DEFAULT_RETENTION_DAYS))
+        env_val = os.getenv("ANNOTATION_BACKUP_RETENTION")
+        if env_val:
+            try:
+                return max(1, int(env_val))
+            except (ValueError, TypeError):
+                pass
+        val = SettingsService.get_setting(self.db, SETTING_KEY_RETENTION, None)
+        if val is None:
+            val = SettingsService.get_setting(self.db, "annotation_backup_retention", str(DEFAULT_RETENTION_DAYS))
         if val is not None:
             try:
                 return max(1, int(val))
@@ -74,31 +79,31 @@ class AnnotationBackupService:
             "annotation_audit": [au.to_dict() for au in audit],
         }
 
-    def run_daily_backup(self) -> str:
-        """Create today's backup file and prune files older than retention days."""
+    def run_daily_backup(self, retention_count: int | None = None) -> str:
+        """Create backup file and prune to the number of backups from setting (default 14)."""
         backup_dir = get_backup_directory()
-        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        filename = f"annotations_backup_{today_str}.json"
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"annotations_backup_{timestamp_str}.json"
         filepath = backup_dir / filename
 
         payload = self.dump_annotations_payload()
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
 
-        # Prune old backups
-        retention = self.get_retention_days()
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention)
+        # Prune old backups to keep max retention files
+        retention = retention_count if retention_count is not None else self.get_retention_days()
+        all_backups = sorted(
+            list(backup_dir.glob("annotations_backup_*.json")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
 
-        for p in backup_dir.glob("annotations_backup_*.json"):
-            try:
-                # Format: annotations_backup_YYYY-MM-DD.json
-                parts = p.stem.split("_")
-                if len(parts) >= 3:
-                    file_date = datetime.strptime(parts[2], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                    if file_date < cutoff_date:
-                        p.unlink()
-                        log.info("Pruned old annotation backup: %s", p.name)
-            except Exception as e:
-                log.warning("Could not evaluate backup file %s for pruning: %s", p, e)
+        if len(all_backups) > retention:
+            for old_p in all_backups[retention:]:
+                try:
+                    old_p.unlink()
+                    log.info("Pruned old annotation backup: %s", old_p.name)
+                except Exception as e:
+                    log.warning("Could not prune backup %s: %s", old_p, e)
 
         return str(filepath)

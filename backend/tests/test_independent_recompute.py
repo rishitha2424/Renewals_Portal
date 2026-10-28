@@ -53,6 +53,12 @@ def _clean_df(df_raw: pd.DataFrame) -> pd.DataFrame:
             col_map[c] = "close_date"
         elif cl in ("stage number", "stage"):
             col_map[c] = "stage"
+        elif cl == "group":
+            col_map[c] = "group"
+        elif cl == "type":
+            col_map[c] = "type"
+        elif "service expiry" in cl:
+            col_map[c] = "service_expiry_date"
     df = df.rename(columns=col_map)
     if "acv" in df.columns:
         df["acv"] = pd.to_numeric(df["acv"], errors="coerce").fillna(0.0)
@@ -175,38 +181,21 @@ def test_pure_pandas_recompute_vs_api(api_client, snap_date, excel_path):
             # Future quarter: no overdue from earlier quarters
             exp_od_cnt = 0
             exp_od_acv = 0.0
-        elif (p_yr, p_q) < (cq_yr, cq_q):
-            # Past quarter: in that quarter, still open, close date before snapshot date
-            od_past = sub_t[(sub_t["close_date"] < snap_d) & (sub_t["forecast_category"] != "Closed") & (~sub_t["is_deleted_or_lost"])]
-            exp_od_cnt = len(od_past)
-            exp_od_acv = round(float(od_past["acv"].sum()), 2)
         else:
-            # Current quarter: open in current quarter past close date
-            od_t = sub_t[(sub_t["close_date"] < snap_d) & (sub_t["forecast_category"] != "Closed") & (~sub_t["is_deleted_or_lost"])]
-            cq_start = pd.Timestamp(year=cq_yr, month=(cq_q - 1) * 3 + 1, day=1).date()
-            cq_end = (pd.Timestamp(year=cq_yr, month=(cq_q - 1) * 3 + 1, day=1) + pd.offsets.QuarterEnd()).date()
+            has_grp = "group" in df_t.columns
+            g_vals = df_t["group"].astype(str).str.lower() if has_grp else pd.Series(dtype=str)
+            if has_grp and g_vals.str.contains("delay").any():
+                delay_mask = g_vals.str.contains("delay")
+            else:
+                delay_mask = df_t["service_expiry_date"].apply(lambda d: d < snap_d if pd.notna(d) else False) if "service_expiry_date" in df_t.columns else pd.Series(True, index=df_t.index)
 
-            def is_prior(fp):
-                if not fp or "-" not in fp: return False
-                parts = fp.split("-")
-                yr = int(parts[1]) if parts[1].isdigit() else int(parts[0])
-                q = int(parts[0].replace("Q", "")) if parts[0].startswith("Q") else int(parts[1].replace("Q", ""))
-                return (yr, q) < (cq_yr, cq_q) and (yr, q) > (0, 0)
+            type_mask = df_t["type"].astype(str).apply(lambda t: t.split("-")[0].strip().upper() in ["MR", "R"]) if "type" in df_t.columns else pd.Series(True, index=df_t.index)
+            open_mask = (df_t["forecast_category"] != "Closed") & (~df_t["is_deleted_or_lost"])
+            od_mask = df_t["close_date"].apply(lambda d: d < snap_d if pd.notna(d) else False)
 
-            prior_open = df_t[
-                df_t["fiscal_period"].apply(is_prior)
-                & (df_t["sales_type"] == "Renewals")
-                & (df_t["forecast_category"] != "Closed")
-                & (~df_t["is_deleted_or_lost"])
-            ]
-            in_cq = prior_open["close_date"].apply(
-                lambda d: cq_start <= d <= cq_end if pd.notna(d) else False
-            )
-            prior_od = prior_open[~in_cq]
-            exp_od_cnt = len(od_t) + len(prior_od)
-            od_sum = float(od_t["acv"].sum()) if not od_t.empty and "acv" in od_t.columns else 0.0
-            prior_sum = float(prior_od["acv"].sum()) if not prior_od.empty and "acv" in prior_od.columns else 0.0
-            exp_od_acv = round(od_sum + prior_sum, 2)
+            od_df = df_t[delay_mask & type_mask & open_mask & od_mask]
+            exp_od_cnt = len(od_df)
+            exp_od_acv = round(float(od_df["acv"].sum()), 2)
 
         app_od_cnt = del_data["overdue"]["count"]
         app_od_acv = del_data["overdue"]["acv"]
@@ -257,14 +246,17 @@ def test_pure_pandas_recompute_vs_api(api_client, snap_date, excel_path):
         assert exp_unapp_cnt == app_unapp_cnt
         assert abs(exp_unapp_acv - app_unapp_acv) < 1.0
 
-        # Needs attention overdue item agreement with Delayed Overdue
+        # Needs attention overdue item (all open renewals with past close date)
         na_od_item = next((it for it in ov_data.get("needs_attention", {}).get("items", []) if it["category_key"] == "overdue"), None)
-        if exp_od_cnt > 0:
+        all_od = df_t[(df_t["close_date"] < snap_d) & (df_t["forecast_category"] != "Closed") & (~df_t["is_deleted_or_lost"]) & (df_t["sales_type"] == "Renewals")].copy().drop_duplicates(subset=["id"], keep="last")
+        exp_na_od_cnt = len(all_od)
+        exp_na_od_acv = round(float(all_od["acv"].sum()), 2)
+        if exp_na_od_cnt > 0:
             assert na_od_item is not None
-            assert na_od_item["category_count"] == exp_od_cnt
-            assert abs(na_od_item["category_acv"] - exp_od_acv) < 1.0
-            table_rows.append([snap_date, period, "Needs Attention Overdue Count", exp_od_cnt, na_od_item["category_count"], "MATCH"])
-            table_rows.append([snap_date, period, "Needs Attention Overdue ACV", f"${exp_od_acv:,.2f}", f"${na_od_item['category_acv']:,.2f}", "MATCH"])
+            assert na_od_item["category_count"] == exp_na_od_cnt
+            assert abs(na_od_item["category_acv"] - exp_na_od_acv) < 1.0
+            table_rows.append([snap_date, period, "Needs Attention Overdue Count", exp_na_od_cnt, na_od_item["category_count"], "MATCH"])
+            table_rows.append([snap_date, period, "Needs Attention Overdue ACV", f"${exp_na_od_acv:,.2f}", f"${na_od_item['category_acv']:,.2f}", "MATCH"])
 
     # Print markdown table of expected vs app
     headers = ["Snapshot", "Period", "Metric", "Expected (Pandas)", "App (API)", "Status"]

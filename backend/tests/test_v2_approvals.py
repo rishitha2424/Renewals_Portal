@@ -36,6 +36,7 @@ def client_and_db(tmp_path_factory):
         assert cr.status_code == 200, cr.text
 
         yield test_client
+    app.dependency_overrides.clear()
 
 def test_v2_approvals_oct7(client_and_db):
     import pandas as pd

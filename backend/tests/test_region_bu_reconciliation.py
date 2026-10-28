@@ -189,15 +189,23 @@ def test_reconciliation_computed_with_pandas(db_session, active_snapshot):
         f"Regions total ACV ({reg_summary['total']['acv']}) must match pandas computed ({expected_quarter_acv})"
     )
 
-    # Reconcile overdue deals with pandas
+    # Reconcile overdue deals with pandas (Group contains delay, MR and R types)
     active_slice = quarter_slice[~quarter_slice["is_deleted_or_lost"].fillna(False).astype(bool)].copy()
     active_slice["parsed_close"] = pd.to_datetime(active_slice["close_date"], errors="coerce")
     ref_ts = pd.Timestamp(active_date)
+
+    extra_attrs = active_slice["extra_attributes"].apply(lambda x: x if isinstance(x, dict) else {})
+    groups = extra_attrs.apply(lambda d: str(d.get("Group") or d.get("group") or "").strip().lower())
+    types = extra_attrs.apply(lambda d: str(d.get("Type") or d.get("type") or "").strip().upper())
+    is_mr_r = types.apply(lambda t: t.split("-")[0].strip() in ["MR", "R"])
+    is_delay_group = groups.str.contains("delay")
 
     overdue_mask = (
         pd.notna(active_slice["parsed_close"])
         & (active_slice["parsed_close"] < ref_ts)
         & (~active_slice["forecast_category"].astype(str).str.strip().str.lower().isin(["closed"]))
+        & is_delay_group
+        & is_mr_r
     )
     overdue_fixture = active_slice[overdue_mask]
     expected_overdue_count = len(overdue_fixture)

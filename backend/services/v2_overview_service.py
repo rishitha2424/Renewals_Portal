@@ -718,38 +718,42 @@ class V2OverviewService:
                 "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             })
 
-        # 2. Largest overdue deals (using V2DelayedService so it can never disagree)
-        od_deals_res = delayed_svc.get_deals(as_of=fs.as_of or snap.id, kind="overdue", filter_spec=fs)
-        od_deals = od_deals_res.get("deals", [])
-        if od_deals:
-            od_cnt = od_deals_res.get("count", len(od_deals))
-            od_tot_acv = od_deals_res.get("acv", 0.0)
-            sorted_od = sorted(od_deals, key=lambda x: (-float(x.get("forecast_acv_amount", 0.0) or 0.0), str(x.get("opportunity_id_18") or "")))
-            top_od = sorted_od[0]
-            top_od_date_str = str(top_od.get("close_date") or "")
-            try:
-                top_od_date = date.fromisoformat(top_od_date_str[:10])
-                days_od = max(1, (snap.snapshot_date - top_od_date).days)
-            except Exception:
-                days_od = 1
+        # 2. Largest overdue deals across all renewals in snapshot
+        all_opps_q = self.db.query(Opportunity).filter(
+            Opportunity.snapshot_id == snap.id,
+            Opportunity.sales_type == "Renewals",
+        ).all()
+        all_df = _opps_to_df(all_opps_q)
+        overdue_df = pd.DataFrame()
+        if not all_df.empty and "close_date" in all_df.columns:
+            cd = pd.to_datetime(all_df["close_date"], errors="coerce").dt.date
+            overdue_df = all_df[(cd < snap.snapshot_date) & (all_df["forecast_category"] != "Closed") & (~all_df["is_deleted_or_lost"])].copy()
+            overdue_df = overdue_df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
+        if not overdue_df.empty:
+            overdue_df = overdue_df.sort_values(by=["forecast_acv_amount", "opportunity_id_18"], ascending=[False, True])
+            od_cnt = len(overdue_df)
+            od_tot_acv = round(float(_sum(overdue_df, "forecast_acv_amount")), 2)
+            top_od = overdue_df.iloc[0]
+            top_od_date = pd.to_datetime(top_od["close_date"]).date() if top_od["close_date"] else snap.snapshot_date
+            days_od = max(1, (snap.snapshot_date - top_od_date).days)
             category_summaries["overdue"] = {
                 "count": od_cnt,
                 "acv": od_tot_acv,
-                "deal_ids": [str(d.get("opportunity_id_18")) for d in sorted_od],
+                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
             }
             _add_item({
                 "category_key": "overdue",
                 "category_label": "Overdue deal",
-                "opportunity_id_18": str(top_od.get("opportunity_id_18")),
-                "opportunity_name": str(top_od.get("opportunity_name")),
-                "account_name": str(top_od.get("account_name")),
-                "acv": round(float(top_od.get("forecast_acv_amount", 0.0) or 0.0), 2),
+                "opportunity_id_18": str(top_od["opportunity_id_18"]),
+                "opportunity_name": str(top_od["opportunity_name"]),
+                "account_name": str(top_od["account_name"]),
+                "acv": round(float(top_od["forecast_acv_amount"]), 2),
                 "category_count": od_cnt,
                 "category_acv": od_tot_acv,
                 "badge": f"{days_od}d past close date",
                 "detail": f"{od_cnt} overdue deals totaling ${od_tot_acv:,.2f}",
                 "kind": "overdue",
-                "deal_ids": [str(d.get("opportunity_id_18")) for d in sorted_od],
+                "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
             })
 
         # 3. Biggest drop vs yesterday
@@ -893,7 +897,7 @@ class V2OverviewService:
                 for fc in cats.keys()
             },
             # Section 3 — slippage & delayed renewals separated
-            "slippage": del_sum.get("slippage"),
+            "slippage": slippage_data,
             "slippage_section": del_sum.get("slippage"),
             "delayed_renewals": del_sum.get("delayed_renewals"),
             "delayed_renewals_total": del_sum.get("delayed_renewals_total"),
@@ -1150,7 +1154,7 @@ class V2OverviewService:
             filters_applied["compare"] = compare
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
-        if kind in ("overdue", "slippage_total", "delayed_total", "delayed_renewals_total", "lost", "later_close") or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_") or (kind == "slipped" and not compare))):
+        if kind in ("delayed_overdue", "slippage_total", "delayed_total", "delayed_renewals_total", "lost", "later_close") or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_") or (kind == "slipped" and not compare))):
             target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else kind
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
@@ -1318,9 +1322,15 @@ class V2OverviewService:
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
         elif kind == "overdue":
-            cd = pd.to_datetime(df["close_date"], errors="coerce")
+            all_opps_q = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                Opportunity.sales_type == "Renewals",
+            ).all()
+            df_all_ren = _opps_to_df(all_opps_q)
+            cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce")
             snap_ts = pd.Timestamp(snap.snapshot_date)
-            df = df[(cd < snap_ts) & (df["forecast_category"] != "Closed") & (~df["is_deleted_or_lost"])]
+            df = df_all_ren[(cd < snap_ts) & (df_all_ren["forecast_category"] != "Closed") & (~df_all_ren["is_deleted_or_lost"])]
+            df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
         elif kind == "closing_14d_unapproved":
             from backend.config import settings
             window_days = getattr(settings, "NEEDS_ATTENTION_WINDOW_DAYS", 14)

@@ -60,7 +60,50 @@ async def lifespan(app: FastAPI):
     except Exception as log_err:
         log.info(f"Database: {dialect} ({migrations_status})")
 
+    # Security check on startup
+    from backend.routers.admin_auth import get_security_warnings
+    sec_warnings = get_security_warnings()
+    for w in sec_warnings:
+        log.warning("SECURITY WARNING: %s (Set appropriate environment variables in deployment)", w)
+
+    # Scheduled daily annotation backup worker (disabled under tests)
+    import asyncio
+    import os
+    is_testing = (
+        getattr(settings, "TESTING", False)
+        or os.environ.get("TESTING", "").lower() in ("1", "true", "yes")
+        or "PYTEST_CURRENT_TEST" in os.environ
+    )
+
+    backup_task = None
+    if not is_testing:
+        async def scheduled_annotation_backup_worker():
+            while True:
+                try:
+                    from backend.database import SessionLocal
+                    from backend.services.annotation_backup_service import AnnotationBackupService
+                    db_sess = SessionLocal()
+                    try:
+                        b_svc = AnnotationBackupService(db_sess)
+                        b_path = b_svc.run_daily_backup()
+                        log.info("Daily annotation backup scheduled job completed: %s", b_path)
+                    finally:
+                        db_sess.close()
+                except Exception as exc:
+                    log.warning("Scheduled daily annotation backup error: %s", exc)
+                # Sleep 24 hours
+                await asyncio.sleep(86400)
+
+        backup_task = asyncio.create_task(scheduled_annotation_backup_worker())
+
     yield
+
+    if backup_task:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except (asyncio.CancelledError, Exception):
+            pass
     log.info("Shutting down.")
 
 

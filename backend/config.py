@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     NEEDS_ATTENTION_MAX_ITEMS: int = 5
 
     # Security & Admin Auth (Addendum D)
+    TESTING: bool = False
     ENVIRONMENT: str = "development"
     ADMIN_PASSWORD: str = ""
     ADMIN_SECRET_KEY: str = ""

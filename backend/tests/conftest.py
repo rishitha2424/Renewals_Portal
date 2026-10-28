@@ -27,6 +27,9 @@ import os
 def setup_test_admin_auth():
     old_pw = settings.ADMIN_PASSWORD
     old_key = settings.ADMIN_SECRET_KEY
+    old_testing = settings.TESTING
+    settings.TESTING = True
+    os.environ["TESTING"] = "1"
     if not settings.ADMIN_PASSWORD:
         settings.ADMIN_PASSWORD = "test-admin-secret-password-xyz"
     if not settings.ADMIN_SECRET_KEY:
@@ -34,6 +37,8 @@ def setup_test_admin_auth():
     yield
     settings.ADMIN_PASSWORD = old_pw
     settings.ADMIN_SECRET_KEY = old_key
+    settings.TESTING = old_testing
+    os.environ.pop("TESTING", None)
 
 
 @pytest.fixture(scope="session")
