@@ -240,6 +240,7 @@ class ExplorerService:
                 .order_by(CustomColumn.sort_order.asc(), CustomColumn.created_at.asc())
                 .all()
             )
+            col_names_lower = {str(c).strip().lower() for c in col_names}
             cur_pos = len(col_names) + 1
             for cc in custom_cols:
                 ctype = cc.type.lower()
@@ -252,15 +253,17 @@ class ExplorerService:
                 else:
                     exp_type = "text"
 
+                is_clash = str(cc.label).strip().lower() in col_names_lower
                 columns_meta.append({
+                    "id": cc.id,
                     "name": cc.label,
                     "key": cc.key,
                     "position": cur_pos,
                     "type": exp_type,
                     "is_custom": True,
+                    "is_clash": is_clash,
                     "custom_type": cc.type,
                     "dropdown_options": cc.dropdown_options or [],
-                    "source_header": cc.source_header,
                 })
                 cur_pos += 1
         except Exception as exc:
@@ -633,11 +636,13 @@ class ExplorerService:
             row_dict = self._merge_opportunity_record(o, col_order)
             annots_for_deal = deal_annots.get(o.opportunity_id_18 or "", {})
             row_dict["_annotations"] = annots_for_deal
-            # Populate custom columns by label and key for direct cell lookup
+            # Populate custom columns by key, and by label only if label does not clash with an Excel column
+            col_order_set = set(col_order)
             for cc in custom_cols:
                 val = annots_for_deal.get(cc.key, {}).get("value")
-                row_dict[cc.label] = val
                 row_dict[cc.key] = val
+                if cc.label not in col_order_set:
+                    row_dict[cc.label] = val
             rows_data.append(row_dict)
 
         return rows_data, total_count, total_acv

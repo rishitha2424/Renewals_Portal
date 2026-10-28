@@ -53,8 +53,40 @@ class AnnotationService:
     def __init__(self, db: Session):
         self.db = db
 
+    def is_excel_column(self, col_identifier: str, snapshot_id: str | None = None) -> bool:
+        """Return True if identifier matches an uploaded Excel column name or model attribute."""
+        if not col_identifier:
+            return False
+        ident_clean = str(col_identifier).strip().lower()
+
+        # 1. Check against latest or specific snapshot column_order
+        snap = None
+        if snapshot_id:
+            snap = self.db.query(UploadSnapshot).filter(UploadSnapshot.id == snapshot_id).first()
+        if not snap:
+            snap = self.db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
+
+        if snap and snap.column_order:
+            for c in snap.column_order:
+                c_str = str(c).strip().lower()
+                if ident_clean in (c_str, slugify_key(c_str)):
+                    return True
+
+        # 2. Check Opportunity model attributes and known headers
+        from backend.services.explorer_service import HEADER_TO_MODEL_ATTR, MODEL_COLUMN_MAP
+        for h in HEADER_TO_MODEL_ATTR.keys():
+            h_str = h.strip().lower()
+            if ident_clean in (h_str, slugify_key(h_str)):
+                return True
+        for m in MODEL_COLUMN_MAP.keys():
+            m_str = m.strip().lower()
+            if ident_clean in (m_str, slugify_key(m_str)):
+                return True
+
+        return False
+
     # -------------------------------------------------------------
-    # Custom Columns Configuration
+    # Custom Columns Configuration (Added Columns Only)
     # -------------------------------------------------------------
     def list_columns(self, include_deleted: bool = False) -> list[CustomColumn]:
         q = self.db.query(CustomColumn)
@@ -68,13 +100,29 @@ class AnnotationService:
     def get_column_by_key(self, col_key: str) -> CustomColumn | None:
         return self.db.query(CustomColumn).filter(CustomColumn.key == col_key).first()
 
+    def get_column_by_id_or_key(self, col_id_or_key: str, include_deleted: bool = False) -> CustomColumn | None:
+        q = self.db.query(CustomColumn).filter(
+            (CustomColumn.id == col_id_or_key) | (CustomColumn.key == col_id_or_key)
+        )
+        if not include_deleted:
+            q = q.filter(CustomColumn.is_deleted == False)
+        return q.first()
+
+    def count_column_values(self, col_key: str) -> int:
+        return (
+            self.db.query(DealAnnotation)
+            .filter(DealAnnotation.column_key == col_key)
+            .filter(DealAnnotation.value.isnot(None))
+            .filter(DealAnnotation.value != "")
+            .count()
+        )
+
     def create_column(
         self,
         label: str,
         col_type: str,
         dropdown_options: list[str] | None = None,
         sort_order: int | None = None,
-        source_header: str | None = None,
         user_id: str = "admin",
     ) -> CustomColumn:
         label_clean = str(label or "").strip()
@@ -85,8 +133,11 @@ class AnnotationService:
         if type_clean not in ALLOWED_COLUMN_TYPES:
             raise ValidationError(f"Invalid column type '{col_type}'. Allowed types: {sorted(ALLOWED_COLUMN_TYPES)}")
 
-        # Deduplicate key
-        base_key = slugify_key(label_clean)
+        # Deduplicate key and isolate if matching an Excel column
+        raw_slug = slugify_key(label_clean)
+        is_excel = self.is_excel_column(label_clean) or self.is_excel_column(raw_slug)
+        base_key = f"{raw_slug}_added" if is_excel else raw_slug
+
         candidate_key = base_key
         counter = 1
         while self.db.query(CustomColumn).filter(CustomColumn.key == candidate_key).first():
@@ -109,7 +160,7 @@ class AnnotationService:
             type=type_clean,
             dropdown_options=clean_opts if type_clean == "dropdown" else None,
             sort_order=sort_order,
-            source_header=source_header.strip() if source_header else None,
+            source_header=None,  # Source header linking is removed
             is_deleted=False,
             created_by=user_id,
             created_at=datetime.now(timezone.utc),
@@ -122,12 +173,12 @@ class AnnotationService:
             entity_type="column",
             entity_id=col.key,
             column_key=col.key,
-            action="create",
+            action="column added",
             old_value=None,
             new_value=label_clean,
             user_id=user_id,
             timestamp=datetime.now(timezone.utc),
-            extra_info={"type": type_clean, "source_header": source_header},
+            extra_info={"type": type_clean},
         )
         self.db.add(audit)
         self.db.commit()
@@ -141,15 +192,12 @@ class AnnotationService:
         col_type: str | None = None,
         dropdown_options: list[str] | None = None,
         sort_order: int | None = None,
-        source_header: str | None = None,
         user_id: str = "admin",
     ) -> CustomColumn:
-        col = (
-            self.db.query(CustomColumn)
-            .filter((CustomColumn.id == col_id_or_key) | (CustomColumn.key == col_id_or_key))
-            .first()
-        )
-        if not col or col.is_deleted:
+        col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
+        if not col:
+            if self.is_excel_column(col_id_or_key):
+                raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
             raise ValidationError(f"Column '{col_id_or_key}' not found.")
 
         old_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}"
@@ -172,9 +220,6 @@ class AnnotationService:
         if sort_order is not None:
             col.sort_order = sort_order
 
-        if source_header is not None:
-            col.source_header = source_header.strip() if source_header.strip() else None
-
         new_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}"
 
         audit = AnnotationAudit(
@@ -182,7 +227,7 @@ class AnnotationService:
             entity_type="column",
             entity_id=col.key,
             column_key=col.key,
-            action="update",
+            action="column edited",
             old_value=old_desc,
             new_value=new_desc,
             user_id=user_id,
@@ -193,14 +238,96 @@ class AnnotationService:
         self.db.refresh(col)
         return col
 
-    def delete_column(self, col_id_or_key: str, user_id: str = "admin") -> CustomColumn:
-        col = (
-            self.db.query(CustomColumn)
-            .filter((CustomColumn.id == col_id_or_key) | (CustomColumn.key == col_id_or_key))
-            .first()
-        )
-        if not col or col.is_deleted:
+    def rename_column(self, col_id_or_key: str, new_label: str, user_id: str = "admin") -> CustomColumn:
+        col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
+        if not col:
+            if self.is_excel_column(col_id_or_key):
+                raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
             raise ValidationError(f"Column '{col_id_or_key}' not found.")
+
+        label_clean = str(new_label or "").strip()
+        if not label_clean:
+            raise ValidationError("Column label cannot be empty.")
+
+        old_label = col.label
+        col.label = label_clean
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="column",
+            entity_id=col.key,
+            column_key=col.key,
+            action="column renamed",
+            old_value=old_label,
+            new_value=label_clean,
+            user_id=user_id,
+            timestamp=datetime.now(timezone.utc),
+        )
+        self.db.add(audit)
+        self.db.commit()
+        self.db.refresh(col)
+        return col
+
+    def move_column(self, col_id_or_key: str, direction: str, user_id: str = "admin") -> list[CustomColumn]:
+        dir_clean = str(direction or "").strip().lower()
+        if dir_clean not in ("left", "right"):
+            raise ValidationError("Direction must be 'left' or 'right'.")
+
+        col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
+        if not col:
+            if self.is_excel_column(col_id_or_key):
+                raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
+            raise ValidationError(f"Column '{col_id_or_key}' not found.")
+
+        all_cols = self.list_columns(include_deleted=False)
+        idx = next((i for i, c in enumerate(all_cols) if c.id == col.id), None)
+        if idx is None:
+            return all_cols
+
+        swap_idx = (idx - 1) if dir_clean == "left" else (idx + 1)
+        if 0 <= swap_idx < len(all_cols):
+            target = all_cols[swap_idx]
+            # Swap sort_orders
+            col.sort_order, target.sort_order = target.sort_order, col.sort_order
+            if col.sort_order == target.sort_order:
+                # Disambiguate if equal
+                col.sort_order = swap_idx
+                target.sort_order = idx
+
+            audit = AnnotationAudit(
+                id=str(uuid.uuid4()),
+                entity_type="column",
+                entity_id=col.key,
+                column_key=col.key,
+                action="column moved",
+                old_value=f"position {idx + 1}",
+                new_value=f"position {swap_idx + 1} ({dir_clean})",
+                user_id=user_id,
+                timestamp=datetime.now(timezone.utc),
+            )
+            self.db.add(audit)
+            self.db.commit()
+
+        return self.list_columns(include_deleted=False)
+
+    def delete_column(self, col_id_or_key: str, user_id: str = "admin") -> tuple[CustomColumn, int]:
+        col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
+        if not col:
+            if self.is_excel_column(col_id_or_key):
+                raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
+            raise ValidationError(f"Column '{col_id_or_key}' not found.")
+
+        # Count entered values
+        annots = (
+            self.db.query(DealAnnotation)
+            .filter(DealAnnotation.column_key == col.key)
+            .all()
+        )
+        n_values = len(annots)
+        removed_snapshot = [
+            {"deal_id": a.opportunity_id_18, "value": a.value, "updated_by": a.updated_by}
+            for a in annots[:200]
+        ]
 
         col.is_deleted = True
 
@@ -209,14 +336,46 @@ class AnnotationService:
             entity_type="column",
             entity_id=col.key,
             column_key=col.key,
-            action="delete",
+            action="column deleted",
             old_value=col.label,
             new_value="DELETED",
+            user_id=user_id,
+            timestamp=datetime.now(timezone.utc),
+            extra_info={
+                "values_count": n_values,
+                "removed_values_sample": removed_snapshot,
+            },
+        )
+        self.db.add(audit)
+        self.db.commit()
+        return col, n_values
+
+    def restore_column(self, col_id_or_key: str, user_id: str = "admin") -> CustomColumn:
+        col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=True)
+        if not col:
+            if self.is_excel_column(col_id_or_key):
+                raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
+            raise ValidationError(f"Column '{col_id_or_key}' not found.")
+
+        if not col.is_deleted:
+            raise ValidationError(f"Column '{col.label}' is already active.")
+
+        col.is_deleted = False
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="column",
+            entity_id=col.key,
+            column_key=col.key,
+            action="column restored",
+            old_value="DELETED",
+            new_value=col.label,
             user_id=user_id,
             timestamp=datetime.now(timezone.utc),
         )
         self.db.add(audit)
         self.db.commit()
+        self.db.refresh(col)
         return col
 
     def get_detected_headers(self, snapshot_id: str | None = None) -> list[str]:
@@ -352,6 +511,9 @@ class AnnotationService:
         if not opp_id:
             raise ValidationError("Opportunity ID cannot be empty.")
 
+        if self.is_excel_column(column_key):
+            raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
+
         col = self.get_column_by_key(column_key)
         if not col or col.is_deleted:
             raise ValidationError(f"Unknown or deleted column key: '{column_key}'.")
@@ -384,7 +546,7 @@ class AnnotationService:
                     entity_id=opp_id,
                     column_key=column_key,
                     opportunity_id_18=opp_id,
-                    action="delete",
+                    action="value cleared",
                     old_value=old_val,
                     new_value=None,
                     user_id=user_id,
@@ -414,7 +576,7 @@ class AnnotationService:
                 entity_id=opp_id,
                 column_key=column_key,
                 opportunity_id_18=opp_id,
-                action="update",
+                action="value edited",
                 old_value=old_val,
                 new_value=clean_val,
                 user_id=user_id,
@@ -444,7 +606,7 @@ class AnnotationService:
             entity_id=opp_id,
             column_key=column_key,
             opportunity_id_18=opp_id,
-            action="create",
+            action="value added",
             old_value=None,
             new_value=clean_val,
             user_id=user_id,
@@ -457,6 +619,8 @@ class AnnotationService:
 
     def delete_deal_value(self, opportunity_id_18: str, column_key: str, user_id: str = "admin") -> bool:
         """Clear a deal annotation value."""
+        if self.is_excel_column(column_key):
+            raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
         return self.set_deal_value(opportunity_id_18, column_key, None, user_id=user_id).get("cleared", False)
 
     def get_deal_audit(self, opportunity_id_18: str) -> list[dict]:
@@ -468,6 +632,102 @@ class AnnotationService:
             .all()
         )
         return [e.to_dict() for e in entries]
+
+    def get_audit_log(
+        self,
+        user: str | None = None,
+        column: str | None = None,
+        deal: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """
+        Global audit log query for admin change log table.
+        Joins Opportunity to provide Account Name and Opportunity Name.
+        """
+        from sqlalchemy import or_
+        q = self.db.query(AnnotationAudit)
+
+        if user:
+            u_clean = user.strip()
+            q = q.filter(AnnotationAudit.user_id.ilike(f"%{u_clean}%"))
+
+        if column:
+            c_clean = column.strip()
+            q = q.filter(
+                or_(
+                    AnnotationAudit.column_key.ilike(f"%{c_clean}%"),
+                    AnnotationAudit.new_value.ilike(f"%{c_clean}%"),
+                )
+            )
+
+        if date_from:
+            try:
+                dt_f = datetime.fromisoformat(date_from[:10]).replace(tzinfo=timezone.utc)
+                q = q.filter(AnnotationAudit.timestamp >= dt_f)
+            except Exception:
+                pass
+
+        if date_to:
+            try:
+                dt_t = datetime.fromisoformat(date_to[:10]).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                q = q.filter(AnnotationAudit.timestamp <= dt_t)
+            except Exception:
+                pass
+
+        if deal:
+            d_clean = deal.strip()
+            matching_opps = (
+                self.db.query(Opportunity.opportunity_id_18)
+                .filter(
+                    or_(
+                        Opportunity.opportunity_id_18.ilike(f"%{d_clean}%"),
+                        Opportunity.account_name.ilike(f"%{d_clean}%"),
+                        Opportunity.opportunity_name.ilike(f"%{d_clean}%"),
+                    )
+                )
+                .distinct()
+                .limit(200)
+                .all()
+            )
+            matching_ids = [m[0] for m in matching_opps if m[0]]
+            if matching_ids:
+                q = q.filter(
+                    or_(
+                        AnnotationAudit.opportunity_id_18.in_(matching_ids),
+                        AnnotationAudit.opportunity_id_18.ilike(f"%{d_clean}%"),
+                    )
+                )
+            else:
+                q = q.filter(AnnotationAudit.opportunity_id_18.ilike(f"%{d_clean}%"))
+
+        entries = q.order_by(AnnotationAudit.timestamp.desc()).limit(limit).all()
+
+        deal_ids = [e.opportunity_id_18 for e in entries if e.opportunity_id_18]
+        deal_info_map: dict[str, tuple[str, str]] = {}
+        if deal_ids:
+            opp_rows = (
+                self.db.query(Opportunity.opportunity_id_18, Opportunity.account_name, Opportunity.opportunity_name)
+                .filter(Opportunity.opportunity_id_18.in_(list(set(deal_ids))))
+                .all()
+            )
+            for opp_id, acc_name, opp_name in opp_rows:
+                if opp_id and opp_id not in deal_info_map:
+                    deal_info_map[opp_id] = (acc_name or "", opp_name or "")
+
+        col_map = {c.key: c.label for c in self.db.query(CustomColumn).all()}
+
+        results = []
+        for e in entries:
+            d_dict = e.to_dict()
+            acc, opp_name = deal_info_map.get(e.opportunity_id_18 or "", ("", ""))
+            d_dict["account_name"] = acc
+            d_dict["opportunity_name"] = opp_name
+            d_dict["column_label"] = col_map.get(e.column_key, e.column_key)
+            results.append(d_dict)
+
+        return results
 
     # -------------------------------------------------------------
     # Batch Deal Enrichment for Data Explorer

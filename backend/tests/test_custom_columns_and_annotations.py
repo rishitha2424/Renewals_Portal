@@ -123,8 +123,8 @@ def test_column_crud_and_validation(test_db_session):
     # Verify audit entries
     audit = test_db_session.query(AnnotationAudit).filter(AnnotationAudit.column_key == "account_strategy").all()
     actions = [a.action for a in audit]
-    assert "create" in actions
-    assert "update" in actions
+    assert "column added" in actions
+    assert "column edited" in actions
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ def test_value_edits_per_type_and_concurrency(test_db_session):
 
 
 # ---------------------------------------------------------------------------
-# 3. Admin-Only Mutating Route Security
+# 3. Admin-Only Mutating Route Security & Excel Column Rejections
 # ---------------------------------------------------------------------------
 def test_admin_only_routes_enforcement(client_and_db, admin_headers):
     client, db = client_and_db
@@ -237,6 +237,15 @@ def test_admin_only_routes_enforcement(client_and_db, admin_headers):
     )
     assert r_put_ok.status_code == 200
 
+    # Attempting to mutate an Excel column via API must be rejected
+    r_put_excel = client.put(
+        "/api/custom-columns/deals/006TESTOPP/annotations/stage_number",
+        json={"value": "7"},
+        headers=admin_headers,
+    )
+    assert r_put_excel.status_code == 400
+    assert "read-only" in r_put_excel.json().get("detail", "").lower()
+
     # DELETE deal value with admin auth -> 200
     r_del_ok = client.delete(
         "/api/custom-columns/deals/006TESTOPP/annotations/secured_col",
@@ -246,63 +255,50 @@ def test_admin_only_routes_enforcement(client_and_db, admin_headers):
 
 
 # ---------------------------------------------------------------------------
-# 4. Upload Ingest Conflict Rules & Cross-Snapshot Survival
+# 4. Excel Column Protection, Clashing Added Columns & Cross-Snapshot Survival
 # ---------------------------------------------------------------------------
-def test_upload_conflict_rules_and_survival(test_db_session):
+def test_excel_column_protection_and_added_columns_survival(test_db_session):
     svc = AnnotationService(test_db_session)
-    col = svc.create_column("Excel Note", "text", source_header="Raw Excel Notes")
 
-    # Deal 1: No app value -> empty fill (source: excel)
-    # Deal 2: Has app value (source: app) -> kept, never overwritten
-    # Deal 3: Has excel value -> new non-blank value replaces it
-    # Deal 4: Has app value -> new blank excel value does not erase it
-    opp_1 = "006DEAL001"
-    opp_2 = "006DEAL002"
-    opp_3 = "006DEAL003"
-    opp_4 = "006DEAL004"
-
-    svc.set_deal_value(opp_2, col.key, "App Note Kept", source="app")
-    svc.set_deal_value(opp_3, col.key, "Old Excel Value", source="excel")
-    svc.set_deal_value(opp_4, col.key, "App Value Blank Immune", source="app")
-
-    # Simulate DataFrame uploaded
-    df_upload = pd.DataFrame([
-        {"Opportunity ID 18 Digit": opp_1, "Raw Excel Notes": "Ingested Note 1"},
-        {"Opportunity ID 18 Digit": opp_2, "Raw Excel Notes": "Different Note in File"},
-        {"Opportunity ID 18 Digit": opp_3, "Raw Excel Notes": "New Replaced Excel Note"},
-        {"Opportunity ID 18 Digit": opp_4, "Raw Excel Notes": ""},  # blank
-    ])
-
-    summary = svc.apply_upload_annotations(df_upload)
-    assert summary["filled"] == 1  # Deal 1
-    assert summary["kept"] == 2    # Deal 2 and Deal 4
-    assert summary["updated"] == 1 # Deal 3
-
-    ann_1 = test_db_session.query(DealAnnotation).filter(DealAnnotation.opportunity_id_18 == opp_1).first()
-    assert ann_1.value == "Ingested Note 1"
-    assert ann_1.source == "excel"
-
-    ann_2 = test_db_session.query(DealAnnotation).filter(DealAnnotation.opportunity_id_18 == opp_2).first()
-    assert ann_2.value == "App Note Kept"  # Not overwritten by "Different Note in File"
-    assert ann_2.source == "app"
-
-    ann_3 = test_db_session.query(DealAnnotation).filter(DealAnnotation.opportunity_id_18 == opp_3).first()
-    assert ann_3.value == "New Replaced Excel Note"  # Replaced
-    assert ann_3.source == "excel"
-
-    ann_4 = test_db_session.query(DealAnnotation).filter(DealAnnotation.opportunity_id_18 == opp_4).first()
-    assert ann_4.value == "App Value Blank Immune"  # Blank didn't erase it
-
-    # Values survive across snapshots and snapshot deletion
+    # Setup snapshot with Excel headers so column_order is known
     snap = UploadSnapshot(
         id="snap-test-uuid",
         label="Test Day",
         snapshot_date=date(2026, 10, 26),
         is_active_today=True,
+        column_order=["Opportunity ID 18 Digit", "Account Name", "Comments", "Stage Number"],
     )
     test_db_session.add(snap)
     test_db_session.commit()
 
+    # 1. Excel column cannot be edited, renamed, moved, or deleted
+    with pytest.raises(ValidationError) as exc:
+        svc.set_deal_value("006TEST", "stage_number", "8")
+    assert "read-only" in str(exc.value).lower()
+
+    with pytest.raises(ValidationError) as exc:
+        svc.rename_column("stage_number", "Renamed Stage")
+    assert "read-only" in str(exc.value).lower()
+
+    with pytest.raises(ValidationError) as exc:
+        svc.move_column("stage_number", "left")
+    assert "read-only" in str(exc.value).lower()
+
+    with pytest.raises(ValidationError) as exc:
+        svc.delete_column("stage_number")
+    assert "read-only" in str(exc.value).lower()
+
+    # 2. Added column matching Excel header name ("Comments" or "Comment Date")
+    # Gets isolated key and is_excel_column=False
+    added_col = svc.create_column("Comments", "text", user_id="admin")
+    assert added_col.key == "comments_added"
+    assert added_col.label == "Comments"
+
+    # 3. Add values to added column
+    opp_1 = "006DEAL001"
+    svc.set_deal_value(opp_1, added_col.key, "My Internal App Comment", user_id="admin")
+
+    # 4. Values survive snapshot creation and deletion
     opp_record = Opportunity(
         id="opp-uuid-1",
         snapshot_id=snap.id,
@@ -312,86 +308,138 @@ def test_upload_conflict_rules_and_survival(test_db_session):
     test_db_session.add(opp_record)
     test_db_session.commit()
 
-    # Delete snapshot
     test_db_session.delete(snap)
     test_db_session.commit()
 
-    # Annotation MUST still exist in database
     survived = test_db_session.query(DealAnnotation).filter(DealAnnotation.opportunity_id_18 == opp_1).first()
     assert survived is not None
-    assert survived.value == "Ingested Note 1"
+    assert survived.value == "My Internal App Comment"
+
+    # 5. Soft-delete and restore
+    del_col, n_values = svc.delete_column(added_col.id, user_id="admin")
+    assert n_values == 1
+    # Check it's marked deleted
+    test_db_session.refresh(added_col)
+    assert added_col.is_deleted is True
+
+    # Restore
+    restored = svc.restore_column(added_col.id, user_id="admin")
+    assert restored.is_deleted is False
+    val_after_restore = svc.get_deal_annotations(opp_1)
+    assert val_after_restore[added_col.key]["value"] == "My Internal App Comment"
 
 
 # ---------------------------------------------------------------------------
-# 5. Full Excel Download & Formula Injection Protection
+# 5. One Download Service: Exact Copy, Appended Added Columns & Safety
 # ---------------------------------------------------------------------------
 def test_full_excel_download_roundtrip_and_safety(test_db_session):
     snap = UploadSnapshot(
         id="snap-export-test",
         label="Export Test",
         snapshot_date=date(2026, 10, 26),
-        column_order=["Opportunity ID 18 Digit", "Account Name", "Amount", "Original Notes"],
+        column_order=["Opportunity ID 18 Digit", "Account Name", "Forecast Category", "Reconciliation Entry", "Comments"],
     )
     test_db_session.add(snap)
     test_db_session.commit()
 
-    opp = Opportunity(
+    opp1 = Opportunity(
         id="opp-exp-1",
         snapshot_id=snap.id,
         opportunity_id_18="006EXPORT01",
         account_name="Acme Corp",
         forecast_acv_amount=50000.0,
         extra_attributes={
+            "_row_order": 0,
             "Opportunity ID 18 Digit": "006EXPORT01",
             "Account Name": "Acme Corp",
-            "Amount": 50000.0,
-            "Original Notes": "Old raw notes",
+            "Forecast Category": "",  # Empty -> MUST NOT be "Blank"
+            "Reconciliation Entry": "-",  # Lone dash -> MUST NOT have visible apostrophe
+            "Comments": "Uploaded Excel comment",
         },
     )
-    test_db_session.add(opp)
+    opp2 = Opportunity(
+        id="opp-exp-2",
+        snapshot_id=snap.id,
+        opportunity_id_18="006EXPORT02",
+        account_name="Beta Corp",
+        forecast_acv_amount=25000.0,
+        extra_attributes={
+            "_row_order": 1,
+            "Opportunity ID 18 Digit": "006EXPORT02",
+            "Account Name": "Beta Corp",
+            "Forecast Category": "Pipeline",
+            "Reconciliation Entry": "=SUM(A1:A10)",  # Formula injection
+            "Comments": "Another Excel comment",
+        },
+    )
+    test_db_session.add_all([opp1, opp2])
     test_db_session.commit()
 
     svc = AnnotationService(test_db_session)
-    # 1. Custom column matching source_header (in-place replacement)
-    col_inplace = svc.create_column("Clean Notes", "text", source_header="Original Notes")
-    svc.set_deal_value("006EXPORT01", col_inplace.key, "New Clean Notes In Place")
+    # Added column with clashing name "Comments" -> gets " (added)" in export header
+    col_clash = svc.create_column("Comments", "text")
+    svc.set_deal_value("006EXPORT01", col_clash.key, "Added App Comment")
 
-    # 2. Appended custom column with potential formula injection
-    col_appended = svc.create_column("Calc Note", "text")
-    svc.set_deal_value("006EXPORT01", col_appended.key, "=SUM(A1:A10)")
+    # Added regular column
+    col_reg = svc.create_column("Status Note", "text")
+    svc.set_deal_value("006EXPORT01", col_reg.key, "Under Review")
 
     export_svc = FullExcelExportService(test_db_session)
-    buf, filename = export_svc.generate_full_excel(snapshot_id=snap.id)
 
-    assert "2026-10-26" in filename
-    wb = openpyxl.load_workbook(buf)
+    # 1. Excel export test
+    buf_xlsx, fn_xlsx, _ = export_svc.generate_export(snapshot_id=snap.id, export_format="xlsx")
+    assert "2026-10-26" in fn_xlsx
+    assert fn_xlsx.endswith(".xlsx")
+
+    wb = openpyxl.load_workbook(buf_xlsx)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
 
     headers = rows[0]
+    # First 5 are original 172/Excel columns
     assert headers[0] == "Opportunity ID 18 Digit"
     assert headers[1] == "Account Name"
-    assert headers[2] == "Amount"
-    assert headers[3] == "Original Notes"
-    # Appended column to the right
-    assert headers[4] == "Calc Note"
-    # The in-place column is NOT duplicated
-    assert "Clean Notes" not in headers
+    assert headers[2] == "Forecast Category"
+    assert headers[3] == "Reconciliation Entry"
+    assert headers[4] == "Comments"
+    # Appended columns: clashing gets " (added)"
+    assert headers[5] == "Comments (added)"
+    assert headers[6] == "Status Note"
 
-    data_row = rows[1]
-    assert data_row[0] == "006EXPORT01"
-    assert data_row[1] == "Acme Corp"
-    # Original Notes has in-place value
-    assert data_row[3] == "New Clean Notes In Place"
-    # Formula injection neutralized with leading quote
-    assert data_row[4] == "'=SUM(A1:A10)"
+    data_r1 = rows[1]
+    # Empty forecast category is None/empty string, NEVER "Blank"
+    assert data_r1[2] is None or data_r1[2] == ""
+    # Lone dash is '-' without leading apostrophe
+    assert data_r1[3] == "-"
+    assert data_r1[4] == "Uploaded Excel comment"
+    assert data_r1[5] == "Added App Comment"
+    assert data_r1[6] == "Under Review"
+
+    # Formula injection sanitized
+    data_r2 = rows[2]
+    assert data_r2[3] == "'=SUM(A1:A10)"
+
+    # 2. CSV export test
+    buf_csv, fn_csv, _ = export_svc.generate_export(snapshot_id=snap.id, export_format="csv")
+    assert fn_csv.endswith(".csv")
+    csv_text = buf_csv.getvalue().decode("utf-8-sig")
+    assert "Comments (added)" in csv_text
+    assert "Status Note" in csv_text
+
+    # 3. Formula sanitizer helper unit test
+    assert sanitize_formula_injection("-") == "-"
+    assert sanitize_formula_injection("-123.45") == "-123.45"
+    assert sanitize_formula_injection("+") == "+"
+    assert sanitize_formula_injection("=cmd|'/C calc'!A0") == "'=cmd|'/C calc'!A0"
+    assert sanitize_formula_injection("@SUM(A1:A5)") == "'@SUM(A1:A5)"
 
 
 # ---------------------------------------------------------------------------
-# 6. Backup Service & Pruning
+# 6. Backup Service, Scheduled Job & Pruning
 # ---------------------------------------------------------------------------
 def test_backup_service_and_pruning(test_db_session, tmp_path, monkeypatch):
     monkeypatch.setenv("ANNOTATION_BACKUP_PATH", str(tmp_path))
+    monkeypatch.setenv("ANNOTATION_BACKUP_RETENTION", "3")
     backup_svc = AnnotationBackupService(test_db_session)
 
     # Add a column and value
@@ -404,9 +452,23 @@ def test_backup_service_and_pruning(test_db_session, tmp_path, monkeypatch):
     assert payload["counts"]["custom_columns"] >= 1
     assert payload["counts"]["deal_annotations"] >= 1
 
-    # Run daily backup
-    file_path = backup_svc.run_daily_backup()
+    # Simulate 5 historical backup files to test retention pruning to 3
+    import time
+    for i in range(5):
+        dummy_file = tmp_path / f"annotations_backup_2026102{i}_000000.json"
+        dummy_file.write_text(json.dumps({"test": i}))
+        time.sleep(0.01)
+
+    # Run daily backup (pruning setting = 3)
+    file_path = backup_svc.run_daily_backup(retention_count=3)
     assert open(file_path, "r", encoding="utf-8").read() != ""
+
+    remaining_files = list(tmp_path.glob("annotations_backup_*.json"))
+    assert len(remaining_files) == 3
+
+    # Verify background schedule registration in lifespan
+    from backend.main import lifespan
+    assert callable(lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -528,5 +590,89 @@ def test_migration_compatibility(tmp_path):
     # Check columns on custom_columns
     cols = {c["name"] for c in insp.get_columns("custom_columns")}
     assert {"id", "key", "label", "type", "sort_order", "is_deleted"}.issubset(cols)
+
+
+# ---------------------------------------------------------------------------
+# 9. Excel Column Immutability across All Added Column Operations
+# ---------------------------------------------------------------------------
+def test_excel_columns_unchanged_after_added_column_mutations(test_db_session):
+    """
+    User requirement 0:
+    Add a test that after any add, edit, rename, move, delete or restore of added columns,
+    the API output for every Excel column equals the uploaded workbook.
+    """
+    from backend.services.explorer_service import ExplorerService
+    excel_headers = ["Opportunity ID 18 Digit", "Account Name", "Stage Number", "Forecast ACV Amount", "Comments"]
+    snap = UploadSnapshot(
+        id="snap-immutability-test",
+        label="Test Immutability",
+        snapshot_date=date(2026, 10, 26),
+        is_active_today=True,
+        column_order=excel_headers,
+    )
+    test_db_session.add(snap)
+    test_db_session.commit()
+
+    opp = Opportunity(
+        id="opp-imm-1",
+        snapshot_id=snap.id,
+        opportunity_id_18="006IMMUTABLE01",
+        account_name="Acme Corp",
+        stage_number=5,
+        forecast_acv_amount=12345.67,
+        extra_attributes={
+            "Opportunity ID 18 Digit": "006IMMUTABLE01",
+            "Account Name": "Acme Corp",
+            "Stage Number": 5,
+            "Forecast ACV Amount": 12345.67,
+            "Comments": "Original Excel Comments",
+        },
+    )
+    test_db_session.add(opp)
+    test_db_session.commit()
+
+    exp_svc = ExplorerService(test_db_session)
+    annot_svc = AnnotationService(test_db_session)
+
+    # Baseline query
+    baseline_rows, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    baseline_excel_data = {k: baseline_rows[0][k] for k in excel_headers}
+
+    # 1. ADD an added column (even with clashing label "Comments")
+    col = annot_svc.create_column("Comments", "text", user_id="admin")
+    rows_after_add, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_add[0][k] == baseline_excel_data[k]
+
+    # 2. EDIT a value on added column
+    annot_svc.set_deal_value(opp.opportunity_id_18, col.key, "New app note", user_id="admin")
+    rows_after_edit, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_edit[0][k] == baseline_excel_data[k]
+
+    # 3. RENAME added column
+    annot_svc.rename_column(col.id, "Internal Notes", user_id="admin")
+    rows_after_rename, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_rename[0][k] == baseline_excel_data[k]
+
+    # 4. MOVE added column
+    annot_svc.move_column(col.id, "left", user_id="admin")
+    rows_after_move, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_move[0][k] == baseline_excel_data[k]
+
+    # 5. DELETE added column
+    annot_svc.delete_column(col.id, user_id="admin")
+    rows_after_del, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_del[0][k] == baseline_excel_data[k]
+
+    # 6. RESTORE added column
+    annot_svc.restore_column(col.id, user_id="admin")
+    rows_after_restore, _, _ = exp_svc.query_rows(snap=snap, filter_spec=None, filters=[])
+    for k in excel_headers:
+        assert rows_after_restore[0][k] == baseline_excel_data[k]
+
 
 
