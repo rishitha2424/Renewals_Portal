@@ -35,10 +35,16 @@ async def lifespan(app: FastAPI):
         log.info("Database migrations applied successfully.")
         migrations_status = "migrations at head"
     except Exception as e:
-        log.error("Alembic upgrade failed on startup: %s", e)
+        import traceback
+        tb_str = traceback.format_exc()
+        log.error("DATABASE MIGRATION ERROR ON STARTUP:\n%s", tb_str)
         if is_postgres:
-            log.critical("FATAL: Database migration failed on PostgreSQL. Halting startup.")
-            raise RuntimeError(f"Database migration failed on PostgreSQL: {e}") from e
+            log.critical(
+                "FATAL: Database migration failed on PostgreSQL: %s\n"
+                "Halting startup with full traceback:\n%s",
+                e, tb_str
+            )
+            raise RuntimeError(f"Database migration failed on PostgreSQL: {e}\n\nFull traceback:\n{tb_str}") from e
         else:
             log.warning("Falling back to Base.metadata.create_all on SQLite (%s)...", e)
             from backend.database import Base
