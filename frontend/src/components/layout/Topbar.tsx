@@ -21,6 +21,7 @@ import {
   Trash2,
   Info,
   AlertTriangle,
+  Tag,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec } from '@/store/appStore'
@@ -59,6 +60,8 @@ export default function Topbar() {
   const downloadRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLDivElement>(null)
   const viewsRef = useRef<HTMLDivElement>(null)
+  const typeFilterRef = useRef<HTMLDivElement>(null)
+  const [typeFilterOpen, setTypeFilterOpen] = useState(false)
 
   const location = useLocation()
   const isExplorer = location.pathname.startsWith('/opportunities') || location.pathname.startsWith('/explore')
@@ -99,6 +102,9 @@ export default function Topbar() {
       }
       if (viewsRef.current && !viewsRef.current.contains(target)) {
         setSavedViewsOpen(false)
+      }
+      if (typeFilterRef.current && !typeFilterRef.current.contains(target)) {
+        setTypeFilterOpen(false)
       }
     }
     document.addEventListener('mousedown', handleOutside)
@@ -206,8 +212,39 @@ export default function Topbar() {
     showToast.success('Custom view applied')
   }
 
+  // Deal Types filter state
+  const defaultTypes: string[] = filterOpts?.default_types || ['MR', 'R']
+  const allAvailableTypes: { code: string; label: string; deal_count: number }[] = filterOpts?.types || []
+  const allCodes = allAvailableTypes.map((t: any) => t.code)
+  const currentTypes = globalFilters.types || defaultTypes
+  const isAllTypes = currentTypes.includes('all') || (allCodes.length > 0 && allCodes.every((c: string) => currentTypes.includes(c)))
+
+  const toggleTypeFilter = (code: string) => {
+    let next: string[]
+    if (isAllTypes) {
+      next = allCodes.filter((c: string) => c !== code)
+    } else {
+      next = currentTypes.includes(code)
+        ? currentTypes.filter((c: string) => c !== code)
+        : [...currentTypes, code]
+    }
+    setGlobalFilters({ types: next })
+  }
+
   // Active filter chips
   const chips: { key: string; label: string; onRemove: () => void }[] = []
+  
+  // Type filter chip
+  chips.push({
+    key: 'type-filter',
+    label: isAllTypes
+      ? 'Type: All'
+      : currentTypes.length === 0
+      ? 'Type: None'
+      : `Type: ${currentTypes.join(', ')}`,
+    onRemove: () => setGlobalFilters({ types: defaultTypes }),
+  })
+
   if (globalFilters.period !== 'current_quarter') {
     const pLabel =
       filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)?.label ||
@@ -390,7 +427,83 @@ export default function Topbar() {
             </select>
           </div>
 
-          {/* 5. Include Deleted & Lost (visible >= xl) */}
+          {/* 5. Type Filter (Multi-select dropdown) */}
+          <div className="relative hidden md:inline-flex flex-shrink-0" ref={typeFilterRef}>
+            <button
+              type="button"
+              onClick={() => setTypeFilterOpen(!typeFilterOpen)}
+              className="h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+              id="filter-type-btn"
+              title="Filter by Deal Type"
+            >
+              <Tag className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] hidden lg:inline">Type:</span>
+              <span className="font-medium truncate max-w-[120px]">
+                {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+            </button>
+
+            {/* Type Popover */}
+            {typeFilterOpen && (
+              <div className="absolute left-0 mt-1 top-full w-72 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
+                  <span className="font-semibold text-xs text-[var(--text-primary)]">Deal Type Filter</span>
+                  <button
+                    type="button"
+                    onClick={() => setTypeFilterOpen(false)}
+                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGlobalFilters({ types: allCodes.length > 0 ? allCodes : ['all'] })}
+                    className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
+                    id="btn-select-all-types"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGlobalFilters({ types: defaultTypes })}
+                    className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
+                    id="btn-reset-default-types"
+                  >
+                    Default ({defaultTypes.join(', ')})
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto p-1 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
+                  {allAvailableTypes.map((t: any) => {
+                    const checked = isAllTypes || currentTypes.includes(t.code)
+                    return (
+                      <label
+                        key={t.code}
+                        className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTypeFilter(t.code)}
+                            className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                          />
+                          <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
+                        </div>
+                        <span className="text-[10px] text-[var(--text-muted)]">{t.deal_count} deals</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 6. Include Deleted & Lost (visible >= xl) */}
           <label
             className="hidden xl:inline-flex h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] cursor-pointer transition-colors items-center gap-2 select-none flex-shrink-0"
             title="Toggle inclusion of Deleted and Lost pipeline opportunities"
@@ -901,6 +1014,51 @@ export default function Topbar() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Deal Type (Mobile) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">
+                      Deal Type
+                    </label>
+                    <div className="flex gap-2 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setGlobalFilters({ types: allCodes.length > 0 ? allCodes : ['all'] })}
+                        className="text-[#00A3AD] font-semibold hover:underline"
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGlobalFilters({ types: defaultTypes })}
+                        className="text-[var(--text-muted)] hover:underline"
+                      >
+                        Default
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 p-2 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
+                    {allAvailableTypes.map((t: any) => {
+                      const checked = isAllTypes || currentTypes.includes(t.code)
+                      return (
+                        <label
+                          key={t.code}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTypeFilter(t.code)}
+                            className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                          />
+                          <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">({t.deal_count})</span>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Include Deleted & Lost */}

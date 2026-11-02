@@ -18,6 +18,7 @@ import { MovementsSummary } from '@/components/common/MovementsSummary'
 import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -36,7 +37,7 @@ export default function Expiry() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
-  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean; period_type?: string }>({ quarter: null, category: null, period_type: 'fiscal' })
+  const [modalParams, setModalParams] = useState<{ quarter: string | null; category: string | null; slippage?: boolean; period_type?: string; kind?: string }>({ quarter: null, category: null, period_type: 'fiscal' })
   const [drillDeals, setDrillDeals] = useState<any[] | null>(null)
   
   const [heatMode, setHeatMode] = useState<'Value'|'Yesterday'|'LastWeek'>('Value')
@@ -62,6 +63,7 @@ export default function Expiry() {
       category: modalParams.category || undefined,
       slippage: modalParams.slippage,
       period_type: modalParams.period_type || periodMode,
+      kind: modalParams.kind,
       as_of: effectiveAsOf,
       exclude_deleted_lost: !includeDeletedLost
     }),
@@ -193,6 +195,15 @@ export default function Expiry() {
           <MetricToggle />
         </div>
       </div>
+
+      <ExcludedTypesNote
+        excluded={sum?.other_types_excluded}
+        onViewDeals={() => {
+          setModalTitle('Other Types Excluded')
+          setModalParams({ quarter: null, category: null, kind: 'other_types' })
+          setModalOpen(true)
+        }}
+      />
 
       {/* View by Toggle with definitions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-secondary)] p-3 rounded-xl border border-[var(--border)]">

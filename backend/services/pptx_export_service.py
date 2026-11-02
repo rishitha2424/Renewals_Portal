@@ -160,6 +160,7 @@ class PptxExportService:
         compare_to: str | None = None,
         scope: str = "renewals",
         include_deleted_lost: bool = True,
+        types: list[str] | None = None,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot
         snap = self.analytics_svc._resolve_snapshot(ADMIN_CONTEXT, snapshot_id)
@@ -194,7 +195,7 @@ class PptxExportService:
         fy_label = ScopeService.quarter_label(cq)
 
         # Gather data
-        opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)
+        opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost, types=types)
         fs = self.analytics_svc.get_forecast_summary(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=scope, include_deleted_lost=include_deleted_lost,
@@ -209,7 +210,7 @@ class PptxExportService:
             ov_summary = ov_svc.get_summary(
                 ADMIN_CONTEXT,
                 as_of=snap.snapshot_date.isoformat(),
-                filter_spec=FilterSpec(sales_types=["Renewals"], period="current_quarter", include_deleted_lost=include_deleted_lost),
+                filter_spec=FilterSpec(sales_types=["Renewals"], period="current_quarter", include_deleted_lost=include_deleted_lost, types=types),
             )
 
         comp_data = {}

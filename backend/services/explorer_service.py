@@ -330,6 +330,11 @@ class ExplorerService:
         if filter_spec:
             # Period (if specified and not all_periods)
             period = (filter_spec.period or "").strip()
+            if period.lower() == "current_quarter":
+                snap = self.resolve_snapshot(filter_spec.as_of)
+                if snap:
+                    from backend.services.scopes import ScopeService
+                    period = ScopeService.quarter_of(snap.snapshot_date)
             if period and period not in ("all", "all_periods", ""):
                 # If it's a specific quarter
                 if re.match(r"^Q[1-4]-\d{4}$", period, re.IGNORECASE):
@@ -405,6 +410,29 @@ class ExplorerService:
             # Include Deleted & Lost
             if not filter_spec.include_deleted_lost:
                 conditions.append(Opportunity.is_deleted_or_lost == False)
+
+            # Deal Types
+            effective_types: Optional[List[str]] = None
+            if filter_spec.types is not None:
+                if not any(t.lower() == "all" for t in filter_spec.types):
+                    effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
+            else:
+                from backend.services.settings_service import SettingsService
+                effective_types = SettingsService.get_included_types(self.db)
+
+            if effective_types is not None:
+                if len(effective_types) == 0:
+                    conditions.append(Opportunity.id == "no_match_type_filter")
+                else:
+                    type_col = Opportunity.extra_attributes["Type"].as_string()
+                    type_conds = []
+                    for code in effective_types:
+                        if code == "UNKNOWN":
+                            type_conds.append(or_(type_col == None, type_col == "", type_col == "null", type_col == "Unknown"))
+                        else:
+                            type_conds.append(or_(type_col == code, type_col.like(f"{code}-%"), type_col.like(f"{code} -%")))
+                    if type_conds:
+                        conditions.append(or_(*type_conds))
 
         # Build AND rules
         and_rules = [f for f in filters if getattr(f, "group", "and") != "or"]
@@ -646,6 +674,50 @@ class ExplorerService:
             rows_data.append(row_dict)
 
         return rows_data, total_count, total_acv
+
+    def get_other_types_excluded(
+        self,
+        snap: UploadSnapshot,
+        filter_spec: Optional[FilterSpec],
+    ) -> Optional[Dict[str, Any]]:
+        effective_types = None
+        if filter_spec:
+            if filter_spec.types is not None:
+                if not any(t.lower() == "all" for t in filter_spec.types):
+                    effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
+            else:
+                from backend.services.settings_service import SettingsService
+                effective_types = SettingsService.get_included_types(self.db)
+        else:
+            from backend.services.settings_service import SettingsService
+            effective_types = SettingsService.get_included_types(self.db)
+
+        if effective_types is None:
+            return None
+
+        base_fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        base_fs.types = ["all"]
+        snap_id = snap.id if hasattr(snap, "id") else str(snap)
+        conditions = [Opportunity.snapshot_id == snap_id]
+        conditions.extend(self.build_conditions(base_fs, []))
+        base_opps = self.db.query(Opportunity).filter(and_(*conditions)).all()
+
+        excluded_opps = [
+            o for o in base_opps
+            if ScopeService.extract_type_code(
+                (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+            ) not in effective_types
+        ]
+        if not excluded_opps:
+            return None
+
+        exc_cnt = len(excluded_opps)
+        exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+        return {
+            "count": exc_cnt,
+            "acv": exc_acv,
+            "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+        }
 
     def _merge_opportunity_record(self, opp: Opportunity, col_order: List[str]) -> Dict[str, Any]:
         """

@@ -34,6 +34,7 @@ import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 
 function formatDelta(val: number, isCount: boolean) {
   if (val == null) return null
@@ -148,7 +149,8 @@ export default function Approvals() {
       undefined,
       modalFilters.min_acv,
       modalFilters.max_acv,
-      modalFilters.deal_ids
+      modalFilters.deal_ids,
+      modalFilters.kind
     ),
     enabled: modalOpen && !!activeSnapshotId,
   })
@@ -277,6 +279,11 @@ export default function Approvals() {
         </div>
         <MetricToggle />
       </div>
+
+      <ExcludedTypesNote
+        excluded={data?.other_types_excluded}
+        onViewDeals={() => handleCellClick({ kind: 'other_types' }, 'Other Types Excluded')}
+      />
 
       {/* Slim Stat Chips */}
       <div id="approvals-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">

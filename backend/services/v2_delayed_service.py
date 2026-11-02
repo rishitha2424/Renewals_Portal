@@ -317,8 +317,17 @@ class V2DelayedService:
         effective_delayed_group = rules.get("delayed_group")
         fallback_used = rules.get("fallback_used", False)
         exclude_non_pos = rules.get("exclude_zero_negative_acv", True)
-        included_type_codes = rules.get("included_type_codes", ["MR", "R"])
-        type_filter_note = rules.get("type_filter_note", "MR and R types only")
+
+        if filter_spec and filter_spec.types is not None:
+            if any(t.lower() == "all" for t in filter_spec.types):
+                included_type_codes = available_types
+            else:
+                included_type_codes = [t.upper().strip() for t in filter_spec.types if t.strip()]
+            type_filter_note = " and ".join(included_type_codes) + " types only" if included_type_codes else "All types"
+        else:
+            included_type_codes = rules.get("included_type_codes", ["MR", "R"])
+            type_filter_note = rules.get("type_filter_note", "MR and R types only")
+
         far_ahead_years = rules.get("close_date_far_ahead_years", 5)
 
         # Base open filter
@@ -655,6 +664,8 @@ class V2DelayedService:
         label_later_yr = f"{year_end.year + 2} or later"
 
         type_filter_note = main_buckets["type_filter_note"]
+        included_type_codes = main_buckets.get("included_type_codes", [])
+        available_types = sorted(list(set(main_buckets["t_df"]["type_code"].dropna().unique()))) if "type_code" in main_buckets["t_df"].columns else []
 
         delayed_renewals = {
             "heading": "Delayed Renewals",
@@ -1027,8 +1038,13 @@ class V2DelayedService:
             "type_filter_note": type_filter_note,
             "delayed_include_prior_fy": getattr(settings, "DELAYED_INCLUDE_PRIOR_FY", True),
             "rule_text": rules.get("rule_caption", "Group contains delay, MR and R types"),
-            "included_type_codes": rules.get("included_type_codes", ["MR", "R"]),
-            "available_types": rules.get("available_types", []),
+            "included_type_codes": included_type_codes,
+            "available_types": available_types,
+            "other_types_excluded": {
+                "count": next((it["count"] for it in needs_review.get("items", []) if it.get("type") == "other_types"), 0),
+                "acv": next((it["acv"] for it in needs_review.get("items", []) if it.get("type") == "other_types"), 0.0),
+                "note": f"Other types excluded: {next((it['count'] for it in needs_review.get('items', []) if it.get('type') == 'other_types'), 0)} deals / ${next((it['acv'] for it in needs_review.get('items', []) if it.get('type') == 'other_types'), 0.0):,.2f}",
+            } if any(it.get("type") == "other_types" and it.get("count", 0) > 0 for it in needs_review.get("items", [])) else None,
         }
 
     def get_deals(

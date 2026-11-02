@@ -14,6 +14,8 @@ def get_filter_spec(
     business_units: Optional[List[str]] = Query(None),
     forecast_categories: Optional[List[str]] = Query(None),
     approval_statuses: Optional[List[str]] = Query(None),
+    types: Optional[List[str]] = Query(None),
+    types_bracket: Optional[List[str]] = Query(None, alias="types[]"),
     include_deleted_lost: Optional[bool] = Query(None),
     exclude_deleted_lost: bool = Query(False),
     exclude_deleted: bool = Query(False),
@@ -24,6 +26,8 @@ def get_filter_spec(
     elif exclude_deleted or exclude_deleted_lost:
         idl = False
 
+    eff_types = types if types is not None else types_bracket
+
     return FilterSpec.from_params(
         as_of=as_of,
         compare=compare,
@@ -33,5 +37,6 @@ def get_filter_spec(
         business_units=business_units,
         forecast_categories=forecast_categories,
         approval_statuses=approval_statuses,
+        types=eff_types,
         include_deleted_lost=idl,
     )

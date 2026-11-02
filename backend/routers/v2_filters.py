@@ -190,6 +190,27 @@ def get_filter_options(
     if rejected_count > 0:
         approval_statuses.append({"key": "Rejected", "value": "Rejected", "label": "Rejected", "count": rejected_count})
 
+    # 7. Deal Types (dynamic from data, text before hyphen, no type -> Unknown)
+    type_counts: Dict[str, int] = {}
+    for o in opps:
+        raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type")
+        code = ScopeService.extract_type_code(raw_type)
+        type_counts[code] = type_counts.get(code, 0) + 1
+
+    sorted_types = sorted([k for k in type_counts.keys() if k != "Unknown"])
+    if "Unknown" in type_counts:
+        sorted_types.append("Unknown")
+
+    types_list = [
+        {"key": t, "value": t, "label": t, "count": type_counts[t]}
+        for t in sorted_types
+    ]
+
+    from backend.services.settings_service import SettingsService
+    default_types = SettingsService.get_included_types(db)
+    delayed_rules = SettingsService.get_delayed_rules(db)
+    type_filter_note = delayed_rules.get("type_filter_note", "MR and R types only")
+
     return {
         "as_of": snap.snapshot_date.isoformat(),
         "current_quarter": cq,
@@ -203,4 +224,7 @@ def get_filter_options(
         "business_units": business_units,
         "forecast_categories": forecast_categories,
         "approval_statuses": approval_statuses,
+        "types": types_list,
+        "default_types": default_types,
+        "type_filter_note": type_filter_note,
     }

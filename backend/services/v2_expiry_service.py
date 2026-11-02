@@ -66,7 +66,7 @@ class V2ExpiryService:
         fs_for_expiry.period = "all_periods"
         if period_type == "fiscal":
             fs_for_expiry.sales_types = ["Renewals"]
-        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
+        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
         
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
@@ -77,7 +77,7 @@ class V2ExpiryService:
         
         opps = q.all()
         if not opps:
-            return pd.DataFrame(), []
+            return pd.DataFrame(), [], res
             
         data = []
         years_found = set()
@@ -113,7 +113,7 @@ class V2ExpiryService:
         df = pd.DataFrame(data)
         df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
         sorted_years = sorted(list(years_found))
-        return df, sorted_years
+        return df, sorted_years, res
 
     def get_summary(
         self,
@@ -130,7 +130,7 @@ class V2ExpiryService:
         if not snap:
             return {"error": "No snapshot found"}
             
-        df, years_found = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
+        df, years_found, win_res = self._window_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
         
         eff_date = snap.snapshot_date
         if eff_as_of:
@@ -159,13 +159,13 @@ class V2ExpiryService:
             comp_snap = self._get_snapshot(ctx, eff_compare)
         comp_df = pd.DataFrame()
         if comp_snap:
-            comp_df, _ = self._window_opps(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
+            comp_df, _, _ = self._window_opps(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type)
             
         snap_yest = self._get_snapshot(ctx, "yesterday")
-        df_yest, _ = self._window_opps(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_yest else (pd.DataFrame(), [])
+        df_yest, _, _ = self._window_opps(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_yest else (pd.DataFrame(), [], None)
         
         snap_lw = self._get_snapshot(ctx, "last_week")
-        df_lw, _ = self._window_opps(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_lw else (pd.DataFrame(), [])
+        df_lw, _, _ = self._window_opps(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type) if snap_lw else (pd.DataFrame(), [], None)
         
         quarters = []
         for y_str in years_to_use:
@@ -333,7 +333,44 @@ class V2ExpiryService:
 
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
+
+        other_types_excluded = None
+        if res.effective_types is not None:
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                ) not in res.effective_types
+            ]
+            if excluded_opps:
+                exc_cnt = len(excluded_opps)
+                exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+                other_types_excluded = {
+                    "count": exc_cnt,
+                    "acv": exc_acv,
+                    "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+                    "deals": [
+                        {
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type"),
+                        }
+                        for o in excluded_opps
+                    ]
+                }
 
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
@@ -343,6 +380,7 @@ class V2ExpiryService:
             "data_slice": res.label,
             "data_slice_key": target_quarter,
             "filters_applied": res.filters_applied,
+            "other_types_excluded": other_types_excluded,
             "fiscal_years": [
                 {"label": y_label, "quarters": [{"key": q["key"], "label": q["label"]} for q in quarters if q["fy"] == y_label]}
                 for y_label in years_to_use
@@ -372,6 +410,7 @@ class V2ExpiryService:
         exclude_deleted_lost: bool = False,
         slippage: bool = False,
         period_type: str = "fiscal",
+        kind: Optional[str] = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> list[dict]:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
@@ -387,8 +426,35 @@ class V2ExpiryService:
         fs_for_expiry.period = "all_periods"
         if period_type == "fiscal":
             fs_for_expiry.sales_types = ["Renewals"]
-        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date)
+        res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
         
+        if kind == "other_types" or category == "other_types":
+            deals = []
+            if res.effective_types is not None:
+                base_opps = self.db.query(Opportunity).filter(
+                    Opportunity.snapshot_id == snap.id,
+                    *res.base_conditions
+                ).all()
+                for o in base_opps:
+                    raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                    if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
+                        deals.append({
+                            "id": o.id,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0),
+                            "approval_status": o.approval_status,
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "service_expiry_period": o.service_expiry_period,
+                            "fiscal_period": o.fiscal_period,
+                            "close_date": o.close_date.isoformat() if o.close_date else None,
+                            "type": raw_tp,
+                        })
+            return deals
+
         q = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
             *res.conditions

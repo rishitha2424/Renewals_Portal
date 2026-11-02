@@ -125,7 +125,7 @@ class V2RegionsService:
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
         q = (
             self.db.query(Opportunity)
             .filter(
@@ -324,6 +324,44 @@ class V2RegionsService:
             unmapped["acv"] = round(float(other_df["forecast_acv_amount"].sum()), 2)
             unmapped["values"] = sorted(list(set([str(x) for x in other_df["raw_sub_region"].unique() if pd.notna(x) and x != ""])))
 
+        other_types_excluded = None
+        if res.effective_types is not None:
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                ) not in res.effective_types
+            ]
+            if excluded_opps:
+                exc_cnt = len(excluded_opps)
+                exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+                other_types_excluded = {
+                    "count": exc_cnt,
+                    "acv": exc_acv,
+                    "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+                    "deals": [
+                        {
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.revised_sub_region,
+                            "region": _map_region(o.revised_sub_region),
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type"),
+                        }
+                        for o in excluded_opps
+                    ]
+                }
+
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": fs.as_of or snap.snapshot_date.isoformat(),
@@ -347,7 +385,8 @@ class V2RegionsService:
                 "categories": fc_totals,
                 "approval": app_totals,
             },
-            "unmapped": unmapped
+            "unmapped": unmapped,
+            "other_types_excluded": other_types_excluded,
         }
 
     def get_region_summary(self, ctx: UserContext, region: str, as_of: Optional[str] = None, exclude_deleted_lost: bool = False) -> dict:
@@ -688,6 +727,7 @@ class V2RegionsService:
         quarter: str = "",
         delayed: bool = False,
         as_of: str = "",
+        kind: str = "",
         filter_spec: Optional[ScopeService.FilterSpec] = None
     ) -> dict:
         from backend.services.scopes import FilterSpec
@@ -706,6 +746,39 @@ class V2RegionsService:
         if not snap: return {"error": "no_snapshot"}
             
         opps, res = self._scoped_opps(snap, filter_spec=fs)
+
+        if kind == "other_types" or category == "other_types":
+            deals = []
+            if res.effective_types is not None:
+                base_opps = self.db.query(Opportunity).filter(
+                    Opportunity.snapshot_id == snap.id,
+                    *res.base_conditions
+                ).all()
+                for o in base_opps:
+                    raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                    if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
+                        deals.append({
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.revised_sub_region,
+                            "region": _map_region(o.revised_sub_region),
+                            "business_unit_primary": o.business_unit_primary,
+                            "business_unit": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": raw_tp,
+                        })
+            return {
+                "count": len(deals),
+                "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
+                "filters_applied": res.filters_applied,
+                "deals": deals
+            }
+
         df = _opps_to_df(opps)
 
         if not df.empty:

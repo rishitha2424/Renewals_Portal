@@ -28,6 +28,7 @@ import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 
@@ -46,11 +47,6 @@ function DelayedContent() {
   const [modalFilters, setModalFilters] = useState<any>({})
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
-  // Admin Type Filter Settings state
-  const [showTypeModal, setShowTypeModal] = useState(false)
-  const [selectedTypes, setSelectedTypes] = useState<string[]>(['MR', 'R'])
-  const [savingSettings, setSavingSettings] = useState(false)
-
   const { compare: _ignored, ...filters } = globalFilters
 
   const { data: summary, isLoading, error, refetch } = useQuery({
@@ -63,12 +59,6 @@ function DelayedContent() {
     },
   })
 
-  // Synchronize selected types from summary settings when loaded
-  React.useEffect(() => {
-    if (summary?.included_type_codes && Array.isArray(summary.included_type_codes)) {
-      setSelectedTypes(summary.included_type_codes)
-    }
-  }, [summary?.included_type_codes])
 
   const { data: dealsData } = useQuery({
     queryKey: ['v2-delayed-deals', activeSnapshotId, compare, filters, modalFilters],
@@ -535,15 +525,6 @@ function DelayedContent() {
         subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage, and removals.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowTypeModal(true)}
-              className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1.5"
-              title="Configure included deal types for Delayed and Slippage"
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-500" />
-              <span>Type Filter</span>
-            </button>
             <MetricToggle />
             <div className="h-9 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5 text-xs font-medium">
               <button
@@ -573,6 +554,11 @@ function DelayedContent() {
             </div>
           </div>
         }
+      />
+
+      <ExcludedTypesNote
+        excluded={summary?.other_types_excluded}
+        onViewDeals={() => handleDrill('Other Types Excluded', { kind: 'other_types' })}
       />
 
       {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
@@ -746,15 +732,8 @@ function DelayedContent() {
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               {summary.slippage?.rule_caption || `Renewals whose service ended ${summary.slippage?.selected_year || ''} or earlier but are now expected to close in ${summary.slippage?.next_year || ''}.`}
             </p>
-            <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-              <span>{summary.slippage?.type_filter_note || summary.type_filter_note || 'MR and R types only'}</span>
-              <button
-                type="button"
-                onClick={() => setShowTypeModal(true)}
-                className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline cursor-pointer font-medium"
-              >
-                Edit included types
-              </button>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {summary.slippage?.type_filter_note || summary.type_filter_note || 'MR and R types only'}
             </p>
           </div>
           {summary.slippage_pct_of_quarter != null && (
@@ -1330,113 +1309,7 @@ function DelayedContent() {
         />
       )}
 
-      {/* ────────────────── ADMIN: TYPE FILTER SETTINGS MODAL ────────────────── */}
-      {showTypeModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
-              <div className="flex items-center gap-2">
-                <Settings className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                <h3 className="font-bold text-sm text-[var(--text-primary)]">
-                  Type Filter Settings (Delayed & Slippage)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTypeModal(false)}
-                className="p-1 rounded-lg hover:bg-[var(--surface-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-4">
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Select which deal types are counted in Delayed Renewals and Slippage. Deals with other types will be shown in Needs Review under <strong>"Other types (not counted)"</strong>.
-              </p>
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-secondary)] block mb-2">
-                  Included Deal Type Codes:
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(summary?.available_types?.length ? summary.available_types : ['CR', 'MR', 'PL', 'R', 'RS', 'TL', 'UP']).map((code: string) => {
-                    const isChecked = selectedTypes.includes(code)
-                    return (
-                      <button
-                        type="button"
-                        key={code}
-                        onClick={() => {
-                          setSelectedTypes((prev) =>
-                            prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-                          )
-                        }}
-                        className={cn(
-                          'flex items-center justify-between px-3 py-2.5 rounded-lg border text-xs font-medium transition-all text-left cursor-pointer',
-                          isChecked
-                            ? 'border-teal-500 bg-teal-500/10 text-teal-900 dark:text-teal-200 font-semibold'
-                            : 'border-[var(--border)] bg-[var(--bg-secondary)]/40 text-[var(--text-muted)] hover:bg-[var(--surface-hover)]'
-                        )}
-                      >
-                        <span className="font-mono">{code}</span>
-                        {isChecked && <Check className="w-4 h-4 text-teal-600 dark:text-teal-400" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-[var(--bg-secondary)]/60 border border-[var(--border)] text-[11px] text-[var(--text-muted)]">
-                Active note: <strong className="text-[var(--text-primary)]">{selectedTypes.length > 0 ? `${selectedTypes.join(' and ')} types only` : 'No types included'}</strong>
-              </div>
-            </div>
-
-            <div className="px-6 py-3.5 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setSelectedTypes(['MR', 'R'])}
-                className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset (MR, R)
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowTypeModal(false)}
-                  className="px-3 py-1.5 rounded-lg border border-[var(--border)] text-xs font-medium hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={savingSettings || selectedTypes.length === 0}
-                  onClick={async () => {
-                    try {
-                      setSavingSettings(true)
-                      await api.put('/settings', {
-                        key: 'included_type_codes',
-                        value: JSON.stringify(selectedTypes),
-                      })
-                      await queryClient.invalidateQueries({ queryKey: ['v2-delayed-summary'] })
-                      await queryClient.invalidateQueries({ queryKey: ['v2-delayed-deals'] })
-                      await queryClient.invalidateQueries({ queryKey: ['v2-overview'] })
-                      setShowTypeModal(false)
-                    } catch (err) {
-                      console.error('Failed to update settings', err)
-                    } finally {
-                      setSavingSettings(false)
-                    }
-                  }}
-                  className="px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
-                >
-                  {savingSettings ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />
     </div>

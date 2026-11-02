@@ -138,6 +138,28 @@ class V2OverviewService:
             .first()
         )
 
+    def _opp_to_deal_dict(self, o: Opportunity) -> dict:
+        raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
+        type_code = ScopeService.extract_type_code(raw_type)
+        return {
+            "id": o.opportunity_id_18 or o.id,
+            "opportunity_id_18": o.opportunity_id_18,
+            "opportunity_name": o.opportunity_name,
+            "account_name": o.account_name,
+            "forecast_category": o.forecast_category,
+            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+            "sub_region": o.revised_sub_region or o.sub_region,
+            "region": o.revised_sub_region or o.sub_region,
+            "business_unit_primary": o.business_unit_primary,
+            "business_unit": o.business_unit_primary,
+            "approval_status": o.approval_status,
+            "type": raw_type,
+            "type_code": type_code,
+            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+            "owner": o.opportunity_owner,
+            "opportunity_owner": o.opportunity_owner,
+        }
+
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
         eff_date = target_date
@@ -151,7 +173,7 @@ class V2OverviewService:
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted:
             fs.include_deleted_lost = False
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
         q = (
             self.db.query(Opportunity)
             .filter(
@@ -494,6 +516,29 @@ class V2OverviewService:
 
         target_fp = res.resolved_quarter
         data_slice = res.data_slice
+
+        # ── Other types excluded note ─────────────────────────────────────────
+        other_types_excluded = None
+        if res.effective_types is not None:
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type")
+                ) not in res.effective_types
+            ]
+            if excluded_opps:
+                exc_cnt = len(excluded_opps)
+                exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+                other_types_excluded = {
+                    "count": exc_cnt,
+                    "acv": exc_acv,
+                    "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+                    "deals": [self._opp_to_deal_dict(o) for o in excluded_opps],
+                }
 
         # ── Delayed / Slippage summary tying directly to Delayed page ──────────
         from backend.services.v2_delayed_service import V2DelayedService
@@ -876,6 +921,7 @@ class V2OverviewService:
             "exclude_deleted":  not fs.include_deleted_lost,
             "other_region_count": other_count,
             "filters_applied":  res.filters_applied,
+            "other_types_excluded": other_types_excluded,
             # Section 1
             "total": {
                 "count": total_count,
@@ -1317,7 +1363,25 @@ class V2OverviewService:
 
 
         # ── Kind-based filters for Overview ──────────────────────────────────
-        if kind == "coverage":
+        if kind == "other_types":
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type")
+                ) not in (res.effective_types or [])
+            ]
+            deals = [self._opp_to_deal_dict(o) for o in excluded_opps]
+            return {
+                "count": len(deals),
+                "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
+                "filters_applied": filters_applied,
+                "deals": deals,
+            }
+        elif kind == "coverage":
             df = df[df["forecast_category"].isin(["Commit", "Best Case"])]
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]

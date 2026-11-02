@@ -28,6 +28,7 @@ import MetricToggle from '@/components/common/MetricToggle'
 import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
@@ -368,6 +369,16 @@ function BusinessUnitsContent() {
           <MetricToggle />
         </div>
       </div>
+
+      <ExcludedTypesNote
+        excluded={summary?.other_types_excluded}
+        onViewDeals={() => {
+          setDrawerTitle('Other Types Excluded')
+          setDrawerSubtitle(`${summary?.other_types_excluded?.count ?? 0} deals · ${formatACV(summary?.other_types_excluded?.acv ?? 0)}`)
+          setDrawerFilters({ kind: 'other_types' } as any)
+          setDrawerOpen(true)
+        }}
+      />
 
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
       <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">

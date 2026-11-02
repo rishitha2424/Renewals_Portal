@@ -97,7 +97,7 @@ class V2ApprovalsService:
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date)
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
         q = (
             self.db.query(Opportunity)
             .filter(
@@ -550,6 +550,43 @@ class V2ApprovalsService:
             "diff_acv": round(total_acv - ov_acv, 2),
         }
             
+        other_types_excluded = None
+        if res and res.effective_types is not None:
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                ) not in res.effective_types
+            ]
+            if excluded_opps:
+                exc_cnt = len(excluded_opps)
+                exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+                other_types_excluded = {
+                    "count": exc_cnt,
+                    "acv": exc_acv,
+                    "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+                    "deals": [
+                        {
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type"),
+                        }
+                        for o in excluded_opps
+                    ]
+                }
+
         return {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
@@ -567,6 +604,7 @@ class V2ApprovalsService:
                 "delta_custom": get_total_delta(comp_df) if comp_snap else None
             },
             "overview_reconciliation": overview_reconciliation,
+            "other_types_excluded": other_types_excluded,
             "statuses": statuses_list,
             "matrix": matrix,
             "categories": ALL_FC,
@@ -601,6 +639,7 @@ class V2ApprovalsService:
         min_acv: Optional[float] = None,
         max_acv: Optional[float] = None,
         deal_ids: Optional[list[str]] = None,
+        kind: Optional[str] = None,
     ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
         snap = self._get_snapshot(ctx, eff_as_of)
@@ -608,6 +647,37 @@ class V2ApprovalsService:
             return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
             
         df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap.snapshot_date)
+
+        if kind == "other_types" or status == "other_types":
+            deals = []
+            if res and res.effective_types is not None:
+                base_opps = self.db.query(Opportunity).filter(
+                    Opportunity.snapshot_id == snap.id,
+                    *res.base_conditions
+                ).all()
+                for o in base_opps:
+                    raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                    if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
+                        deals.append({
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": raw_tp,
+                        })
+            return {
+                "count": len(deals),
+                "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
+                "filters_applied": res.filters_applied if res else {},
+                "deals": deals
+            }
+
         if df.empty:
             return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied if res else {}, "deals": []}
             

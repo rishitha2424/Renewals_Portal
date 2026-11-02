@@ -125,7 +125,9 @@ class AnalyticsService:
         snapshot: UploadSnapshot,
         scope: str = "all",
         include_deleted_lost: bool = True,
+        types: Optional[list[str]] = None,
     ) -> list[Opportunity]:
+        from sqlalchemy import or_
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id)
 
         # Exclude Deleted & Lost unless explicitly requested
@@ -147,6 +149,29 @@ class AnalyticsService:
             q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == q_norm)
         elif s in ("all", "full"):
             pass
+
+        # Deal Types filter
+        effective_types = None
+        if types is not None:
+            if not any(t.lower() == "all" for t in types):
+                effective_types = [t.upper().strip() for t in types if t.strip()]
+        else:
+            from backend.services.settings_service import SettingsService
+            effective_types = SettingsService.get_included_types(self.db)
+
+        if effective_types is not None:
+            if len(effective_types) == 0:
+                q = q.filter(Opportunity.id == "no_match_type_filter")
+            else:
+                type_col = Opportunity.extra_attributes["Type"].as_string()
+                type_conds = []
+                for code in effective_types:
+                    if code == "UNKNOWN":
+                        type_conds.append(or_(type_col == None, type_col == "", type_col == "null", type_col == "Unknown"))
+                    else:
+                        type_conds.append(or_(type_col == code, type_col.like(f"{code}-%"), type_col.like(f"{code} -%")))
+                if type_conds:
+                    q = q.filter(or_(*type_conds))
 
         return q.all()
 

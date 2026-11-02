@@ -25,6 +25,7 @@ import DealListModal from '@/components/common/DealListModal'
 import FilterBar from '@/components/common/FilterBar'
 import { MovementsSummary } from '@/components/common/MovementsSummary'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -359,6 +360,17 @@ export default function Dashboard() {
           </span>
         </motion.div>
       )}
+
+      {/* ── Excluded types notice ────────────────────────────────────────── */}
+      <ExcludedTypesNote
+        excluded={summary?.other_types_excluded}
+        onViewDeals={() =>
+          openDealsQuery(
+            `Other Types Excluded (${summary?.other_types_excluded?.count ?? 0} deals · ${acvM(summary?.other_types_excluded?.acv ?? 0)})`,
+            { kind: 'other_types' }
+          )
+        }
+      />
 
       {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
       <div id="overview-hero" className="card p-6 scroll-mt-24">

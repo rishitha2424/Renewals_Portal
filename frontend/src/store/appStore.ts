@@ -26,6 +26,7 @@ export interface FilterSpec {
   business_units: string[]
   forecast_categories: string[]
   approval_statuses: string[]
+  types?: string[]
   include_deleted_lost: boolean
 }
 
@@ -38,6 +39,7 @@ export const DEFAULT_FILTER_SPEC: FilterSpec = {
   business_units: [],
   forecast_categories: [],
   approval_statuses: [],
+  types: ['MR', 'R'],
   include_deleted_lost: true,
 }
 

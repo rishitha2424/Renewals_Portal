@@ -54,6 +54,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import SectionNav from '@/components/common/SectionNav'
 import ControlChip from '@/components/ui/ControlChip'
 import showToast from '@/components/ui/Toast'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
 import { PageErrorState } from '@/components/ui/PageErrorState'
 
@@ -117,7 +118,7 @@ const BOOLEAN_OPERATORS = [
 ]
 
 export default function Opportunities() {
-  const activeSnapshotId = useAppStore((s) => s.activeSnapshotId)
+  const { activeSnapshotId, globalFilters } = useAppStore()
 
   // 1. Fetch Columns Metadata (all 172 columns in exact raw order)
   const { data: colsResp, isLoading: colsLoading } = useQuery({
@@ -234,6 +235,7 @@ export default function Opportunities() {
     return {
       as_of: activeSnapshotId || undefined,
       include_deleted_lost: includeDeletedLost,
+      types: globalFilters?.types,
       sales_types: selectedSalesTypes.length > 0 ? selectedSalesTypes : [],
       forecast_categories: selectedForecastCats.length > 0 ? selectedForecastCats : [],
       approval_statuses: selectedApprovals.length > 0 ? selectedApprovals : [],
@@ -244,6 +246,7 @@ export default function Opportunities() {
   }, [
     activeSnapshotId,
     includeDeletedLost,
+    globalFilters?.types,
     selectedSalesTypes,
     selectedForecastCats,
     selectedApprovals,
@@ -835,6 +838,8 @@ export default function Opportunities() {
           </div>
         </div>
       </div>
+
+      <ExcludedTypesNote excluded={rowsResp?.other_types_excluded} />
 
       {/* ── Quick Filter Row (Chips with Row Counts) ─────────────────────── */}
       <Card id="explorer-quick-filters" padding="sm" className="space-y-3 scroll-mt-24">

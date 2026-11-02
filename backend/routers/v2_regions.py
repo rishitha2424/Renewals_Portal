@@ -57,6 +57,7 @@ def get_region_deals(
     quarter: str = Query(""),
     delayed: bool = Query(False),
     as_of: str = Query(""),
+    kind: str = Query(""),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2RegionsService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
@@ -72,6 +73,7 @@ def get_region_deals(
         quarter=quarter,
         delayed=delayed,
         as_of=as_of,
+        kind=kind,
         filter_spec=filter_spec,
     )
 

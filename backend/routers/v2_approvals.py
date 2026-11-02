@@ -38,6 +38,7 @@ def get_approvals_deals(
     max_acv: Optional[float] = None,
     deal_ids: Optional[str] = None,
     as_of: Optional[str] = None,
+    kind: Optional[str] = None,
     exclude_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db)
@@ -56,5 +57,6 @@ def get_approvals_deals(
         filter_spec=filter_spec,
         min_acv=min_acv,
         max_acv=max_acv,
-        deal_ids=parsed_deal_ids
+        deal_ids=parsed_deal_ids,
+        kind=kind,
     )

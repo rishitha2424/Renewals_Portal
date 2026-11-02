@@ -63,6 +63,8 @@ def get_explorer_rows(
         page_size=payload.page_size,
     )
 
+    other_types_excluded = svc.get_other_types_excluded(snap, payload.filter_spec)
+
     return {
         "snapshot_id": snap.id,
         "snapshot_date": snap.snapshot_date.isoformat(),
@@ -71,6 +73,7 @@ def get_explorer_rows(
         "total_count": total_count,
         "total_acv": total_acv,
         "rows": rows,
+        "other_types_excluded": other_types_excluded,
     }
 
 

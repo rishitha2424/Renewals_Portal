@@ -30,6 +30,7 @@ import MetricToggle from '@/components/common/MetricToggle'
 import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 
@@ -281,6 +282,11 @@ function RegionsContent() {
         </div>
         <MetricToggle />
       </div>
+
+      <ExcludedTypesNote
+        excluded={summary?.other_types_excluded}
+        onViewDeals={() => handleDrill('Other Types Excluded', { kind: 'other_types' })}
+      />
 
       {unmapped?.count > 0 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between">

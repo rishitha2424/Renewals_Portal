@@ -5,7 +5,8 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import Tuple, List, Optional, Any, Dict
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, and_, ColumnElement
+from sqlalchemy import or_, and_, ColumnElement, func
+from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.models.opportunity import Opportunity
@@ -49,6 +50,7 @@ class FilterSpec(BaseModel):
     business_units: List[str] = Field(default_factory=list)
     forecast_categories: List[str] = Field(default_factory=list)
     approval_statuses: List[str] = Field(default_factory=list)
+    types: Optional[List[str]] = None
     include_deleted_lost: bool = True
 
     @classmethod
@@ -62,9 +64,10 @@ class FilterSpec(BaseModel):
         business_units: Optional[List[str] | str] = None,
         forecast_categories: Optional[List[str] | str] = None,
         approval_statuses: Optional[List[str] | str] = None,
+        types: Optional[List[str] | str] = None,
         include_deleted_lost: Optional[bool] = True,
     ) -> FilterSpec:
-        def _parse_list(val: Any, default: List[str]) -> List[str]:
+        def _parse_list(val: Any, default: Any) -> Any:
             if val is None:
                 return default
             if isinstance(val, list):
@@ -85,6 +88,7 @@ class FilterSpec(BaseModel):
         bu = _parse_list(business_units, [])
         fc = _parse_list(forecast_categories, [])
         appr = _parse_list(approval_statuses, [])
+        tp = _parse_list(types, None) if types is not None else None
 
         return cls(
             as_of=as_of,
@@ -95,6 +99,7 @@ class FilterSpec(BaseModel):
             business_units=bu,
             forecast_categories=fc,
             approval_statuses=appr,
+            types=tp,
             include_deleted_lost=True if include_deleted_lost is None else bool(include_deleted_lost),
         )
 
@@ -108,6 +113,8 @@ class ScopeResolution:
         filters_applied: dict[str, Any],
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        effective_types: Optional[list[str]] = None,
+        base_conditions: Optional[list] = None,
     ):
         self.conditions = conditions
         self.resolved_quarter = resolved_quarter
@@ -115,6 +122,8 @@ class ScopeResolution:
         self.filters_applied = filters_applied
         self.start_date = start_date
         self.end_date = end_date
+        self.effective_types = effective_types
+        self.base_conditions = base_conditions if base_conditions is not None else list(conditions)
 
     @property
     def label(self) -> str:
@@ -289,10 +298,24 @@ class ScopeService:
         )
 
     @staticmethod
+    def extract_type_code(raw_type: Any) -> str:
+        if raw_type is None:
+            return "Unknown"
+        import pandas as pd
+        if pd.isna(raw_type):
+            return "Unknown"
+        s = str(raw_type).strip()
+        if not s or s.lower() in ("nan", "none", "null"):
+            return "Unknown"
+        code = s.split("-")[0].strip().upper()
+        return code if code else "Unknown"
+
+    @staticmethod
     def resolve(
         filter_spec: FilterSpec,
         snapshot: UploadSnapshot | None = None,
         as_of_date: Optional[date] = None,
+        db: Optional[Session] = None,
     ) -> ScopeResolution:
         """
         Single entry point for resolving a FilterSpec into SQL / Pandas conditions.
@@ -488,6 +511,32 @@ class ScopeService:
         if not filter_spec.include_deleted_lost:
             conditions.append(Opportunity.is_deleted_or_lost == False)
 
+        base_conditions = list(conditions)
+
+        # 8. Deal Types (shared global type filter)
+        effective_types: Optional[list[str]] = None
+        if filter_spec.types is not None:
+            if not any(t.lower() == "all" for t in filter_spec.types):
+                effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
+        else:
+            # Default to the "included types" Setting used by Delayed & Slippage
+            from backend.services.settings_service import SettingsService
+            effective_types = SettingsService.get_included_types(db)
+
+        if effective_types is not None:
+            if len(effective_types) == 0:
+                conditions.append(Opportunity.id == "no_match_type_filter")
+            else:
+                type_col = Opportunity.extra_attributes["Type"].as_string()
+                type_conds = []
+                for code in effective_types:
+                    if code == "UNKNOWN":
+                        type_conds.append(or_(type_col == None, type_col == "", type_col == "null", type_col == "Unknown"))
+                    else:
+                        type_conds.append(or_(type_col == code, type_col.like(f"{code}-%"), type_col.like(f"{code} -%")))
+                if type_conds:
+                    conditions.append(or_(*type_conds))
+
         filters_applied = {
             "period": period,
             "sales_types": filter_spec.sales_types,
@@ -495,6 +544,7 @@ class ScopeService:
             "business_units": filter_spec.business_units,
             "forecast_categories": filter_spec.forecast_categories,
             "approval_statuses": filter_spec.approval_statuses,
+            "types": effective_types if effective_types is not None else ["all"],
             "include_deleted_lost": filter_spec.include_deleted_lost,
             "as_of": filter_spec.as_of or (snapshot.snapshot_date.isoformat() if snapshot else None),
             "compare": filter_spec.compare,
@@ -507,4 +557,6 @@ class ScopeService:
             filters_applied=filters_applied,
             start_date=start_date,
             end_date=end_date,
+            effective_types=effective_types,
+            base_conditions=base_conditions,
         )

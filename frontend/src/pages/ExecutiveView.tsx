@@ -22,6 +22,7 @@ import {
   getQuarterFromDate,
 } from '@/utils/format'
 import SectionNav from '@/components/common/SectionNav'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 
 export default function ExecutiveView() {
   const { activeSnapshotId, setActiveSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
@@ -484,6 +485,10 @@ export default function ExecutiveView() {
           </div>
         </div>
       </header>
+
+      <div className="mb-6">
+        <ExcludedTypesNote excluded={overview?.other_types_excluded} />
+      </div>
 
       {/* Headline Summary Line */}
       <div id="exec-headline" className="scroll-mt-24 mb-6 p-4 rounded-lg bg-slate-50 border border-slate-300 flex flex-wrap items-center justify-between gap-3 text-sm">

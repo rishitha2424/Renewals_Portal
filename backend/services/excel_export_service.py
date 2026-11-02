@@ -85,6 +85,7 @@ class ExcelExportService:
         compare_to: str | None = None,
         scope: str = "renewals",
         include_deleted_lost: bool = True,
+        types: list[str] | None = None,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot
         snap = self.analytics_svc._resolve_snapshot(ADMIN_CONTEXT, snapshot_id)
@@ -112,7 +113,7 @@ class ExcelExportService:
         q_short = parts[0] if len(parts) > 0 else "Q"
         fy_label = f"FY{parts[1][-2:]}" if len(parts) > 1 and len(parts[1]) >= 2 else (f"FY{snap.snapshot_date.year % 100:02d}" if snap and snap.snapshot_date else "FY")
 
-        opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost)
+        opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost, types=types)
         fs = self.analytics_svc.get_forecast_summary(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=scope, include_deleted_lost=include_deleted_lost,

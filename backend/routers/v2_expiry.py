@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from backend.database import get_db
@@ -29,9 +30,10 @@ def get_deals(
     exclude_deleted_lost: bool = Query(False),
     slippage: bool = Query(False),
     period_type: str = Query("fiscal"),
+    kind: Optional[str] = None,
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db)
 ):
     ctx = UserContext()
     svc = V2ExpiryService(db)
-    return svc.get_deals(ctx, quarter=quarter, category=category, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, slippage=slippage, period_type=period_type, filter_spec=filter_spec)
+    return svc.get_deals(ctx, quarter=quarter, category=category, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, slippage=slippage, period_type=period_type, kind=kind, filter_spec=filter_spec)

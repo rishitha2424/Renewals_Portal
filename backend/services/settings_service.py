@@ -6,7 +6,7 @@ derive from these settings without hard-coding.
 from __future__ import annotations
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 from sqlalchemy.orm import Session
 from backend.models.setting import SystemSetting
 
@@ -85,6 +85,24 @@ class SettingsService:
         db.commit()
         db.refresh(row)
         return row
+
+    @staticmethod
+    def get_included_types(db: Optional[Session] = None) -> list[str]:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_included_types(session)
+                session.close()
+                return res
+            except Exception:
+                return ["MR", "R"]
+        try:
+            raw_types = SettingsService.get_setting(db, "included_type_codes", '["MR", "R"]')
+            parsed = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
+            return [str(x).strip().upper() for x in parsed if str(x).strip()] or ["MR", "R"]
+        except Exception:
+            return ["MR", "R"]
 
     @staticmethod
     def get_all_settings(

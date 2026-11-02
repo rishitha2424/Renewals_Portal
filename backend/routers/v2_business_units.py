@@ -26,6 +26,7 @@ def get_bu_deals(
     bu: Optional[str] = None,
     category: Optional[str] = None,
     status: Optional[str] = None,
+    kind: Optional[str] = None,
     filter_spec: FilterSpec = Depends(get_filter_spec),
     db: Session = Depends(get_db),
     ctx: UserContext = Depends(get_user_context)
@@ -36,6 +37,7 @@ def get_bu_deals(
         bu=bu,
         category=category,
         status=status,
+        kind=kind,
         filter_spec=filter_spec,
     )
 

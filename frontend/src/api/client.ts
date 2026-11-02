@@ -4,6 +4,9 @@ import { useAppStore, FilterSpec } from '../store/appStore'
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  paramsSerializer: {
+    indexes: null,
+  },
 })
 
 // Upload/commit/validate endpoints are body-only — they must NOT receive extra query params.
@@ -23,6 +26,9 @@ api.interceptors.request.use((config) => {
   config.params = config.params || {}
   if (config.params.include_deleted_lost === undefined && state.includeDeletedLost !== undefined) {
     config.params.include_deleted_lost = state.includeDeletedLost
+  }
+  if (config.params.types === undefined && state.globalFilters?.types !== undefined) {
+    config.params.types = state.globalFilters.types
   }
   return config
 })
@@ -133,6 +139,9 @@ export function buildFilterParams(filters: Record<string, any> = {}): Record<str
   }
   if (compare === 'yesterday' || compare === 'last_week' || compare === 'period_start') {
     params.compare = compare
+  }
+  if (params.types === undefined && state.globalFilters?.types !== undefined) {
+    params.types = state.globalFilters.types
   }
   return params
 }
@@ -279,6 +288,9 @@ export const downloadReport = async (
   params.scope = scope || 'renewals'
   const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? true)
   params.include_deleted_lost = incl ? 'true' : 'false'
+  if (state.globalFilters?.types && state.globalFilters.types.length > 0) {
+    params.types = state.globalFilters.types.join(',')
+  }
 
   const response = await api.get(endpoint, {
     params,
@@ -341,6 +353,7 @@ export const getV2ExpiryDeals = async (params: {
   exclude_deleted_lost?: boolean
   slippage?: boolean
   period_type?: string
+  kind?: string
   filterSpec?: Partial<FilterSpec>
 } = {}) => {
   const state = useAppStore.getState()
@@ -349,6 +362,7 @@ export const getV2ExpiryDeals = async (params: {
   if (params.category) p.category = params.category
   if (params.as_of) p.as_of = params.as_of
   if (params.slippage !== undefined) p.slippage = params.slippage
+  if (params.kind) p.kind = params.kind
   p.period_type = params.period_type || 'fiscal'
   if (params.exclude_deleted_lost !== undefined) p.include_deleted_lost = !params.exclude_deleted_lost
   const res = await api.get('/v2/expiry/deals', { params: p })
@@ -374,7 +388,8 @@ export const getApprovalsDeals = async (
   filterSpec?: Partial<FilterSpec>,
   min_acv?: number,
   max_acv?: number,
-  deal_ids?: string
+  deal_ids?: string,
+  kind?: string
 ) => {
   const state = useAppStore.getState()
   const params: any = buildFilterParams({ ...state.globalFilters, ...filterSpec })
@@ -386,6 +401,7 @@ export const getApprovalsDeals = async (
   if (min_acv !== undefined && min_acv !== null) params.min_acv = min_acv
   if (max_acv !== undefined && max_acv !== null) params.max_acv = max_acv
   if (deal_ids) params.deal_ids = deal_ids
+  if (kind) params.kind = kind
   if (include_deleted_lost !== undefined) params.include_deleted_lost = include_deleted_lost
   return api.get('/v2/approvals/deals', { params }).then(r => r.data)
 }
