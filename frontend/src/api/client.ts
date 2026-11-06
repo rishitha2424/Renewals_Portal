@@ -9,6 +9,17 @@ const api = axios.create({
   },
 })
 
+// Static hosts can return index.html for /api requests when their proxy is missing.
+// Treat that as a connection error instead of accepting it as empty application data.
+api.interceptors.response.use((response) => {
+  if (typeof response.data === 'string' &&
+      (String(response.headers['content-type'] || '').includes('text/html') ||
+       /^\s*(<!doctype html|<html)/i.test(response.data))) {
+    throw new Error('The app cannot reach the API. Check that the backend is running and /api is routed to it.')
+  }
+  return response
+})
+
 // Upload/commit/validate endpoints are body-only — they must NOT receive extra query params.
 const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
 

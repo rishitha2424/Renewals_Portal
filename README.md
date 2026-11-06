@@ -17,6 +17,42 @@ Then open **http://localhost:5173** in your browser.
 
 ## Database Support & Setup (SQLite & PostgreSQL)
 
+For Docker Compose, set `ADMIN_PASSWORD` and a stable, random `ADMIN_SECRET_KEY`
+in the project `.env` before starting the backend. Compose passes these settings
+to the container; `SECRET_KEY` does not configure administrator authentication.
+After changing them, recreate the backend with `docker compose up -d --build backend`.
+Set `ENVIRONMENT=production` when serving over HTTPS so admin cookies use Secure.
+
+If both data loading and sign-in fail, check `/api/health` and `/api/admin/status`
+through the same browser host and port as the app. Both must return JSON;
+HTML indicates a missing API proxy. The status response's `is_configured` field
+must be true for administrator sign-in. Keep the existing database volume when
+recreating containers so uploaded snapshots remain available.
+
+For the RHEL deployment at `~/renewals_data-main` with the virtual environment
+in `.venv`, a user service is provided in `deploy/renewals-user.service`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+install -m 644 deploy/renewals-user.service ~/.config/systemd/user/renewals.service
+systemctl --user daemon-reload
+systemctl --user enable --now renewals.service
+loginctl enable-linger "$USER"
+```
+
+Inspect this service with `systemctl --user status renewals` and
+`journalctl --user -u renewals -n 60 --no-pager`. After changing `.env`, run
+`systemctl --user restart renewals`. For the nginx deployment serving
+`/usr/share/nginx/html/horizon`, publish a newly built frontend with:
+
+```bash
+sudo cp -R --no-preserve=context frontend/dist/. /usr/share/nginx/html/horizon/
+sudo restorecon -RF /usr/share/nginx/html/horizon
+```
+
+Restore SELinux labels after publishing on RHEL. Copying with `cp -a` preserves
+home-directory labels and can cause nginx to return 403 Forbidden.
+
 Mobileum Horizon supports both **SQLite** (default for local zero-config development) and **PostgreSQL** (production & high-performance analytics).
 
 ### 1. SQLite (Default)

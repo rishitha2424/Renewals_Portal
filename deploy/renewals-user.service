@@ -1,0 +1,14 @@
+[Unit]
+Description=Mobileum Horizon Renewals Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/renewals_data-main
+ExecStart=%h/renewals_data-main/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -31,6 +31,10 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-renewals_user}:${POSTGRES_PASSWORD:-renewals_secret}@db:5432/${POSTGRES_DB:-renewals_prod}
       SECRET_KEY: ${SECRET_KEY:-default_secret_key_change_in_production}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-}
+      ADMIN_TOKEN_EXPIRE_HOURS: ${ADMIN_TOKEN_EXPIRE_HOURS:-8}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost","http://localhost:80"]}
       AI_PROVIDER: ${AI_PROVIDER:-demo}
       UPLOAD_DIR: /app/uploads

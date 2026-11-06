@@ -69,7 +69,7 @@ interface AppState {
   activeSnapshotId: string | null
   setActiveSnapshotId: (id: string | null) => void
 
-  // Admin Auth State (in-memory only - Addendum D)
+  // Admin state stays in memory; restored from the server's HttpOnly cookie on load.
   isAdmin: boolean
   adminName: string | null
   adminToken: string | null

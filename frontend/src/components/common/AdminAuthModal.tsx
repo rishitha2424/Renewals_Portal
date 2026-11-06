@@ -34,7 +34,12 @@ export default function AdminAuthModal() {
       setIsOpen(false)
       showToast.success('Admin Signed In', `Welcome ${res.user_name || cleanName}. Full management permissions unlocked.`)
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Invalid admin credentials or server configuration.'
+      const msg = err.response?.data?.detail ||
+        (err.response?.status >= 500
+          ? 'The API server is unavailable. Please check the backend service.'
+          : !err.response
+            ? err.message || 'Cannot connect to the API server.'
+            : 'Invalid admin credentials or server configuration.')
       setError(msg)
       showToast.error('Sign In Failed', msg)
     } finally {

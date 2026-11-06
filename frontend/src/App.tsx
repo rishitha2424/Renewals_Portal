@@ -14,8 +14,10 @@ import DataUploads from '@/pages/DataUploads'
 import LoadingScreen from '@/pages/LoadingScreen'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
+import { useAdminSession } from '@/hooks/useAdminSession'
 
 export default function App() {
+  useAdminSession()
   const { darkMode } = useAppStore()
 
   useEffect(() => {
