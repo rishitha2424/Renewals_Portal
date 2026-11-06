@@ -1,0 +1,10 @@
+node_modules
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+.pytest_cache
+scratch
+docs/screenshots

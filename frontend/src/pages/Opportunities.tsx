@@ -1,0 +1,2088 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  Search,
+  X,
+  Filter,
+  Download,
+  Bookmark,
+  Plus,
+  Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Check,
+  RotateCcw,
+  ShieldCheck,
+  Columns,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  Sliders,
+  FileSpreadsheet,
+  FileText,
+  History,
+  AlertTriangle,
+} from 'lucide-react'
+import {
+  getExplorerColumns,
+  getExplorerRows,
+  exportExplorerData,
+  getExplorerReconcile,
+  getExplorerQuickFilters,
+  getCustomColumns,
+  downloadExplorerData,
+  renameCustomColumn,
+  moveCustomColumn,
+  deleteCustomColumn,
+  CustomColumnItem,
+} from '@/api/client'
+import { ManageColumnsModal } from '@/components/explorer/ManageColumnsModal'
+import { AddColumnsModal } from '@/components/explorer/AddColumnsModal'
+import { ChangeLogModal } from '@/components/explorer/ChangeLogModal'
+import { ColumnHeaderMenu } from '@/components/explorer/ColumnHeaderMenu'
+import { DealNotesDrawer } from '@/components/explorer/DealNotesDrawer'
+import { EditableCell } from '@/components/explorer/EditableCell'
+import { useAppStore } from '@/store/appStore'
+import { formatACV, formatCount } from '@/utils/format'
+import { Card } from '@/components/ui/Card'
+import { SectionHeader } from '@/components/ui/SectionHeader'
+import SectionNav from '@/components/common/SectionNav'
+import ControlChip from '@/components/ui/ControlChip'
+import showToast from '@/components/ui/Toast'
+import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import { PageErrorState } from '@/components/ui/PageErrorState'
+
+// Types
+export interface ColumnMeta {
+  name: string
+  position: number
+  type: 'text' | 'number' | 'currency' | 'date' | 'boolean'
+  is_custom?: boolean
+  key?: string
+  custom_type?: string
+  dropdown_options?: string[]
+  source_header?: string | null
+}
+
+export interface FilterRule {
+  column: string
+  operator: string
+  value?: any
+  value_to?: any
+  group?: 'and' | 'or'
+}
+
+export interface SavedExplorerView {
+  name: string
+  filters: FilterRule[]
+  columns: string[]
+  sort?: { column: string; dir: 'asc' | 'desc' }
+}
+
+const TEXT_OPERATORS = [
+  { value: 'contains', label: 'contains' },
+  { value: 'equals', label: 'equals' },
+  { value: 'not equals', label: 'not equals' },
+  { value: 'starts with', label: 'starts with' },
+  { value: 'is empty', label: 'is empty' },
+  { value: 'is not empty', label: 'is not empty' },
+  { value: 'in list', label: 'in list (comma separated)' },
+]
+
+const NUMBER_OPERATORS = [
+  { value: '=', label: '=' },
+  { value: '≠', label: '≠' },
+  { value: '>', label: '>' },
+  { value: '≥', label: '≥' },
+  { value: '<', label: '<' },
+  { value: '≤', label: '≤' },
+  { value: 'between', label: 'between' },
+]
+
+const DATE_OPERATORS = [
+  { value: 'on', label: 'on' },
+  { value: 'before', label: 'before' },
+  { value: 'after', label: 'after' },
+  { value: 'date between', label: 'between' },
+]
+
+const BOOLEAN_OPERATORS = [
+  { value: 'is true', label: 'is true' },
+  { value: 'is false', label: 'is false' },
+]
+
+export default function Opportunities() {
+  const { activeSnapshotId, globalFilters } = useAppStore()
+
+  // 1. Fetch Columns Metadata (all 172 columns in exact raw order)
+  const { data: colsResp, isLoading: colsLoading } = useQuery({
+    queryKey: ['explorer-columns', activeSnapshotId],
+    queryFn: () => getExplorerColumns(activeSnapshotId),
+  })
+  const allColumns: ColumnMeta[] = useMemo(() => colsResp?.columns || [], [colsResp])
+
+  // Custom columns query
+  const { data: customColsList = [], refetch: refetchCustomCols } = useQuery<CustomColumnItem[]>({
+    queryKey: ['custom-columns'],
+    queryFn: () => getCustomColumns(false),
+  })
+
+  // 2. Fetch Quick Filter distinct options
+  const { data: quickFiltersData } = useQuery({
+    queryKey: ['explorer-quick-filters', activeSnapshotId],
+    queryFn: () => getExplorerQuickFilters(activeSnapshotId),
+  })
+
+  // Visible columns selection (defaults to all columns in original order)
+  const [visibleColNames, setVisibleColNames] = useState<string[]>([])
+  useEffect(() => {
+    if (allColumns.length === 0) return
+    setVisibleColNames((prev) => {
+      if (prev.length === 0) {
+        try {
+          const saved = localStorage.getItem('mobileum_explorer_columns')
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const customColNames = allColumns.filter((c) => c.is_custom).map((c) => c.name)
+              return [...parsed, ...customColNames.filter((n) => !parsed.includes(n))]
+            }
+          }
+        } catch (_) {}
+        return allColumns.map((c) => c.name)
+      } else {
+        const customColNames = allColumns.filter((c) => c.is_custom).map((c) => c.name)
+        const missing = customColNames.filter((n) => !prev.includes(n))
+        return missing.length > 0 ? [...prev, ...missing] : prev
+      }
+    })
+  }, [allColumns])
+
+  // Saved Views in localStorage
+  const [savedViews, setSavedViews] = useState<SavedExplorerView[]>(() => {
+    try {
+      const saved = localStorage.getItem('mobileum_explorer_saved_views')
+      return saved ? JSON.parse(saved) : []
+    } catch (_) {
+      return []
+    }
+  })
+  const [newViewName, setNewViewName] = useState('')
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false)
+
+  // Filter Builder state
+  const [filters, setFilters] = useState<FilterRule[]>([])
+  const [includeDeletedLost, setIncludeDeletedLost] = useState<boolean>(true)
+
+  // Quick filters selection states
+  const [selectedSalesTypes, setSelectedSalesTypes] = useState<string[]>([])
+  const [selectedFiscalPeriods, setSelectedFiscalPeriods] = useState<string[]>([])
+  const [selectedForecastCats, setSelectedForecastCats] = useState<string[]>([])
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([])
+  const [selectedApprovals, setSelectedApprovals] = useState<string[]>([])
+  const [selectedBUs, setSelectedBUs] = useState<string[]>([])
+
+  // Pagination & Sorting
+  const [page, setPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(50)
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  // UI state
+  const isAdmin = useAppStore((s) => s.isAdmin)
+  const [showFilterBuilder, setShowFilterBuilder] = useState<boolean>(false)
+  const [showColPicker, setShowColPicker] = useState<boolean>(false)
+  const [colSearchQuery, setColSearchQuery] = useState<string>('')
+  const [selectedRowData, setSelectedRowData] = useState<Record<string, any> | null>(null)
+  const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false)
+  const [drawerSearchQuery, setDrawerSearchQuery] = useState<string>('')
+  const [isExporting, setIsExporting] = useState<boolean>(false)
+  const [showManageCols, setShowManageCols] = useState<boolean>(false)
+  const [showAddColsModal, setShowAddColsModal] = useState<boolean>(false)
+  const [showChangeLogModal, setShowChangeLogModal] = useState<boolean>(false)
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState<boolean>(false)
+  const [isDownloading, setIsDownloading] = useState<boolean>(false)
+  const downloadMenuRef = useRef<HTMLDivElement>(null)
+
+  // Header column menu actions
+  const [deletingHeaderCol, setDeletingHeaderCol] = useState<CustomColumnItem | null>(null)
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState<string>('')
+  const [isDeletingCol, setIsDeletingCol] = useState<boolean>(false)
+  const [renamingHeaderCol, setRenamingHeaderCol] = useState<CustomColumnItem | null>(null)
+  const [renameColInput, setRenameColInput] = useState<string>('')
+
+  const [notesDeal, setNotesDeal] = useState<any | null>(null)
+  const [showNotesDrawer, setShowNotesDrawer] = useState<boolean>(false)
+  const [dealSearchQuery, setDealSearchQuery] = useState<string>('')
+  // Quick filters collapse toggle (starts collapsed once any filter is active)
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState<boolean>(false)
+  const prevActiveRef = useRef<boolean>(false)
+
+  // Search queries for quick-filter groups with > 12 items
+  const [buFilterSearch, setBuFilterSearch] = useState<string>('')
+  const [periodFilterSearch, setPeriodFilterSearch] = useState<string>('')
+  const [regionFilterSearch, setRegionFilterSearch] = useState<string>('')
+  const [approvalFilterSearch, setApprovalFilterSearch] = useState<string>('')
+
+  // Combine quick filter selections + include_deleted_lost into FilterSpec or FilterRules
+  const effectiveFilterSpec = useMemo(() => {
+    return {
+      as_of: activeSnapshotId || undefined,
+      include_deleted_lost: includeDeletedLost,
+      types: globalFilters?.types,
+      sales_types: selectedSalesTypes.length > 0 ? selectedSalesTypes : [],
+      forecast_categories: selectedForecastCats.length > 0 ? selectedForecastCats : [],
+      approval_statuses: selectedApprovals.length > 0 ? selectedApprovals : [],
+      business_units: selectedBUs.length > 0 ? selectedBUs : [],
+      regions: selectedRegions.length > 0 ? selectedRegions : [],
+      period: selectedFiscalPeriods.length === 1 ? selectedFiscalPeriods[0] : 'all_periods',
+    }
+  }, [
+    activeSnapshotId,
+    includeDeletedLost,
+    globalFilters?.types,
+    selectedSalesTypes,
+    selectedForecastCats,
+    selectedApprovals,
+    selectedBUs,
+    selectedRegions,
+    selectedFiscalPeriods,
+  ])
+
+  // Combine user-added custom rules with multiple fiscal periods if > 1
+  const effectiveCustomFilters = useMemo(() => {
+    const list = [...filters]
+    if (selectedFiscalPeriods.length > 1) {
+      list.push({
+        column: 'Fiscal Period',
+        operator: 'in list',
+        value: selectedFiscalPeriods,
+      })
+    }
+    return list
+  }, [filters, selectedFiscalPeriods])
+
+  // 3. Fetch Reconciliation Summary (Whole snapshot + current filter)
+  const { data: reconcileData } = useQuery({
+    queryKey: ['explorer-reconcile', activeSnapshotId, effectiveFilterSpec, effectiveCustomFilters],
+    queryFn: () =>
+      getExplorerReconcile(activeSnapshotId, {
+        filter_spec: effectiveFilterSpec,
+        filters: effectiveCustomFilters,
+      }),
+  })
+
+  // 4. Fetch Rows
+  const requestPayload = useMemo(() => {
+    return {
+      filter_spec: effectiveFilterSpec,
+      filters: effectiveCustomFilters,
+      sort: sortCol,
+      sort_dir: sortDir,
+      page,
+      page_size: pageSize,
+    }
+  }, [effectiveFilterSpec, effectiveCustomFilters, sortCol, sortDir, page, pageSize])
+
+  const {
+    data: rowsResp,
+    isLoading: rowsLoading,
+    isFetching: rowsFetching,
+    refetch,
+  } = useQuery({
+    queryKey: ['explorer-rows', activeSnapshotId, requestPayload],
+    queryFn: () => getExplorerRows(requestPayload, activeSnapshotId),
+  })
+
+  const rows = useMemo(() => rowsResp?.rows || [], [rowsResp])
+  const totalCount = rowsResp?.total_count ?? 0
+  const totalACV = rowsResp?.total_acv ?? 0.0
+
+  // Filter rows by quick search (includes Opportunity Name, ID, Account, and all custom columns)
+  const filteredRows = useMemo(() => {
+    if (!dealSearchQuery.trim()) return rows
+    const q = dealSearchQuery.toLowerCase()
+    return rows.filter((row: any) => {
+      if (String(row['Opportunity Name'] || '').toLowerCase().includes(q)) return true
+      if (String(row['Opportunity ID 18 Digit'] || row._opp_id_18 || '').toLowerCase().includes(q)) return true
+      if (String(row['Account Name'] || '').toLowerCase().includes(q)) return true
+      for (const col of customColsList) {
+        const val = row[col.label] ?? row[col.key] ?? row._annotations?.[col.key]?.value
+        if (val != null && String(val).toLowerCase().includes(q)) return true
+      }
+      return false
+    })
+  }, [rows, dealSearchQuery, customColsList])
+
+  // Total pages
+  const totalPages = Math.max(1, Math.ceil((dealSearchQuery.trim() ? filteredRows.length : totalCount) / pageSize))
+
+  // Handle Quick filter toggles
+  const toggleQuickFilter = (
+    list: string[],
+    setList: React.Dispatch<React.SetStateAction<string[]>>,
+    item: string
+  ) => {
+    setPage(1)
+    if (list.includes(item)) {
+      setList(list.filter((x) => x !== item))
+    } else {
+      setList([...list, item])
+    }
+  }
+
+  // Clear all filters
+  const handleClearAllFilters = () => {
+    setSelectedSalesTypes([])
+    setSelectedFiscalPeriods([])
+    setSelectedForecastCats([])
+    setSelectedRegions([])
+    setSelectedApprovals([])
+    setSelectedBUs([])
+    setFilters([])
+    setIncludeDeletedLost(true)
+    setPage(1)
+  }
+
+  const activeChipsCount =
+    selectedSalesTypes.length +
+    selectedFiscalPeriods.length +
+    selectedForecastCats.length +
+    selectedRegions.length +
+    selectedApprovals.length +
+    selectedBUs.length +
+    filters.length +
+    (!includeDeletedLost ? 1 : 0)
+
+  // Starts collapsed once any filter is active
+  useEffect(() => {
+    if (activeChipsCount > 0 && !prevActiveRef.current) {
+      setIsFiltersCollapsed(true)
+    }
+    prevActiveRef.current = activeChipsCount > 0
+  }, [activeChipsCount])
+
+  // Column picker helpers
+  const handleToggleCol = (colName: string) => {
+    if (visibleColNames.includes(colName)) {
+      if (visibleColNames.length > 1) {
+        const next = visibleColNames.filter((c) => c !== colName)
+        setVisibleColNames(next)
+        localStorage.setItem('mobileum_explorer_columns', JSON.stringify(next))
+      }
+    } else {
+      const next = [...visibleColNames, colName]
+      setVisibleColNames(next)
+      localStorage.setItem('mobileum_explorer_columns', JSON.stringify(next))
+    }
+  }
+
+  const handleShowAllCols = () => {
+    const all = allColumns.map((c) => c.name)
+    setVisibleColNames(all)
+    localStorage.setItem('mobileum_explorer_columns', JSON.stringify(all))
+  }
+
+  const handleResetToExcelOrder = () => {
+    const original = allColumns.map((c) => c.name)
+    setVisibleColNames(original)
+    localStorage.setItem('mobileum_explorer_columns', JSON.stringify(original))
+  }
+
+  // Close download menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setDownloadMenuOpen(false)
+      }
+    }
+    if (downloadMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [downloadMenuOpen])
+
+  // Unified Download handler (Excel or CSV, All or Filtered rows)
+  const handleDownload = async (format: 'xlsx' | 'csv', rowsMode: 'all' | 'filtered') => {
+    if (isDownloading) return
+    setIsDownloading(true)
+    try {
+      const payload = {
+        filter_spec: rowsMode === 'filtered' ? effectiveFilterSpec : { as_of: activeSnapshotId || undefined, include_deleted_lost: true },
+        filters: rowsMode === 'filtered' ? effectiveCustomFilters : [],
+        search: rowsMode === 'filtered' ? dealSearchQuery : undefined,
+        sort: sortCol,
+        sort_dir: sortDir,
+      }
+      const { data, filename } = await downloadExplorerData({
+        as_of: activeSnapshotId,
+        format,
+        rows: rowsMode,
+        payload,
+      })
+      const mime =
+        format === 'xlsx'
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv;charset=utf-8;'
+      const blob = new Blob([data], { type: mime })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      showToast.success(`Downloaded ${filename}`)
+      setDownloadMenuOpen(false)
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || err?.message || 'Download failed')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  // Column header action handlers (Admin only)
+  const handleStartRenameCol = (col: CustomColumnItem) => {
+    setRenamingHeaderCol(col)
+    setRenameColInput(col.label)
+  }
+
+  const handleSaveRenameCol = async () => {
+    if (!renamingHeaderCol || !renameColInput.trim()) return
+    try {
+      await renameCustomColumn(renamingHeaderCol.id, renameColInput.trim())
+      showToast.success('Column renamed')
+      setRenamingHeaderCol(null)
+      await refetchCustomCols()
+      await refetch()
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to rename column')
+    }
+  }
+
+  const handleMoveCol = async (col: CustomColumnItem, direction: 'left' | 'right') => {
+    try {
+      await moveCustomColumn(col.id, direction)
+      await refetchCustomCols()
+      await refetch()
+      showToast.success(`Moved column ${direction}`)
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to move column')
+    }
+  }
+
+  const handleStartDeleteCol = (col: CustomColumnItem) => {
+    setDeletingHeaderCol(col)
+    setConfirmDeleteInput('')
+  }
+
+  const handleConfirmDeleteCol = async () => {
+    if (!deletingHeaderCol) return
+    const valuesCount = deletingHeaderCol.values_count || 0
+    if (valuesCount > 0 && confirmDeleteInput.trim() !== deletingHeaderCol.label.trim()) {
+      showToast.error('Column name does not match')
+      return
+    }
+
+    setIsDeletingCol(true)
+    try {
+      await deleteCustomColumn(deletingHeaderCol.id)
+      showToast.success(`Column "${deletingHeaderCol.label}" deleted`)
+      setDeletingHeaderCol(null)
+      setConfirmDeleteInput('')
+      await refetchCustomCols()
+      await refetch()
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to delete column')
+    } finally {
+      setIsDeletingCol(false)
+    }
+  }
+
+  // Saved Views handlers
+  const handleSaveView = () => {
+    if (!newViewName.trim()) return
+    const newView: SavedExplorerView = {
+      name: newViewName.trim(),
+      filters: [...filters],
+      columns: [...visibleColNames],
+      sort: sortCol ? { column: sortCol, dir: sortDir } : undefined,
+    }
+    const updated = [...savedViews.filter((v) => v.name !== newView.name), newView]
+    setSavedViews(updated)
+    localStorage.setItem('mobileum_explorer_saved_views', JSON.stringify(updated))
+    setNewViewName('')
+    setShowSaveViewModal(false)
+    showToast.success(`View "${newView.name}" saved!`)
+  }
+
+  const handleApplyView = (view: SavedExplorerView) => {
+    setFilters(view.filters || [])
+    if (view.columns && view.columns.length > 0) {
+      setVisibleColNames(view.columns)
+    }
+    if (view.sort) {
+      setSortCol(view.sort.column)
+      setSortDir(view.sort.dir)
+    }
+    setPage(1)
+    showToast.success(`Applied view "${view.name}"`)
+  }
+
+  const handleDeleteView = (viewName: string) => {
+    const updated = savedViews.filter((v) => v.name !== viewName)
+    setSavedViews(updated)
+    localStorage.setItem('mobileum_explorer_saved_views', JSON.stringify(updated))
+  }
+
+  // Filter builder row addition
+  const handleAddFilterRule = () => {
+    const firstCol = allColumns[0]?.name || 'Opportunity Name'
+    setFilters([...filters, { column: firstCol, operator: 'contains', value: '' }])
+  }
+
+  const handleUpdateFilterRule = (idx: number, patch: Partial<FilterRule>) => {
+    const updated = [...filters]
+    updated[idx] = { ...updated[idx], ...patch }
+    // If column changed, reset operator to first matching operator
+    if (patch.column && patch.column !== filters[idx].column) {
+      const meta = allColumns.find((c) => c.name === patch.column)
+      if (meta?.type === 'currency' || meta?.type === 'number') {
+        updated[idx].operator = '='
+      } else if (meta?.type === 'date') {
+        updated[idx].operator = 'on'
+      } else if (meta?.type === 'boolean') {
+        updated[idx].operator = 'is true'
+      } else {
+        updated[idx].operator = 'contains'
+      }
+      updated[idx].value = ''
+      updated[idx].value_to = undefined
+    }
+    setFilters(updated)
+  }
+
+  const handleRemoveFilterRule = (idx: number) => {
+    setFilters(filters.filter((_, i) => i !== idx))
+  }
+
+  // Sorting click handler
+  const handleSort = (colName: string) => {
+    if (sortCol === colName) {
+      if (sortDir === 'asc') setSortDir('desc')
+      else {
+        setSortCol(null)
+        setSortDir('asc')
+      }
+    } else {
+      setSortCol(colName)
+      setSortDir('asc')
+    }
+    setPage(1)
+  }
+
+  // Render cell formatting
+  const formatCellValue = (val: any) => {
+    if (val === null || val === undefined || String(val).trim() === '') {
+      return <span className="text-[var(--text-muted)] opacity-60">—</span>
+    }
+    return String(val)
+  }
+
+  // Filter visible columns based on picker search
+  const filteredColsForPicker = useMemo(() => {
+    if (!colSearchQuery.trim()) return allColumns
+    const q = colSearchQuery.toLowerCase()
+    return allColumns.filter((c) => c.name.toLowerCase().includes(q))
+  }, [allColumns, colSearchQuery])
+
+  // Filter drawer properties based on search query
+  const drawerFields = useMemo(() => {
+    if (!selectedRowData) return []
+    const originalOrder = allColumns.map((c) => c.name)
+    const list = originalOrder.map((colName) => ({
+      name: colName,
+      value: selectedRowData[colName],
+    }))
+    if (!drawerSearchQuery.trim()) return list
+    const q = drawerSearchQuery.toLowerCase()
+    return list.filter(
+      (f) => f.name.toLowerCase().includes(q) || String(f.value || '').toLowerCase().includes(q)
+    )
+  }, [selectedRowData, allColumns, drawerSearchQuery])
+
+  const explorerSections = useMemo(() => {
+    const list: { id: string; title: string }[] = []
+    list.push({ id: 'explorer-header', title: 'Controls & Summary' })
+    list.push({ id: 'explorer-quick-filters', title: 'Quick Filters' })
+    if (showFilterBuilder) {
+      list.push({ id: 'explorer-filter-builder', title: 'Filter Builder' })
+    }
+    if (showColPicker) {
+      list.push({ id: 'explorer-col-picker', title: 'Column Chooser' })
+    }
+    list.push({ id: 'explorer-table', title: 'Data Explorer Table' })
+    return list
+  }, [showFilterBuilder, showColPicker])
+
+  if (!activeSnapshotId) {
+    return <PageNoSnapshotState />
+  }
+
+  if (rowsResp?.error) {
+    return <PageErrorState message={rowsResp.error} onRetry={() => refetch()} />
+  }
+
+  return (
+    <div className="space-y-4 max-w-full" id="data-explorer-page">
+      <SectionNav sections={explorerSections} />
+
+      {/* ── Top Header Strip ─────────────────────────────────────────────── */}
+      <div id="explorer-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-[var(--border)] scroll-mt-24">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-black text-[var(--text-primary)]">Data Explorer</h1>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold border border-teal-500/20">
+              Full Excel View
+            </span>
+            {/* Reconciliation Badge */}
+            <button
+              type="button"
+              onClick={() => setShowReconcileModal(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+              id="explorer-reconcile-badge"
+              title="Click to view reconciliation with raw Excel Renewals scope"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Reconciliation</span>
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-1 font-medium">
+            Showing <strong className="text-[var(--text-primary)]">{formatCount(totalCount)}</strong> of{' '}
+            {formatCount(totalCount)} rows ·{' '}
+            <strong className="text-[#00A3AD]">{formatACV(totalACV)}</strong> ACV
+          </p>
+        </div>
+
+        {/* Top Action Buttons: Search, Column Picker, Filter Builder, Manage Columns, Export */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Search across deals & custom columns */}
+          <div className="flex items-center gap-1.5 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-2.5 py-1.5 text-xs">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              placeholder="Search deals & notes..."
+              value={dealSearchQuery}
+              onChange={(e) => {
+                setDealSearchQuery(e.target.value)
+                setPage(1)
+              }}
+              className="bg-transparent text-xs text-[var(--text-primary)] outline-none w-36 sm:w-48 placeholder:text-[var(--text-muted)]"
+              id="explorer-deals-search-input"
+            />
+            {dealSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setDealSearchQuery('')}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* + Add columns button (Admin only opens dialog, non-admin disabled with tooltip) */}
+          <button
+            type="button"
+            disabled={!isAdmin}
+            onClick={() => setShowAddColsModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 transition-all disabled:opacity-40 disabled:hover:bg-teal-500/10 disabled:cursor-not-allowed"
+            title={isAdmin ? 'Add custom columns' : 'Sign in as admin to add columns'}
+            id="explorer-add-columns-btn"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add columns</span>
+          </button>
+
+          {/* Manage Columns (Admin only) */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowManageCols(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-all"
+              id="explorer-manage-columns-btn"
+              title="Add, edit, reorder or delete custom columns & notes"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Manage Columns</span>
+            </button>
+          )}
+
+          {/* Change Log (Admin only) */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowChangeLogModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-all"
+              id="explorer-change-log-btn"
+              title="Audit change log of all additions and edits"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Change log</span>
+            </button>
+          )}
+
+          {/* Column Picker Button */}
+          <button
+            type="button"
+            onClick={() => setShowColPicker(!showColPicker)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              showColPicker
+                ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400'
+                : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-teal-500/40'
+            }`}
+            id="explorer-columns-btn"
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>Columns ({visibleColNames.length}/{allColumns.length})</span>
+          </button>
+
+          {/* Filter Builder Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowFilterBuilder(!showFilterBuilder)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              showFilterBuilder || filters.length > 0
+                ? 'bg-[#12284C] text-white border-[#12284C]'
+                : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-slate-400'
+            }`}
+            id="explorer-filter-builder-btn"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Filter Builder {filters.length > 0 && `(${filters.length})`}</span>
+          </button>
+
+          {/* ONE Unified Download Button with Dropdown Menu */}
+          <div className="relative inline-block text-left" ref={downloadMenuRef}>
+            <button
+              type="button"
+              onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+              disabled={isDownloading}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+              id="explorer-download-menu-btn"
+              title="Download snapshot data as Excel or CSV"
+            >
+              {isDownloading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <span>Download</span>
+              <ChevronDown className="w-3 h-3 ml-0.5 opacity-70" />
+            </button>
+
+            {downloadMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl bg-white dark:bg-slate-800 shadow-2xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 text-xs font-normal animate-in fade-in-50">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Excel (.xlsx)
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownload('xlsx', 'all')}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center justify-between text-slate-800 dark:text-slate-200"
+                >
+                  <span className="font-medium">All Rows of Snapshot</span>
+                  <span className="text-[10px] text-slate-400">({totalCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownload('xlsx', 'filtered')}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center justify-between text-slate-800 dark:text-slate-200"
+                >
+                  <span className="font-medium">Filtered Rows Only</span>
+                  <span className="text-[10px] text-slate-400">({filteredRows.length})</span>
+                </button>
+
+                <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  CSV (.csv)
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDownload('csv', 'all')}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center justify-between text-slate-800 dark:text-slate-200"
+                >
+                  <span className="font-medium">All Rows of Snapshot</span>
+                  <span className="text-[10px] text-slate-400">({totalCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownload('csv', 'filtered')}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 flex items-center justify-between text-slate-800 dark:text-slate-200"
+                >
+                  <span className="font-medium">Filtered Rows Only</span>
+                  <span className="text-[10px] text-slate-400">({filteredRows.length})</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <ExcludedTypesNote excluded={rowsResp?.other_types_excluded} />
+
+      {/* ── Quick Filter Row (Chips with Row Counts) ─────────────────────── */}
+      <Card id="explorer-quick-filters" padding="sm" className="space-y-3 scroll-mt-24">
+        {/* Quick Filters Header & Collapse Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+              Quick Filters
+            </span>
+            {activeChipsCount > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#00A3AD]/10 text-[#00A3AD] border border-[#00A3AD]/20">
+                {activeChipsCount} active
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFiltersCollapsed((prev) => !prev)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              id="explorer-collapse-filters-toggle"
+            >
+              {isFiltersCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Expand filters</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Collapse filters</span>
+                </>
+              )}
+            </button>
+            {activeChipsCount > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllFilters}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-md font-medium transition-colors"
+                id="explorer-clear-all-filters-btn"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Filter Body (Hidden if collapsed) */}
+        {!isFiltersCollapsed && (
+          <div className="space-y-3 pt-1 border-t border-[var(--border)]">
+            {/* Row 1: Sales Type & Include Deleted/Lost */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                Sales Type:
+              </span>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {(quickFiltersData?.sales_types || []).map((st: any) => {
+                  const active = selectedSalesTypes.includes(st.name)
+                  return (
+                    <button
+                      key={st.name}
+                      type="button"
+                      onClick={() => toggleQuickFilter(selectedSalesTypes, setSelectedSalesTypes, st.name)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-[#12284C] text-white border-[#12284C] shadow-sm'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-st-${st.name.replace(/\s+/g, '-').toLowerCase()}`}
+                    >
+                      {st.name} <span className="opacity-70 ml-1">({st.count})</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="h-4 w-px bg-[var(--border)] mx-1 hidden sm:block" />
+
+              {/* Include Deleted & Lost toggle (ON by default) */}
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] select-none">
+                <input
+                  type="checkbox"
+                  checked={includeDeletedLost}
+                  onChange={(e) => {
+                    setIncludeDeletedLost(e.target.checked)
+                    setPage(1)
+                  }}
+                  className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                  id="explorer-toggle-deleted-lost"
+                />
+                <span>Include Deleted & Lost</span>
+              </label>
+            </div>
+
+            {/* Row 2: Fiscal Period Chips (All periods, chronologically sorted, search if >12) */}
+            {quickFiltersData?.fiscal_periods && quickFiltersData.fiscal_periods.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-[var(--border)]">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Period:
+                </span>
+                {quickFiltersData.fiscal_periods.length > 12 && (
+                  <input
+                    type="text"
+                    placeholder="Search period..."
+                    value={periodFilterSearch}
+                    onChange={(e) => setPeriodFilterSearch(e.target.value)}
+                    className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-28 focus:outline-none"
+                  />
+                )}
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {quickFiltersData.fiscal_periods
+                    .filter((fp: any) =>
+                      !periodFilterSearch || fp.name.toLowerCase().includes(periodFilterSearch.toLowerCase())
+                    )
+                    .map((fp: any) => {
+                      const active = selectedFiscalPeriods.includes(fp.name)
+                      return (
+                        <button
+                          key={fp.name}
+                          type="button"
+                          onClick={() =>
+                            toggleQuickFilter(selectedFiscalPeriods, setSelectedFiscalPeriods, fp.name)
+                          }
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                            active
+                              ? 'bg-[#00A3AD] text-white border-[#00A3AD]'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                          }`}
+                          id={`quick-filter-period-${fp.name.toLowerCase()}`}
+                        >
+                          {fp.name} <span className="opacity-70 ml-0.5">({fp.count})</span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Row 3: Forecast Category & Approval Status */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs pt-1 border-t border-[var(--border)]">
+              {/* Forecast Categories */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Forecast:
+                </span>
+                {(quickFiltersData?.forecast_categories || []).map((fc: any) => {
+                  const active = selectedForecastCats.includes(fc.name)
+                  return (
+                    <button
+                      key={fc.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedForecastCats, setSelectedForecastCats, fc.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-[#12284C] text-white border-[#12284C]'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-fc-${fc.name.toLowerCase()}`}
+                    >
+                      {fc.name} ({fc.count})
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Approval Status */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  Approval:
+                </span>
+                {(quickFiltersData?.approval_statuses || []).map((app: any) => {
+                  const active = selectedApprovals.includes(app.name)
+                  return (
+                    <button
+                      key={app.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedApprovals, setSelectedApprovals, app.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-app-${app.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      {app.name} ({app.count})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Row 4: Region */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-[var(--border)]">
+              <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                Region:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {(quickFiltersData?.regions || []).map((reg: any) => {
+                  const active = selectedRegions.includes(reg.name)
+                  return (
+                    <button
+                      key={reg.name}
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedRegions, setSelectedRegions, reg.name)
+                      }
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                        active
+                          ? 'bg-[#12284C] text-white border-[#12284C]'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                      }`}
+                      id={`quick-filter-reg-${reg.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      {reg.name} ({reg.count})
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Row 5: Business Unit */}
+            <div className="space-y-1 pt-1 border-t border-[var(--border)]">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-[var(--text-muted)] min-w-[70px]">
+                  BU:
+                </span>
+                {(quickFiltersData?.business_units || []).length > 12 && (
+                  <input
+                    type="text"
+                    placeholder="Search BU..."
+                    value={buFilterSearch}
+                    onChange={(e) => setBuFilterSearch(e.target.value)}
+                    className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] w-24 focus:outline-none"
+                  />
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {(quickFiltersData?.business_units || [])
+                    .filter((bu: any) =>
+                      !buFilterSearch || bu.name.toLowerCase().includes(buFilterSearch.toLowerCase())
+                    )
+                    .map((bu: any) => {
+                      const active = selectedBUs.includes(bu.name)
+                      return (
+                        <button
+                          key={bu.name}
+                          type="button"
+                          onClick={() =>
+                            toggleQuickFilter(selectedBUs, setSelectedBUs, bu.name)
+                          }
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
+                            active
+                              ? 'bg-purple-600 text-white border-purple-600'
+                              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
+                          }`}
+                          id={`quick-filter-bu-${bu.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                        >
+                          {bu.name} ({bu.count})
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+              <p className="text-[10px] text-[var(--text-muted)] italic pl-[76px]">
+                As stored in the Excel
+              </p>
+            </div>
+          </div>
+        )}
+      </Card>
+
+
+      {/* ── Filter Builder Popover / Panel ───────────────────────────────── */}
+      {showFilterBuilder && (
+        <Card id="explorer-filter-builder" padding="md" className="space-y-4 border-[#00A3AD]/30 bg-[var(--bg-card)] shadow-lg scroll-mt-24">
+          <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-[#00A3AD]" />
+              <h3 className="font-bold text-sm text-[var(--text-primary)]">Custom Filter Builder</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveViewModal(true)}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] font-medium"
+              >
+                <Bookmark className="w-3.5 h-3.5 text-[#00A3AD]" />
+                <span>Save View</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFilterBuilder(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Active Quick Filters shown as removable chips in the filter builder */}
+          {activeChipsCount > 0 && (
+            <div className="space-y-1.5 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Active Quick Filters:
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedSalesTypes.map((st) => (
+                  <span
+                    key={`st-${st}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#12284C] text-white"
+                  >
+                    Sales Type = {st}
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickFilter(selectedSalesTypes, setSelectedSalesTypes, st)}
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedFiscalPeriods.map((fp) => (
+                  <span
+                    key={`fp-${fp}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#00A3AD] text-white"
+                  >
+                    Period = {fp}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedFiscalPeriods, setSelectedFiscalPeriods, fp)
+                      }
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedForecastCats.map((fc) => (
+                  <span
+                    key={`fc-${fc}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#12284C] text-white"
+                  >
+                    Forecast = {fc}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedForecastCats, setSelectedForecastCats, fc)
+                      }
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedApprovals.map((app) => (
+                  <span
+                    key={`app-${app}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-600 text-white"
+                  >
+                    Approval = {app}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedApprovals, setSelectedApprovals, app)
+                      }
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedRegions.map((reg) => (
+                  <span
+                    key={`reg-${reg}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[#12284C] text-white"
+                  >
+                    Region = {reg}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleQuickFilter(selectedRegions, setSelectedRegions, reg)
+                      }
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedBUs.map((bu) => (
+                  <span
+                    key={`bu-${bu}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-purple-700 text-white"
+                  >
+                    BU = {bu}
+                    <button
+                      type="button"
+                      onClick={() => toggleQuickFilter(selectedBUs, setSelectedBUs, bu)}
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {!includeDeletedLost && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-700 text-white">
+                    Exclude Deleted & Lost
+                    <button
+                      type="button"
+                      onClick={() => setIncludeDeletedLost(true)}
+                      className="hover:opacity-75"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Rules List */}
+          {filters.length === 0 ? (
+            <p className="text-xs text-[var(--text-muted)] italic py-2">
+              No custom filters defined yet. Click "Add Filter Rule" to construct complex queries.
+            </p>
+          ) : (
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              {filters.map((rule, idx) => {
+                const meta = allColumns.find((c) => c.name === rule.column)
+                const colType = meta?.type || 'text'
+                const ops =
+                  colType === 'currency' || colType === 'number'
+                    ? NUMBER_OPERATORS
+                    : colType === 'date'
+                    ? DATE_OPERATORS
+                    : colType === 'boolean'
+                    ? BOOLEAN_OPERATORS
+                    : TEXT_OPERATORS
+
+                return (
+                  <div
+                    key={idx}
+                    className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs"
+                  >
+                    {/* Group prefix if not first */}
+                    <span className="font-semibold text-[10px] text-[var(--text-muted)] uppercase w-8">
+                      {idx === 0 ? 'Where' : 'And'}
+                    </span>
+
+                    {/* Column Select */}
+                    <select
+                      value={rule.column}
+                      onChange={(e) => handleUpdateFilterRule(idx, { column: e.target.value })}
+                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] font-medium max-w-[200px]"
+                    >
+                      {allColumns.map((c) => (
+                        <option key={c.name} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Operator Select */}
+                    <select
+                      value={rule.operator}
+                      onChange={(e) => handleUpdateFilterRule(idx, { operator: e.target.value })}
+                      className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] font-medium"
+                    >
+                      {ops.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Value Input */}
+                    {!['is empty', 'is not empty', 'is true', 'is false'].includes(rule.operator) && (
+                      <input
+                        type={colType === 'number' || colType === 'currency' ? 'number' : 'text'}
+                        placeholder="Value..."
+                        value={rule.value || ''}
+                        onChange={(e) => handleUpdateFilterRule(idx, { value: e.target.value })}
+                        className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] flex-1 min-w-[120px]"
+                      />
+                    )}
+
+                    {/* Value To for 'between' */}
+                    {['between', 'date between'].includes(rule.operator) && (
+                      <input
+                        type={colType === 'number' || colType === 'currency' ? 'number' : 'text'}
+                        placeholder="To..."
+                        value={rule.value_to || ''}
+                        onChange={(e) => handleUpdateFilterRule(idx, { value_to: e.target.value })}
+                        className="px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] flex-1 min-w-[120px]"
+                      />
+                    )}
+
+                    {/* Remove rule */}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFilterRule(idx)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                      title="Remove condition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              type="button"
+              onClick={handleAddFilterRule}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#12284C] text-white text-xs font-semibold hover:bg-[#1B365D]"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Filter Rule</span>
+            </button>
+
+            {/* Saved Views dropdown list */}
+            {savedViews.length > 0 && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-[var(--text-muted)] font-medium">Saved Views:</span>
+                <div className="flex gap-1">
+                  {savedViews.map((sv) => (
+                    <span
+                      key={sv.name}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleApplyView(sv)}
+                        className="font-medium hover:text-[#00A3AD]"
+                      >
+                        {sv.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteView(sv.name)}
+                        className="text-red-400 hover:text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Column Chooser Modal / Drawer ─────────────────────────────────── */}
+      {showColPicker && (
+        <Card id="explorer-col-picker" padding="md" className="space-y-3 bg-[var(--bg-card)] shadow-lg border-teal-500/30 scroll-mt-24">
+          <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div className="flex items-center gap-2">
+              <Columns className="w-4 h-4 text-teal-600" />
+              <h3 className="font-bold text-sm text-[var(--text-primary)]">
+                Column Chooser ({visibleColNames.length} of 172 selected)
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleShowAllCols}
+                className="text-xs px-2.5 py-1 rounded bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-hover)] font-medium"
+              >
+                Show All 172
+              </button>
+              <button
+                type="button"
+                onClick={handleResetToExcelOrder}
+                className="text-xs px-2.5 py-1 rounded bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-hover)] font-medium"
+              >
+                Reset to Excel Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowColPicker(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] ml-2"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-[var(--bg-secondary)] px-2.5 py-1.5 rounded-lg border border-[var(--border)]">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+            <input
+              type="text"
+              placeholder="Search columns..."
+              value={colSearchQuery}
+              onChange={(e) => setColSearchQuery(e.target.value)}
+              className="bg-transparent text-xs text-[var(--text-primary)] outline-none w-full"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 max-h-64 overflow-y-auto p-1">
+            {filteredColsForPicker.map((col) => {
+              const isSelected = visibleColNames.includes(col.name)
+              return (
+                <label
+                  key={col.name}
+                  className={`flex items-center gap-1.5 p-1.5 rounded border text-xs cursor-pointer select-none transition-colors ${
+                    isSelected
+                      ? 'bg-teal-500/10 border-teal-500/30 text-teal-700 dark:text-teal-300 font-medium'
+                      : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleToggleCol(col.name)}
+                    className="rounded border-[var(--border)] text-teal-600 focus:ring-0 w-3 h-3"
+                  />
+                  <span className="truncate" title={col.name}>
+                    {col.name}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Virtualised / Sticky Header Table ────────────────────────────── */}
+      <Card id="explorer-table" padding="none" className="overflow-hidden border-[var(--border)] shadow-sm scroll-mt-24">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative" id="explorer-table-container">
+          <table className="w-full text-xs text-left border-collapse">
+            {/* Sticky Header */}
+            <thead className="sticky top-0 bg-[var(--bg-secondary)] z-20 shadow-sm border-b border-[var(--border)]">
+              <tr>
+                {/* Pinned First Column: # (Index) or ID */}
+                <th className="sticky left-0 bg-[var(--bg-secondary)] z-30 px-3 py-2.5 font-bold text-[var(--text-primary)] border-r border-[var(--border)] w-12 text-center">
+                  #
+                </th>
+                {visibleColNames.map((colName, cIdx) => {
+                  const isSorted = sortCol === colName
+                  const colMeta = allColumns.find((c) => c.name === colName || c.key === colName)
+                  const customCol = customColsList.find((c) => c.label === colName || c.key === colName)
+                  const isCustom = Boolean(colMeta?.is_custom || customCol)
+                  const isExcelHeader = allColumns.some(
+                    (c) => !c.is_custom && c.name.trim().toLowerCase() === colName.trim().toLowerCase()
+                  )
+                  const isClash = isCustom && isExcelHeader
+
+                  return (
+                    <th
+                      key={colName}
+                      className={`px-3 py-2.5 font-bold whitespace-nowrap select-none border-r border-[var(--border)] last:border-r-0 ${
+                        isClash
+                          ? 'bg-purple-100/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-200 dark:border-purple-800'
+                          : isCustom
+                          ? 'bg-teal-50/50 dark:bg-teal-950/20 text-[var(--text-primary)]'
+                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div
+                          className="flex items-center gap-1.5 cursor-pointer flex-1"
+                          onClick={() => handleSort(colName)}
+                        >
+                          <span>{colName}</span>
+                          {isClash && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-200 text-purple-800 dark:bg-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-700">
+                              added
+                            </span>
+                          )}
+                          {isSorted ? (
+                            sortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#00A3AD]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#00A3AD]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-2.5 h-2.5 text-[var(--text-muted)] opacity-40" />
+                          )}
+                        </div>
+
+                        {/* Options menu for added columns only (Admin only) */}
+                        {isCustom && customCol && isAdmin && (
+                          <ColumnHeaderMenu
+                            column={customCol}
+                            canMoveLeft={cIdx > 0}
+                            canMoveRight={cIdx < visibleColNames.length - 1}
+                            isAdmin={isAdmin}
+                            onRename={handleStartRenameCol}
+                            onMove={handleMoveCol}
+                            onDelete={handleStartDeleteCol}
+                          />
+                        )}
+                      </div>
+                    </th>
+                  )
+                })}
+
+                {/* "+" at the end of the table header to quickly add columns */}
+                <th className="px-2 py-2 text-center w-10 border-l border-[var(--border)] bg-[var(--bg-secondary)]">
+                  <button
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => setShowAddColsModal(true)}
+                    className="p-1 rounded text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-950/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title={isAdmin ? '+ Add columns' : 'Sign in as admin to add columns'}
+                    aria-label="Add columns"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </th>
+              </tr>
+            </thead>
+
+            {/* Table Body */}
+            <tbody>
+              {rowsLoading ? (
+                <tr>
+                  <td colSpan={visibleColNames.length + 2} className="py-20 text-center text-xs text-[var(--text-muted)]">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-[#00A3AD]" />
+                      <span>Loading snapshot data...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={visibleColNames.length + 2} className="py-16 text-center text-xs text-[var(--text-muted)]">
+                    No deals match the selected criteria. Try adjusting the filters above.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((row: any, rIdx: number) => {
+                  const rowNum = (page - 1) * pageSize + rIdx + 1
+                  return (
+                    <tr
+                      key={row._id || rIdx}
+                      onClick={() => setSelectedRowData(row)}
+                      className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
+                    >
+                      {/* Pinned first column with Notes button */}
+                      <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 px-2 py-2 text-center font-mono text-[var(--text-muted)] border-r border-[var(--border)]">
+                        <div className="flex items-center justify-between gap-1">
+                          <span>{rowNum}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setNotesDeal(row)
+                              setShowNotesDrawer(true)
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[#00A3AD] hover:text-[#008f98] transition-colors"
+                            title="Notes & Custom Fields"
+                            id={`row-notes-btn-${row._opp_id_18 || rowNum}`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Dynamic columns */}
+                      {visibleColNames.map((colName) => {
+                        const colMeta = allColumns.find((c) => c.name === colName || c.key === colName)
+                        const isCustom = colMeta?.is_custom || customColsList.some((c) => c.label === colName || c.key === colName)
+                        const customCol = customColsList.find((c) => c.label === colName || c.key === colName)
+
+                        if (isCustom && customCol) {
+                          const oppId = row['Opportunity ID 18 Digit'] || row._opp_id_18 || row.opportunity_id_18 || ''
+                          const currentAnnot = row._annotations?.[customCol.key] || {
+                            opportunity_id_18: oppId,
+                            column_key: customCol.key,
+                            value: row[colName] ?? row[customCol.key] ?? null,
+                            source: 'app',
+                            version: 1,
+                          }
+                          return (
+                            <td
+                              key={colName}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2 py-1.5 whitespace-nowrap border-r border-[var(--border)] last:border-r-0"
+                            >
+                              <EditableCell
+                                opportunityId={oppId}
+                                columnKey={customCol.key}
+                                columnLabel={customCol.label}
+                                columnType={customCol.type}
+                                dropdownOptions={customCol.dropdown_options}
+                                currentAnnotation={currentAnnot}
+                                isAdmin={isAdmin}
+                                onAnnotationUpdated={(updated) => {
+                                  if (row._annotations && updated?.column_key) {
+                                    row._annotations[updated.column_key] = updated
+                                  }
+                                  refetch()
+                                }}
+                              />
+                            </td>
+                          )
+                        }
+
+                        const val = row[colName]
+                        return (
+                          <td
+                            key={colName}
+                            className="px-3 py-2 whitespace-nowrap text-[var(--text-primary)] border-r border-[var(--border)] last:border-r-0 font-medium"
+                          >
+                            {formatCellValue(val)}
+                          </td>
+                        )
+                      })}
+
+                      {/* Matching empty cell for the + header column */}
+                      <td className="px-2 py-2 text-center border-l border-[var(--border)]" />
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── Table Footer & Pagination ──────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-[var(--bg-secondary)] border-t border-[var(--border)] text-xs">
+          <div className="flex items-center gap-2 text-[var(--text-muted)]">
+            <span>
+              Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of{' '}
+              {formatCount(totalCount)} rows
+            </span>
+            <div className="h-3 w-px bg-[var(--border)] mx-1" />
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+            >
+              <option value={25}>25 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+              <option value={200}>200 per page</option>
+              <option value={500}>500 per page</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="p-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] disabled:opacity-40"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="px-2 font-medium text-[var(--text-primary)]">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="p-1 rounded border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] disabled:opacity-40"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Detail Drawer (Click any row) ─────────────────────────────────── */}
+      {selectedRowData && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-sm sm:text-base text-[var(--text-primary)]">
+                  {selectedRowData['Opportunity Name'] || 'Deal Detail'}
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] font-mono">
+                  {selectedRowData['Opportunity ID 18 Digit'] || selectedRowData._opp_id_18}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedRowData(null)}
+                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                aria-label="Close deal detail"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Drawer Field Search */}
+            <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[var(--bg-card)] border border-[var(--border)] text-xs">
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  placeholder="Filter 172 fields in Excel order..."
+                  value={drawerSearchQuery}
+                  onChange={(e) => setDrawerSearchQuery(e.target.value)}
+                  className="bg-transparent text-xs text-[var(--text-primary)] outline-none w-full"
+                />
+              </div>
+            </div>
+
+            {/* Drawer Fields List (172 fields in original order) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 divide-y divide-[var(--border)]">
+              {drawerFields.map((field) => (
+                <div key={field.name} className="pt-2 first:pt-0 flex flex-col sm:flex-row justify-between gap-1 text-xs">
+                  <span className="font-semibold text-[var(--text-muted)] break-words max-w-[200px]">
+                    {field.name}
+                  </span>
+                  <span className="text-[var(--text-primary)] font-medium break-all text-right">
+                    {formatCellValue(field.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reconciliation Modal ─────────────────────────────────────────── */}
+      {showReconcileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <Card padding="lg" className="w-full max-w-2xl space-y-4 bg-[var(--bg-card)] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-black text-base text-[var(--text-primary)]">
+                  Excel Data Reconciliation
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReconcileModal(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Whole Snapshot Section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                  1. Full Snapshot Reconciliation (Excel vs Database)
+                </p>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Exact Match
+                </span>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Compares the entire uploaded Excel sheet today for {reconcileData?.snapshot_date || 'the active snapshot'} against the database:
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+                  <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Total Deals</p>
+                  <p className="text-xl font-black text-[var(--text-primary)] mt-1">
+                    {reconcileData?.whole_snapshot?.total_rows != null
+                      ? formatCount(reconcileData.whole_snapshot.total_rows)
+                      : reconcileData?.total_rows != null
+                      ? formatCount(reconcileData.total_rows)
+                      : 'Not available'}
+                  </p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                    Excel: {reconcileData?.whole_snapshot?.total_rows != null ? `${formatCount(reconcileData.whole_snapshot.total_rows)} rows` : 'Not available'}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+                  <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Total ACV</p>
+                  <p className="text-xl font-black text-[#00A3AD] mt-1">
+                    {reconcileData?.whole_snapshot?.total_acv != null
+                      ? formatACV(reconcileData.whole_snapshot.total_acv)
+                      : reconcileData?.total_acv != null
+                      ? formatACV(reconcileData.total_acv)
+                      : 'Not available'}
+                  </p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                    Excel: {reconcileData?.whole_snapshot?.total_acv != null ? formatACV(reconcileData.whole_snapshot.total_acv) : 'Not available'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Whole Snapshot Breakdown */}
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs font-semibold text-[var(--text-primary)]">Forecast Category Breakdown:</p>
+                <div className="max-h-36 overflow-y-auto border border-[var(--border)] rounded-lg divide-y divide-[var(--border)] text-xs">
+                  {Object.entries(
+                    reconcileData?.whole_snapshot?.forecast_categories || reconcileData?.forecast_categories || {}
+                  ).map(([cat, info]: any) => (
+                    <div key={cat} className="flex justify-between p-2">
+                      <span className="font-medium text-[var(--text-secondary)]">{cat}</span>
+                      <span className="font-semibold text-[var(--text-primary)]">
+                        {info.count} deals · {formatACV(info.acv)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Current Filter Section */}
+            {reconcileData?.current_filter && (
+              <div className="space-y-2 pt-3 border-t border-[var(--border)]">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                    2. Current Active Filter Reconciliation
+                  </p>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                    Filtered Set
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Filtered Deals</p>
+                    <p className="text-lg font-black text-[var(--text-primary)] mt-0.5">
+                      {formatCount(reconcileData.current_filter.total_rows)}
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]">
+                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Filtered ACV</p>
+                    <p className="text-lg font-black text-[#00A3AD] mt-0.5">
+                      {formatACV(reconcileData.current_filter.total_acv)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filtered Forecast Breakdown */}
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-[var(--text-primary)]">Filtered Forecast Breakdown:</p>
+                  <div className="max-h-28 overflow-y-auto border border-[var(--border)] rounded-lg divide-y divide-[var(--border)] text-xs">
+                    {Object.entries(reconcileData.current_filter.forecast_categories || {}).map(([cat, info]: any) => (
+                      <div key={cat} className="flex justify-between p-1.5 px-2">
+                        <span className="font-medium text-[var(--text-secondary)]">{cat}</span>
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          {info.count} deals · {formatACV(info.acv)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setShowReconcileModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-[#12284C] text-white text-xs font-semibold hover:bg-[#1B365D]"
+              >
+                Close
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Save View Modal ──────────────────────────────────────────────── */}
+      {showSaveViewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <Card padding="md" className="w-full max-w-sm space-y-3 bg-[var(--bg-card)]">
+            <h4 className="font-bold text-sm text-[var(--text-primary)]">Save Current Explorer View</h4>
+            <input
+              type="text"
+              placeholder="View name (e.g. Q4 Large Deals)..."
+              value={newViewName}
+              onChange={(e) => setNewViewName(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)]"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSaveViewModal(false)}
+                className="px-3 py-1 rounded text-xs text-[var(--text-muted)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveView}
+                disabled={!newViewName.trim()}
+                className="px-3 py-1 rounded text-xs bg-[#12284C] text-white font-semibold disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Add Columns Modal ────────────────────────────────────────────── */}
+      <AddColumnsModal
+        isOpen={showAddColsModal}
+        onClose={() => setShowAddColsModal(false)}
+        onColumnsAdded={() => {
+          refetchCustomCols()
+          refetch()
+        }}
+      />
+
+      {/* ── Change Log Modal ─────────────────────────────────────────────── */}
+      <ChangeLogModal
+        isOpen={showChangeLogModal}
+        onClose={() => setShowChangeLogModal(false)}
+      />
+
+      {/* ── Header Column Delete Confirmation Modal ───────────────────────── */}
+      {deletingHeaderCol && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-md space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-2 bg-rose-50 dark:bg-rose-950 rounded-lg">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                Delete Column?
+              </h4>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Delete column <strong>"{deletingHeaderCol.label}"</strong>? It has{' '}
+              <strong className="text-rose-600 dark:text-rose-400">
+                {deletingHeaderCol.values_count || 0} values
+              </strong>{' '}
+              entered in the app. The Excel data is not affected.
+            </p>
+
+            {(deletingHeaderCol.values_count || 0) > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                  Type <strong className="text-slate-900 dark:text-white">{deletingHeaderCol.label}</strong> to confirm:
+                </label>
+                <input
+                  type="text"
+                  placeholder={deletingHeaderCol.label}
+                  value={confirmDeleteInput}
+                  onChange={(e) => setConfirmDeleteInput(e.target.value)}
+                  className="w-full text-xs px-3 py-2 border border-rose-300 dark:border-rose-800 rounded-lg dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingHeaderCol(null)
+                  setConfirmDeleteInput('')
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  isDeletingCol ||
+                  ((deletingHeaderCol.values_count || 0) > 0 &&
+                    confirmDeleteInput.trim() !== deletingHeaderCol.label.trim())
+                }
+                onClick={handleConfirmDeleteCol}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-md disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isDeletingCol ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Delete Column
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Header Column Rename Modal ────────────────────────────────────── */}
+      {renamingHeaderCol && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-sm space-y-4">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+              Rename Column
+            </h4>
+            <input
+              type="text"
+              value={renameColInput}
+              onChange={(e) => setRenameColInput(e.target.value)}
+              className="w-full text-xs px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRenamingHeaderCol(null)}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!renameColInput.trim() || renameColInput.trim() === renamingHeaderCol.label}
+                onClick={handleSaveRenameCol}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-md disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Manage Columns Modal ─────────────────────────────────────────── */}
+      <ManageColumnsModal
+        isOpen={showManageCols}
+        onClose={() => setShowManageCols(false)}
+        snapshotId={activeSnapshotId}
+        onColumnsChanged={() => {
+          refetchCustomCols()
+          refetch()
+        }}
+      />
+
+      {/* ── Deal Notes Drawer ────────────────────────────────────────────── */}
+      <DealNotesDrawer
+        isOpen={showNotesDrawer}
+        onClose={() => {
+          setShowNotesDrawer(false)
+          setNotesDeal(null)
+        }}
+        deal={notesDeal}
+        columns={customColsList}
+        onAnnotationsChanged={() => {
+          refetch()
+        }}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,745 @@
+from __future__ import annotations
+import logging
+from datetime import date, timedelta
+from typing import Optional
+import pandas as pd
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
+from backend.models.opportunity import Opportunity
+from backend.models.snapshot import UploadSnapshot
+from backend.services.context import UserContext
+from backend.services.scopes import ScopeService
+from backend.config import settings
+
+def _sum(df: pd.DataFrame, col: str) -> float:
+    if df.empty or col not in df.columns:
+        return 0.0
+    return float(df[col].sum())
+
+log = logging.getLogger(__name__)
+
+ALL_FC = ["Closed", "Commit", "Best Case", "Pipeline", "Blank"]
+FUNNEL_STAGES = ["Approved", "Pending Approval", "Blank"]
+
+def _norm_approval(s: str | None) -> str:
+    if not s or str(s).strip() in ("", "nan", "None", "Blank"):
+        return "Blank"
+    s = s.strip()
+    if s in ("Approved", "Approved - 2nd"):
+        return "Approved"
+    if s in ("Pending Approval", "Pending-Approval"):
+        return "Pending Approval"
+    return s
+
+def _norm_fc(s: str | None) -> str:
+    if not s or str(s).strip() in ("", "nan", "None"):
+        return "Blank"
+    s = s.strip()
+    if s not in ["Closed", "Commit", "Best Case", "Pipeline"]:
+        return "Blank"
+    return s
+
+class V2ApprovalsService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def _get_snapshot(self, ctx: UserContext, target_date: Optional[str] = None, base_snap: Optional[UploadSnapshot] = None) -> Optional[UploadSnapshot]:
+        q = self.db.query(UploadSnapshot)
+        if target_date:
+            if target_date == "yesterday":
+                if base_snap:
+                    # Look for date < base_snap.snapshot_date
+                    return q.filter(UploadSnapshot.snapshot_date < base_snap.snapshot_date).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                else:
+                    latest = q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    if not latest: return None
+                    return q.filter(UploadSnapshot.snapshot_date < latest.snapshot_date).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            elif target_date == "last_week":
+                if base_snap:
+                    target = base_snap.snapshot_date - timedelta(days=7)
+                else:
+                    latest = q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    if not latest: return None
+                    target = latest.snapshot_date - timedelta(days=7)
+                return q.filter(UploadSnapshot.snapshot_date <= target).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            else:
+                by_id = q.filter(UploadSnapshot.id == target_date).first()
+                if by_id:
+                    return by_id
+                try:
+                    d = date.fromisoformat(target_date)
+                    exact = q.filter(UploadSnapshot.snapshot_date == d).first()
+                    if exact:
+                        return exact
+                    snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+                    if snap:
+                        return snap
+                except ValueError:
+                    pass
+                return None
+        active = q.filter(UploadSnapshot.is_active_today == True).first()
+        if active:
+            return active
+        return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+
+    def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
+        from backend.services.scopes import FilterSpec
+        if not snap:
+            return pd.DataFrame(), None
+        eff_date = target_date
+        if not eff_date and filter_spec and filter_spec.as_of:
+            try:
+                eff_date = date.fromisoformat(filter_spec.as_of)
+            except ValueError:
+                pass
+        if not eff_date:
+            eff_date = snap.snapshot_date
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
+        q = (
+            self.db.query(Opportunity)
+            .filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.conditions
+            )
+        )
+        opps = q.all()
+        if not opps:
+            return pd.DataFrame(), res
+            
+        data = []
+        for o in opps:
+            fc = _norm_fc(o.forecast_category)
+            status = _norm_approval(o.approval_status)
+                
+            data.append({
+                "id": o.id,
+                "opportunity_id_18": o.opportunity_id_18,
+                "opportunity_name": o.opportunity_name,
+                "account_name": o.account_name,
+                "forecast_category": fc,
+                "forecast_acv_amount": float(o.forecast_acv_amount or 0),
+                "approval_status": status,
+                "reason_for_approval": o.extra_attributes.get("Reason for approval") if o.extra_attributes else None,
+                "close_date": o.close_date,
+                "sub_region": o.sub_region,
+                "business_unit_primary": o.business_unit_primary,
+                "opportunity_owner": (o.opportunity_owner or "").strip() or "Unassigned",
+            })
+        
+        df = pd.DataFrame(data)
+        df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
+        return df, res
+
+    def _get_opps_df(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
+        return self._scoped_opps(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=target_date)
+
+
+    def get_distribution(
+        self,
+        ctx: UserContext,
+        as_of: Optional[str] = None,
+        compare: Optional[str] = None,
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None
+    ) -> dict:
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        eff_compare = compare or (filter_spec.compare if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
+        if not snap:
+            return {"error": "No snapshot found"}
+
+        eff_target_date = None
+        if eff_as_of:
+            try:
+                eff_target_date = date.fromisoformat(eff_as_of)
+            except ValueError:
+                pass
+        if not eff_target_date:
+            eff_target_date = snap.snapshot_date
+            
+        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date)
+        
+        comp_snap = None
+        if eff_compare:
+            comp_snap = self._get_snapshot(ctx, eff_compare, base_snap=snap)
+        comp_df, _ = self._get_opps_df(comp_snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if comp_snap else (pd.DataFrame(), None)
+            
+        snap_yest = self._get_snapshot(ctx, "yesterday", base_snap=snap)
+        df_yest, _ = self._get_opps_df(snap_yest, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if snap_yest else (pd.DataFrame(), None)
+        
+        snap_lw = self._get_snapshot(ctx, "last_week", base_snap=snap)
+        df_lw, _ = self._get_opps_df(snap_lw, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date) if snap_lw else (pd.DataFrame(), None)
+        
+        total_count = len(df)
+        total_acv = _sum(df, "forecast_acv_amount") if not df.empty else 0.0
+        
+        all_statuses = set()
+        if not df.empty:
+            all_statuses.update(df["approval_status"].unique())
+        all_statuses.update(FUNNEL_STAGES)
+        
+        statuses_list = []
+        matrix = {}
+        for st in all_statuses:
+            st_df = df[df["approval_status"] == st] if not df.empty else pd.DataFrame()
+            c = len(st_df)
+            a = _sum(st_df, "forecast_acv_amount")
+            if c == 0 and st not in FUNNEL_STAGES:
+                continue
+                
+            pct_c = round((c / total_count * 100) if total_count else 0, 1)
+            pct_a = round((a / total_acv * 100) if total_acv else 0, 1)
+            
+            def get_delta(prev_df):
+                if prev_df.empty:
+                    return {"count": 0, "acv": 0.0} # Fixed!
+                prev_st_df = prev_df[prev_df["approval_status"] == st]
+                prev_c = len(prev_st_df)
+                prev_a = _sum(prev_st_df, "forecast_acv_amount")
+                return {"count": c - prev_c, "acv": round(a - prev_a, 2)}
+                
+            delta_yest = get_delta(df_yest)
+            delta_lw = get_delta(df_lw)
+            delta_comp = get_delta(comp_df) if comp_snap else None
+            
+            statuses_list.append({
+                "status": st,
+                "count": c,
+                "acv": round(a, 2),
+                "pct_count": pct_c,
+                "pct_acv": pct_a,
+                "delta_yesterday": delta_yest,
+                "delta_lastweek": delta_lw,
+                "delta_custom": delta_comp
+            })
+            
+            row_matrix = {}
+            for fc in ALL_FC:
+                fc_df = st_df[st_df["forecast_category"] == fc] if not st_df.empty else pd.DataFrame()
+                row_matrix[fc] = {
+                    "count": len(fc_df),
+                    "acv": round(_sum(fc_df, "forecast_acv_amount"), 2)
+                }
+            matrix[st] = row_matrix
+            
+        # 1. Approval funnel: Not submitted -> Pending Approval -> Approved
+        funnel_stages = [
+            {"stage": "Not submitted", "status_key": "Blank"},
+            {"stage": "Pending Approval", "status_key": "Pending Approval"},
+            {"stage": "Approved", "status_key": "Approved"},
+        ]
+        funnel = []
+        for item in funnel_stages:
+            st_df = df[df["approval_status"] == item["status_key"]] if not df.empty else pd.DataFrame()
+            c = len(st_df)
+            a = _sum(st_df, "forecast_acv_amount")
+            pct_c = round((c / total_count * 100), 1) if total_count > 0 else 0.0
+            pct_a = round((a / total_acv * 100), 1) if total_acv > 0 else 0.0
+            funnel.append({
+                "stage": item["stage"],
+                "status_key": item["status_key"],
+                "count": c,
+                "acv": round(a, 2),
+                "pct_count": pct_c,
+                "pct_acv": pct_a,
+            })
+
+        # Explicit "Other / not classified" stage if any deals fall outside the three main statuses
+        other_df = df[~df["approval_status"].isin(["Blank", "Pending Approval", "Approved"])] if not df.empty else pd.DataFrame()
+        other_c = len(other_df)
+        other_a = _sum(other_df, "forecast_acv_amount")
+        if other_c > 0:
+            pct_other_c = round((other_c / total_count * 100), 1) if total_count > 0 else 0.0
+            pct_other_a = round((other_a / total_acv * 100), 1) if total_acv > 0 else 0.0
+            funnel.append({
+                "stage": "Other / not classified",
+                "status_key": "Other",
+                "count": other_c,
+                "acv": round(other_a, 2),
+                "pct_count": pct_other_c,
+                "pct_acv": pct_other_a,
+                "deal_ids": [str(d) for d in other_df["opportunity_id_18"]],
+            })
+
+        # 2. Deal-size split (threshold in setting, not typed in code) per status
+        threshold = getattr(settings, "APPROVAL_DEAL_SIZE_THRESHOLD", 100000.0)
+        deal_size_split = {
+            "threshold": threshold,
+            "threshold_label": f"${int(threshold / 1000)}K" if threshold >= 1000 and threshold % 1000 == 0 else f"${threshold:,.0f}",
+            "statuses": []
+        }
+        statuses_to_split = [
+            ("Approved", "Approved"),
+            ("Pending Approval", "Pending Approval"),
+            ("Not submitted", "Blank"),
+        ]
+        if other_c > 0:
+            statuses_to_split.append(("Other / not classified", "Other"))
+        statuses_to_split.append(("Total", None))
+        for label, st_key in statuses_to_split:
+            st_df = df if st_key is None else (df[df["approval_status"] == st_key] if not df.empty else pd.DataFrame())
+            large_df = st_df[st_df["forecast_acv_amount"] >= threshold] if not st_df.empty else pd.DataFrame()
+            small_df = st_df[st_df["forecast_acv_amount"] < threshold] if not st_df.empty else pd.DataFrame()
+            st_tot_acv = _sum(st_df, "forecast_acv_amount")
+            deal_size_split["statuses"].append({
+                "status": label,
+                "status_key": st_key,
+                "large": {
+                    "count": len(large_df),
+                    "acv": round(_sum(large_df, "forecast_acv_amount"), 2),
+                    "pct_acv": round((_sum(large_df, "forecast_acv_amount") / st_tot_acv * 100), 1) if st_tot_acv > 0 else 0.0,
+                },
+                "small": {
+                    "count": len(small_df),
+                    "acv": round(_sum(small_df, "forecast_acv_amount"), 2),
+                    "pct_acv": round((_sum(small_df, "forecast_acv_amount") / st_tot_acv * 100), 1) if st_tot_acv > 0 else 0.0,
+                },
+                "total": {
+                    "count": len(st_df),
+                    "acv": round(st_tot_acv, 2)
+                }
+            })
+
+        # 3. Approval coverage per forecast category, per region, and per BU, each with gap to portfolio average
+        total_appr_df = df[df["approval_status"] == "Approved"] if not df.empty else pd.DataFrame()
+        portfolio_approved_acv = _sum(total_appr_df, "forecast_acv_amount")
+        portfolio_approved_count = len(total_appr_df)
+        portfolio_avg_pct = round(portfolio_approved_acv / total_acv * 100, 1) if total_acv > 0 else 0.0
+        portfolio_avg_count_pct = round(portfolio_approved_count / total_count * 100, 1) if total_count > 0 else 0.0
+
+        def build_coverage(df_subset, group_col, order_list=None):
+            items = []
+            if df_subset.empty or group_col not in df_subset.columns:
+                return items
+            keys = order_list if order_list else sorted([k for k in df_subset[group_col].dropna().unique() if str(k).strip()])
+            for key in keys:
+                k_df = df_subset[df_subset[group_col] == key]
+                if k_df.empty:
+                    continue
+                k_appr = k_df[k_df["approval_status"] == "Approved"]
+                k_tot_acv = _sum(k_df, "forecast_acv_amount")
+                k_appr_acv = _sum(k_appr, "forecast_acv_amount")
+                cov_pct = round(k_appr_acv / k_tot_acv * 100, 1) if k_tot_acv > 0 else 0.0
+                gap = round(cov_pct - portfolio_avg_pct, 1)
+                items.append({
+                    "name": key,
+                    "total_count": len(k_df),
+                    "total_acv": round(k_tot_acv, 2),
+                    "approved_count": len(k_appr),
+                    "approved_acv": round(k_appr_acv, 2),
+                    "coverage_pct": cov_pct,
+                    "gap": gap
+                })
+            return items
+
+        approval_coverage = {
+            "portfolio_average_pct": portfolio_avg_pct,
+            "portfolio_average_count_pct": portfolio_avg_count_pct,
+            "portfolio_total_acv": round(total_acv, 2),
+            "portfolio_approved_acv": round(portfolio_approved_acv, 2),
+            "by_category": build_coverage(df, "forecast_category", ALL_FC),
+            "by_region": build_coverage(df, "sub_region"),
+            "by_bu": build_coverage(df, "business_unit_primary"),
+        }
+
+        # 4. "Commit but not approved": table of Commit deals with no approval, ranked by ACV
+        commit_unapproved_df = df[
+            (df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")
+        ].copy() if not df.empty else pd.DataFrame()
+
+        commit_not_approved_deals = []
+        if not commit_unapproved_df.empty:
+            commit_unapproved_df = commit_unapproved_df.sort_values("forecast_acv_amount", ascending=False)
+            snap_dt = snap.snapshot_date
+            for _, r in commit_unapproved_df.iterrows():
+                c_date = r["close_date"]
+                days_to_close = None
+                if pd.notna(c_date):
+                    c_dt = c_date.date() if hasattr(c_date, "date") else pd.to_datetime(c_date).date()
+                    days_to_close = (c_dt - snap_dt).days
+                commit_not_approved_deals.append({
+                    "opportunity_id_18": r["opportunity_id_18"],
+                    "opportunity_name": r["opportunity_name"],
+                    "account_name": r["account_name"],
+                    "forecast_acv_amount": round(float(r["forecast_acv_amount"] or 0), 2),
+                    "approval_status": "Not submitted" if r["approval_status"] == "Blank" else r["approval_status"],
+                    "approval_status_key": r["approval_status"],
+                    "owner": str(r.get("opportunity_owner")) if pd.notna(r.get("opportunity_owner")) else "Unassigned",
+                    "region": str(r.get("sub_region")) if pd.notna(r.get("sub_region")) else "Unmapped",
+                    "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
+                    "days_to_close": days_to_close
+                })
+
+        commit_not_approved = {
+            "count": len(commit_unapproved_df),
+            "acv": round(_sum(commit_unapproved_df, "forecast_acv_amount"), 2),
+            "deals": commit_not_approved_deals
+        }
+
+        # 5. Pending ageing: how long each deal has been pending (use snapshot history); oldest first
+        pending_df = df[df["approval_status"] == "Pending Approval"] if not df.empty else pd.DataFrame()
+        pending_ageing_deals = []
+        if not pending_df.empty:
+            pending_ids = pending_df["opportunity_id_18"].tolist()
+            prior_snaps = self.db.query(UploadSnapshot).filter(
+                UploadSnapshot.snapshot_date <= snap.snapshot_date
+            ).order_by(UploadSnapshot.snapshot_date.asc()).all()
+
+            snap_ids = [s.id for s in prior_snaps]
+            snap_date_map = {s.id: s.snapshot_date for s in prior_snaps}
+
+            hist_opps = self.db.query(
+                Opportunity.opportunity_id_18,
+                Opportunity.snapshot_id,
+                Opportunity.approval_status
+            ).filter(
+                Opportunity.opportunity_id_18.in_(pending_ids),
+                Opportunity.snapshot_id.in_(snap_ids)
+            ).all()
+
+            from collections import defaultdict
+            opp_history = defaultdict(dict)
+            for ho in hist_opps:
+                s_date = snap_date_map.get(ho.snapshot_id)
+                if s_date:
+                    opp_history[ho.opportunity_id_18][s_date] = _norm_approval(ho.approval_status)
+
+            snap_dt = snap.snapshot_date
+            sorted_dates = sorted(snap_date_map.values())
+
+            for _, r in pending_df.iterrows():
+                oid = r["opportunity_id_18"]
+                dates_status = opp_history.get(oid, {})
+                earliest_pending_date = snap_dt
+                for d_curr in reversed(sorted_dates):
+                    st = dates_status.get(d_curr)
+                    if st == "Pending Approval":
+                        earliest_pending_date = d_curr
+                    else:
+                        break
+                days_pending = (snap_dt - earliest_pending_date).days
+                c_date = r["close_date"]
+                reason_val = r.get("reason_for_approval")
+                pending_ageing_deals.append({
+                    "opportunity_id_18": oid,
+                    "opportunity_name": r["opportunity_name"],
+                    "account_name": r["account_name"],
+                    "forecast_acv_amount": round(float(r["forecast_acv_amount"] or 0), 2),
+                    "days_pending": max(0, days_pending),
+                    "pending_since": earliest_pending_date.isoformat(),
+                    "owner": str(r.get("opportunity_owner")) if pd.notna(r.get("opportunity_owner")) else "Unassigned",
+                    "region": str(r.get("sub_region")) if pd.notna(r.get("sub_region")) else "Unmapped",
+                    "reason_for_approval": str(reason_val) if pd.notna(reason_val) else None,
+                    "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
+                })
+
+            pending_ageing_deals.sort(key=lambda x: (x["days_pending"], x["forecast_acv_amount"]), reverse=True)
+
+        pending_ageing = {
+            "count": len(pending_ageing_deals),
+            "acv": round(_sum(pending_df, "forecast_acv_amount"), 2),
+            "deals": pending_ageing_deals
+        }
+
+        # 6. Trend of Approved % over recent snapshots (small table or sparkline; label units)
+        trend_snaps = self.db.query(UploadSnapshot).filter(
+            UploadSnapshot.snapshot_date <= snap.snapshot_date
+        ).order_by(UploadSnapshot.snapshot_date.asc()).all()
+        if len(trend_snaps) > 6:
+            trend_snaps = trend_snaps[-6:]
+
+        approved_trend = []
+        for ts in trend_snaps:
+            if ts.id == snap.id:
+                t_df = df
+            elif snap_yest and ts.id == snap_yest.id:
+                t_df = df_yest
+            elif snap_lw and ts.id == snap_lw.id:
+                t_df = df_lw
+            elif comp_snap and ts.id == comp_snap.id:
+                t_df = comp_df
+            else:
+                t_df, _ = self._get_opps_df(ts, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=ts.snapshot_date)
+            t_tot_c = len(t_df)
+            t_tot_a = _sum(t_df, "forecast_acv_amount")
+            t_appr_df = t_df[t_df["approval_status"] == "Approved"] if not t_df.empty else pd.DataFrame()
+            t_appr_c = len(t_appr_df)
+            t_appr_a = _sum(t_appr_df, "forecast_acv_amount")
+            pct_a = round(t_appr_a / t_tot_a * 100, 1) if t_tot_a > 0 else 0.0
+            pct_c = round(t_appr_c / t_tot_c * 100, 1) if t_tot_c > 0 else 0.0
+            approved_trend.append({
+                "snapshot_date": ts.snapshot_date.isoformat(),
+                "total_count": t_tot_c,
+                "total_acv": round(t_tot_a, 2),
+                "approved_count": t_appr_c,
+                "approved_acv": round(t_appr_a, 2),
+                "approved_pct_acv": pct_a,
+                "approved_pct_count": pct_c,
+                "unit_acv": "% of ACV",
+                "unit_count": "% of Deals"
+            })
+
+        movements = []
+        def get_movements(prev_df):
+            moves = []
+            if not df.empty and not prev_df.empty:
+                merged = pd.merge(
+                    prev_df[["opportunity_id_18", "approval_status"]],
+                    df[["opportunity_id_18", "approval_status", "forecast_acv_amount"]],
+                    on="opportunity_id_18",
+                    how="right",
+                    suffixes=("_prev", "_curr")
+                )
+                changed = merged[merged["approval_status_prev"] != merged["approval_status_curr"]].copy()
+                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("New to slice")
+                changed["approval_status_curr"] = changed["approval_status_curr"].fillna("Blank")
+                
+                for (from_st, to_st), grp in changed.groupby(["approval_status_prev", "approval_status_curr"], dropna=False):
+                    moves.append({
+                        "from_status": str(from_st),
+                        "to_status": str(to_st),
+                        "count": len(grp),
+                        "acv": round(float(grp["forecast_acv_amount"].sum()), 2),
+                        "deal_ids": grp["opportunity_id_18"].tolist()
+                    })
+            return moves
+            
+        movements_yesterday = get_movements(df_yest)
+        movements_lastweek = get_movements(df_lw)
+        movements_custom = get_movements(comp_df) if comp_snap else []
+                
+        pending_reasons = []
+        if not pending_df.empty and "reason_for_approval" in pending_df.columns:
+            reasons = pending_df["reason_for_approval"].value_counts().reset_index()
+            reasons.columns = ["reason", "count"]
+            for _, r in reasons.iterrows():
+                reason_val = r["reason"]
+                if pd.isna(reason_val) or str(reason_val).strip() == "":
+                    continue
+                reason_acv = _sum(pending_df[pending_df["reason_for_approval"] == reason_val], "forecast_acv_amount")
+                pending_reasons.append({
+                    "reason": reason_val,
+                    "count": int(r["count"]),
+                    "acv": round(reason_acv, 2)
+                })
+                
+        # Handle total deltas
+        def get_total_delta(prev_df):
+            if prev_df.empty:
+                return {"count": 0, "acv": 0.0}
+            return {"count": total_count - len(prev_df), "acv": round(total_acv - _sum(prev_df, "forecast_acv_amount"), 2)}
+
+        # Reconcile with Overview for the same snapshot and filters
+        from backend.services.v2_overview_service import V2OverviewService
+        ov_svc = V2OverviewService(self.db)
+        ov_sum = ov_svc.get_summary(ctx, filter_spec=filter_spec)
+        ov_tot = ov_sum.get("total", {}) if ov_sum else {}
+        ov_count = int(ov_tot.get("count", total_count))
+        ov_acv = float(ov_tot.get("acv", total_acv))
+        reconciliation_matches = bool(total_count == ov_count and abs(total_acv - ov_acv) < 0.01)
+        overview_reconciliation = {
+            "matches": reconciliation_matches,
+            "overview_count": ov_count,
+            "overview_acv": round(ov_acv, 2),
+            "approvals_count": total_count,
+            "approvals_acv": round(total_acv, 2),
+            "diff_count": total_count - ov_count,
+            "diff_acv": round(total_acv - ov_acv, 2),
+        }
+            
+        other_types_excluded = None
+        if res and res.effective_types is not None:
+            base_opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.base_conditions
+            ).all()
+            excluded_opps = [
+                o for o in base_opps
+                if ScopeService.extract_type_code(
+                    (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                ) not in res.effective_types
+            ]
+            if excluded_opps:
+                exc_cnt = len(excluded_opps)
+                exc_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in excluded_opps), 2)
+                other_types_excluded = {
+                    "count": exc_cnt,
+                    "acv": exc_acv,
+                    "note": f"Other types excluded: {exc_cnt} deals / ${exc_acv:,.2f}",
+                    "deals": [
+                        {
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type"),
+                        }
+                        for o in excluded_opps
+                    ]
+                }
+
+        return {
+            "snapshot_date": snap.snapshot_date.isoformat(),
+            "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
+            "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
+            "yesterday_date": snap_yest.snapshot_date.isoformat() if snap_yest else None,
+            "lastweek_date": snap_lw.snapshot_date.isoformat() if snap_lw else None,
+            "data_slice": res.label if res else ScopeService.quarter_label(ScopeService.current_quarter(snap.snapshot_date)),
+            "data_slice_key": res.period if res else ScopeService.current_quarter(snap.snapshot_date),
+            "filters_applied": res.filters_applied if res else {},
+            "total": {
+                "count": total_count,
+                "acv": round(total_acv, 2),
+                "delta_yesterday": get_total_delta(df_yest),
+                "delta_lastweek": get_total_delta(df_lw),
+                "delta_custom": get_total_delta(comp_df) if comp_snap else None
+            },
+            "overview_reconciliation": overview_reconciliation,
+            "other_types_excluded": other_types_excluded,
+            "statuses": statuses_list,
+            "matrix": matrix,
+            "categories": ALL_FC,
+            "funnel": funnel,
+            "deal_size_split": deal_size_split,
+            "approval_coverage": approval_coverage,
+            "commit_not_approved": commit_not_approved,
+            "pending_ageing": pending_ageing,
+            "approved_trend": approved_trend,
+            "movements_yesterday": movements_yesterday,
+            "movements_lastweek": movements_lastweek,
+            "movements_custom": movements_custom,
+            "pending_deals": [{
+                "opportunity_name": r["opportunity_name"],
+                "account_name": r["account_name"],
+                "forecast_acv_amount": float(r["forecast_acv_amount"] or 0),
+                "close_date": r["close_date"].isoformat() if r["close_date"] else None,
+                "reason_for_approval": r["reason_for_approval"] if "reason_for_approval" in r and pd.notna(r["reason_for_approval"]) else None
+            } for _, r in pending_df.sort_values("forecast_acv_amount", ascending=False).iterrows()] if not pending_df.empty else []
+        }
+
+    def get_deals(
+        self,
+        ctx: UserContext,
+        status: Optional[str] = None,
+        category: Optional[str] = None,
+        as_of: Optional[str] = None,
+        exclude_deleted_lost: bool = False,
+        region: Optional[str] = None,
+        business_unit: Optional[str] = None,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+        min_acv: Optional[float] = None,
+        max_acv: Optional[float] = None,
+        deal_ids: Optional[list[str]] = None,
+        kind: Optional[str] = None,
+    ) -> dict:
+        eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
+        snap = self._get_snapshot(ctx, eff_as_of)
+        if not snap:
+            return {"count": 0, "acv": 0.0, "filters_applied": {}, "deals": []}
+            
+        df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=snap.snapshot_date)
+
+        if kind == "other_types" or status == "other_types":
+            deals = []
+            if res and res.effective_types is not None:
+                base_opps = self.db.query(Opportunity).filter(
+                    Opportunity.snapshot_id == snap.id,
+                    *res.base_conditions
+                ).all()
+                for o in base_opps:
+                    raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
+                    if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
+                        deals.append({
+                            "id": o.opportunity_id_18,
+                            "opportunity_id_18": o.opportunity_id_18,
+                            "opportunity_name": o.opportunity_name,
+                            "account_name": o.account_name,
+                            "forecast_category": o.forecast_category,
+                            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
+                            "sub_region": o.sub_region,
+                            "business_unit_primary": o.business_unit_primary,
+                            "approval_status": o.approval_status,
+                            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
+                            "type": raw_tp,
+                        })
+            return {
+                "count": len(deals),
+                "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
+                "filters_applied": res.filters_applied if res else {},
+                "deals": deals
+            }
+
+        if df.empty:
+            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied if res else {}, "deals": []}
+            
+        filters_applied = dict(res.filters_applied) if res else {}
+        if status:
+            if status in ("not_approved", "unapproved", "Not Approved"):
+                df = df[df["approval_status"] != "Approved"]
+            elif status in ("Other", "Other / not classified", "other"):
+                df = df[~df["approval_status"].isin(["Approved", "Pending Approval", "Blank"])]
+            else:
+                df = df[df["approval_status"] == status]
+            filters_applied["status"] = status
+        if category:
+            df = df[df["forecast_category"] == category]
+            filters_applied["category"] = category
+        if region:
+            df = df[df["sub_region"] == region]
+            filters_applied["region"] = region
+        if business_unit:
+            df = df[df["business_unit_primary"] == business_unit]
+            filters_applied["business_unit"] = business_unit
+        if min_acv is not None:
+            df = df[df["forecast_acv_amount"] >= min_acv]
+            filters_applied["min_acv"] = min_acv
+        if max_acv is not None:
+            df = df[df["forecast_acv_amount"] < max_acv]
+            filters_applied["max_acv"] = max_acv
+        if deal_ids:
+            df = df[df["opportunity_id_18"].isin(deal_ids)]
+            filters_applied["deal_ids"] = len(deal_ids)
+            
+        count = len(df)
+        acv = round(_sum(df, "forecast_acv_amount"), 2)
+        
+        deals = []
+        for _, r in df.iterrows():
+            def _clean(val):
+                return None if pd.isna(val) else val
+            c_date = r["close_date"]
+            days_to_close = None
+            if pd.notna(c_date) and snap:
+                c_dt = c_date.date() if hasattr(c_date, "date") else pd.to_datetime(c_date).date()
+                days_to_close = (c_dt - snap.snapshot_date).days
+            deals.append({
+                "id": _clean(r["id"]),
+                "opportunity_id_18": _clean(r["opportunity_id_18"]),
+                "opportunity_name": _clean(r["opportunity_name"]),
+                "account_name": _clean(r["account_name"]),
+                "forecast_category": _clean(r["forecast_category"]),
+                "forecast_acv_amount": float(_clean(r["forecast_acv_amount"]) or 0),
+                "approval_status": _clean(r["approval_status"]),
+                "reason_for_approval": _clean(r["reason_for_approval"]),
+                "sub_region": _clean(r["sub_region"]),
+                "business_unit_primary": _clean(r["business_unit_primary"]),
+                "opportunity_owner": _clean(r.get("opportunity_owner")),
+                "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
+                "days_to_close": days_to_close
+            })
+            
+        return {
+            "count": count,
+            "acv": acv,
+            "filters_applied": filters_applied,
+            "deals": deals
+        }
