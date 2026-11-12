@@ -44,6 +44,36 @@ def clean_db(db_engine):
 
 
 class TestUploadHardening:
+    @pytest.mark.parametrize("yesterday_date", [date(2026, 11, 10), date(2026, 11, 9)])
+    def test_selected_yesterday_date_survives_validate_and_commit(self, clean_db, yesterday_date):
+        """An older saved upload must not relabel the workbook's yesterday data."""
+        clean_db.add(UploadSnapshot(
+            label="Older upload",
+            snapshot_date=date(2026, 11, 6),
+            uploaded_by="test_user",
+        ))
+        clean_db.commit()
+        svc = IngestService(clean_db)
+        comp_file = Path(__file__).parent / "fixtures/rollover_sample/Renewal Comparison Tool.xlsx"
+        res = svc.validate_upload(
+            ADMIN_CONTEXT,
+            {"comparison_tool": comp_file},
+            data_as_of=date(2026, 11, 11),
+            yesterday_date=yesterday_date,
+        )
+        assert res["can_commit"], res.get("errors")
+        assert res["yesterday_date"] == yesterday_date.isoformat()
+
+        snap = svc.commit_upload(ADMIN_CONTEXT, res["session_id"])
+        assert snap.yesterday_date == yesterday_date
+        yesterday = clean_db.query(UploadSnapshot).filter_by(snapshot_date=yesterday_date).one()
+        assert yesterday.row_count > 0
+        # Both header dropdowns obtain their dates from this endpoint.
+        from backend.routers.snapshots import list_snapshots
+        dates = {s["snapshot_date"] for s in list_snapshots(db=clean_db, ctx=ADMIN_CONTEXT)}
+        assert "2026-11-11" in dates
+        assert yesterday_date.isoformat() in dates
+
     def test_monday_to_friday_db_resolution(self, clean_db):
         """When Friday Oct 2 is in DB, validating Monday Oct 5 resolves yesterday to Friday Oct 2."""
         fri_date = date(2026, 10, 2)

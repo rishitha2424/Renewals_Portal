@@ -181,6 +181,7 @@ class IngestService:
         data_as_of: date,
         yesterday_date: date | None = None,
     ) -> dict[str, Any]:
+        yesterday_date_explicit = yesterday_date is not None
         if yesterday_date is None:
             yesterday_date = compute_previous_working_day(data_as_of)
 
@@ -323,7 +324,12 @@ class IngestService:
 
         resolved_yesterday_date: date
         yesterday_source_desc: str
-        if db_prev_snap:
+        if yesterday_date_explicit:
+            # The upload form's date identifies the workbook's yesterday rows.
+            # An older stored snapshot must not relabel those rows.
+            resolved_yesterday_date = yesterday_date
+            yesterday_source_desc = f"from file (Yesterday_Data sheet dated {yesterday_date.isoformat()})"
+        elif db_prev_snap:
             resolved_yesterday_date = db_prev_snap.snapshot_date
             yesterday_source_desc = f"from database snapshot ({db_prev_snap.snapshot_date.isoformat()})"
         else:
