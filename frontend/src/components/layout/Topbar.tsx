@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -214,8 +214,14 @@ export default function Topbar() {
 
   // Deal Types filter state
   const defaultTypes: string[] = filterOpts?.default_types || ['MR', 'R']
-  const allAvailableTypes: { code: string; label: string; deal_count: number }[] = filterOpts?.types || []
-  const allCodes = allAvailableTypes.map((t: any) => t.code)
+  const allAvailableTypes: { code: string; label: string; deal_count: number }[] = useMemo(() => {
+    return (filterOpts?.types || []).map((t: any) => ({
+      code: String(t.code || t.key || t.value || t.label || ''),
+      label: String(t.label || t.code || t.key || t.value || ''),
+      deal_count: Number(t.deal_count ?? t.count ?? 0),
+    }))
+  }, [filterOpts?.types])
+  const allCodes = allAvailableTypes.map((t) => t.code).filter(Boolean)
   const currentTypes = globalFilters.types || defaultTypes
   const isAllTypes = currentTypes.includes('all') || (allCodes.length > 0 && allCodes.every((c: string) => currentTypes.includes(c)))
 
@@ -481,22 +487,24 @@ export default function Topbar() {
 
                   <div className="flex flex-col gap-1 max-h-48 overflow-y-auto p-1 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
                     {allAvailableTypes.map((t: any) => {
-                      const checked = isAllTypes || currentTypes.includes(t.code)
+                      const code = t.code || t.key || t.value
+                      const count = t.deal_count ?? t.count ?? 0
+                      const checked = isAllTypes || currentTypes.includes(code)
                       return (
                         <label
-                          key={t.code}
+                          key={code}
                           className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
                         >
                           <div className="flex items-center gap-2">
                             <input
                               type="checkbox"
                               checked={checked}
-                              onChange={() => toggleTypeFilter(t.code)}
+                              onChange={() => toggleTypeFilter(code)}
                               className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                             />
-                            <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
+                            <span className="font-medium text-[var(--text-primary)]">{code}</span>
                           </div>
-                          <span className="text-[10px] text-[var(--text-muted)]">{t.deal_count} deals</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">{count} deals</span>
                         </label>
                       )
                     })}
@@ -1047,20 +1055,22 @@ export default function Topbar() {
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 p-2 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
                     {allAvailableTypes.map((t: any) => {
-                      const checked = isAllTypes || currentTypes.includes(t.code)
+                      const code = t.code || t.key || t.value
+                      const count = t.deal_count ?? t.count ?? 0
+                      const checked = isAllTypes || currentTypes.includes(code)
                       return (
                         <label
-                          key={t.code}
+                          key={code}
                           className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
                         >
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggleTypeFilter(t.code)}
+                            onChange={() => toggleTypeFilter(code)}
                             className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                           />
-                          <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">({t.deal_count})</span>
+                          <span className="font-medium text-[var(--text-primary)]">{code}</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">({count})</span>
                         </label>
                       )
                     })}

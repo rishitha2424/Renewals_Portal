@@ -205,8 +205,17 @@ export const getV2OverviewDeals = (params: {
   deals: any[]
 }> => {
   const state = useAppStore.getState()
-  const { filterSpec, ...rest } = params
-  const merged = buildFilterParams({ ...state.globalFilters, ...filterSpec, ...rest })
+  const { filterSpec, compare, ...rest } = params
+  const baseFilters: any = { ...state.globalFilters, ...filterSpec, ...rest }
+  if (compare) {
+    baseFilters.compare = compare
+  } else {
+    delete baseFilters.compare
+  }
+  const merged = buildFilterParams(baseFilters)
+  if (!compare) {
+    delete merged.compare
+  }
   return api.get('/v2/overview/deals', { params: merged }).then(r => r.data)
 }
 

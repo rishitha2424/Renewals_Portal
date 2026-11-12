@@ -158,6 +158,9 @@ class V2OverviewService:
             "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
             "owner": o.opportunity_owner,
             "opportunity_owner": o.opportunity_owner,
+            "stage": o.stage_number or (o.extra_attributes or {}).get("Stage Number") or "",
+            "service_start_date": (o.extra_attributes or {}).get("Service Start Date"),
+            "service_expiry_date": (o.extra_attributes or {}).get("Service Expiry date") or (o.extra_attributes or {}).get("Service End Date"),
         }
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
@@ -596,10 +599,37 @@ class V2OverviewService:
 
         all_deals = added + left + changed
         all_deals.sort(key=lambda x: abs(x.get("delta_acv_change", 0.0)), reverse=True)
+        net_count = len(added) - len(left)
+        net_acv = round(sum(float(d.get("delta_acv_change") or 0.0) for d in all_deals), 2)
+        delta_groups = {
+            "added": {
+                "name": f"Added ({len(added)})",
+                "count": len(added),
+                "acv": round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in added), 2),
+                "deals": added,
+            },
+            "left": {
+                "name": f"Left ({len(left)})",
+                "count": len(left),
+                "acv": round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in left), 2),
+                "deals": left,
+            },
+            "amount_changed": {
+                "name": f"Amount changed ({len(changed)})",
+                "count": len(changed),
+                "acv": round(sum(float(d.get("delta_acv_change") or 0.0) for d in changed), 2),
+                "deals": changed,
+            },
+            "net": {
+                "count": net_count,
+                "acv": net_acv,
+            },
+        }
         return {
             "count": len(all_deals),
             "acv": round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in all_deals), 2),
             "filters_applied": filters_applied,
+            "delta_groups": delta_groups,
             "deals": all_deals,
         }
 
