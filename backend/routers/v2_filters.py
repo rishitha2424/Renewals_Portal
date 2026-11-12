@@ -202,7 +202,14 @@ def get_filter_options(
         sorted_types.append("Unknown")
 
     types_list = [
-        {"key": t, "value": t, "label": t, "count": type_counts[t]}
+        {
+            "key": t,
+            "value": t,
+            "label": t,
+            "code": t,
+            "count": type_counts[t],
+            "deal_count": type_counts[t],
+        }
         for t in sorted_types
     ]
 

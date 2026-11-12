@@ -57,7 +57,7 @@ export default function SectionNav({ sections, className = '' }: SectionNavProps
     <nav
       aria-label="On this page"
       style={{ backgroundColor: 'var(--bg-card)' }}
-      className={`sticky top-0 z-30 border-b border-[var(--border)] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-4 shadow-xs ${className}`}
+      className={`sticky top-0 z-20 border-b border-[var(--border)] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-4 shadow-xs ${className}`}
     >
       <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-none text-xs">
         <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mr-1 flex-shrink-0 select-none">

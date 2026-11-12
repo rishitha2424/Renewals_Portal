@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -214,8 +214,14 @@ export default function Topbar() {
 
   // Deal Types filter state
   const defaultTypes: string[] = filterOpts?.default_types || ['MR', 'R']
-  const allAvailableTypes: { code: string; label: string; deal_count: number }[] = filterOpts?.types || []
-  const allCodes = allAvailableTypes.map((t: any) => t.code)
+  const allAvailableTypes: { code: string; label: string; deal_count: number }[] = useMemo(() => {
+    return (filterOpts?.types || []).map((t: any) => ({
+      code: String(t.code || t.key || t.value || t.label || ''),
+      label: String(t.label || t.code || t.key || t.value || ''),
+      deal_count: Number(t.deal_count ?? t.count ?? 0),
+    }))
+  }, [filterOpts?.types])
+  const allCodes = allAvailableTypes.map((t) => t.code).filter(Boolean)
   const currentTypes = globalFilters.types || defaultTypes
   const isAllTypes = currentTypes.includes('all') || (allCodes.length > 0 && allCodes.every((c: string) => currentTypes.includes(c)))
 
@@ -300,7 +306,7 @@ export default function Topbar() {
   const totalActiveFiltersCount = chips.length
 
   return (
-    <div className="sticky top-0 z-30 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
+    <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* Admin Security Warning Banner */}
       {isAdmin && securityWarnings && securityWarnings.length > 0 && (
         <div
@@ -319,552 +325,560 @@ export default function Topbar() {
         </div>
       )}
 
-      {/* ── Single Unified Row ────────────────────────────────────────────── */}
-      <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-2">
-        <div className="flex items-center gap-2 lg:gap-3">
-          {/* Mobile Hamburger Drawer Button (<640px) */}
-          <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(true)}
-            className="sm:hidden w-10 h-10 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] flex items-center justify-center flex-shrink-0 transition-colors focus:outline-none"
-            aria-label="Open navigation menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          {/* 1. Search (shrinks and flexes to fill free space) */}
-          <div className="flex-1 min-w-[140px] max-w-sm">
+      {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
+      <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-6 lg:px-8 py-1.5 sm:py-2">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 lg:gap-3">
+          {/* ── Left & Center Filters Group ── */}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+            {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
-              onClick={() => setCommandPaletteOpen(true)}
-              className="w-full h-10 px-3 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
-              id="topbar-search-btn"
-              title="Global search (⌘K)"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="sm:hidden w-9 h-9 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] flex items-center justify-center flex-shrink-0 transition-colors focus:outline-none"
+              aria-label="Open navigation menu"
             >
-              <div className="inline-flex items-center gap-2 truncate">
-                <Search className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-                <span className="truncate hidden sm:inline">Search opportunities, regions, accounts...</span>
-                <span className="truncate sm:hidden">Search...</span>
-              </div>
-              <kbd className="hidden sm:inline-block ml-2 px-1.5 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
-                ⌘K
-              </kbd>
+              <Menu className="w-4 h-4" />
             </button>
-          </div>
 
-          {/* 2. As of (hidden on phone, accessible via Filters button) */}
-          <div className="hidden sm:inline-flex h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1.5 transition-colors flex-shrink-0">
-            <Calendar className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-            <span className="font-medium text-[var(--text-muted)] hidden md:inline">
-              As of:
-            </span>
-            <select
-              value={activeSnap?.id ?? ''}
-              onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
-              id="topbar-view-as-of-select"
-            >
-              {snapshotsLoading && <option>Loading dates...</option>}
-              {snapshots.map((s: any) => (
-                <option key={s.id} value={s.id}>
-                  {s.label} ({formatDate(s.snapshot_date)})
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* 1. Search (shrinks and flexes to fill free space) */}
+            <div className="min-w-[100px] sm:min-w-[120px] max-w-[150px] lg:max-w-[190px] 2xl:max-w-xs flex-1 sm:flex-initial">
+              <button
+                type="button"
+                onClick={() => setCommandPaletteOpen(true)}
+                className="w-full h-9 sm:h-10 px-2 sm:px-3 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
+                id="topbar-search-btn"
+                title="Global search (⌘K)"
+              >
+                <div className="inline-flex items-center gap-1.5 sm:gap-2 truncate">
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
+                  <span className="truncate hidden 2xl:inline">Search opportunities, regions, accounts...</span>
+                  <span className="truncate 2xl:hidden">Search...</span>
+                </div>
+                <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
+                  ⌘K
+                </kbd>
+              </button>
+            </div>
 
-          {/* 3. vs (compare selector with helper in tooltip) */}
-          <div
-            className="hidden sm:inline-flex h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1.5 transition-colors flex-shrink-0"
-            title={getCompareLabel()}
-          >
-            <GitCompare className="w-4 h-4 text-slate-500 flex-shrink-0" />
-            <span className="font-medium text-[var(--text-muted)] hidden md:inline">
-              vs:
-            </span>
-            <select
-              value={compareSnapshotId ?? ''}
-              onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
-              id="topbar-compare-with-select"
-            >
-              {snapshots
-                .filter((s: any) => s.id !== activeSnap?.id)
-                .map((s: any) => (
+            {/* 2. As of (hidden on phone, accessible via Filters button) */}
+            <div className="hidden sm:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+                As of:
+              </span>
+              <select
+                value={activeSnap?.id ?? ''}
+                onChange={(e) => setActiveSnapshotId(e.target.value || null)}
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[110px] sm:max-w-[145px] truncate"
+                id="topbar-view-as-of-select"
+              >
+                {snapshotsLoading && <option>Loading dates...</option>}
+                {snapshots.map((s: any) => (
                   <option key={s.id} value={s.id}>
                     {s.label} ({formatDate(s.snapshot_date)})
                   </option>
                 ))}
-            </select>
-          </div>
+              </select>
+            </div>
 
-          {/* 4. Period (visible >= md) */}
-          <div className="hidden md:inline-flex h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1.5 transition-colors flex-shrink-0">
-            <Calendar className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-            <span className="font-medium text-[var(--text-muted)] hidden lg:inline">
-              Period:
-            </span>
-            <select
-              value={globalFilters.period}
-              onChange={(e) => setGlobalFilters({ period: e.target.value })}
-              className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1"
-              id="filter-period-select"
+            {/* 3. vs (compare selector with helper in tooltip) */}
+            <div
+              className="hidden sm:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
+              title={getCompareLabel()}
             >
-              <option value="current_quarter">Current Quarter (Default)</option>
-              <option value="previous_quarter">Previous Quarter</option>
-              <option value="next_quarter">Next Quarter</option>
-              <option value="all_periods">All Periods</option>
-              {filterOpts?.quarters?.map((q: any) => (
-                <option key={q.key} value={q.key}>
-                  {q.label} ({q.count})
-                </option>
-              ))}
-              {filterOpts?.fiscal_years?.map((fy: any) => (
-                <option key={fy.key} value={fy.key}>
-                  {fy.label} ({fy.count})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 5. Type Filter (Multi-select dropdown) */}
-          <div className="relative hidden md:inline-flex flex-shrink-0" ref={typeFilterRef}>
-            <button
-              type="button"
-              onClick={() => setTypeFilterOpen(!typeFilterOpen)}
-              className="h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
-              id="filter-type-btn"
-              title="Filter by Deal Type"
-            >
-              <Tag className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden lg:inline">Type:</span>
-              <span className="font-medium truncate max-w-[120px]">
-                {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
+              <GitCompare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+                vs:
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
-            </button>
+              <select
+                value={compareSnapshotId ?? ''}
+                onChange={(e) => setCompareSnapshotId(e.target.value || null)}
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[110px] sm:max-w-[145px] truncate"
+                id="topbar-compare-with-select"
+              >
+                {snapshots
+                  .filter((s: any) => s.id !== activeSnap?.id)
+                  .map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label} ({formatDate(s.snapshot_date)})
+                    </option>
+                  ))}
+              </select>
+            </div>
 
-            {/* Type Popover */}
-            {typeFilterOpen && (
-              <div className="absolute left-0 mt-1 top-full w-72 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2.5">
-                <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
-                  <span className="font-semibold text-xs text-[var(--text-primary)]">Deal Type Filter</span>
-                  <button
-                    type="button"
-                    onClick={() => setTypeFilterOpen(false)}
-                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
+            {/* 4. Period (visible >= lg) */}
+            <div className="hidden lg:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] hidden 2xl:inline">
+                Period:
+              </span>
+              <select
+                value={globalFilters.period}
+                onChange={(e) => setGlobalFilters({ period: e.target.value })}
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[110px] xl:max-w-[150px] truncate"
+                id="filter-period-select"
+              >
+                <option value="current_quarter">Current Quarter (Default)</option>
+                <option value="previous_quarter">Previous Quarter</option>
+                <option value="next_quarter">Next Quarter</option>
+                <option value="all_periods">All Periods</option>
+                {filterOpts?.quarters?.map((q: any) => (
+                  <option key={q.key} value={q.key}>
+                    {q.label} ({q.count})
+                  </option>
+                ))}
+                {filterOpts?.fiscal_years?.map((fy: any) => (
+                  <option key={fy.key} value={fy.key}>
+                    {fy.label} ({fy.count})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGlobalFilters({ types: allCodes.length > 0 ? allCodes : ['all'] })}
-                    className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
-                    id="btn-select-all-types"
-                  >
-                    Select All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGlobalFilters({ types: defaultTypes })}
-                    className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
-                    id="btn-reset-default-types"
-                  >
-                    Default ({defaultTypes.join(', ')})
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto p-1 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
-                  {allAvailableTypes.map((t: any) => {
-                    const checked = isAllTypes || currentTypes.includes(t.code)
-                    return (
-                      <label
-                        key={t.code}
-                        className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
-                      >
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleTypeFilter(t.code)}
-                            className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                          />
-                          <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
-                        </div>
-                        <span className="text-[10px] text-[var(--text-muted)]">{t.deal_count} deals</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 6. Include Deleted & Lost (visible >= xl) */}
-          <label
-            className="hidden xl:inline-flex h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] cursor-pointer transition-colors items-center gap-2 select-none flex-shrink-0"
-            title="Toggle inclusion of Deleted and Lost pipeline opportunities"
-          >
-            <input
-              type="checkbox"
-              checked={globalFilters.include_deleted_lost}
-              onChange={(e) => setGlobalFilters({ include_deleted_lost: e.target.checked })}
-              className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-              id="filter-include-deleted-lost"
-            />
-            <span className="font-medium text-[var(--text-primary)] text-xs whitespace-nowrap">
-              Include Deleted & Lost
-            </span>
-          </label>
-
-          {/* 6. More Filters (visible >= lg) */}
-          <div className="relative hidden lg:block flex-shrink-0" ref={moreRef}>
-            <button
-              type="button"
-              onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
-              className="h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
-              id="filter-more-btn"
-            >
-              <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="whitespace-nowrap">More Filters</span>
-              {moreFiltersActiveCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold leading-none">
-                  {moreFiltersActiveCount}
+            {/* 5. Type Filter (Multi-select dropdown, visible >= lg) */}
+            <div className="relative hidden lg:inline-flex flex-shrink-0" ref={typeFilterRef}>
+              <button
+                type="button"
+                onClick={() => setTypeFilterOpen(!typeFilterOpen)}
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                id="filter-type-btn"
+                title="Filter by Deal Type"
+              >
+                <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
+                <span className="font-medium text-[var(--text-muted)] hidden 2xl:inline">Type:</span>
+                <span className="font-medium truncate max-w-[60px] xl:max-w-[95px]">
+                  {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+              </button>
+
+              {/* Type Popover */}
+              {typeFilterOpen && (
+                <div className="absolute left-0 mt-1 top-full w-72 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
+                    <span className="font-semibold text-xs text-[var(--text-primary)]">Deal Type Filter</span>
+                    <button
+                      type="button"
+                      onClick={() => setTypeFilterOpen(false)}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGlobalFilters({ types: allCodes.length > 0 ? allCodes : ['all'] })}
+                      className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
+                      id="btn-select-all-types"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGlobalFilters({ types: defaultTypes })}
+                      className="flex-1 py-1 px-2 text-[11px] font-medium rounded border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] transition-colors cursor-pointer"
+                      id="btn-reset-default-types"
+                    >
+                      Default ({defaultTypes.join(', ')})
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-1 max-h-48 overflow-y-auto p-1 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
+                    {allAvailableTypes.map((t: any) => {
+                      const code = t.code || t.key || t.value
+                      const count = t.deal_count ?? t.count ?? 0
+                      const checked = isAllTypes || currentTypes.includes(code)
+                      return (
+                        <label
+                          key={code}
+                          className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleTypeFilter(code)}
+                              className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                            />
+                            <span className="font-medium text-[var(--text-primary)]">{code}</span>
+                          </div>
+                          <span className="text-[10px] text-[var(--text-muted)]">{count} deals</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
-            </button>
+            </div>
 
-            {/* More Filters popover */}
-            {moreFiltersOpen && (
-              <div className="absolute left-0 mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
-                <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
-                  <span className="font-semibold text-xs text-[var(--text-primary)]">Filter Dimensions</span>
-                  <button
-                    type="button"
-                    onClick={() => setMoreFiltersOpen(false)}
-                    className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Regions */}
-                <div>
-                  <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
-                    Regions
-                  </label>
-                  <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
-                    {filterOpts?.regions?.map((r: any) => {
-                      const sel = globalFilters.regions.includes(r.key)
-                      return (
-                        <button
-                          key={r.key}
-                          type="button"
-                          onClick={() => toggleArrayFilter('regions', r.key)}
-                          className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
-                            sel
-                              ? 'bg-[#12284C] text-white border-[#12284C]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
-                          }`}
-                        >
-                          {r.label} ({r.count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Business Units */}
-                <div>
-                  <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
-                    Business Units
-                  </label>
-                  <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
-                    {filterOpts?.business_units?.map((bu: any) => {
-                      const sel = globalFilters.business_units.includes(bu.key)
-                      return (
-                        <button
-                          key={bu.key}
-                          type="button"
-                          onClick={() => toggleArrayFilter('business_units', bu.key)}
-                          className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
-                            sel
-                              ? 'bg-[#12284C] text-white border-[#12284C]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
-                          }`}
-                        >
-                          {bu.label} ({bu.count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Forecast Categories */}
-                <div>
-                  <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
-                    Forecast Categories
-                  </label>
-                  <div className="flex flex-wrap gap-1">
-                    {filterOpts?.forecast_categories?.map((fc: any) => {
-                      const sel = globalFilters.forecast_categories.includes(fc.key)
-                      return (
-                        <button
-                          key={fc.key}
-                          type="button"
-                          onClick={() => toggleArrayFilter('forecast_categories', fc.key)}
-                          className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
-                            sel
-                              ? 'bg-[#12284C] text-white border-[#12284C]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
-                          }`}
-                        >
-                          {fc.label} ({fc.count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Approval Statuses */}
-                <div>
-                  <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
-                    Approval Statuses
-                  </label>
-                  <div className="flex flex-wrap gap-1">
-                    {filterOpts?.approval_statuses?.map((st: any) => {
-                      const sel = globalFilters.approval_statuses.includes(st.key)
-                      return (
-                        <button
-                          key={st.key}
-                          type="button"
-                          onClick={() => toggleArrayFilter('approval_statuses', st.key)}
-                          className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
-                            sel
-                              ? 'bg-[#12284C] text-white border-[#12284C]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
-                          }`}
-                        >
-                          {st.label} ({st.count})
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 7. Saved Views (visible >= xl) */}
-          <div className="relative hidden xl:block flex-shrink-0" ref={viewsRef}>
-            <button
-              type="button"
-              onClick={() => setSavedViewsOpen(!savedViewsOpen)}
-              className="h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
-              id="filter-saved-views-btn"
+            {/* 6. Include Deleted & Lost (visible >= 2xl) */}
+            <label
+              className="hidden 2xl:inline-flex h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] cursor-pointer transition-colors items-center gap-2 select-none flex-shrink-0"
+              title="Toggle inclusion of Deleted and Lost pipeline opportunities"
             >
-              <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="whitespace-nowrap">Saved Views</span>
-              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
-            </button>
+              <input
+                type="checkbox"
+                checked={globalFilters.include_deleted_lost}
+                onChange={(e) => setGlobalFilters({ include_deleted_lost: e.target.checked })}
+                className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                id="filter-include-deleted-lost"
+              />
+              <span className="font-medium text-[var(--text-primary)] text-xs whitespace-nowrap">
+                Include Deleted & Lost
+              </span>
+            </label>
 
-            {savedViewsOpen && (
-              <div className="absolute left-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2">
-                <span className="font-semibold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    placeholder="View name..."
-                    value={newViewName}
-                    onChange={(e) => setNewViewName(e.target.value)}
-                    className="px-2 py-1 rounded-md border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)] outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveView}
-                    disabled={!newViewName.trim()}
-                    className="px-2.5 py-1 rounded-md bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {savedViews.length > 0 && (
-                  <div className="flex flex-col gap-1 max-h-40 overflow-y-auto border-t border-[var(--border)] pt-2 mt-1">
-                    {savedViews.map((v) => (
-                      <div
-                        key={v.id}
-                        onClick={() => handleApplyView(v.filters)}
-                        className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
-                      >
-                        <span className="font-medium text-[var(--text-primary)] truncate">{v.name}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteView(v.id, e)}
-                          className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+            {/* 7. More Filters (visible >= 2xl) */}
+            <div className="relative hidden 2xl:block flex-shrink-0" ref={moreRef}>
+              <button
+                type="button"
+                onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
+                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                id="filter-more-btn"
+              >
+                <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <span className="whitespace-nowrap">More Filters</span>
+                {moreFiltersActiveCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold leading-none">
+                    {moreFiltersActiveCount}
+                  </span>
                 )}
-              </div>
-            )}
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+              </button>
+
+              {/* More Filters popover */}
+              {moreFiltersOpen && (
+                <div className="absolute left-0 mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
+                    <span className="font-semibold text-xs text-[var(--text-primary)]">Filter Dimensions</span>
+                    <button
+                      type="button"
+                      onClick={() => setMoreFiltersOpen(false)}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Regions */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
+                      Regions
+                    </label>
+                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
+                      {filterOpts?.regions?.map((r: any) => {
+                        const sel = globalFilters.regions.includes(r.key)
+                        return (
+                          <button
+                            key={r.key}
+                            type="button"
+                            onClick={() => toggleArrayFilter('regions', r.key)}
+                            className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
+                              sel
+                                ? 'bg-[#12284C] text-white border-[#12284C]'
+                                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {r.label} ({r.count})
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Business Units */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
+                      Business Units
+                    </label>
+                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1 border rounded-sm border-[var(--border)] bg-[var(--bg-secondary)]">
+                      {filterOpts?.business_units?.map((bu: any) => {
+                        const sel = globalFilters.business_units.includes(bu.key)
+                        return (
+                          <button
+                            key={bu.key}
+                            type="button"
+                            onClick={() => toggleArrayFilter('business_units', bu.key)}
+                            className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
+                              sel
+                                ? 'bg-[#12284C] text-white border-[#12284C]'
+                                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {bu.label} ({bu.count})
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Forecast Categories */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
+                      Forecast Categories
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {filterOpts?.forecast_categories?.map((fc: any) => {
+                        const sel = globalFilters.forecast_categories.includes(fc.key)
+                        return (
+                          <button
+                            key={fc.key}
+                            type="button"
+                            onClick={() => toggleArrayFilter('forecast_categories', fc.key)}
+                            className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
+                              sel
+                                ? 'bg-[#12284C] text-white border-[#12284C]'
+                                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {fc.label} ({fc.count})
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Approval Statuses */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block mb-1">
+                      Approval Statuses
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {filterOpts?.approval_statuses?.map((st: any) => {
+                        const sel = globalFilters.approval_statuses.includes(st.key)
+                        return (
+                          <button
+                            key={st.key}
+                            type="button"
+                            onClick={() => toggleArrayFilter('approval_statuses', st.key)}
+                            className={`px-2 py-0.5 rounded-sm text-xs font-medium border transition-colors ${
+                              sel
+                                ? 'bg-[#12284C] text-white border-[#12284C]'
+                                : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {st.label} ({st.count})
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 8. Saved Views (visible >= 2xl) */}
+            <div className="relative hidden 2xl:block flex-shrink-0" ref={viewsRef}>
+              <button
+                type="button"
+                onClick={() => setSavedViewsOpen(!savedViewsOpen)}
+                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                id="filter-saved-views-btn"
+              >
+                <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <span className="whitespace-nowrap">Saved Views</span>
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+              </button>
+
+              {savedViewsOpen && (
+                <div className="absolute left-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-50 flex flex-col gap-2">
+                  <span className="font-semibold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="View name..."
+                      value={newViewName}
+                      onChange={(e) => setNewViewName(e.target.value)}
+                      className="px-2 py-1 rounded-md border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)] outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveView}
+                      disabled={!newViewName.trim()}
+                      className="px-2.5 py-1 rounded-md bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {savedViews.length > 0 && (
+                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto border-t border-[var(--border)] pt-2 mt-1">
+                      {savedViews.map((v) => (
+                        <div
+                          key={v.id}
+                          onClick={() => handleApplyView(v.filters)}
+                          className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[var(--bg-hover)] cursor-pointer text-xs group"
+                        >
+                          <span className="font-medium text-[var(--text-primary)] truncate">{v.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteView(v.id, e)}
+                            className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Unified "Filters" panel toggle button for narrower screens (< 2xl or phone) */}
+            <div className="inline-flex 2xl:hidden flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(true)}
+                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-medium text-[var(--text-primary)] inline-flex items-center gap-1.5 transition-colors focus:outline-none"
+                id="topbar-filters-drawer-btn"
+                title="Filter settings & dimensions"
+              >
+                <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
+                <span className="hidden sm:inline">Filters</span>
+                {totalActiveFiltersCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white text-[10px] font-semibold leading-none">
+                    {totalActiveFiltersCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Unified "Filters" panel toggle button for narrower screens (< xl or phone) */}
-          <div className="inline-flex xl:hidden flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setMobileFiltersOpen(true)}
-              className="h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs font-medium text-[var(--text-primary)] inline-flex items-center gap-1.5 transition-colors focus:outline-none"
-              id="topbar-filters-drawer-btn"
-              title="Filter settings"
-            >
-              <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="hidden sm:inline">Filters</span>
-              {totalActiveFiltersCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white text-[10px] font-semibold leading-none">
-                  {totalActiveFiltersCount}
+          {/* ── Right Utility Controls (Always visible, never pushed off-screen) ── */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ml-auto">
+            {/* Download report Menu */}
+            <div className="relative flex-shrink-0" ref={downloadRef}>
+              <button
+                type="button"
+                disabled={!!downloadingFormat}
+                onClick={() => setDownloadOpen(!downloadOpen)}
+                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                id="topbar-download-btn"
+                title="Download report"
+              >
+                {downloadingFormat ? (
+                  <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                )}
+                <span className="hidden xl:inline whitespace-nowrap">
+                  {downloadingFormat
+                    ? downloadingFormat === 'pptx'
+                      ? 'Generating PPTX...'
+                      : 'Generating Excel...'
+                    : 'Download report'}
                 </span>
-              )}
-            </button>
-          </div>
+                <ChevronDown className="w-3.5 h-3.5 opacity-80 flex-shrink-0 hidden sm:inline" />
+              </button>
 
-          {/* 8. Download report Menu */}
-          <div className="relative flex-shrink-0" ref={downloadRef}>
+              {downloadOpen && (
+                <div className="absolute right-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-50 divide-y divide-[var(--border)]">
+                  <div className="py-1">
+                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Renewals Scope (Default)
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('pptx', 'renewals')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-pptx-btn"
+                    >
+                      {downloadingFormat === 'pptx' ? (
+                        <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                      ) : (
+                        <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-medium">PowerPoint (.pptx)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('xlsx', 'renewals')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-excel-btn"
+                    >
+                      {downloadingFormat === 'xlsx' ? (
+                        <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
+                      ) : (
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1">
+                        <p className="font-medium">Excel (.xlsx)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="py-1">
+                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Full Sheet (All Sales Types)
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('pptx', 'full')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-pptx-full-btn"
+                    >
+                      <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">PowerPoint (Full Sheet)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!!downloadingFormat}
+                      onClick={() => handleDownload('xlsx', 'full')}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      id="topbar-download-excel-full-btn"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">Excel (Full Sheet)</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="px-2.5 py-1.5 bg-[var(--bg-secondary)]/50 rounded-b-lg">
+                    <p className="text-[10px] font-medium text-[var(--text-muted)] text-center">
+                      {getDynamicReportNote()}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Admin sign in (Always visible!) */}
+            <div className="flex-shrink-0">
+              <AdminAuthModal />
+            </div>
+
+            {/* Theme toggle */}
             <button
               type="button"
-              disabled={!!downloadingFormat}
-              onClick={() => setDownloadOpen(!downloadOpen)}
-              className="h-10 px-3 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-              id="topbar-download-btn"
-              title="Download report"
+              onClick={toggleDarkMode}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
+              id="topbar-theme-toggle"
+              title={darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >
-              {downloadingFormat ? (
-                <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+              {darkMode ? (
+                <Sun className="w-4 h-4 text-amber-400" />
               ) : (
-                <Download className="w-4 h-4 flex-shrink-0" />
+                <Moon className="w-4 h-4 text-slate-600" />
               )}
-              <span className="hidden md:inline whitespace-nowrap">
-                {downloadingFormat
-                  ? downloadingFormat === 'pptx'
-                    ? 'Generating PPTX...'
-                    : 'Generating Excel...'
-                  : 'Download report'}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 opacity-80 flex-shrink-0" />
             </button>
-
-            {downloadOpen && (
-              <div className="absolute right-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-50 divide-y divide-[var(--border)]">
-                <div className="py-1">
-                  <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Renewals Scope (Default)
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!!downloadingFormat}
-                    onClick={() => handleDownload('pptx', 'renewals')}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    id="topbar-download-pptx-btn"
-                  >
-                    {downloadingFormat === 'pptx' ? (
-                      <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
-                    ) : (
-                      <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium">PowerPoint (.pptx)</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!!downloadingFormat}
-                    onClick={() => handleDownload('xlsx', 'renewals')}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    id="topbar-download-excel-btn"
-                  >
-                    {downloadingFormat === 'xlsx' ? (
-                      <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
-                    ) : (
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium">Excel (.xlsx)</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="py-1">
-                  <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    Full Sheet (All Sales Types)
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!!downloadingFormat}
-                    onClick={() => handleDownload('pptx', 'full')}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    id="topbar-download-pptx-full-btn"
-                  >
-                    <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-medium">PowerPoint (Full Sheet)</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!!downloadingFormat}
-                    onClick={() => handleDownload('xlsx', 'full')}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    id="topbar-download-excel-full-btn"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-medium">Excel (Full Sheet)</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="px-2.5 py-1.5 bg-[var(--bg-secondary)]/50 rounded-b-lg">
-                  <p className="text-[10px] font-medium text-[var(--text-muted)] text-center">
-                    {getDynamicReportNote()}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
-
-          {/* 9. Admin sign in */}
-          <div className="hidden sm:inline-flex flex-shrink-0">
-            <AdminAuthModal />
-          </div>
-
-          {/* 10. Theme toggle */}
-          <button
-            type="button"
-            onClick={toggleDarkMode}
-            className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
-            id="topbar-theme-toggle"
-            title={darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-          >
-            {darkMode ? (
-              <Sun className="w-4 h-4 text-amber-400" />
-            ) : (
-              <Moon className="w-4 h-4 text-slate-600" />
-            )}
-          </button>
         </div>
       </div>
 
@@ -1041,20 +1055,22 @@ export default function Topbar() {
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 p-2 border rounded-md border-[var(--border)] bg-[var(--bg-secondary)]">
                     {allAvailableTypes.map((t: any) => {
-                      const checked = isAllTypes || currentTypes.includes(t.code)
+                      const code = t.code || t.key || t.value
+                      const count = t.deal_count ?? t.count ?? 0
+                      const checked = isAllTypes || currentTypes.includes(code)
                       return (
                         <label
-                          key={t.code}
+                          key={code}
                           className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--surface-hover)] cursor-pointer text-xs select-none"
                         >
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggleTypeFilter(t.code)}
+                            onChange={() => toggleTypeFilter(code)}
                             className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                           />
-                          <span className="font-medium text-[var(--text-primary)]">{t.code}</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">({t.deal_count})</span>
+                          <span className="font-medium text-[var(--text-primary)]">{code}</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">({count})</span>
                         </label>
                       )
                     })}
@@ -1152,6 +1168,77 @@ export default function Topbar() {
                       )
                     })}
                   </div>
+                </div>
+
+                {/* Approval Statuses */}
+                <div>
+                  <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                    Approval Statuses
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {filterOpts?.approval_statuses?.map((st: any) => {
+                      const sel = globalFilters.approval_statuses.includes(st.key)
+                      return (
+                        <button
+                          key={st.key}
+                          type="button"
+                          onClick={() => toggleArrayFilter('approval_statuses', st.key)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                            sel
+                              ? 'bg-[#12284C] text-white border-[#12284C]'
+                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          {st.label} ({st.count})
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Filter Views (Saved Views) */}
+                <div>
+                  <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
+                    Saved Views
+                  </label>
+                  <div className="flex gap-1.5 mb-2">
+                    <input
+                      type="text"
+                      placeholder="View name..."
+                      value={newViewName}
+                      onChange={(e) => setNewViewName(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-md border text-xs bg-[var(--bg-secondary)] border-[var(--border)] flex-1 text-[var(--text-primary)] outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveView}
+                      disabled={!newViewName.trim()}
+                      className="px-3 py-1.5 rounded-md bg-[#12284C] text-white text-xs font-medium hover:bg-[#1B365D] disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save</span>
+                    </button>
+                  </div>
+                  {savedViews.length > 0 && (
+                    <div className="flex flex-col gap-1 max-h-36 overflow-y-auto border rounded-md border-[var(--border)] p-1.5 bg-[var(--bg-secondary)]">
+                      {savedViews.map((v) => (
+                        <div
+                          key={v.id}
+                          onClick={() => handleApplyView(v.filters)}
+                          className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-[var(--bg-card)] cursor-pointer text-xs"
+                        >
+                          <span className="font-medium text-[var(--text-primary)] truncate">{v.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteView(v.id, e)}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Mobile Admin Sign in button */}
