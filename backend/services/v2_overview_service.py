@@ -471,6 +471,138 @@ class V2OverviewService:
             "slipped_earlier": earlier_q,
         }
 
+    # ── Custom Overview Tiles: Proposal Pending & Jan 1st Renewals ────────────
+
+    def _compute_overview_custom_tiles(
+        self,
+        snap: UploadSnapshot,
+        as_of_date: date,
+        period_val: str,
+        effective_types: list[str],
+    ) -> tuple[dict, dict]:
+        from backend.utils.excel_parser import parse_excel_datetime
+        if not snap:
+            return {"count": 0, "acv": 0.0, "deals": []}, {"count": 0, "acv": 0.0, "deals": []}
+
+        # Service Start Date is exactly 1 January of the next 1 January on or after the as-of date
+        if as_of_date.month == 1 and as_of_date.day == 1:
+            target_year = as_of_date.year
+        else:
+            target_year = as_of_date.year + 1
+        target_jan1 = date(target_year, 1, 1)
+
+        def _is_blank(v):
+            if v is None:
+                return True
+            s = str(v).strip()
+            return s == "" or s.lower() in ("nan", "none", "blank")
+
+        def _is_valid_stage(st):
+            if not st:
+                return False
+            s = str(st).strip()
+            if not s:
+                return False
+            s_lower = s.lower()
+            if any(k in s_lower for k in ("deleted", "lost", "won & closed", "white space")):
+                return False
+            if s_lower in ("deleted", "lost", "won & closed", "closed won", "white space"):
+                return False
+            return True
+
+        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        prop_pending_opps = []
+        jan1_opps = []
+
+        for o in opps:
+            # Sales Type: Renewals only
+            st = o.sales_type or (o.extra_attributes or {}).get("Sales Type") or ""
+            if str(st).strip().lower() != "renewals":
+                continue
+
+            # Type: global Type filter (default MR and R)
+            raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
+            type_code = ScopeService.extract_type_code(raw_type)
+            if effective_types and type_code not in effective_types:
+                continue
+
+            # Stage Number: exclude Deleted, Lost, Won & Closed, and blank or whitespace
+            stage = o.stage_number or (o.extra_attributes or {}).get("Stage Number") or ""
+            if not _is_valid_stage(stage):
+                continue
+
+            # Tile 1: Proposal Pending (Fiscal Period = selected Period, approval & proposal status blank)
+            fp = o.fiscal_period or (o.extra_attributes or {}).get("Fiscal Period") or ""
+            if period_val == "All" or str(fp).strip() == str(period_val).strip():
+                app_status = o.approval_status or (o.extra_attributes or {}).get("Opportunity Approval Status") or ""
+                prop_status = (o.extra_attributes or {}).get("Proposal status For Renewal Opp") or ""
+                if _is_blank(app_status) and _is_blank(prop_status):
+                    prop_pending_opps.append(o)
+
+            # Tile 2: Jan 1st Renewals (Service Start Date exactly next Jan 1 on or after as-of date)
+            ssd_raw = (o.extra_attributes or {}).get("Service Start Date")
+            ssd_dt = parse_excel_datetime(ssd_raw)
+            if ssd_dt and ssd_dt.date() == target_jan1:
+                jan1_opps.append(o)
+
+        t1_data = {
+            "count": len(prop_pending_opps),
+            "acv": round(sum(float(o.forecast_acv_amount or 0.0) for o in prop_pending_opps), 2),
+            "deals": prop_pending_opps,
+        }
+        t2_data = {
+            "count": len(jan1_opps),
+            "acv": round(sum(float(o.forecast_acv_amount or 0.0) for o in jan1_opps), 2),
+            "target_date": target_jan1.isoformat(),
+            "deals": jan1_opps,
+        }
+        return t1_data, t2_data
+
+    def _build_delta_deals_response(
+        self,
+        curr_opps: list[Opportunity],
+        comp_opps: list[Opportunity],
+        label: str,
+        filters_applied: list,
+    ) -> dict:
+        t_map = {str(o.opportunity_id_18 or o.id): o for o in curr_opps}
+        c_map = {str(o.opportunity_id_18 or o.id): o for o in comp_opps}
+
+        added = []
+        for oid, o in t_map.items():
+            if oid not in c_map:
+                d = self._opp_to_deal_dict(o)
+                d["delta_group"] = f"Added to {label}"
+                d["delta_acv_change"] = float(o.forecast_acv_amount or 0.0)
+                added.append(d)
+
+        left = []
+        for oid, o in c_map.items():
+            if oid not in t_map:
+                d = self._opp_to_deal_dict(o)
+                d["delta_group"] = f"Left {label}"
+                d["delta_acv_change"] = -float(o.forecast_acv_amount or 0.0)
+                left.append(d)
+
+        changed = []
+        for oid, o in t_map.items():
+            if oid in c_map:
+                diff = round(float(o.forecast_acv_amount or 0.0) - float(c_map[oid].forecast_acv_amount or 0.0), 2)
+                if abs(diff) > 0.001:
+                    d = self._opp_to_deal_dict(o)
+                    d["delta_group"] = "Amount changed"
+                    d["delta_acv_change"] = diff
+                    changed.append(d)
+
+        all_deals = added + left + changed
+        all_deals.sort(key=lambda x: abs(x.get("delta_acv_change", 0.0)), reverse=True)
+        return {
+            "count": len(all_deals),
+            "acv": round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in all_deals), 2),
+            "filters_applied": filters_applied,
+            "deals": all_deals,
+        }
+
     # ── public API ────────────────────────────────────────────────────────────
 
     def get_summary(
@@ -912,6 +1044,47 @@ class V2OverviewService:
             "total_items": len(items[:max_items]),
         }
 
+        # ── Custom Overview Tiles: Proposal Pending & Jan 1st Renewals ─────
+        eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+        curr_pp, curr_j1 = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
+
+        yest_pp, yest_j1 = (None, None)
+        if yest_snap:
+            yest_pp, yest_j1 = self._compute_overview_custom_tiles(yest_snap, eff_as_of_date, target_fp, eff_types)
+
+        lw_pp, lw_j1 = (None, None)
+        if lw_snap:
+            lw_pp, lw_j1 = self._compute_overview_custom_tiles(lw_snap, eff_as_of_date, target_fp, eff_types)
+
+        proposal_pending = {
+            "count": curr_pp["count"],
+            "acv": curr_pp["acv"],
+            "delta_yesterday": {
+                "count": curr_pp["count"] - yest_pp["count"],
+                "acv": round(curr_pp["acv"] - yest_pp["acv"], 2),
+            } if yest_pp else None,
+            "delta_lastweek": {
+                "count": curr_pp["count"] - lw_pp["count"],
+                "acv": round(curr_pp["acv"] - lw_pp["acv"], 2),
+            } if lw_pp else None,
+            "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_pp["deals"]],
+        }
+
+        jan1_renewals = {
+            "count": curr_j1["count"],
+            "acv": curr_j1["acv"],
+            "target_date": curr_j1["target_date"],
+            "delta_yesterday": {
+                "count": curr_j1["count"] - yest_j1["count"],
+                "acv": round(curr_j1["acv"] - yest_j1["acv"], 2),
+            } if yest_j1 else None,
+            "delta_lastweek": {
+                "count": curr_j1["count"] - lw_j1["count"],
+                "acv": round(curr_j1["acv"] - lw_j1["acv"], 2),
+            } if lw_j1 else None,
+            "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_j1["deals"]],
+        }
+
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
             "requested_as_of":  fs.as_of or snap.snapshot_date.isoformat(),
@@ -942,6 +1115,8 @@ class V2OverviewService:
                 }
                 for fc in cats.keys()
             },
+            # Proposal Pending Tile
+            "proposal_pending": proposal_pending,
             # Section 3 — slippage & delayed renewals separated
             "slippage": slippage_data,
             "slippage_section": del_sum.get("slippage"),
@@ -953,6 +1128,8 @@ class V2OverviewService:
             "delayed_pct_of_quarter": del_sum.get("delayed_pct_of_quarter"),
             "slippage_pct_of_quarter": del_sum.get("slippage_pct_of_quarter"),
             "quarter_total_acv": del_sum.get("quarter_total_acv"),
+            # Jan 1st Renewals Tile
+            "jan1_renewals": jan1_renewals,
             "proposal_confirmation_totals": prop_totals,
             "source_checks": {
                 "total": len(snap.checks),
@@ -1456,6 +1633,43 @@ class V2OverviewService:
                     "filters_applied": res.filters_applied,
                     "deals": drop_records,
                 }
+        elif kind in ("proposal_pending", "jan1_renewals"):
+            eff_as_of_date = None
+            if fs.as_of:
+                try:
+                    eff_as_of_date = date.fromisoformat(fs.as_of)
+                except ValueError:
+                    pass
+            if not eff_as_of_date:
+                eff_as_of_date = snap.snapshot_date
+            target_fp = res.resolved_quarter
+            yest_snap = self._yesterday_snap(snap)
+            lw_snap = self._lastweek_snap(snap)
+            eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+
+            t1_data, t2_data = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
+            target_data = t1_data if kind == "proposal_pending" else t2_data
+            curr_opps = target_data["deals"]
+            label = "Proposal Pending" if kind == "proposal_pending" else "Jan 1st Renewals"
+
+            if compare in ("yesterday", "last_week"):
+                comp_snap = lw_snap if compare == "last_week" else yest_snap
+                comp_opps = []
+                if comp_snap:
+                    c1_data, c2_data = self._compute_overview_custom_tiles(comp_snap, eff_as_of_date, target_fp, eff_types)
+                    comp_opps = c1_data["deals"] if kind == "proposal_pending" else c2_data["deals"]
+                return self._build_delta_deals_response(curr_opps, comp_opps, label, res.filters_applied)
+
+            records = [self._opp_to_deal_dict(o) for o in curr_opps]
+            records.sort(key=lambda x: float(x.get("forecast_acv_amount") or 0.0), reverse=True)
+            if deal_ids:
+                records = [d for d in records if str(d.get("opportunity_id_18") or d.get("id")) in deal_ids]
+            return {
+                "count": len(records),
+                "acv": round(sum(float(r.get("forecast_acv_amount") or 0.0) for r in records), 2),
+                "filters_applied": res.filters_applied,
+                "deals": records,
+            }
 
         if deal_ids:
             df = df[df["opportunity_id_18"].isin(deal_ids)]
