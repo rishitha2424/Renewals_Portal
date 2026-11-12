@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   RefreshCw, Upload, AlertTriangle, TrendingUp, TrendingDown,
   ChevronRight, X, CheckCircle2, ArrowRight, BarChart3, Users, Globe2,
-  ShieldCheck, AlertCircle, CalendarX2,
+  ShieldCheck, AlertCircle, CalendarX2, FileText, Calendar,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import {
@@ -73,6 +73,9 @@ function Pill({ children, color = 'teal' }: { children: React.ReactNode; color?:
     teal: 'bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20',
     violet: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/20',
     amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20',
+    rose: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20',
+    indigo: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20',
+    sky: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20',
     slate: 'bg-slate-200/70 dark:bg-slate-700/40 text-slate-600 dark:text-slate-400 border border-slate-300/40 dark:border-slate-600/40',
   }
   return (
@@ -223,11 +226,17 @@ export default function Dashboard() {
     if (summary?.categories && Object.keys(summary.categories).length > 0) {
       list.push({ id: 'overview-forecast-category', title: 'Forecast category' })
     }
+    if (summary?.proposal_pending) {
+      list.push({ id: 'overview-proposal-pending', title: 'Proposal Pending' })
+    }
     if (summary?.delayed_renewals || summary?.delayed_renewals_total) {
       list.push({ id: 'overview-delayed-renewals', title: 'Delayed renewals' })
     }
     if (summary?.slippage_section || summary?.slippage) {
       list.push({ id: 'overview-slippage', title: 'Slippage' })
+    }
+    if (summary?.jan1_renewals) {
+      list.push({ id: 'overview-jan1-renewals', title: 'Jan 1st Renewals' })
     }
     if (movements) {
       list.push({ id: 'overview-movements', title: 'Movements & changes' })
@@ -670,6 +679,69 @@ export default function Dashboard() {
 
         return (
           <div className="space-y-6">
+            {/* ── SUBSECTION: PROPOSAL PENDING (Placed BEFORE Delayed Renewals) ── */}
+            {(() => {
+              const ppData = summary?.proposal_pending
+              if (!ppData) return null
+              const cnt = ppData.count ?? 0
+              const acvVal = ppData.acv ?? 0
+              const hasDeals = cnt > 0 || acvVal > 0
+              const mainTitle = `Proposal Pending · (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+              const yDelta = ppData.delta_yesterday
+              const lwDelta = ppData.delta_lastweek
+              const yCnt = Math.abs(yDelta?.count || 0)
+              const yAcv = Math.abs(yDelta?.acv || 0)
+              const lwCnt = Math.abs(lwDelta?.count || 0)
+              const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+              const yTitle = `Proposal Pending · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+              const lwTitle = `Proposal Pending · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+              return (
+                <div id="overview-proposal-pending" className="card p-6 scroll-mt-24" style={{ borderLeft: '4px solid #6366F1' }}>
+                  <div className="flex flex-col gap-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                          <h2 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                            Proposal Pending
+                          </h2>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] max-w-2xl">
+                          Open renewals with no approval status and no proposal status yet.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-indigo-500/5 dark:bg-indigo-950/20 border border-indigo-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+                      <div
+                        className={hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}
+                        onClick={() => hasDeals && openDealsQuery(mainTitle, { kind: 'proposal_pending' })}
+                        title={hasDeals ? 'Click to view all proposal pending deals' : '0 deals'}
+                      >
+                        <div className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider mb-1">
+                          Proposal Pending Total
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <span className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals ? 'hover:underline' : ''}`}>
+                            {acvM(acvVal)}
+                          </span>
+                          <Pill color="indigo"><FileText className="w-3.5 h-3.5" />{`${cnt} deals`}</Pill>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'proposal_pending', compare: 'yesterday' }), yTitle, true)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'proposal_pending', compare: 'last_week' }), lwTitle, true)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* ── SUBSECTION 1: DELAYED RENEWALS ── */}
             <div id="overview-delayed-renewals" className="card p-6 scroll-mt-24" style={{ borderLeft: '4px solid #F43F5E' }}>
               <div className="flex flex-col gap-5">
@@ -960,6 +1032,69 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+
+            {/* ── SUBSECTION: JAN 1ST RENEWALS (Placed AFTER Slippage) ── */}
+            {(() => {
+              const j1Data = summary?.jan1_renewals
+              if (!j1Data) return null
+              const cnt = j1Data.count ?? 0
+              const acvVal = j1Data.acv ?? 0
+              const hasDeals = cnt > 0 || acvVal > 0
+              const mainTitle = `Jan 1st Renewals · (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
+
+              const yDelta = j1Data.delta_yesterday
+              const lwDelta = j1Data.delta_lastweek
+              const yCnt = Math.abs(yDelta?.count || 0)
+              const yAcv = Math.abs(yDelta?.acv || 0)
+              const lwCnt = Math.abs(lwDelta?.count || 0)
+              const lwAcv = Math.abs(lwDelta?.acv || 0)
+
+              const yTitle = `Jan 1st Renewals · since yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
+              const lwTitle = `Jan 1st Renewals · since last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
+
+              return (
+                <div id="overview-jan1-renewals" className="card p-6 scroll-mt-24" style={{ borderLeft: '4px solid #0EA5E9' }}>
+                  <div className="flex flex-col gap-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse" />
+                          <h2 className="text-sm font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
+                            Jan 1st Renewals
+                          </h2>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] max-w-2xl">
+                          Open renewals whose service starts on 1 January.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-sky-500/5 dark:bg-sky-950/20 border border-sky-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+                      <div
+                        className={hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}
+                        onClick={() => hasDeals && openDealsQuery(mainTitle, { kind: 'jan1_renewals' })}
+                        title={hasDeals ? 'Click to view all Jan 1st renewals' : '0 deals'}
+                      >
+                        <div className="text-xs font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider mb-1">
+                          Jan 1st Renewals Total
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <span className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals ? 'hover:underline' : ''}`}>
+                            {acvM(acvVal)}
+                          </span>
+                          <Pill color="sky"><Calendar className="w-3.5 h-3.5" />{`${cnt} deals`}</Pill>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderSubBox('Since yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: 'jan1_renewals', compare: 'yesterday' }), yTitle, true)}
+                        {renderSubBox('Since last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: 'jan1_renewals', compare: 'last_week' }), lwTitle, true)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* ── SUBSECTION 3: LOST / REMOVED (Separate Card) ── */}
             {(() => {
