@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('label', sa.String(length=64), nullable=False),
     sa.Column('snapshot_date', sa.Date(), nullable=False),
-    sa.Column('workbook_type', postgresql.ENUM('RENEWALS_SUMMARY', 'COMPARISON_TOOL', 'BOTH', name='workbook_type_enum', create_type=False), nullable=False),
+    sa.Column('workbook_type', sa.Enum('RENEWALS_SUMMARY', 'COMPARISON_TOOL', 'BOTH', name='workbook_type_enum', create_type=False), nullable=False),
     sa.Column('source_file_summary', sa.String(length=256), nullable=True),
     sa.Column('source_file_comparison', sa.String(length=256), nullable=True),
     sa.Column('uploaded_at', sa.DateTime(), nullable=False),
