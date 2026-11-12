@@ -58,7 +58,7 @@ export default function AdminAuthModal() {
   return (
     <>
       {isAdmin ? (
-        <div className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
+        <div className="h-9 sm:h-10 px-2 sm:px-2.5 xl:px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
           <ShieldCheck className="w-4 h-4 flex-shrink-0" />
           <span className="hidden sm:inline">{adminName || 'Admin'}</span>
           <button
@@ -78,12 +78,13 @@ export default function AdminAuthModal() {
             setError(null)
             setIsOpen(true)
           }}
-          className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0 focus:outline-none"
+          className="h-9 sm:h-10 px-2 sm:px-2.5 xl:px-3 rounded-md bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors inline-flex items-center gap-1.5 flex-shrink-0 focus:outline-none"
           id="admin-sign-in-btn"
           title="Admin sign in"
         >
           <Lock className="w-4 h-4 text-amber-500 flex-shrink-0" />
-          <span className="hidden sm:inline whitespace-nowrap">Admin sign in</span>
+          <span className="hidden lg:inline whitespace-nowrap">Admin sign in</span>
+          <span className="hidden sm:inline lg:hidden whitespace-nowrap">Admin</span>
         </button>
       )}
 
