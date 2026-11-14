@@ -139,29 +139,8 @@ class V2OverviewService:
         )
 
     def _opp_to_deal_dict(self, o: Opportunity) -> dict:
-        raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
-        type_code = ScopeService.extract_type_code(raw_type)
-        return {
-            "id": o.opportunity_id_18 or o.id,
-            "opportunity_id_18": o.opportunity_id_18,
-            "opportunity_name": o.opportunity_name,
-            "account_name": o.account_name,
-            "forecast_category": o.forecast_category,
-            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-            "sub_region": o.revised_sub_region or o.sub_region,
-            "region": o.revised_sub_region or o.sub_region,
-            "business_unit_primary": o.business_unit_primary,
-            "business_unit": o.business_unit_primary,
-            "approval_status": o.approval_status,
-            "type": raw_type,
-            "type_code": type_code,
-            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
-            "owner": o.opportunity_owner,
-            "opportunity_owner": o.opportunity_owner,
-            "stage": o.stage_number or (o.extra_attributes or {}).get("Stage Number") or "",
-            "service_start_date": (o.extra_attributes or {}).get("Service Start Date"),
-            "service_expiry_date": (o.extra_attributes or {}).get("Service Expiry date") or (o.extra_attributes or {}).get("Service End Date"),
-        }
+        from backend.services.deal_serializer import serialize_opportunity
+        return serialize_opportunity(o)
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
@@ -1167,6 +1146,7 @@ class V2OverviewService:
             "quarter_total_acv": del_sum.get("quarter_total_acv"),
             # Jan 1st Renewals Tile
             "jan1_renewals": jan1_renewals,
+            "rules": del_sum.get("rules"),
             "proposal_confirmation_totals": prop_totals,
             "source_checks": {
                 "total": len(snap.checks),

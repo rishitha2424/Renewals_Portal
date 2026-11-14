@@ -284,32 +284,38 @@ function BusinessUnitsContent() {
                 {data_slice}
               </span>
               {/* Source Check Badge */}
-              {summary?.source_check && (
-                <div
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border ${
-                    summary.source_check.status === 'reconciles'
-                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                      : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
-                  }`}
-                  title={
-                    summary.source_check.status === 'reconciles'
-                      ? `Source check: reconciles (${summary.source_check.total_cells_checked} cells verified against raw snapshot rows)`
-                      : `Source check: ${summary.source_check.diffs?.map((d: any) => `${d.cell}: exp ${JSON.stringify(d.expected)}, got ${JSON.stringify(d.actual)}`).join('; ')}`
-                  }
-                >
-                  {summary.source_check.status === 'reconciles' ? (
-                    <>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Source check: reconciles</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                      <span>Source check: {summary.source_check.message}</span>
-                    </>
-                  )}
-                </div>
-              )}
+              {summary?.source_check && (() => {
+                const total = summary.source_check.total_cells_checked || 0
+                const diffCount = summary.source_check.diffs?.length || (summary.source_check.status === 'reconciles' ? 0 : 1)
+                const passed = Math.max(0, total - diffCount)
+                const isAllPassed = summary.source_check.status === 'reconciles' && diffCount === 0
+                return (
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border ${
+                      isAllPassed
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                    }`}
+                    title={
+                      isAllPassed
+                        ? `${total} of ${total} checks passed against raw snapshot rows`
+                        : `Checks failed: ${summary.source_check.diffs?.map((d: any) => `${d.cell}: exp ${JSON.stringify(d.expected)}, got ${JSON.stringify(d.actual)}`).join('; ') || summary.source_check.message}`
+                    }
+                  >
+                    {isAllPassed ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>{total} of {total} checks passed</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                        <span>{passed} of {total} checks passed, {diffCount} failed</span>
+                      </>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Portfolio distribution, category coverage, and multi-unit performance
@@ -756,7 +762,7 @@ function BusinessUnitsContent() {
                 <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-3 font-semibold border-r border-[var(--border)] shadow-xs">Opportunity</th>
                 <th className="py-2.5 px-3 font-semibold">Account</th>
                 <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
-                <th className="py-2.5 px-3 font-semibold text-center">Category</th>
+                <th className="py-2.5 px-3 font-semibold text-center">Forecast</th>
                 <th className="py-2.5 px-3 font-semibold">Close Date</th>
               </tr>
             </thead>
@@ -848,7 +854,7 @@ function BusinessUnitsContent() {
                     <th className="py-2.5 px-3 font-semibold">Opportunity Name</th>
                     <th className="py-2.5 px-3 font-semibold">Account</th>
                     <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
-                    <th className="py-2.5 px-3 font-semibold text-center">Category</th>
+                    <th className="py-2.5 px-3 font-semibold text-center">Forecast</th>
                     <th className="py-2.5 px-3 font-semibold">Stage</th>
                     <th className="py-2.5 px-3 font-semibold">Close Date</th>
                     <th className="py-2.5 px-3 font-semibold">Owner</th>
@@ -872,17 +878,17 @@ function BusinessUnitsContent() {
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getCategoryBadgeStyle(deal.forecast_category)}`}>
-                          {deal.forecast_category || 'Blank'}
+                          {deal.forecast_category || 'Not yet proposed'}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-[var(--text-secondary)] text-[11px] max-w-[120px] truncate" title={deal.stage}>
-                        {deal.stage || '—'}
+                      <td className="py-2.5 px-3 text-[var(--text-secondary)] text-[11px] max-w-[120px] truncate" title={deal.stage || deal.stage_number}>
+                        {deal.stage || deal.stage_number || '—'}
                       </td>
                       <td className="py-2.5 px-3 text-[var(--text-muted)] text-[11px] font-mono">
                         {deal.close_date ? new Date(deal.close_date).toLocaleDateString() : '—'}
                       </td>
-                      <td className="py-2.5 px-3 text-[var(--text-muted)] text-[11px] max-w-[120px] truncate" title={deal.owner_name}>
-                        {deal.owner_name || '—'}
+                      <td className="py-2.5 px-3 text-[var(--text-muted)] text-[11px] max-w-[120px] truncate" title={deal.owner || deal.opportunity_owner || deal.owner_name}>
+                        {deal.owner || deal.opportunity_owner || deal.owner_name || '—'}
                       </td>
                     </tr>
                   ))}

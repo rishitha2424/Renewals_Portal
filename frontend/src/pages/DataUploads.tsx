@@ -458,6 +458,9 @@ export default function DataUploads() {
     return list
   }, [previewData, uploadHistory, coverageData])
 
+  const isValidationVisible = !!previewData
+  const historyStepNumber = isValidationVisible ? 3 : 2
+
   return (
     <div className="space-y-6 w-full pb-12">
       <SectionNav sections={uploadsSections} />
@@ -1179,7 +1182,7 @@ export default function DataUploads() {
           <div>
             <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              3. Snapshot History Table
+              {historyStepNumber}. Snapshot History Table
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Comprehensive audit log of ingested snapshots, SHA-256 archives, and Q-slice totals.

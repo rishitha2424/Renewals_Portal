@@ -821,10 +821,10 @@ function RegionsContent() {
                   <div className="rounded-xl border border-red-200 dark:border-red-900/40 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
                     <div className="p-3.5 bg-red-50/80 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
                       <h3 className="text-sm font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-red-500" /> Overdue Deals in {selectedRegion}
+                        <Clock className="w-4 h-4 text-red-500" /> Past close date deals in {selectedRegion}
                       </h3>
                       <button
-                        onClick={() => handleDrill(`${selectedRegion} Delayed Deals`, { region: selectedRegion, delayed: true })}
+                        onClick={() => handleDrill(`${selectedRegion} Past Close Date Deals`, { region: selectedRegion, delayed: true })}
                         className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline"
                       >
                         View all ({regionDetail.delayed_deals.count}) →
@@ -846,11 +846,11 @@ function RegionsContent() {
                               <span>•</span>
                               <span className="text-red-500 font-medium">{d.days_overdue}d overdue</span>
                               <span>•</span>
-                              <span>{d.owner}</span>
+                              <span>{d.owner || d.opportunity_owner || '—'}</span>
                             </div>
                           </div>
                           <div className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                            {formatACV(d.acv)}
+                            {formatACV(d.acv || d.forecast_acv_amount || 0)}
                           </div>
                         </div>
                       ))}

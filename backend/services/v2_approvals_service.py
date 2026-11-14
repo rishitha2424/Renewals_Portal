@@ -127,6 +127,7 @@ class V2ApprovalsService:
                 "sub_region": o.sub_region,
                 "business_unit_primary": o.business_unit_primary,
                 "opportunity_owner": (o.opportunity_owner or "").strip() or "Unassigned",
+                "stage_number": (o.stage_number or (o.extra_attributes or {}).get("Stage Number") or (o.extra_attributes or {}).get("Stage") or "").strip(),
             })
         
         df = pd.DataFrame(data)
@@ -465,6 +466,8 @@ class V2ApprovalsService:
                 t_df, _ = self._get_opps_df(ts, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=ts.snapshot_date)
             t_tot_c = len(t_df)
             t_tot_a = _sum(t_df, "forecast_acv_amount")
+            if t_tot_c == 0 or t_tot_a == 0:
+                continue
             t_appr_df = t_df[t_df["approval_status"] == "Approved"] if not t_df.empty else pd.DataFrame()
             t_appr_c = len(t_appr_df)
             t_appr_a = _sum(t_appr_df, "forecast_acv_amount")
@@ -482,6 +485,8 @@ class V2ApprovalsService:
                 "unit_count": "% of Deals"
             })
 
+        approved_trend.sort(key=lambda x: x["snapshot_date"])
+
         movements = []
         def get_movements(prev_df):
             moves = []
@@ -494,8 +499,8 @@ class V2ApprovalsService:
                     suffixes=("_prev", "_curr")
                 )
                 changed = merged[merged["approval_status_prev"] != merged["approval_status_curr"]].copy()
-                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("New to slice")
-                changed["approval_status_curr"] = changed["approval_status_curr"].fillna("Blank")
+                changed["approval_status_prev"] = changed["approval_status_prev"].fillna("Newly in this period")
+                changed["approval_status_curr"] = changed["approval_status_curr"].fillna("Not submitted")
                 
                 for (from_st, to_st), grp in changed.groupby(["approval_status_prev", "approval_status_curr"], dropna=False):
                     moves.append({
@@ -728,11 +733,15 @@ class V2ApprovalsService:
                 "account_name": _clean(r["account_name"]),
                 "forecast_category": _clean(r["forecast_category"]),
                 "forecast_acv_amount": float(_clean(r["forecast_acv_amount"]) or 0),
+                "acv": float(_clean(r["forecast_acv_amount"]) or 0),
                 "approval_status": _clean(r["approval_status"]),
                 "reason_for_approval": _clean(r["reason_for_approval"]),
                 "sub_region": _clean(r["sub_region"]),
                 "business_unit_primary": _clean(r["business_unit_primary"]),
                 "opportunity_owner": _clean(r.get("opportunity_owner")),
+                "owner": _clean(r.get("opportunity_owner")),
+                "stage": _clean(r.get("stage_number")),
+                "stage_number": _clean(r.get("stage_number")),
                 "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
                 "days_to_close": days_to_close
             })

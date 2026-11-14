@@ -15,6 +15,8 @@ from backend.models.change_log import ChangeLog
 from backend.services.scopes import ScopeService
 from backend.services.context import UserContext
 from backend.services.analytics_service import AnalyticsService
+from backend.constants import normalize_forecast_category, normalize_approval_status
+from backend.services.deal_serializer import serialize_opportunity
 
 log = logging.getLogger(__name__)
 
@@ -358,8 +360,9 @@ class OpportunityService:
         opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
         acv_vals = [float(o.forecast_acv_amount) for o in opps if o.forecast_acv_amount]
         return {
-            "forecast_categories": sorted({o.forecast_category for o in opps if o.forecast_category}),
-            "approval_statuses": sorted({o.approval_status for o in opps if o.approval_status}),
+            "forecast_categories": sorted({normalize_forecast_category(o.forecast_category) for o in opps if o.forecast_category}),
+            "approval_statuses": sorted({normalize_approval_status(o.approval_status) for o in opps if o.approval_status}),
+            "stages": sorted({o.stage_number or (o.extra_attributes or {}).get("Stage Number") for o in opps if (o.stage_number or (o.extra_attributes or {}).get("Stage Number"))}),
             "sub_regions": sorted({o.sub_region for o in opps if o.sub_region}),
             "business_units": sorted({o.business_unit_primary for o in opps if o.business_unit_primary}),
             "service_expiry_periods": sorted({o.service_expiry_period for o in opps if o.service_expiry_period}),
@@ -369,7 +372,8 @@ class OpportunityService:
         }
 
     def _to_dict(self, o: Opportunity) -> dict:
-        return {
+        base = serialize_opportunity(o)
+        base.update({
             "id": o.id,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
@@ -379,15 +383,16 @@ class OpportunityService:
             "country_territory": o.country_territory,
             "business_unit_primary": o.business_unit_primary,
             "business_unit_raw": o.business_unit_raw,
-            "forecast_category": o.forecast_category,
+            "forecast_category": base.get("forecast_category") or o.forecast_category,
             "forecast_acv_amount": float(o.forecast_acv_amount) if o.forecast_acv_amount else None,
             "close_date": o.close_date.isoformat() if o.close_date else None,
             "probability_pct": o.probability_pct,
-            "approval_status": o.approval_status,
+            "approval_status": base.get("approval_status") or o.approval_status,
             "service_expiry_period": o.service_expiry_period,
             "closing_year": o.closing_year,
             "renewal_category": o.renewal_category,
             "months_delayed": o.months_delayed,
             "opportunity_owner": o.opportunity_owner,
             "last_modified_date": o.last_modified_date.isoformat() if o.last_modified_date else None,
-        }
+        })
+        return base

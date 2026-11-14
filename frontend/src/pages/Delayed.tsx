@@ -236,8 +236,8 @@ function DelayedContent() {
 
     return (
       <div className="grid grid-cols-2 gap-2 mt-2">
-        {renderBox('Since yesterday', data?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-        {renderBox('Since last week', data?.delayed_vs_lastweek, 'last_week', wDateStr)}
+        {renderBox('vs yesterday', data?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+        {renderBox('vs last week', data?.delayed_vs_lastweek, 'last_week', wDateStr)}
       </div>
     )
   }
@@ -683,8 +683,8 @@ function DelayedContent() {
 
                   return (
                     <>
-                      {renderTotBox('Since yesterday', delTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-                      {renderTotBox('Since last week', delTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
+                      {renderTotBox('vs yesterday', delTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
+                      {renderTotBox('vs last week', delTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
                     </>
                   )
                 })()}

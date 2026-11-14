@@ -604,19 +604,13 @@ class V2BusinessUnitsService:
                 "deals": deals
             }
 
-        df = _opps_to_df(opps)
-        
-        if df.empty:
-            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied, "deals": []}
+        from backend.services.deal_serializer import serialize_opportunity
+        deals = [serialize_opportunity(o) for o in opps]
+        deals.sort(key=lambda d: float(d["forecast_acv_amount"] or 0.0), reverse=True)
 
-        df = df.sort_values("forecast_acv_amount", ascending=False)
-        deals = df.to_dict(orient="records")
-        for d in deals:
-            if d["close_date"]: d["close_date"] = d["close_date"].isoformat()
-            
         return {
             "count": len(deals),
-            "acv": round(float(df["forecast_acv_amount"].sum()) if not df.empty else 0.0, 2),
+            "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
             "filters_applied": res.filters_applied,
             "deals": deals
         }

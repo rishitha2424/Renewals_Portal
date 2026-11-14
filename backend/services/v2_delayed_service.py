@@ -316,6 +316,12 @@ class V2DelayedService:
         available_types = [str(t).strip().upper() for t in t_df["type_code"].dropna().unique() if str(t).strip()] if (not t_df.empty and "type_code" in t_df.columns) else []
         rules = SettingsService.get_delayed_rules(self.db, available_groups=available_groups, available_types=available_types)
         lookback_years = SettingsService.get_lookback_years(self.db)
+        rules["lookback_years"] = lookback_years
+        rules["delayed_start_year"] = snap_date.year - lookback_years
+        rules["as_of_year"] = snap_date.year
+        rules["next_year"] = snap_date.year + 1
+        rules["delayed_subtitle"] = f"Service started before this month (from 1 Jan of {snap_date.year - lookback_years}), not yet closed"
+        rules["slippage_subtitle"] = f"Service started {snap_date.year - lookback_years}–{snap_date.year}, close date {snap_date.year + 1}"
         excluded_stages = SettingsService.get_excluded_stages(self.db)
         norm_excluded_stages = [re.sub(r"^\d+\.\s*", "", exc).strip().lower() for exc in excluded_stages]
 

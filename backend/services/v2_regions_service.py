@@ -547,22 +547,36 @@ class V2RegionsService:
             del_reg = del_df[del_df["region"] == region] if not del_df.empty else pd.DataFrame()
             slip_reg = slip_df[slip_df["region"] == region] if not slip_df.empty else pd.DataFrame()
 
-        delayed_deals = del_reg.to_dict("records") if not del_reg.empty else []
-        for d in delayed_deals:
+        raw_delayed_deals = del_reg.to_dict("records") if not del_reg.empty else []
+        delayed_deals = []
+        for d in raw_delayed_deals:
             d["id"] = d.get("opportunity_id_18")
             cd = d.get("close_date")
             try:
                 c_d = pd.to_datetime(cd).date() if cd else None
-                d["days_overdue"] = (snap.snapshot_date - c_d).days if (c_d and c_d < snap.snapshot_date) else 0
+                days_overdue = (snap.snapshot_date - c_d).days if (c_d and c_d < snap.snapshot_date) else 0
             except Exception:
-                d["days_overdue"] = 0
+                days_overdue = 0
+            
+            # Item 9c: Only deals whose close date is strictly before the as-of date (days overdue >= 1)
+            if days_overdue >= 1:
+                d["days_overdue"] = days_overdue
+                acv_val = float(d.get("forecast_acv_amount") or d.get("acv") or 0.0)
+                d["forecast_acv_amount"] = acv_val
+                d["acv"] = acv_val
+                delayed_deals.append(d)
+
+        delayed_deals.sort(key=lambda x: x["days_overdue"], reverse=True)
+        delayed_total_acv = round(sum(d["acv"] for d in delayed_deals), 2)
+        delayed_total_count = len(delayed_deals)
 
         slippage_deals = slip_reg.to_dict("records") if not slip_reg.empty else []
         for d in slippage_deals:
             d["id"] = d.get("opportunity_id_18")
+            acv_val = float(d.get("forecast_acv_amount") or d.get("acv") or 0.0)
+            d["forecast_acv_amount"] = acv_val
+            d["acv"] = acv_val
 
-        delayed_total_acv = round(float(del_reg["forecast_acv_amount"].sum()) if not del_reg.empty else 0.0, 2)
-        delayed_total_count = len(delayed_deals)
         slippage_total_acv = round(float(slip_reg["forecast_acv_amount"].sum()) if not slip_reg.empty else 0.0, 2)
         slippage_total_count = len(slippage_deals)
 

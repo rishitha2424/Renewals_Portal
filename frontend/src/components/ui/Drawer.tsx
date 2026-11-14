@@ -82,16 +82,16 @@ export function Drawer({
             animate={{ x: 0 }}
             exit={{ x: slideX }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
+            style={{ width: 'min(960px, 92vw)', maxWidth: 'min(960px, 92vw)' }}
             className={clsx(
               'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-elevation flex flex-col h-full',
               'max-sm:max-w-full max-sm:rounded-none',
               position === 'right' ? 'sm:rounded-l-2xl' : 'sm:rounded-r-2xl',
-              effectiveWidth,
               position === 'right' ? 'ml-auto' : 'mr-auto'
             )}
           >
-            {/* Header */}
-            <div className={clsx("flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]", position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl')}>
+            {/* Sticky Header with sticky close button */}
+            <div className={clsx("sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]", position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl')}>
               <div>
                 {title && (
                   <h3 className="font-semibold text-sm sm:text-base text-[var(--text-primary)]">

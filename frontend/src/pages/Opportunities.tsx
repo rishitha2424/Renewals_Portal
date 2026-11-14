@@ -680,7 +680,7 @@ export default function Opportunities() {
             <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
             <input
               type="text"
-              placeholder="Search deals & notes..."
+              placeholder="Search deals..."
               value={dealSearchQuery}
               onChange={(e) => {
                 setDealSearchQuery(e.target.value)
@@ -700,20 +700,20 @@ export default function Opportunities() {
             )}
           </div>
 
-          {/* + Add columns button (Admin only opens dialog, non-admin disabled with tooltip) */}
+          {/* + Add custom column button (Admin only opens dialog, non-admin disabled with tooltip) */}
           <button
             type="button"
             disabled={!isAdmin}
             onClick={() => setShowAddColsModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 transition-all disabled:opacity-40 disabled:hover:bg-teal-500/10 disabled:cursor-not-allowed"
-            title={isAdmin ? 'Add custom columns' : 'Sign in as admin to add columns'}
+            title={isAdmin ? 'Add custom column' : 'Sign in as admin to add custom column'}
             id="explorer-add-columns-btn"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add columns</span>
+            <span>Add custom column</span>
           </button>
 
-          {/* Manage Columns (Admin only) */}
+          {/* Manage custom columns (Admin only) */}
           {isAdmin && (
             <button
               type="button"
@@ -723,7 +723,7 @@ export default function Opportunities() {
               title="Add, edit, reorder or delete custom columns & notes"
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>Manage Columns</span>
+              <span>Manage custom columns</span>
             </button>
           )}
 
@@ -753,7 +753,7 @@ export default function Opportunities() {
             id="explorer-columns-btn"
           >
             <Columns className="w-3.5 h-3.5" />
-            <span>Columns ({visibleColNames.length}/{allColumns.length})</span>
+            <span>Show / hide columns ({visibleColNames.length}/{allColumns.length})</span>
           </button>
 
           {/* Filter Builder Toggle */}
@@ -786,7 +786,7 @@ export default function Opportunities() {
               ) : (
                 <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               )}
-              <span>Download</span>
+              <span>Download table (Excel)</span>
               <ChevronDown className="w-3 h-3 ml-0.5 opacity-70" />
             </button>
 
