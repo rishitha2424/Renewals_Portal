@@ -127,7 +127,7 @@ def get_security_warnings() -> list[str]:
         warnings.append("ADMIN_SECRET_KEY is unset or using a default insecure key.")
 
     if settings.ENVIRONMENT.lower() == "production" and not settings.is_cookie_secure:
-        warnings.append("Cookies are not secure in production (COOKIE_SECURE=false).")
+        log.warning("Cookies are not secure in production (COOKIE_SECURE=false).")
 
     return warnings
 
