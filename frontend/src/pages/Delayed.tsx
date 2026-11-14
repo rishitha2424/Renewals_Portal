@@ -81,14 +81,13 @@ function DelayedContent() {
     if (slipCount != null) {
       list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
     }
+    const pName = summary?.period_label || summary?.data_slice || 'quarter'
     if (summary?.lost) {
-      list.push({ id: 'delayed-lost-group', title: 'Lost since start of quarter' })
+      list.push({ id: 'delayed-lost-group', title: `Lost since start of ${pName}` })
     }
-    if (summary?.ageing_breakdown?.length) {
+    const overdueCount = summary?.delayed_renewals?.overdue?.count ?? summary?.overdue?.count ?? 0
+    if (overdueCount > 0 && summary?.ageing_breakdown?.length) {
       list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
-    }
-    if (summary?.trend?.length || summary?.newly_delayed) {
-      list.push({ id: 'delayed-trends', title: 'Trends' })
     }
     if (summary?.by_region?.length || summary?.by_bu?.length) {
       list.push({ id: 'delayed-breakdowns', title: 'Region & BU Grids' })
@@ -689,6 +688,19 @@ function DelayedContent() {
                   )
                 })()}
               </div>
+
+              {/* Right-aligned Newly delayed line (hidden if N == 0) */}
+              {(summary.newly_delayed?.count || 0) > 0 && (
+                <div className="w-full flex justify-end pt-2 border-t border-rose-500/15">
+                  <button
+                    type="button"
+                    onClick={() => handleDrill('Newly Delayed Deals', { kind: 'newly_delayed' })}
+                    className="text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    Newly delayed vs yesterday: {summary.newly_delayed.count} {summary.newly_delayed.count === 1 ? 'deal' : 'deals'} ({formatACV(summary.newly_delayed.acv)})
+                  </button>
+                </div>
+              )}
             </div>
           )
         })()}
@@ -898,166 +910,95 @@ function DelayedContent() {
         )}
       </div>
 
-      {/* ────────────────── SECTION 3: LOST SINCE START OF QUARTER ────────────────── */}
-      <div id="delayed-lost-group" className="space-y-4 scroll-mt-24">
-        <div className="border-b border-[var(--border)] pb-2">
-          <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-            <span>Lost since start of quarter</span>
-          </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
-          </p>
+      {/* ────────────────── SECTION 3: LOST SINCE START OF PERIOD ────────────────── */}
+      {summary.lost && (
+        <div id="delayed-lost-group" className="scroll-mt-24">
+          <div className="rounded-xl bg-slate-500/5 dark:bg-slate-950/20 border border-slate-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={cn((summary.lost.count || 0) > 0 ? 'cursor-pointer group' : 'cursor-default')}
+              onClick={() => (summary.lost.count || 0) > 0 && handleDrill(`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`, { kind: 'lost', compare: 'period_start' })}
+              title={(summary.lost.count || 0) > 0 ? `Click to view deals lost since start of ${summary.period_label || summary.data_slice || 'quarter'}` : '0 deals'}
+            >
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                <span>Lost since start of {summary.period_label || summary.data_slice || 'quarter'}</span>
+              </div>
+              <div className="flex flex-wrap items-baseline gap-3">
+                <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', (summary.lost.count || 0) > 0 && 'group-hover:underline')}>
+                  {formatACV(summary.lost.acv || 0)}
+                </span>
+                <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
+                  {formatCount(summary.lost.count || 0)} deals
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  (Deals deleted or lost since start of {summary.period_label || summary.data_slice || 'quarter'} baseline; excluded from delayed totals)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <DualBoxDisplay
+                data={summary.lost}
+                isOverdue={false}
+                catTitle={`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`}
+                catKind="lost"
+              />
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
-          <DelayedKpiCard
-            title="Lost since start of quarter"
-            definition="Deals deleted or lost since the start of quarter baseline (excluded from delayed totals)."
-            data={summary.lost}
-            icon={AlertTriangle}
-            accent="slate"
-            kind="lost"
-            comparePeriod="period_start"
-          />
-        </div>
-      </div>
+      )}
 
       {/* Overdue Ageing Breakdown */}
-      <Card id="delayed-ageing" padding="md" className="scroll-mt-24">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Overdue Ageing Breakdown</h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              Distribution of active overdue renewals by days past close date
-            </p>
-          </div>
-          <div
-            onClick={() => handleDrill('All Overdue Deals', { kind: 'overdue' })}
-            className="text-xs text-[var(--text-muted)] font-medium cursor-pointer hover:text-[var(--text-primary)]"
-          >
-            Total Overdue: <span className="font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{formatCount(summary.overdue?.count || 0)} deals ({formatACV(summary.overdue?.acv || 0)})</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {summary.ageing_breakdown?.map((item: any) => {
-            const severityClass = {
-              '0-7': 'border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300',
-              '8-30': 'border-l-orange-500 bg-orange-50/40 dark:bg-orange-950/20 text-orange-800 dark:text-orange-300',
-              '31-60': 'border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300',
-              '60+': 'border-l-red-700 bg-red-50/50 dark:bg-red-950/30 text-red-900 dark:text-red-200',
-            }[item.bracket as string] || 'border-l-slate-400 bg-slate-50 dark:bg-slate-800'
-
-            return (
-              <div
-                key={item.bracket}
-                onClick={() => handleDrill(`${item.label} (${item.bracket} days overdue)`, { kind: 'overdue', ageing: item.bracket })}
-                className={cn(
-                  'p-3.5 rounded-lg border border-[var(--border)] border-l-4 transition-all cursor-pointer hover:shadow-md select-none',
-                  severityClass
-                )}
-              >
-                <div className="flex items-center justify-between text-xs font-semibold mb-1">
-                  <span>{item.label}</span>
-                  <span className="text-[10px] font-normal opacity-75 uppercase tracking-wider">past close</span>
-                </div>
-                <div className="text-xl font-bold tabular-nums text-[var(--text-primary)]">
-                  {metricMode === 'Amount' ? formatACV(item.acv) : formatCount(item.count)}
-                </div>
-                <div className="text-xs text-[var(--text-muted)] tabular-nums mt-0.5">
-                  {metricMode === 'Amount' ? `${formatCount(item.count)} deals` : formatACV(item.acv)}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
-
-      {/* Historical Trend and Newly Delayed */}
-      <div id="delayed-trends" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-24">
-        {/* Trend of Delayed ACV */}
-        <Card padding="md" className="flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-3">
+      {((summary.delayed_renewals?.overdue?.count ?? summary.overdue?.count ?? 0) > 0) && summary.ageing_breakdown && summary.ageing_breakdown.length > 0 && (
+        <Card id="delayed-ageing" padding="md" className="scroll-mt-24">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Delayed Renewals Trend</h2>
-              <p className="text-xs text-[var(--text-muted)]">Historical trajectory across recent upload snapshots</p>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Overdue Ageing Breakdown</h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Distribution of active overdue renewals by days past close date
+              </p>
             </div>
-            {summary.delayed_pct_of_quarter != null && (
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300">
-                {summary.delayed_pct_of_quarter}% of Quarter
-              </span>
-            )}
+            <div
+              onClick={() => handleDrill('All Overdue Deals', { kind: 'overdue' })}
+              className="text-xs text-[var(--text-muted)] font-medium cursor-pointer hover:text-[var(--text-primary)]"
+            >
+              Total Overdue: <span className="font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{formatCount(summary.overdue?.count || 0)} deals ({formatACV(summary.overdue?.acv || 0)})</span>
+            </div>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {summary.trend?.map((t: any, idx: number) => {
-              const isLatest = idx === summary.trend.length - 1
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {summary.ageing_breakdown?.map((item: any) => {
+              const severityClass = {
+                '0-7': 'border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300',
+                '8-30': 'border-l-orange-500 bg-orange-50/40 dark:bg-orange-950/20 text-orange-800 dark:text-orange-300',
+                '31-60': 'border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300',
+                '60+': 'border-l-red-700 bg-red-50/50 dark:bg-red-950/30 text-red-900 dark:text-red-200',
+              }[item.bracket as string] || 'border-l-slate-400 bg-slate-50 dark:bg-slate-800'
+
               return (
                 <div
-                  key={t.snapshot_date}
+                  key={item.bracket}
+                  onClick={() => handleDrill(`${item.label} (${item.bracket} days overdue)`, { kind: 'overdue', ageing: item.bracket })}
                   className={cn(
-                    'p-2.5 rounded-lg border text-center transition-colors',
-                    isLatest
-                      ? 'border-[var(--brand-teal)] bg-[var(--brand-teal)]/10 shadow-xs ring-1 ring-[var(--brand-teal)]/20'
-                      : 'border-[var(--border)] bg-[var(--bg-secondary)]/40'
+                    'p-3.5 rounded-lg border border-[var(--border)] border-l-4 transition-all cursor-pointer hover:shadow-md select-none',
+                    severityClass
                   )}
                 >
-                  <div className="text-[10px] text-[var(--text-muted)] font-medium">
-                    {t.snapshot_date}
+                  <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                    <span>{item.label}</span>
+                    <span className="text-[10px] font-normal opacity-75 uppercase tracking-wider">past close</span>
                   </div>
-                  <div className="text-xs font-semibold text-[var(--text-primary)] tabular-nums mt-1">
-                    {formatACV(t.acv)}
+                  <div className="text-xl font-bold tabular-nums text-[var(--text-primary)]">
+                    {metricMode === 'Amount' ? formatACV(item.acv) : formatCount(item.count)}
                   </div>
-                  <div className="text-[10px] text-[var(--text-secondary)] tabular-nums">
-                    {formatCount(t.count)} deals
+                  <div className="text-xs text-[var(--text-muted)] tabular-nums mt-0.5">
+                    {metricMode === 'Amount' ? `${formatCount(item.count)} deals` : formatACV(item.acv)}
                   </div>
                 </div>
               )
             })}
           </div>
         </Card>
-
-        {/* Newly Delayed vs Reference */}
-        <Card padding="md" className="flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                Newly Delayed vs {compare === 'yesterday' ? 'Yesterday' : 'Last Week'}
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                Deals newly overdue or pushed out since reference snapshot
-              </p>
-            </div>
-            <button
-              onClick={() => handleDrill('Newly Delayed Deals', { newly_delayed: true })}
-              className="text-xs text-[var(--brand-teal)] hover:underline font-semibold tabular-nums"
-            >
-              {summary.newly_delayed?.count || 0} deals ({formatACV(summary.newly_delayed?.acv || 0)})
-            </button>
-          </div>
-          <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
-            {summary.newly_delayed?.deals?.slice(0, 4).map((d: any) => (
-              <div
-                key={d.opportunity_id_18}
-                onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                className="flex items-center justify-between p-2 rounded-md bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer text-xs transition-colors border border-[var(--border-subtle)]"
-              >
-                <div className="min-w-0 pr-2">
-                  <div className="font-medium text-[var(--text-primary)] truncate">{d.opportunity_name}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] truncate">{d.account_name} • {d.region}</div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="font-semibold tabular-nums text-[var(--text-primary)]">{formatACV(d.forecast_acv_amount)}</div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300 bg-amber-500/10">{d.reason}</span>
-                </div>
-              </div>
-            ))}
-            {(!summary.newly_delayed?.deals || summary.newly_delayed.deals.length === 0) && (
-              <div className="text-center py-6 text-xs text-[var(--text-muted)]">
-                No new renewals slipped or became overdue since {compare === 'yesterday' ? 'yesterday' : 'last week'}.
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+      )}
 
       {/* Grid Breakdowns */}
       <div id="delayed-breakdowns" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-24">

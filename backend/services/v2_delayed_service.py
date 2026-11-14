@@ -206,14 +206,21 @@ class V2DelayedService:
     def _snap_by_date(self, d: date) -> UploadSnapshot | None:
         return self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == d).first()
 
+    def _has_data(self, snap: UploadSnapshot | None) -> bool:
+        if not snap:
+            return False
+        if (getattr(snap, "row_count", 0) or 0) > 0:
+            return True
+        return self.db.query(Opportunity.id).filter(Opportunity.snapshot_id == snap.id).first() is not None
+
     def get_yesterday_baseline(self, snap: UploadSnapshot) -> UploadSnapshot | None:
         if getattr(snap, "yesterday_date", None):
             y = self._snap_by_date(snap.yesterday_date)
-            if y and y.snapshot_date < snap.snapshot_date:
+            if y and y.snapshot_date < snap.snapshot_date and self._has_data(y):
                 return y
         return (
             self.db.query(UploadSnapshot)
-            .filter(UploadSnapshot.snapshot_date < snap.snapshot_date)
+            .filter(UploadSnapshot.snapshot_date < snap.snapshot_date, UploadSnapshot.row_count > 0)
             .order_by(UploadSnapshot.snapshot_date.desc())
             .first()
         )
@@ -221,13 +228,14 @@ class V2DelayedService:
     def get_lastweek_baseline(self, snap: UploadSnapshot) -> UploadSnapshot | None:
         target_w = snap.snapshot_date - timedelta(days=7)
         w_exact = self._snap_by_date(target_w)
-        if w_exact and w_exact.snapshot_date < snap.snapshot_date:
+        if w_exact and w_exact.snapshot_date < snap.snapshot_date and self._has_data(w_exact):
             return w_exact
         return (
             self.db.query(UploadSnapshot)
             .filter(
                 UploadSnapshot.snapshot_date <= target_w,
                 UploadSnapshot.snapshot_date < snap.snapshot_date,
+                UploadSnapshot.row_count > 0,
             )
             .order_by(UploadSnapshot.snapshot_date.desc())
             .first()
@@ -742,12 +750,23 @@ class V2DelayedService:
                     "acv": _safe_acv(sub_ey),
                 })
 
+        slip_top_deal = None
+        if not slipped_pos_df.empty:
+            sr = slipped_pos_df.sort_values(by="forecast_acv_amount", ascending=False).iloc[0]
+            slip_top_deal = {
+                "opportunity_id_18": str(sr["opportunity_id_18"]),
+                "opportunity_name": str(sr.get("opportunity_name", "")),
+                "account_name": str(sr.get("account_name", "")),
+                "acv": float(sr.get("forecast_acv_amount", 0.0) or 0.0),
+            }
+
         slippage_obj = {
             "heading": "Slippage",
             "rule_caption": f"Renewals whose service ended {selected_year} or earlier but are now expected to close in {next_year}.",
             "type_filter_note": type_filter_note,
             "selected_year": selected_year,
             "next_year": next_year,
+            "top_deal": slip_top_deal,
             "total": {
                 "count": len(slipped_pos_df),
                 "acv": _safe_acv(slipped_pos_df),
@@ -861,8 +880,9 @@ class V2DelayedService:
         # Newly Delayed vs Yesterday (ties to Overdue card)
         # -------------------------------------------------------------
         comp_standing_for_new = y_standing if eff_compare == "yesterday" else w_standing
+        comp_snap_for_new = y_snap if eff_compare == "yesterday" else w_snap
         newly_overdue_deals = []
-        if comp_standing_for_new and not overdue_df.empty:
+        if comp_snap_for_new and self._has_data(comp_snap_for_new) and comp_standing_for_new and not overdue_df.empty:
             comp_od_ids = set(comp_standing_for_new["overdue"]["opportunity_id_18"]) if not comp_standing_for_new["overdue"].empty else set()
             for _, r in overdue_df.iterrows():
                 if r["opportunity_id_18"] not in comp_od_ids:
@@ -875,8 +895,12 @@ class V2DelayedService:
                         "reason": "Close date passed",
                     })
 
-        new_count = len(overdue_df) - (len(comp_standing_for_new["overdue"]) if comp_standing_for_new else 0)
-        new_acv = round(_safe_acv(overdue_df) - (_safe_acv(comp_standing_for_new["overdue"]) if comp_standing_for_new else 0.0), 2)
+            new_count = len(newly_overdue_deals)
+            new_acv = round(sum(d["forecast_acv_amount"] or 0.0 for d in newly_overdue_deals), 2)
+        else:
+            new_count = 0
+            new_acv = 0.0
+
         newly_delayed = {
             "count": new_count,
             "acv": new_acv,
@@ -1176,7 +1200,10 @@ class V2DelayedService:
         elif base_kind in ("data_quality_expired_no_group", "dq_expired_no_group"):
             df = today_buckets["review_expired_no_group"].copy()
         elif base_kind == "newly_delayed":
-            comp_standing_for_new = y_snap and self._compute_snapshot_buckets(y_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
+            comp_snap = y_snap if eff_compare == "yesterday" else w_snap
+            if not comp_snap or not self._has_data(comp_snap):
+                return {"count": 0, "acv": 0.0, "deals": []}
+            comp_standing_for_new = self._compute_snapshot_buckets(comp_snap, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
             y_od_ids = set(comp_standing_for_new["overdue"]["opportunity_id_18"]) if comp_standing_for_new and not comp_standing_for_new["overdue"].empty else set()
             od_today = today_buckets["overdue"]
             df = od_today[~od_today["opportunity_id_18"].isin(y_od_ids)].copy() if not od_today.empty else pd.DataFrame()
