@@ -570,15 +570,18 @@ function DelayedContent() {
       <div id="delayed-renewals-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
           <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-              <span>Delayed Renewals</span>
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Service has ended, renewal not closed yet.
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Delayed renewals depend on snapshot as-of date, not selected period. · {summary.type_filter_note || 'MR and R types only'}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">
+                Delayed Renewals
+              </h2>
+              {delTot?.count != null && (
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                  {delTot.count} deals · {formatACV(delTot.acv)}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Service has ended, renewal not closed yet (depends on snapshot as-of date, not selected period).
             </p>
           </div>
           {summary.delayed_pct_of_quarter != null && (
@@ -736,8 +739,7 @@ function DelayedContent() {
       <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-[var(--text-primary)]">
                 Slippage
               </h2>
@@ -747,11 +749,8 @@ function DelayedContent() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              {summary.slippage?.rule_caption || `Renewals whose service ended ${summary.slippage?.selected_year || ''} or earlier but are now expected to close in ${summary.slippage?.next_year || ''}.`}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {summary.slippage?.type_filter_note || summary.type_filter_note || 'MR and R types only'}
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              {summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to next year.'}
             </p>
           </div>
           {summary.slippage_pct_of_quarter != null && (
@@ -926,7 +925,6 @@ function DelayedContent() {
               title={(summary.lost.count || 0) > 0 ? `Click to view deals lost since start of ${summary.period_label || summary.data_slice || 'quarter'}` : '0 deals'}
             >
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
                 <span>Lost since start of {summary.period_label || summary.data_slice || 'quarter'}</span>
               </div>
               <div className="flex flex-wrap items-baseline gap-3">
