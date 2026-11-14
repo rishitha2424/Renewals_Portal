@@ -40,6 +40,39 @@ def get_explorer_columns(
     }
 
 
+@router.get("/rows")
+def get_explorer_rows_get(
+    as_of: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),
+    sort_dir: Optional[str] = Query("asc"),
+    page: int = Query(1),
+    page_size: int = Query(50),
+    db: Session = Depends(get_db),
+):
+    svc = ExplorerService(db)
+    snap = svc.resolve_snapshot(as_of)
+    if not snap:
+        raise HTTPException(status_code=404, detail="No snapshot found.")
+    rows, total_count, total_acv = svc.query_rows(
+        snap=snap,
+        filter_spec=None,
+        filters=[],
+        or_filters=[],
+        sort=sort,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+    )
+    return {
+        "snapshot_id": snap.id,
+        "total_rows": total_count,
+        "total_acv": total_acv,
+        "page": page,
+        "page_size": page_size,
+        "rows": rows,
+    }
+
+
 @router.post("/rows")
 def get_explorer_rows(
     payload: ExplorerRowsRequest,
@@ -205,7 +238,7 @@ def reconcile_explorer_get(
         raise HTTPException(status_code=404, detail="No snapshot found.")
     filter_spec = None
     if sales_types or period or not include_deleted_lost:
-        from backend.services.context import FilterSpec
+        from backend.services.scopes import FilterSpec
         filter_spec = FilterSpec(
             sales_types=sales_types or [],
             period=period or "all_periods",

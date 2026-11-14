@@ -19,6 +19,7 @@ import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import ErrorBoundary from '@/components/common/ErrorBoundary'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -249,6 +250,7 @@ export default function Expiry() {
       )}
 
       {/* Grand Total & Slippage KPI Strip */}
+      <ErrorBoundary compact sectionTitle="Expiry Totals">
       <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
         <Card
           className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
@@ -306,7 +308,9 @@ export default function Expiry() {
           </div>
         </Card>
       </div>
+      </ErrorBoundary>
 
+      <ErrorBoundary compact sectionTitle="Expiry Grids">
       {sum.fiscal_years?.map((fyObj: any) => {
         const yLabel = fyObj.label
         const grid = sum.grids?.[yLabel]
@@ -341,9 +345,10 @@ export default function Expiry() {
           </div>
         )
       })}
-
+      </ErrorBoundary>
 
       {/* Expiry Profile Stacked Column Chart Section */}
+      <ErrorBoundary compact sectionTitle="Expiry Profile">
       <Card id="expiry-profile" className="p-5 mt-6 hover:border-[var(--primary)] transition-colors scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
@@ -503,8 +508,10 @@ export default function Expiry() {
           )
         })()}
       </Card>
+      </ErrorBoundary>
 
       {/* Insights Section */}
+      <ErrorBoundary compact sectionTitle="Expiry Insights">
       <div id="expiry-insights" className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 scroll-mt-24">
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
@@ -625,6 +632,7 @@ export default function Expiry() {
           </div>
         </Card>
       </div>
+      </ErrorBoundary>
 
       {modalOpen && (
         <DealListModal

@@ -4,6 +4,7 @@ All normalisation lives here so it is reused by both the ingest
 and the diff services without duplication.
 """
 import re
+from typing import Any
 from decimal import Decimal, InvalidOperation
 
 

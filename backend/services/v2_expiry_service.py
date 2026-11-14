@@ -273,8 +273,12 @@ class V2ExpiryService:
             
         # Compute Slippage using the shared V2DelayedService (Section A rule)
         from backend.services.v2_delayed_service import V2DelayedService
-        delayed_svc = V2DelayedService(self.db)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
         target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else target_quarter
+
+        delayed_svc = V2DelayedService(self.db)
         delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
         slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
         slip_count = len(slip_df)
@@ -435,6 +439,7 @@ class V2ExpiryService:
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
         
         if kind == "other_types" or category == "other_types":
+            from backend.services.deal_serializer import serialize_opportunity
             deals = []
             if res.effective_types is not None:
                 base_opps = self.db.query(Opportunity).filter(
@@ -444,21 +449,7 @@ class V2ExpiryService:
                 for o in base_opps:
                     raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
                     if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
-                        deals.append({
-                            "id": o.id,
-                            "opportunity_id_18": o.opportunity_id_18,
-                            "opportunity_name": o.opportunity_name,
-                            "account_name": o.account_name,
-                            "forecast_category": o.forecast_category,
-                            "forecast_acv_amount": float(o.forecast_acv_amount or 0),
-                            "approval_status": o.approval_status,
-                            "sub_region": o.sub_region,
-                            "business_unit_primary": o.business_unit_primary,
-                            "service_expiry_period": o.service_expiry_period,
-                            "fiscal_period": o.fiscal_period,
-                            "close_date": o.close_date.isoformat() if o.close_date else None,
-                            "type": raw_tp,
-                        })
+                        deals.append(serialize_opportunity(o))
             return deals
 
         q = self.db.query(Opportunity).filter(
@@ -477,14 +468,19 @@ class V2ExpiryService:
 
         if slippage or kind == "slippage":
             from backend.services.v2_delayed_service import V2DelayedService
+            from backend.services.deal_serializer import serialize_opportunity
             delayed_svc = V2DelayedService(self.db)
-            target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else ScopeService.quarter_of(eff_as_of_date or snap.snapshot_date)
+            target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else ScopeService.quarter_of(snap.snapshot_date)
             delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
             slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
-            deals = slip_df.to_dict("records") if not slip_df.empty else []
-            for d in deals:
-                d["id"] = d.get("opportunity_id_18")
-            return deals
+            if slip_df.empty:
+                return []
+            slip_ids = [str(x) for x in slip_df["opportunity_id_18"].dropna().unique()]
+            opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                Opportunity.opportunity_id_18.in_(slip_ids)
+            ).all()
+            return [serialize_opportunity(o) for o in opps]
 
         if quarter:
             q = q.filter(period_col_attr == quarter)
@@ -505,19 +501,5 @@ class V2ExpiryService:
                 seen.add(o.opportunity_id_18)
                 deduped.append(o)
         
-        def to_dict(o):
-            return {
-                "id": o.id,
-                "opportunity_id_18": o.opportunity_id_18,
-                "opportunity_name": o.opportunity_name,
-                "account_name": o.account_name,
-                "forecast_category": o.forecast_category,
-                "forecast_acv_amount": float(o.forecast_acv_amount or 0),
-                "approval_status": o.approval_status,
-                "sub_region": o.sub_region,
-                "business_unit_primary": o.business_unit_primary,
-                "service_expiry_period": o.service_expiry_period,
-                "fiscal_period": o.fiscal_period,
-                "close_date": o.close_date.isoformat() if o.close_date else None
-            }
-        return [to_dict(o) for o in reversed(deduped)]
+        from backend.services.deal_serializer import serialize_opportunity
+        return [serialize_opportunity(o) for o in reversed(deduped)]

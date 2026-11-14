@@ -24,6 +24,7 @@ def get_regions_summary(
     return svc.get_summary(ctx, filter_spec=filter_spec)
 
 
+@router.get("/{region}/deep-dive")
 @router.get("/{region}/summary")
 def get_single_region_summary(
     region: str,

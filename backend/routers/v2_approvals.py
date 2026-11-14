@@ -10,6 +10,7 @@ from backend.routers.deps import get_filter_spec
 
 router = APIRouter(prefix="/api/v2/approvals", tags=["Approvals v2"])
 
+@router.get("/summary")
 @router.get("/distribution")
 def get_approvals_distribution(
     as_of: Optional[str] = None,
