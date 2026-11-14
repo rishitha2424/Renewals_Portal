@@ -284,6 +284,11 @@ class V2ExpiryService:
         slip_count = len(slip_df)
         slip_acv = round(float(slip_df["forecast_acv_amount"].sum()) if not slip_df.empty else 0.0, 2)
         
+        from backend.services.settings_service import SettingsService
+        eff_snap_year = eff_date.year if eff_date else snap.snapshot_date.year
+        lookback_y = SettingsService.get_lookback_years(self.db)
+        slip_rule_caption = f"Service started in {eff_snap_year - lookback_y} to {eff_snap_year}, closing in {eff_snap_year + 1}"
+        
         slip_by_quarter = []
         if not slip_df.empty:
             for q in quarters:
@@ -406,7 +411,8 @@ class V2ExpiryService:
             "slippage": {
                 "count": slip_count,
                 "acv": round(slip_acv, 2),
-                "by_quarter": slip_by_quarter
+                "by_quarter": slip_by_quarter,
+                "rule_caption": slip_rule_caption
             },
             "deltas": deltas
         }

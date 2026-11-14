@@ -746,6 +746,7 @@ class V2DelayedService:
             for ey in sorted(list(set(s_exp_years))):
                 sub_ey = slipped_pos_df[slipped_pos_df["_service_start_date"].apply(lambda d: d.year == ey if d else False)]
                 slipped_from_list.append({
+                    "start_year": ey,
                     "expiry_year": ey,
                     "count": len(sub_ey),
                     "acv": _safe_acv(sub_ey),
@@ -761,9 +762,11 @@ class V2DelayedService:
                 "acv": float(sr.get("forecast_acv_amount", 0.0) or 0.0),
             }
 
+        lookback_years = SettingsService.get_lookback_years(self.db)
+        first_year = selected_year - lookback_years
         slippage_obj = {
             "heading": "Slippage",
-            "rule_caption": f"Renewals whose service ended {selected_year} or earlier but are now expected to close in {next_year}.",
+            "rule_caption": f"Service started in {first_year} to {selected_year} and closing in {next_year}.",
             "type_filter_note": type_filter_note,
             "selected_year": selected_year,
             "next_year": next_year,
@@ -1071,7 +1074,9 @@ class V2DelayedService:
         ageing: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
         expiry_year: int | None = None,
+        start_year: int | None = None,
         close_year: int | None = None,
+        split_key: str | None = None,
         review_type: str | None = None,
     ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
@@ -1164,20 +1169,23 @@ class V2DelayedService:
             df = today_buckets["overdue"].copy()
         elif base_kind in ("ahead", "delayed_ahead", "later_close"):
             df = today_buckets["ahead"].copy()
-        elif base_kind == "ahead_rest_q":
+        elif base_kind in ("ahead_rest_q",) or (base_kind == "delayed_ahead_split" and split_key == "rest_of_quarter"):
             df = today_buckets["ahead_rest_q"].copy()
-        elif base_kind == "ahead_later_q":
+        elif base_kind in ("ahead_later_q",) or (base_kind == "delayed_ahead_split" and split_key == "later_quarter"):
             df = today_buckets["ahead_later_q"].copy()
-        elif base_kind == "ahead_next_yr":
+        elif base_kind in ("ahead_next_yr",) or (base_kind == "delayed_ahead_split" and split_key == "next_year"):
             df = today_buckets["ahead_next_yr"].copy()
-        elif base_kind == "ahead_later_yr":
+        elif base_kind in ("ahead_later_yr",) or (base_kind == "delayed_ahead_split" and split_key == "later_years"):
             df = today_buckets["ahead_later_yr"].copy()
+        elif base_kind == "delayed_ahead_split":
+            df = today_buckets["ahead"].copy()
         elif base_kind in ("slippage", "slipped", "slipped_total", "slippage_total", "slipped_to_later_year"):
             df = today_buckets["slippage"].copy()
-        elif base_kind == "slipped_from_year":
+        elif base_kind in ("slipped_from_year", "slipped_from_start_year"):
             df = today_buckets["slippage"].copy()
-            if expiry_year and not df.empty:
-                df = df[df["_service_expiry_date"].apply(lambda d: d.year == expiry_year if d else False)]
+            target_year = start_year or expiry_year
+            if target_year and not df.empty:
+                df = df[df["_service_start_date"].apply(lambda d: d.year == target_year if d else False)]
         elif base_kind in ("needs_review", "review"):
             if review_type in ("missing_service_dates", "missing_dates"):
                 df = today_buckets.get("review_missing_dates", pd.DataFrame()).copy()
@@ -1223,7 +1231,11 @@ class V2DelayedService:
         if region and region != "All":
             df = df[df["region"] == region]
         if category and category != "All":
-            df = df[df["forecast_category"] == category]
+            cat_clean = category.strip()
+            if cat_clean.lower() in ("blank", "not yet proposed", ""):
+                df = df[df["forecast_category"].fillna("").str.strip().isin(["", "Blank", "Not yet proposed", "None"])]
+            else:
+                df = df[df["forecast_category"].fillna("").str.strip().str.lower() == cat_clean.lower()]
         if status and status != "All":
             df = df[df["approval_status"] == status]
         if bu and bu != "All":

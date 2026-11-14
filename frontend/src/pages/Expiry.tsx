@@ -309,7 +309,7 @@ export default function Expiry() {
             </div>
           </div>
           <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">Service started in or before {fy1}, closing in {fy2}</span>
+            <span className="text-xs text-[var(--text-muted)]">{sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}</span>
             <span className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:underline">View slippage deals →</span>
           </div>
         </Card>

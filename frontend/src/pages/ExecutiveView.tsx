@@ -892,7 +892,7 @@ export default function ExecutiveView() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="px-4 py-2">Slipped From (Service Expiry Year)</th>
+                  <th className="px-4 py-2">Service start year</th>
                   <th className="px-4 py-2 text-right">Deals</th>
                   <th className="px-4 py-2 text-right">ACV (USD)</th>
                   <th className="px-4 py-2">Expected Close Year</th>

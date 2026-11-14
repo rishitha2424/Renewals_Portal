@@ -38,6 +38,7 @@ interface Deal {
 interface DealListModalProps {
   title: string
   deals: Deal[]
+  expectedCount?: number
   initialFilters?: {
     forecast_category?: string | null
     approval_status?: string | null
@@ -56,11 +57,25 @@ interface DealListModalProps {
   onClose: () => void
 }
 
-export default function DealListModal({ title, deals, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
+export default function DealListModal({ title, deals, expectedCount, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
   const [selectedGroup, setSelectedGroup] = useState<'All' | 'added' | 'left' | 'amount_changed'>('All')
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState<keyof Deal | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const effectiveExpected = useMemo(() => {
+    if (expectedCount !== undefined && expectedCount !== null) return expectedCount
+    const m = title.match(/\((\d+)\s+deals?/i)
+    return m ? parseInt(m[1], 10) : undefined
+  }, [expectedCount, title])
+
+  const hasCountMismatch = effectiveExpected !== undefined && (deals?.length ?? 0) !== effectiveExpected
+
+  React.useEffect(() => {
+    if (hasCountMismatch) {
+      console.warn('Count differs from card', { title, expected: effectiveExpected, actual: deals?.length })
+    }
+  }, [hasCountMismatch, effectiveExpected, deals?.length, title])
 
   // Close on Escape key
   React.useEffect(() => {
@@ -216,8 +231,8 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   if (globalFilters.sales_types?.length > 0 && !(globalFilters.sales_types.length === 1 && globalFilters.sales_types[0] === 'Renewals')) {
     activeChips.push({ label: 'Sales Type', value: globalFilters.sales_types.join(', ') })
   }
-  if (!globalFilters.include_deleted_lost) {
-    activeChips.push({ label: 'Deleted/Lost', value: 'Excluded' })
+  if (globalFilters.include_deleted_lost) {
+    activeChips.push({ label: 'Deleted/Lost', value: 'Included' })
   }
   globalFilters.regions?.forEach(r => activeChips.push({ label: 'Region Filter', value: r }))
   globalFilters.business_units?.forEach(bu => activeChips.push({ label: 'BU Filter', value: bu }))
@@ -248,9 +263,16 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
           {/* Header - sticky top */}
           <div className="sticky top-0 z-20 flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-[var(--border)] gap-3 bg-[var(--bg-secondary)]">
             <div>
-              <h3 className="font-semibold text-base text-[var(--text-primary)] flex items-center gap-2">
-                {title}
-              </h3>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="font-semibold text-base text-[var(--text-primary)] flex items-center gap-2">
+                  {title}
+                </h3>
+                {hasCountMismatch && (
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
+                    Count differs from card
+                  </span>
+                )}
+              </div>
               <p className="text-[var(--text-muted)] text-xs mt-0.5 font-normal">
                 Showing {formatNumber(filteredDeals.length)} {filteredDeals.length === 1 ? 'deal' : 'deals'} · <span className="font-semibold text-[var(--text-primary)] tabular-nums">{formatCurrency(totalAcv)}</span>
               </p>

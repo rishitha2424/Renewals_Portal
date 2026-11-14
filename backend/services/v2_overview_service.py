@@ -1401,6 +1401,10 @@ class V2OverviewService:
         as_of: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
         deal_ids: Optional[list[str]] = None,
+        expiry_year: int | None = None,
+        start_year: int | None = None,
+        split_key: str | None = None,
+        review_type: str | None = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
@@ -1432,8 +1436,16 @@ class V2OverviewService:
             filters_applied["compare"] = compare
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
-        if kind in ("delayed_overdue", "slippage_total", "delayed_total", "delayed_renewals_total", "lost", "later_close") or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_") or (kind == "slipped" and not compare))):
-            target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else kind
+        delayed_kinds = (
+            "delayed", "delayed_total", "delayed_overdue", "overdue", "delayed_ahead",
+            "later_close", "ahead", "slippage", "slippage_total", "slipped", "slipped_total",
+            "slipped_from_year", "slipped_from_start_year", "newly_delayed", "lost",
+            "needs_review", "review", "delayed_ahead_split", "delayed_other_type", "slipped_other_type"
+        )
+        if kind in delayed_kinds or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_"))):
+            target_kind = kind
+            if kind.startswith("delayed_") and kind not in ("delayed_overdue", "delayed_ahead", "delayed_ahead_split", "delayed_other_type", "delayed_total"):
+                target_kind = kind.replace("delayed_", "")
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
             return del_svc.get_deals(
@@ -1444,6 +1456,10 @@ class V2OverviewService:
                 category=category,
                 status=approval_status,
                 bu=None,
+                expiry_year=expiry_year,
+                start_year=start_year,
+                split_key=split_key,
+                review_type=review_type,
                 filter_spec=fs,
             )
 

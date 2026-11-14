@@ -870,7 +870,7 @@ function DelayedContent() {
                   Slipped from
                 </span>
                 <span className="text-xs text-[var(--text-muted)] ml-2">
-                  Service expiry year breakdown
+                  Service start year breakdown
                 </span>
               </div>
               <span className="text-[11px] text-[var(--text-muted)]">
@@ -881,7 +881,7 @@ function DelayedContent() {
               <table className="w-full text-xs text-left border-collapse">
                 <thead>
                   <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
-                    <th className="px-4 py-2.5">Service Expiry Year</th>
+                    <th className="px-4 py-2.5">Service start year</th>
                     <th className="px-4 py-2.5 text-right">Deals</th>
                     <th className="px-4 py-2.5 text-right">ACV</th>
                     <th className="px-4 py-2.5">Expected Close</th>
@@ -890,12 +890,12 @@ function DelayedContent() {
                 <tbody className="divide-y divide-[var(--border)]">
                   {summary.slippage.slipped_from.map((sf: any) => (
                     <tr
-                      key={sf.expiry_year}
-                      onClick={() => handleDrill(`Slipped from ${sf.expiry_year}`, { kind: 'slipped_from_year', expiry_year: sf.expiry_year })}
+                      key={sf.start_year || sf.expiry_year}
+                      onClick={() => handleDrill(`Slipped from ${sf.start_year || sf.expiry_year} (${sf.count} deals · ${formatACV(sf.acv)})`, { kind: 'slipped_from_year', start_year: sf.start_year || sf.expiry_year, expiry_year: sf.expiry_year })}
                       className="hover:bg-amber-500/5 cursor-pointer transition-colors"
                     >
                       <td className="px-4 py-2.5 font-semibold text-[var(--text-primary)]">
-                        From {sf.expiry_year}
+                        From {sf.start_year || sf.expiry_year}
                       </td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
                         {sf.count}

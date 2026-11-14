@@ -714,7 +714,7 @@ export default function Dashboard() {
         const slipLWDelta = slipTot?.delayed_vs_lastweek
         const slipYTitle = `Slippage · vs yesterday (${Math.abs(slipYDelta?.count || 0)} deals · ${acvM(Math.abs(slipYDelta?.acv || 0))})`
         const slipLWTitle = `Slippage · vs last week (${Math.abs(slipLWDelta?.count || 0)} deals · ${acvM(Math.abs(slipLWDelta?.acv || 0))})`
-        const slipSubtitle = summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date next year.'
+        const slipSubtitle = summary?.slippage?.rule_caption || summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date next year.'
 
         const j1Data = summary?.jan1_renewals
         const j1Cnt = j1Data?.count ?? 0
@@ -1067,14 +1067,14 @@ export default function Dashboard() {
                         Slipped From
                       </span>
                       <span className="text-[11px] text-[var(--text-muted)]">
-                        Service Expiry Year Breakdown
+                        Service start year breakdown
                       </span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs text-left border-collapse">
                         <thead>
                           <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
-                            <th className="px-4 py-2">Service Expiry Year</th>
+                            <th className="px-4 py-2">Service start year</th>
                             <th className="px-4 py-2 text-right">Deals</th>
                             <th className="px-4 py-2 text-right">ACV</th>
                             <th className="px-4 py-2">Expected Close</th>
@@ -1083,12 +1083,12 @@ export default function Dashboard() {
                         <tbody className="divide-y divide-[var(--border)]">
                           {slippageSec.slipped_from.map((sf: any) => (
                             <tr
-                              key={sf.expiry_year}
-                              onClick={() => openDealsQuery(`Slipped from ${sf.expiry_year}`, { kind: 'slipped_from_year', expiry_year: sf.expiry_year })}
+                              key={sf.start_year || sf.expiry_year}
+                              onClick={() => openDealsQuery(`Slipped from ${sf.start_year || sf.expiry_year} (${sf.count} deals · ${acvM(sf.acv)})`, { kind: 'slipped_from_year', start_year: sf.start_year || sf.expiry_year, expiry_year: sf.expiry_year })}
                               className="hover:bg-amber-500/5 cursor-pointer transition-colors"
                             >
                               <td className="px-4 py-2 font-medium text-[var(--text-primary)]">
-                                From {sf.expiry_year}
+                                From {sf.start_year || sf.expiry_year}
                               </td>
                               <td className="px-4 py-2 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
                                 {sf.count}
