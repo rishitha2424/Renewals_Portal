@@ -15,7 +15,7 @@ import {
   getV2RegionalBreakdown,
   getV2OverviewDeals,
 } from '@/api/client'
-import { getForecastCategoryLabel, formatCurrency, formatNumber, getQuarterFromDate } from '@/utils/format'
+import { getForecastCategoryLabel, formatCurrency, formatNumber, getQuarterFromDate, getMetricPolarity, getDeltaTextColor } from '@/utils/format'
 import { formatDate } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
@@ -542,6 +542,75 @@ export default function Dashboard() {
 
       {/* ── SECTION 2 – Forecast Category Group (Data-driven) ──────────────── */}
       {(() => {
+        const isFuture = summary?.is_future || summary?.slippage?.is_future
+        const yDate = movYesterday?.compare_date || summary?.yesterday_date || summary?.slippage?.yesterday_date
+        const lwDate = movLastWeek?.compare_date || summary?.lastweek_date || summary?.slippage?.lastweek_date
+        const yDateStr = yDate ? formatDate(yDate) : 'yesterday'
+        const lwDateStr = lwDate ? formatDate(lwDate) : 'last week'
+
+        // Helper to render vs yesterday / vs last week boxes with neutral background and polarity text/arrows
+        const renderSubBox = (
+          label: string,
+          delta: { count: number; acv: number } | null | undefined,
+          dateLabel: string,
+          onBoxClick: () => void,
+          drawerTitle: string,
+          metricOrPolarity: string = 'good_when_higher'
+        ) => {
+          if (delta === null || delta === undefined || delta.count === null || isFuture) {
+            return (
+              <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
+                <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+                <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
+              </div>
+            )
+          }
+
+          const polarity = getMetricPolarity(metricOrPolarity)
+          const absCount = Math.abs(delta.count || 0)
+          const absAcv = Math.abs(delta.acv || 0)
+          const hasDeals = absCount > 0 || absAcv > 0
+
+          let acvText = '$0'
+          let countText = '0 deals'
+          let acvColor = 'text-slate-400 dark:text-slate-500 font-normal'
+          let countColor = 'text-slate-400 dark:text-slate-500 font-normal'
+          let arrow = ''
+
+          if (hasDeals) {
+            acvColor = getDeltaTextColor(delta.acv, polarity)
+            countColor = getDeltaTextColor(delta.count, polarity)
+
+            const acvSign = (delta.acv || 0) > 0 ? '+' : (delta.acv || 0) < 0 ? '-' : ''
+            acvText = `${acvSign}${acvM(absAcv)}`
+
+            const cntSign = (delta.count || 0) > 0 ? '+' : (delta.count || 0) < 0 ? '-' : ''
+            countText = `${cntSign}${absCount} ${absCount === 1 ? 'deal' : 'deals'}`
+
+            if (polarity !== 'neutral') {
+              if (delta.acv > 0 || delta.count > 0) arrow = '↑ '
+              else if (delta.acv < 0 || delta.count < 0) arrow = '↓ '
+            }
+          }
+
+          return (
+            <div
+              className={`p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
+                hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70'
+              }`}
+              onClick={() => hasDeals && onBoxClick()}
+              title={hasDeals ? `Click to view deals changed (${drawerTitle})` : `No deals changed ${dateLabel}`}
+            >
+              <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+              <div className={`font-bold text-xs tabular-nums ${acvColor}`}>
+                {arrow}{acvText}
+              </div>
+              <div className={`text-[10px] tabular-nums ${countColor}`}>{countText}</div>
+            </div>
+          )
+        }
+
         // Data-driven list of forecast categories present in the snapshot (excluding 'Blank' / 'Not yet proposed', 'total', etc.)
         const categoryKeys = Object.keys(cats).filter(
           (k) => k !== 'Blank' && k !== 'Not yet proposed' && k !== 'total' && k !== 'All'
@@ -559,51 +628,43 @@ export default function Dashboard() {
                 const cat = cats[catKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
                 const label = getForecastCategoryLabel(catKey)
                 const color = FORECAST_COLORS[catKey] || '#64748b'
+                const hasDeals = (cat.count || 0) > 0 || (cat.acv || 0) > 0
 
                 return (
                   <motion.div
                     key={catKey}
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="card p-5 flex flex-col justify-between gap-3 cursor-pointer hover:border-[var(--brand-teal)] transition-all"
-                    style={{ borderTop: `3px solid ${color}` }}
-                    onClick={() => openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: catKey }, { forecast_category: catKey })}
-                    title={`Click to view ${label} deals`}
+                    className="card p-4 flex flex-col justify-between gap-2.5 transition-all"
+                    style={{ borderLeft: `4px solid ${color}` }}
                   >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={label}>{label}</span>
-                        <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{cat.count} deals</span>
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
+                          {label}
+                        </span>
+                        <Pill color={catKey === 'Closed' ? 'slate' : catKey === 'Commit' ? 'teal' : catKey === 'Best Case' ? 'sky' : 'indigo'}>
+                          {`${cat.count ?? 0} deals`}
+                        </Pill>
                       </div>
-                      {sumLoading
-                        ? <div className="h-8 w-28 skeleton-shimmer rounded" />
-                        : <span className="font-bold text-2xl tabular-nums block hover:underline" style={{ color }}>{acvM(cat.acv)}</span>}
-                      
-                      <hr className="border-[var(--border-subtle)]" />
-                      
-                      <div className="flex flex-col gap-1">
-                        {[
-                          { l: 'vs yesterday', d: cat.delta_yesterday, kind: 'delta_yesterday' },
-                          { l: 'vs last week', d: cat.delta_lastweek, kind: 'delta_lastweek' },
-                        ].map(({ l, d, kind }) => d ? (
-                          <div
-                            key={l}
-                            className="flex items-center justify-between text-xs p-1 -mx-1 rounded hover:bg-[var(--bg-secondary)] cursor-pointer group/trend"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openDealsQuery(`${label} Deals (${l}) · ${d.count ?? 0} deals · ${acvM(d.acv ?? 0)}`, { category: catKey, kind })
-                            }}
-                            title={`Click to view ${label} deals that changed ${l}`}
-                          >
-                            <span className="text-[var(--text-muted)] group-hover/trend:text-[var(--text-primary)]">{l}</span>
-                            <div className="flex items-center gap-1.5 tabular-nums"><DeltaBadge val={d.count} /><span className="text-[var(--text-muted)]">·</span><AcvDelta val={d.acv} /></div>
-                          </div>
-                        ) : (
-                          <div key={l} className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
-                            <span>{l}</span>
-                            <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={`${label} deals in portfolio`}>
+                        {catKey === 'Closed' ? 'Closed-won deals' : catKey === 'Commit' ? 'Committed renewal opportunities' : catKey === 'Best Case' ? 'Best case renewal opportunities' : 'Pipeline opportunities'}
+                      </p>
+                      {sumLoading ? (
+                        <div className="h-8 w-28 skeleton-shimmer rounded" />
+                      ) : (
+                        <div
+                          className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${hasDeals ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                          onClick={() => hasDeals && openDealsQuery(`${label} Deals (${cat.count} deals · ${acvM(cat.acv)})`, { category: catKey }, { forecast_category: catKey })}
+                          title={hasDeals ? `Click to view ${label} deals` : '0 deals'}
+                        >
+                          {acvM(cat.acv)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                      {renderSubBox('vs yesterday', cat.delta_yesterday, yDateStr, () => openDealsQuery(`${label} Deals (vs yesterday) · ${cat.delta_yesterday?.count ?? 0} deals · ${acvM(cat.delta_yesterday?.acv ?? 0)}`, { category: catKey, kind: 'delta_yesterday' }), `${label} · vs yesterday`, catKey)}
+                      {renderSubBox('vs last week', cat.delta_lastweek, lwDateStr, () => openDealsQuery(`${label} Deals (vs last week) · ${cat.delta_lastweek?.count ?? 0} deals · ${acvM(cat.delta_lastweek?.acv ?? 0)}`, { category: catKey, kind: 'delta_lastweek' }), `${label} · vs last week`, catKey)}
                     </div>
                   </motion.div>
                 )
@@ -627,59 +688,65 @@ export default function Dashboard() {
         const yDateStr = yDate ? formatDate(yDate) : 'yesterday'
         const lwDateStr = lwDate ? formatDate(lwDate) : 'last week'
 
-        // Helper to render vs yesterday / vs last week boxes
+        // Helper to render vs yesterday / vs last week boxes with neutral background and polarity text/arrows
         const renderSubBox = (
           label: string,
           delta: { count: number; acv: number } | null | undefined,
           dateLabel: string,
           onBoxClick: () => void,
           drawerTitle: string,
-          isSignedDelta = false
+          metricOrPolarity: string = 'good_when_higher'
         ) => {
-          if (delta === null || delta === undefined || isFuture) {
+          if (delta === null || delta === undefined || delta.count === null || isFuture) {
             return (
-              <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 cursor-not-allowed opacity-60">
+              <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
                 <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                <div className="font-bold text-xs text-[var(--text-muted)] tabular-nums">n/a</div>
-                <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
               </div>
             )
           }
 
+          const polarity = getMetricPolarity(metricOrPolarity)
           const absCount = Math.abs(delta.count || 0)
           const absAcv = Math.abs(delta.acv || 0)
           const hasDeals = absCount > 0 || absAcv > 0
 
-          let acvText = formatCurrency(delta.acv || 0)
-          let countText = `${delta.count || 0} ${Math.abs(delta.count || 0) === 1 ? 'deal' : 'deals'}`
-          let colorCls = 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+          let acvText = '$0'
+          let countText = '0 deals'
+          let acvColor = 'text-slate-400 dark:text-slate-500 font-normal'
+          let countColor = 'text-slate-400 dark:text-slate-500 font-normal'
+          let arrow = ''
 
-          if (isSignedDelta) {
-            const isUp = (delta.count || 0) > 0 || (delta.acv || 0) > 0
-            const isDown = (delta.count || 0) < 0 || (delta.acv || 0) < 0
-            colorCls = isUp
-              ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
-              : isDown
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-            acvText = (delta.acv || 0) > 0 ? `+${acvM(delta.acv)}` : (delta.acv || 0) < 0 ? `-${acvM(Math.abs(delta.acv))}` : '$0'
-            countText = (delta.count || 0) > 0 ? `+${delta.count} deals` : (delta.count || 0) < 0 ? `${delta.count} deals` : '0 deals'
-          } else {
-            colorCls = hasDeals
-              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-            acvText = acvM(delta.acv || 0)
+          if (hasDeals) {
+            acvColor = getDeltaTextColor(delta.acv, polarity)
+            countColor = getDeltaTextColor(delta.count, polarity)
+
+            const acvSign = (delta.acv || 0) > 0 ? '+' : (delta.acv || 0) < 0 ? '-' : ''
+            acvText = `${acvSign}${acvM(absAcv)}`
+
+            const cntSign = (delta.count || 0) > 0 ? '+' : (delta.count || 0) < 0 ? '-' : ''
+            countText = `${cntSign}${absCount} ${absCount === 1 ? 'deal' : 'deals'}`
+
+            if (polarity !== 'neutral') {
+              if (delta.acv > 0 || delta.count > 0) arrow = '↑ '
+              else if (delta.acv < 0 || delta.count < 0) arrow = '↓ '
+            }
           }
 
           return (
             <div
-              className={`p-2 rounded-lg border transition-all ${colorCls} ${hasDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60'}`}
+              className={`p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
+                hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70'
+              }`}
               onClick={() => hasDeals && onBoxClick()}
               title={hasDeals ? `Click to view deals changed (${drawerTitle})` : `No deals changed ${dateLabel}`}
             >
               <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-              <div className="font-bold text-xs tabular-nums">{acvText}</div>
-              <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
+              <div className={`font-bold text-xs tabular-nums ${acvColor}`}>
+                {arrow}{acvText}
+              </div>
+              <div className={`text-[10px] tabular-nums ${countColor}`}>{countText}</div>
             </div>
           )
         }
@@ -754,7 +821,7 @@ export default function Dashboard() {
                     Open renewals with no approval status and no proposal status yet.
                   </p>
                   <div
-                    className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${ppHasDeals ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                    className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${ppHasDeals ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => ppHasDeals && openDealsQuery(ppMainTitle, { kind: 'proposal_pending' })}
                     title={ppHasDeals ? 'Click to view proposal pending deals' : '0 deals'}
                   >
@@ -763,8 +830,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', ppYDelta, yDateStr, () => openDealsQuery(ppYTitle, { kind: 'proposal_pending', compare: 'yesterday' }), ppYTitle, true)}
-                  {renderSubBox('vs last week', ppLWDelta, lwDateStr, () => openDealsQuery(ppLWTitle, { kind: 'proposal_pending', compare: 'last_week' }), ppLWTitle, true)}
+                  {renderSubBox('vs yesterday', ppYDelta, yDateStr, () => openDealsQuery(ppYTitle, { kind: 'proposal_pending', compare: 'yesterday' }), ppYTitle, 'Proposal Pending')}
+                  {renderSubBox('vs last week', ppLWDelta, lwDateStr, () => openDealsQuery(ppLWTitle, { kind: 'proposal_pending', compare: 'last_week' }), ppLWTitle, 'Proposal Pending')}
                 </div>
 
                 {ppData?.top_deal && (
@@ -791,7 +858,7 @@ export default function Dashboard() {
                     {delSubtitle}
                   </p>
                   <div
-                    className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${delHasDeals && !delIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                    className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${delHasDeals && !delIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => delHasDeals && !delIsNA && openDealsQuery(delMainTitle, { kind: 'delayed_total' })}
                     title={delHasDeals ? 'Click to view delayed renewal deals' : '0 deals'}
                   >
@@ -800,8 +867,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', delYDelta, yDateStr, () => openDealsQuery(delYTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), delYTitle, true)}
-                  {renderSubBox('vs last week', delLWDelta, lwDateStr, () => openDealsQuery(delLWTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), delLWTitle, true)}
+                  {renderSubBox('vs yesterday', delYDelta, yDateStr, () => openDealsQuery(delYTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), delYTitle, 'Delayed')}
+                  {renderSubBox('vs last week', delLWDelta, lwDateStr, () => openDealsQuery(delLWTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), delLWTitle, 'Delayed')}
                 </div>
 
                 {(() => {
@@ -841,7 +908,7 @@ export default function Dashboard() {
                     {slipSubtitle}
                   </p>
                   <div
-                    className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${slipHasDeals && !slipIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                    className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${slipHasDeals && !slipIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => slipHasDeals && !slipIsNA && openDealsQuery(slipMainTitle, { kind: 'slippage_total' })}
                     title={slipHasDeals ? 'Click to view slippage deals' : '0 deals'}
                   >
@@ -850,8 +917,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, false)}
-                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, false)}
+                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage')}
+                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage')}
                 </div>
 
                 {(() => {
@@ -891,7 +958,7 @@ export default function Dashboard() {
                     Service starts on the upcoming January 1st.
                   </p>
                   <div
-                    className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${j1HasDeals ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
+                    className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${j1HasDeals ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => j1HasDeals && openDealsQuery(j1MainTitle, { kind: 'jan1_renewals' })}
                     title={j1HasDeals ? 'Click to view Jan 1st renewals' : '0 deals'}
                   >
@@ -900,8 +967,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', j1YDelta, yDateStr, () => openDealsQuery(j1YTitle, { kind: 'jan1_renewals', compare: 'yesterday' }), j1YTitle, true)}
-                  {renderSubBox('vs last week', j1LWDelta, lwDateStr, () => openDealsQuery(j1LWTitle, { kind: 'jan1_renewals', compare: 'last_week' }), j1LWTitle, true)}
+                  {renderSubBox('vs yesterday', j1YDelta, yDateStr, () => openDealsQuery(j1YTitle, { kind: 'jan1_renewals', compare: 'yesterday' }), j1YTitle, 'Jan 1st Renewals')}
+                  {renderSubBox('vs last week', j1LWDelta, lwDateStr, () => openDealsQuery(j1LWTitle, { kind: 'jan1_renewals', compare: 'last_week' }), j1LWTitle, 'Jan 1st Renewals')}
                 </div>
 
                 {j1Data?.top_deal && (
@@ -918,9 +985,9 @@ export default function Dashboard() {
 
             {/* Expandable Delayed Breakdown */}
             {showDelayedDetails && (
-              <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-3">
+              <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                     Delayed Renewals Breakdown
                   </span>
                   <button
@@ -978,7 +1045,7 @@ export default function Dashboard() {
                         return (
                           <div
                             key={c.id}
-                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] flex flex-col justify-between"
+                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] flex flex-col justify-between"
                           >
                             <div>
                               <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -996,8 +1063,8 @@ export default function Dashboard() {
                             </div>
 
                             <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                              {renderSubBox('vs yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.deltaKind, compare: 'yesterday' }), yTitle, c.isOverdue)}
-                              {renderSubBox('vs last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.deltaKind, compare: 'last_week' }), lwTitle, c.isOverdue)}
+                              {renderSubBox('vs yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.deltaKind, compare: 'yesterday' }), yTitle, c.isOverdue ? 'Overdue' : 'Delayed')}
+                              {renderSubBox('vs last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.deltaKind, compare: 'last_week' }), lwTitle, c.isOverdue ? 'Overdue' : 'Delayed')}
                             </div>
                           </div>
                         )
@@ -1010,19 +1077,25 @@ export default function Dashboard() {
 
             {/* Expandable Slippage Breakdown */}
             {showSlippageDetails && (
-              <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-4">
+              <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                       Slippage Breakdown & Slipped From
                     </span>
-                    <span className="text-[11px] text-[var(--text-muted)]">
-                      Since start of year: {slipTot?.delta_period_start ? (
-                        <strong className="text-[var(--text-primary)] font-mono">{acvM(slipTot.delta_period_start.acv)} ({slipTot.delta_period_start.count} deals)</strong>
-                      ) : (
-                        <span className="text-slate-400 font-normal">n/a</span>
-                      )}
-                    </span>
+                    {(() => {
+                      const baseDate = summary?.slippage?.period_start_baseline_date || summary?.delayed_renewals?.period_start_baseline_date
+                      const baseDateStr = baseDate ? ` (baseline ${formatDate(baseDate)})` : ''
+                      return (
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          Since start of year{baseDateStr}: {slipTot?.delta_period_start && baseDate ? (
+                            <strong className="text-[var(--text-primary)] font-mono">{acvM(slipTot.delta_period_start.acv)} ({slipTot.delta_period_start.count} deals)</strong>
+                          ) : (
+                            <span className="text-slate-400 font-normal">n/a</span>
+                          )}
+                        </span>
+                      )
+                    })()}
                   </div>
                   <button
                     type="button"
@@ -1044,7 +1117,7 @@ export default function Dashboard() {
                         <div
                           key={cat}
                           onClick={() => hasC && openDealsQuery(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
-                          className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] transition-colors ${hasC ? 'cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5' : 'opacity-60 cursor-default'}`}
+                          className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] transition-colors ${hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'}`}
                         >
                           <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{label}</div>
                           <div className="text-lg font-bold text-[var(--text-primary)] tabular-nums mt-0.5">

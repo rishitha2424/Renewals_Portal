@@ -74,6 +74,38 @@ export function deltaColorClass(val: number | null | undefined, isRiskMetric = f
   return isRiskMetric ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-rose-600 dark:text-rose-400 font-medium'
 }
 
+export type MetricPolarity = 'good_when_higher' | 'bad_when_higher' | 'neutral'
+
+export function getMetricPolarity(metricName: string): MetricPolarity {
+  const m = metricName.toLowerCase()
+  if (m.includes('jan 1') || m.includes('jan1')) {
+    return 'neutral'
+  }
+  if (
+    m.includes('pending') ||
+    m.includes('delay') ||
+    m.includes('overdue') ||
+    m.includes('slip') ||
+    m.includes('lost') ||
+    m.includes('removed') ||
+    m.includes('not submitted') ||
+    m.includes('not yet proposed')
+  ) {
+    return 'bad_when_higher'
+  }
+  return 'good_when_higher'
+}
+
+export function getDeltaTextColor(val: number | null | undefined, polarity: MetricPolarity = 'good_when_higher'): string {
+  if (val == null || Math.abs(val) < 0.0001 || polarity === 'neutral') {
+    return 'text-slate-400 dark:text-slate-500 font-normal'
+  }
+  if (polarity === 'bad_when_higher') {
+    return val > 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-emerald-600 dark:text-emerald-400 font-medium'
+  }
+  return val > 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-rose-600 dark:text-rose-400 font-medium'
+}
+
 /** Legacy delta class compatibility */
 export function deltaClass(val: number): string {
   if (val > 0) return 'delta-positive'

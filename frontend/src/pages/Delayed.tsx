@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import api from '@/api/client'
-import { formatACV, formatCount } from '@/utils/format'
+import { formatACV, formatCount, getMetricPolarity, getDeltaTextColor, formatDate } from '@/utils/format'
 import Card from '@/components/ui/Card'
 import SectionHeader from '@/components/ui/SectionHeader'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -151,10 +151,10 @@ function DelayedContent() {
     ) => {
       if (delta === null || delta === undefined || isFuture) {
         return (
-          <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 opacity-70 cursor-default flex-1">
+          <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default flex-1">
             <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-            <div className="font-bold text-xs text-[var(--text-muted)] tabular-nums">n/a</div>
-            <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+            <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+            <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
           </div>
         )
       }
@@ -162,75 +162,35 @@ function DelayedContent() {
       const count = Math.abs(delta.count || 0)
       const acvVal = Math.abs(delta.acv || 0)
       const hasDeals = count > 0 || acvVal > 0
+      const polarity = 'bad_when_higher'
 
-      if (isOverdue) {
-        const isUp = delta.count > 0 || delta.acv > 0
-        const isDown = delta.count < 0 || delta.acv < 0
+      const acvColor = hasDeals ? getDeltaTextColor(delta.acv, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
+      const cntColor = hasDeals ? getDeltaTextColor(delta.count, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
+      const arrow = (delta.acv > 0 || delta.count > 0) ? '↑ ' : (delta.acv < 0 || delta.count < 0) ? '↓ ' : ''
+      const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
+      const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
 
-        const colorClasses = isUp
-          ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400 hover:border-rose-500/50'
-          : isDown
-          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/50'
-          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+      const periodName = compPeriod === 'yesterday' ? 'yesterday' : 'last week'
+      const drawerTitle = `${catTitle} · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
 
-        let acvText = '$0'
-        if (delta.acv > 0) acvText = `+${formatACV(delta.acv)}`
-        else if (delta.acv < 0) acvText = `-${formatACV(Math.abs(delta.acv))}`
-
-        let countText = '0 deals'
-        if (delta.count > 0) countText = `+${delta.count} deals`
-        else if (delta.count < 0) countText = `${delta.count} deals`
-
-        const periodName = compPeriod === 'yesterday' ? 'yesterday' : 'last week'
-        const drawerTitle = `${catTitle} · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
-
-        return (
-          <div
-            className={cn('p-2 rounded-lg border transition-all flex-1', colorClasses, hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-60')}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (!hasDeals) return
-              handleDrill(drawerTitle, {
-                kind: `${catKind}_delta`,
-                compare: compPeriod,
-              })
-            }}
-            title={hasDeals ? `Click to view deals changed since ${dateLabel}` : `No deals changed since ${dateLabel}`}
-          >
-            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-            <div className="font-bold text-xs tabular-nums">{acvText}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
-          </div>
-        )
-      } else {
-        const colorClasses = hasDeals
-          ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:border-amber-500/50'
-          : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-
-        const acvText = formatACV(delta.acv || 0)
-        const countText = `${count} ${count === 1 ? 'deal' : 'deals'}`
-        const periodName = compPeriod === 'yesterday' ? 'yesterday' : 'last week'
-        const drawerTitle = `${catTitle} · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
-
-        return (
-          <div
-            className={cn('p-2 rounded-lg border transition-all flex-1', colorClasses, hasDeals ? 'cursor-pointer' : 'cursor-not-allowed opacity-60')}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (!hasDeals) return
-              handleDrill(drawerTitle, {
-                kind: catKind,
-                compare: compPeriod,
-              })
-            }}
-            title={hasDeals ? `Click to view events since ${dateLabel}` : `No deals changed since ${dateLabel}`}
-          >
-            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-            <div className="font-bold text-xs tabular-nums">{acvText}</div>
-            <div className="text-[10px] text-[var(--text-muted)]">{countText}</div>
-          </div>
-        )
-      }
+      return (
+        <div
+          className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-all flex-1', hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!hasDeals) return
+            handleDrill(drawerTitle, {
+              kind: isOverdue ? `${catKind}_delta` : catKind,
+              compare: compPeriod,
+            })
+          }}
+          title={hasDeals ? `Click to view deals changed since ${dateLabel}` : `No deals changed since ${dateLabel}`}
+        >
+          <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
+          <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
+          <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
+        </div>
+      )
     }
 
     return (
@@ -630,13 +590,13 @@ function DelayedContent() {
           const drawerTitle = `Delayed Renewals · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
 
           return (
-            <div className="rounded-xl bg-rose-500/5 dark:bg-rose-950/20 border border-rose-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)] p-4 flex flex-wrap items-center justify-between gap-4">
               <div
                 className={cn(hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
                 onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'delayed_total' })}
                 title={hasDeals ? 'Click to view all delayed renewals' : '0 deals'}
               >
-                <div className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1">
+                <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
                   Delayed Renewals Total
                 </div>
                 <div className="flex items-baseline gap-3">
@@ -654,23 +614,20 @@ function DelayedContent() {
                   const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
                     if (delta === null || delta === undefined || isFuture) {
                       return (
-                        <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
+                        <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] opacity-60 cursor-default">
                           <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                          <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
-                          <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                          <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
                         </div>
                       )
                     }
                     const count = Math.abs(delta.count || 0)
                     const acv = Math.abs(delta.acv || 0)
                     const hasBoxDeals = count > 0 || acv > 0
-                    const isUp = delta.count > 0 || delta.acv > 0
-                    const isDown = delta.count < 0 || delta.acv < 0
-                    const colorCls = isUp
-                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
-                      : isDown
-                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
+
+                    const acvColor = hasBoxDeals ? getDeltaTextColor(delta.acv, 'bad_when_higher') : 'text-slate-400 dark:text-slate-500 font-normal'
+                    const cntColor = hasBoxDeals ? getDeltaTextColor(delta.count, 'bad_when_higher') : 'text-slate-400 dark:text-slate-500 font-normal'
+                    const arrow = (delta.acv > 0 || delta.count > 0) ? '↑ ' : (delta.acv < 0 || delta.count < 0) ? '↓ ' : ''
                     const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
                     const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
                     const periodName = comp === 'yesterday' ? 'yesterday' : 'last week'
@@ -678,13 +635,13 @@ function DelayedContent() {
 
                     return (
                       <div
-                        className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-rose-500/50' : 'cursor-not-allowed opacity-60')}
+                        className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] transition-all', hasBoxDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
                         onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'delayed_total_delta', compare: comp })}
                         title={hasBoxDeals ? `Click to view deals changed since ${dateStr}` : `No deals changed since ${dateStr}`}
                       >
                         <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                        <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
+                        <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
+                        <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
                       </div>
                     )
                   }
@@ -771,46 +728,46 @@ function DelayedContent() {
           const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week' | 'period_start', dateStr: string) => {
             if (delta === null || delta === undefined || isFuture) {
               return (
-                <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 min-w-[120px]">
+                <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] opacity-60 cursor-default">
                   <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                  <div className="font-bold text-xs text-[var(--text-muted)]">n/a</div>
-                  <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                  <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
                 </div>
               )
             }
             const dCount = delta.count || 0
             const dAcv = delta.acv || 0
             const hasBoxDeals = dCount !== 0 || dAcv !== 0
-            const colorCls = dAcv > 0 || dCount > 0
-              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-              : dAcv < 0 || dCount < 0
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-              : 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400'
-            const acvTxt = dAcv > 0 ? `+${formatACV(dAcv)}` : dAcv < 0 ? `-${formatACV(Math.abs(dAcv))}` : '$0'
-            const cntTxt = dCount > 0 ? `+${dCount} deals` : dCount < 0 ? `${dCount} deals` : '0 deals'
+            const polarity = 'bad_when_higher'
+
+            const acvColor = hasBoxDeals ? getDeltaTextColor(delta.acv, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
+            const cntColor = hasBoxDeals ? getDeltaTextColor(delta.count, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
+            const arrow = (delta.acv > 0 || delta.count > 0) ? '↑ ' : (delta.acv < 0 || delta.count < 0) ? '↓ ' : ''
+            const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
+            const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
             const boxDrawerTitle = `Slippage · ${label} (${Math.abs(dCount)} deals · ${formatACV(Math.abs(dAcv))})`
 
             return (
               <div
-                className={cn('p-2 rounded-lg border min-w-[120px] transition-all', colorCls, hasBoxDeals ? 'cursor-pointer hover:border-amber-500/50' : 'cursor-not-allowed opacity-60')}
+                className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] transition-all', hasBoxDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
                 onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'slippage', compare: comp })}
                 title={hasBoxDeals ? `Click to view deals changed vs ${dateStr}` : `No change vs ${dateStr}`}
               >
                 <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                <div className="font-bold text-xs tabular-nums">{acvTxt}</div>
-                <div className="text-[10px] text-[var(--text-muted)]">{cntTxt}</div>
+                <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
+                <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
               </div>
             )
           }
 
           return (
-            <div className="rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)] p-4 flex flex-wrap items-center justify-between gap-4">
               <div
                 className={cn(hasDeals && !isNA ? 'cursor-pointer group' : 'cursor-not-allowed opacity-75')}
                 onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'slippage' })}
                 title={hasDeals ? 'Click to view all slipped deals' : '0 deals'}
               >
-                <div className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">
+                <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
                   Slippage Total
                 </div>
                 <div className="flex items-baseline gap-3">
@@ -824,7 +781,7 @@ function DelayedContent() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {renderTotBox('Vs start of year', summary.slippage?.total?.delta_period_start, 'period_start', 'start of year')}
+                {renderTotBox('Vs start of year', summary.slippage?.total?.delta_period_start, 'period_start', summary.slippage?.period_start_baseline_date ? formatDate(summary.slippage.period_start_baseline_date) : 'start of year')}
                 {renderTotBox('Vs yesterday', summary.slippage?.total?.delayed_vs_yesterday, 'yesterday', yDateStr)}
                 {renderTotBox('Vs last week', summary.slippage?.total?.delayed_vs_lastweek, 'last_week', wDateStr)}
               </div>
@@ -845,7 +802,7 @@ function DelayedContent() {
                   onClick={() => hasC && handleDrill(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
                   className={cn(
                     'p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] transition-colors',
-                    hasC ? 'cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5' : 'opacity-60 cursor-default'
+                    hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'
                   )}
                 >
                   <div className="text-xs font-semibold text-[var(--text-secondary)]">{label}</div>
