@@ -24,7 +24,7 @@ import {
   Tag,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAppStore, FilterSpec } from '@/store/appStore'
+import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
 import { getSnapshots, getFilterOptions, downloadReport } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
@@ -330,35 +330,36 @@ export default function Topbar() {
     setGlobalFilters({ types: next })
   }
 
-  // Active filter chips
+  // Active filter chips (only filters user changed from default)
   const chips: { key: string; label: string; onRemove: () => void }[] = []
   
-  // Type filter chip
-  chips.push({
-    key: 'type-filter',
-    label: isAllTypes
-      ? 'Type: All'
-      : currentTypes.length === 0
-      ? 'Type: None'
-      : `Type: ${currentTypes.join(', ')}`,
-    onRemove: () => setGlobalFilters({ types: defaultTypes }),
-  })
+  // Type filter chip - only show if user narrowed types
+  if (!isAllTypes) {
+    chips.push({
+      key: 'type-filter',
+      label: currentTypes.length === 0 ? 'Type: None' : `Type: ${currentTypes.join(', ')}`,
+      onRemove: () => setGlobalFilters({ types: defaultTypes }),
+    })
+  }
 
-  if (globalFilters.period !== 'current_quarter') {
+  // Period chip - only show if user changed from default
+  if (globalFilters.period !== DEFAULT_FILTER_SPEC.period) {
     const pLabel =
       filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)?.label ||
       globalFilters.period
     chips.push({
       key: `period-${globalFilters.period}`,
       label: `Period: ${pLabel}`,
-      onRemove: () => setGlobalFilters({ period: 'current_quarter' }),
+      onRemove: () => setGlobalFilters({ period: DEFAULT_FILTER_SPEC.period }),
     })
   }
-  if (!globalFilters.include_deleted_lost) {
+
+  // Include Deleted & Lost chip - only show if turned ON (default OFF)
+  if (globalFilters.include_deleted_lost !== DEFAULT_FILTER_SPEC.include_deleted_lost) {
     chips.push({
       key: 'include_deleted_lost',
-      label: 'Exclude Deleted/Lost',
-      onRemove: () => setGlobalFilters({ include_deleted_lost: true }),
+      label: 'Including Deleted & Lost',
+      onRemove: () => setGlobalFilters({ include_deleted_lost: DEFAULT_FILTER_SPEC.include_deleted_lost }),
     })
   }
   globalFilters.regions?.forEach((r) => {
@@ -604,24 +605,7 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* 6. Include Deleted & Lost (visible >= 1800px) */}
-            <label
-              className="hidden min-[1800px]:inline-flex h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] cursor-pointer transition-colors items-center gap-2 select-none flex-shrink-0"
-              title="Toggle inclusion of Deleted and Lost pipeline opportunities"
-            >
-              <input
-                type="checkbox"
-                checked={globalFilters.include_deleted_lost}
-                onChange={(e) => setGlobalFilters({ include_deleted_lost: e.target.checked })}
-                className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                id="filter-include-deleted-lost"
-              />
-              <span className="font-medium text-[var(--text-primary)] text-xs whitespace-nowrap">
-                Include Deleted & Lost
-              </span>
-            </label>
-
-            {/* 7. More Filters (visible >= 1800px) */}
+            {/* More Filters (visible >= 1800px) */}
             <div className="relative hidden min-[1800px]:block flex-shrink-0" ref={moreRef}>
               <button
                 type="button"
@@ -755,6 +739,23 @@ export default function Topbar() {
                         )
                       })}
                     </div>
+                  </div>
+
+                  {/* Optional switch: Include Deleted & Lost stages (default OFF, resets with Reset filters) */}
+                  <div className="pt-2 border-t border-[var(--border)]">
+                    <label className="flex items-center justify-between p-2 rounded-md hover:bg-[var(--bg-secondary)] cursor-pointer select-none">
+                      <div>
+                        <div className="font-semibold text-xs text-[var(--text-primary)]">Include Deleted & Lost stages</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">Includes deals in Deleted and Lost stages (default: excluded)</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={globalFilters.include_deleted_lost}
+                        onChange={(e) => setGlobalFilters({ include_deleted_lost: e.target.checked })}
+                        className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-4 h-4 cursor-pointer"
+                        id="more-filters-include-deleted-lost"
+                      />
+                    </label>
                   </div>
                 </div>
               )}
@@ -1170,16 +1171,21 @@ export default function Topbar() {
 
                 {/* Include Deleted & Lost */}
                 <div className="pt-2">
-                  <label className="flex items-center gap-2.5 p-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] cursor-pointer select-none">
+                  <label className="flex items-center justify-between p-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] cursor-pointer select-none">
+                    <div>
+                      <div className="font-medium text-xs text-[var(--text-primary)]">
+                        Include Deleted & Lost stages
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">
+                        Default: excluded
+                      </div>
+                    </div>
                     <input
                       type="checkbox"
                       checked={globalFilters.include_deleted_lost}
                       onChange={(e) => setGlobalFilters({ include_deleted_lost: e.target.checked })}
                       className="rounded border-[var(--border)] text-[#00A3AD] focus:ring-0 w-4 h-4 cursor-pointer"
                     />
-                    <span className="font-medium text-xs text-[var(--text-primary)]">
-                      Include Deleted & Lost opportunities
-                    </span>
                   </label>
                 </div>
 

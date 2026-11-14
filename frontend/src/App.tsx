@@ -39,7 +39,7 @@ export default function App() {
         '/opportunities': 'Data Explorer — Mobileum Horizon',
         '/explore': 'Data Explorer — Mobileum Horizon',
         '/data-uploads': 'Data Uploads — Mobileum Horizon',
-        '/executive': 'Executive View — Mobileum Horizon',
+        '/executive': 'Executive Summary — Mobileum Horizon',
       }
       document.title = titleMap[path] || 'Mobileum Horizon'
     }

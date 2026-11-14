@@ -31,3 +31,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column('snapshot_checks', 'note')
+

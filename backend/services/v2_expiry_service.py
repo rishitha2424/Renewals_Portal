@@ -267,12 +267,14 @@ class V2ExpiryService:
                 y_deltas["custom"] = compute_deltas(g, cg)
             deltas[y_label] = y_deltas
             
-        _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-        grid_quarters = [q["key"] for q in quarters]
-        grid_df = df[df[period_col].isin(grid_quarters)] if (not df.empty and period_col in df.columns) else pd.DataFrame()
-        slip_df = grid_df[grid_df["close_date"] > fy_end_date] if not grid_df.empty else pd.DataFrame()
+        # Compute Slippage using the shared V2DelayedService (Section A rule)
+        from backend.services.v2_delayed_service import V2DelayedService
+        delayed_svc = V2DelayedService(self.db)
+        target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else target_quarter
+        delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+        slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
         slip_count = len(slip_df)
-        slip_acv = _sum(slip_df, "forecast_acv_amount")
+        slip_acv = round(float(slip_df["forecast_acv_amount"].sum()) if not slip_df.empty else 0.0, 2)
         
         slip_by_quarter = []
         if not slip_df.empty:
@@ -469,9 +471,16 @@ class V2ExpiryService:
 
         period_col_attr = Opportunity.fiscal_period if period_type == "fiscal" else Opportunity.service_expiry_period
 
-        if slippage:
-            _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-            q = q.filter(Opportunity.close_date > fy_end_date, period_col_attr.in_(default_grid_quarters))
+        if slippage or kind == "slippage":
+            from backend.services.v2_delayed_service import V2DelayedService
+            delayed_svc = V2DelayedService(self.db)
+            target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else ScopeService.quarter_of(eff_as_of_date or snap.snapshot_date)
+            delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+            slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
+            deals = slip_df.to_dict("records") if not slip_df.empty else []
+            for d in deals:
+                d["id"] = d.get("opportunity_id_18")
+            return deals
 
         if quarter:
             q = q.filter(period_col_attr == quarter)

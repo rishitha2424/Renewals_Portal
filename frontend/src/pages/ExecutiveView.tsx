@@ -472,7 +472,7 @@ export default function ExecutiveView() {
             <img src="/assets/logo.png" alt="Mobileum" className="w-10 h-10 object-contain" />
             <div>
               <h1 className="font-extrabold text-2xl tracking-tight text-[#12284C]">
-                Mobileum Renewals Intelligence
+                Mobileum Renewals Intelligence · Executive Summary
               </h1>
               <p className="text-xs text-slate-500 font-medium">
                 Executive Portfolio Update · As of <span className="font-semibold text-slate-800">{formatDate(snapshotDate)}</span> · Period: <span className="font-semibold text-slate-800">{period}</span> · Scope: <span className="font-semibold text-slate-800">Renewals</span>
@@ -961,7 +961,7 @@ export default function ExecutiveView() {
 
         <div className="text-right">
           <p>Generated: <span className="tabular-nums text-slate-700">{generatedAt}</span></p>
-          <p className="text-[10px] text-slate-400">Mobileum Horizon Renewals Intelligence · Executive Report</p>
+          <p className="text-[10px] text-slate-400">Mobileum Horizon Renewals Intelligence · Executive Summary</p>
         </div>
       </footer>
     </div>
