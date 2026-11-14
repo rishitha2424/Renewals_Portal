@@ -19,6 +19,7 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -501,7 +502,7 @@ class V2OverviewService:
         from backend.services.settings_service import SettingsService
         opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         opps = opps_q.all()
         prop_pending_opps = []
         jan1_opps = []
@@ -892,7 +893,7 @@ class V2OverviewService:
             Opportunity.sales_type == "Renewals",
         )
         if ScopeService._is_exclude_reconciliation_enabled(self.db):
-            all_opps_q_stmt = all_opps_q_stmt.filter(Opportunity.is_reconciliation_entry == False)
+            all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         all_opps_q = all_opps_q_stmt.all()
         all_df = _opps_to_df(all_opps_q)
         overdue_df = pd.DataFrame()
@@ -1249,7 +1250,7 @@ class V2OverviewService:
             ScopeService.is_renewals()
         )
         if ScopeService._is_exclude_reconciliation_enabled(self.db):
-            q = q.filter(Opportunity.is_reconciliation_entry == False)
+            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         if not fs.include_deleted_lost:
             q = q.filter(Opportunity.is_deleted_or_lost == False)
         today_all_df = _opps_to_df(q.all())
@@ -1622,7 +1623,7 @@ class V2OverviewService:
                 Opportunity.sales_type == "Renewals",
             )
             if ScopeService._is_exclude_reconciliation_enabled(self.db):
-                all_opps_q_stmt = all_opps_q_stmt.filter(Opportunity.is_reconciliation_entry == False)
+                all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
             all_opps_q = all_opps_q_stmt.all()
             df_all_ren = _opps_to_df(all_opps_q)
             cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce")

@@ -86,7 +86,7 @@ def get_filter_options(
     # Query all opportunities in active snapshot
     opps_q = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
     if exclude_recon:
-        opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+        opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
     opps = opps_q.all()
 
     total_deals = len(opps)

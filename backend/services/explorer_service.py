@@ -415,7 +415,7 @@ class ExplorerService:
             # Exclude Reconciliation Entry = Yes
             from backend.services.settings_service import SettingsService
             if SettingsService.get_exclude_reconciliation_entry(self.db):
-                conditions.append(Opportunity.is_reconciliation_entry == False)
+                conditions.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
             # Deal Types
             effective_types: Optional[List[str]] = None
@@ -829,7 +829,7 @@ class ExplorerService:
         exclude_recon = SettingsService.get_exclude_reconciliation_entry(self.db)
         base_filter = [Opportunity.snapshot_id == snap.id]
         if exclude_recon:
-            base_filter.append(Opportunity.is_reconciliation_entry == False)
+            base_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         total_count = self.db.query(Opportunity).filter(*base_filter).count()
         total_acv = float(

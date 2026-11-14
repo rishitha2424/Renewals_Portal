@@ -35,6 +35,47 @@ from backend.database import SessionLocal
 from backend.models.snapshot import UploadSnapshot
 
 
+def _extract_deal_count(name: str, data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    if name == "Overview":
+        cnt = data.get("total", {}).get("count")
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Approvals":
+        cnt = data.get("total", {}).get("count") or data.get("overview_reconciliation", {}).get("approvals_count")
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Regions (list)":
+        cnt = data.get("total", {}).get("count") or sum(r.get("count", 0) for r in data.get("regions", []))
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Regions detail":
+        cnt = data.get("count") or data.get("total_count")
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Business Units":
+        cnt = data.get("totals", {}).get("grand", {}).get("count") or data.get("total", {}).get("count")
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Delayed Renewals":
+        cnt = data.get("delayed_renewals", {}).get("total", {}).get("count")
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Expiry":
+        grid = data.get("grids", {})
+        cnt = None
+        for y, g in grid.items():
+            if isinstance(g, dict) and "totals" in g:
+                cnt = g.get("totals", {}).get("grand", {}).get("count")
+                break
+        return f"({cnt} deals)" if cnt is not None else ""
+    elif name == "Explorer":
+        cnt = data.get("total_rows")
+        return f"({cnt} rows)" if cnt is not None else ""
+    elif name == "Executive":
+        cnt = data.get("whole_snapshot", {}).get("total_rows")
+        return f"({cnt} rows)" if cnt is not None else ""
+    elif name == "Uploads history":
+        snaps = data.get("snapshots", [])
+        return f"({len(snaps)} snapshots)"
+    return ""
+
+
 def run_smoke_tests() -> int:
     client = TestClient(app)
     db = SessionLocal()
@@ -81,7 +122,8 @@ def run_smoke_tests() -> int:
             duration_ms = (time.perf_counter() - start_t) * 1000
             status = resp.status_code
             if status == 200:
-                print(f"[PASS] {name:<22} -> HTTP {status} in {duration_ms:6.1f} ms ({path})")
+                cnt_str = _extract_deal_count(name, resp.json())
+                print(f"[PASS] {name:<22} -> HTTP {status} {cnt_str:<16} in {duration_ms:6.1f} ms ({path})")
             else:
                 print(f"[FAIL] {name:<22} -> HTTP {status} in {duration_ms:6.1f} ms ({path})")
                 print(f"       Response: {resp.text[:200]}")
@@ -102,7 +144,8 @@ def run_smoke_tests() -> int:
                 resp_rd = client.get(reg_detail_path)
                 dur_rd = (time.perf_counter() - start_rd) * 1000
                 if resp_rd.status_code == 200:
-                    print(f"[PASS] {'Regions detail':<22} -> HTTP {resp_rd.status_code} in {dur_rd:6.1f} ms ({reg_detail_path})")
+                    rd_cnt_str = _extract_deal_count("Regions detail", resp_rd.json())
+                    print(f"[PASS] {'Regions detail':<22} -> HTTP {resp_rd.status_code} {rd_cnt_str:<16} in {dur_rd:6.1f} ms ({reg_detail_path})")
                 else:
                     print(f"[FAIL] {'Regions detail':<22} -> HTTP {resp_rd.status_code} in {dur_rd:6.1f} ms ({reg_detail_path})")
                     print(f"       Response: {resp_rd.text[:200]}")

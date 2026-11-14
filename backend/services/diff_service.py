@@ -13,6 +13,7 @@ import re
 from decimal import Decimal
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.change_log import ChangeLog, ForecastMovementLog
@@ -106,7 +107,7 @@ class DiffService:
 
         from_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == from_snapshot.id)
         if exclude_recon:
-            from_q = from_q.filter(Opportunity.is_reconciliation_entry == False)
+            from_q = from_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         from_opps = {
             o.opportunity_id_18: o
             for o in from_q.all()
@@ -115,7 +116,7 @@ class DiffService:
 
         to_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == to_snapshot.id)
         if exclude_recon:
-            to_q = to_q.filter(Opportunity.is_reconciliation_entry == False)
+            to_q = to_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         to_opps = {
             o.opportunity_id_18: o
             for o in to_q.all()

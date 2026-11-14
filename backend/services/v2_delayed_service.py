@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -272,7 +273,7 @@ class V2DelayedService:
         from backend.services.settings_service import SettingsService
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            q = q.filter(Opportunity.is_reconciliation_entry == False)
+            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         return q.all()
 
     def _parse_period_info(self, target_p_str: str, snap_d: date) -> tuple[bool, Optional[int], tuple[int, int], date, date, str, str]:

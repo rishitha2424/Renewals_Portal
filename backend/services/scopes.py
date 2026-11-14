@@ -242,7 +242,7 @@ class ScopeService:
         if SettingsService.get_exclude_reconciliation_entry(db):
             return and_(
                 Opportunity.sales_type == "Renewals",
-                Opportunity.is_reconciliation_entry == False,
+                func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
             )
         return Opportunity.sales_type == "Renewals"
 
@@ -527,7 +527,7 @@ class ScopeService:
         # Exclude Reconciliation Entry = Yes
         from backend.services.settings_service import SettingsService
         if SettingsService.get_exclude_reconciliation_entry(db):
-            conditions.append(Opportunity.is_reconciliation_entry == False)
+            conditions.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         base_conditions = list(conditions)
 

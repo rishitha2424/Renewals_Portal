@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -59,7 +59,7 @@ class OpportunityService:
         else:
             from backend.services.settings_service import SettingsService
             if SettingsService.get_exclude_reconciliation_entry(self.db):
-                q = q.filter(Opportunity.is_reconciliation_entry == False)
+                q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
             if not include_deleted_lost:
                 q = q.filter(Opportunity.is_deleted_or_lost == False)
 
@@ -363,7 +363,7 @@ class OpportunityService:
         from backend.services.settings_service import SettingsService
         opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         opps = opps_q.all()
         acv_vals = [float(o.forecast_acv_amount) for o in opps if o.forecast_acv_amount]
         return {

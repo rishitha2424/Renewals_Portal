@@ -73,6 +73,12 @@ def upgrade() -> None:
                 .values(is_reconciliation_entry=True)
             )
 
+    conn.execute(
+        opps_table.update()
+        .where(opps_table.c.is_reconciliation_entry == None)
+        .values(is_reconciliation_entry=False)
+    )
+
 
 def downgrade() -> None:
     conn = op.get_bind()
@@ -84,3 +90,4 @@ def downgrade() -> None:
         except Exception:
             pass
         op.drop_column('opportunities', 'is_reconciliation_entry')
+

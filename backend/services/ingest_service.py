@@ -948,7 +948,7 @@ class IngestService:
             self.db.query(Opportunity)
             .filter(
                 Opportunity.snapshot_id == snapshot.id,
-                Opportunity.is_reconciliation_entry == False,
+                func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
             )
             .all()
         )
@@ -1018,7 +1018,7 @@ class IngestService:
             self.db.query(Opportunity)
             .filter(
                 Opportunity.snapshot_id == snapshot.id,
-                Opportunity.is_reconciliation_entry == False,
+                func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
             )
             .all()
         )

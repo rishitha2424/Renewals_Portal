@@ -36,7 +36,7 @@ def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             Opportunity.sales_type == "Renewals",
         ]
         if exclude_recon:
-            q_filter.append(Opportunity.is_reconciliation_entry == False)
+            q_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         q_agg = (
             db.query(
@@ -109,7 +109,7 @@ def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get
             Opportunity.sales_type == "Renewals",
         ]
         if exclude_recon:
-            q_filter.append(Opportunity.is_reconciliation_entry == False)
+            q_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         q_agg = (
             db.query(

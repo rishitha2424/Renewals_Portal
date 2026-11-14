@@ -12,6 +12,7 @@ from decimal import Decimal
 import re
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -132,7 +133,7 @@ class AnalyticsService:
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id)
 
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            q = q.filter(Opportunity.is_reconciliation_entry == False)
+            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         # Exclude Deleted & Lost unless explicitly requested
         if not include_deleted_lost:
