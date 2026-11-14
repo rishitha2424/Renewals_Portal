@@ -42,7 +42,7 @@ class OpportunityService:
         max_acv: float | None = None,
         search: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ):
         snap = self._analytics._resolve_snapshot(ctx, snapshot_id)
@@ -141,7 +141,7 @@ class OpportunityService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         q, snap = self._build_filtered_query(
@@ -226,7 +226,7 @@ class OpportunityService:
         max_acv: float | None = None,
         search: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> str:
         import csv
         import io

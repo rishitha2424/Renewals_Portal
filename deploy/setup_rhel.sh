@@ -204,3 +204,4 @@ fi
 echo "=============================================================================="
 echo "Mobileum Horizon is ready! Access your portal at: http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost')"
 echo "=============================================================================="
+

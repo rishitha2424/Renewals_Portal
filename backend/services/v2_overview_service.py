@@ -481,9 +481,11 @@ class V2OverviewService:
         snap: UploadSnapshot,
         as_of_date: date,
         period_val: str,
-        effective_types: list[str],
+        effective_types: list[str] | None,
     ) -> tuple[dict, dict]:
-        from backend.utils.excel_parser import parse_excel_datetime
+        import re
+        from backend.utils.excel_parser import parse_excel_date
+        from backend.services.settings_service import SettingsService
         if not snap:
             return {"count": 0, "acv": 0.0, "deals": []}, {"count": 0, "acv": 0.0, "deals": []}
 
@@ -500,18 +502,22 @@ class V2OverviewService:
             s = str(v).strip()
             return s == "" or s.lower() in ("nan", "none", "blank")
 
-        def _is_valid_stage(st):
-            if not st:
-                return False
-            s = str(st).strip()
-            if not s:
-                return False
-            s_lower = s.lower()
-            if any(k in s_lower for k in ("deleted", "lost", "won & closed", "white space")):
-                return False
-            if s_lower in ("deleted", "lost", "won & closed", "closed won", "white space"):
-                return False
-            return True
+        def _is_pp_stage_excluded(st):
+            if not st or not str(st).strip():
+                return True
+            s = re.sub(r"^\d+\.\s*", "", str(st)).strip().lower()
+            return not s or any(x in s for x in ("deleted", "lost", "won & closed"))
+
+        excluded_stages = SettingsService.get_excluded_stages(self.db)
+        norm_excluded = [re.sub(r"^\d+\.\s*", "", exc).strip().lower() for exc in excluded_stages]
+
+        def _is_jan1_stage_excluded(st):
+            if not st or not str(st).strip():
+                return True
+            s = re.sub(r"^\d+\.\s*", "", str(st)).strip().lower()
+            return not s or any(s == exc for exc in norm_excluded)
+
+        is_all_types = effective_types is None or any(t.lower() == "all" for t in effective_types)
 
         opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
         prop_pending_opps = []
@@ -523,30 +529,29 @@ class V2OverviewService:
             if str(st).strip().lower() != "renewals":
                 continue
 
-            # Type: global Type filter (default MR and R)
+            # Type: global Type filter (default All)
             raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
             type_code = ScopeService.extract_type_code(raw_type)
-            if effective_types and type_code not in effective_types:
+            if not is_all_types and type_code not in effective_types:
                 continue
 
-            # Stage Number: exclude Deleted, Lost, Won & Closed, and blank or whitespace
             stage = o.stage_number or (o.extra_attributes or {}).get("Stage Number") or ""
-            if not _is_valid_stage(stage):
-                continue
 
             # Tile 1: Proposal Pending (Fiscal Period = selected Period, approval & proposal status blank)
-            fp = o.fiscal_period or (o.extra_attributes or {}).get("Fiscal Period") or ""
-            if period_val == "All" or str(fp).strip() == str(period_val).strip():
-                app_status = o.approval_status or (o.extra_attributes or {}).get("Opportunity Approval Status") or ""
-                prop_status = (o.extra_attributes or {}).get("Proposal status For Renewal Opp") or ""
-                if _is_blank(app_status) and _is_blank(prop_status):
-                    prop_pending_opps.append(o)
+            if not _is_pp_stage_excluded(stage) and not o.is_deleted_or_lost:
+                fp = o.fiscal_period or (o.extra_attributes or {}).get("Fiscal Period") or ""
+                if period_val in ("All", "all_periods") or str(fp).strip() == str(period_val).strip():
+                    app_status = o.approval_status or (o.extra_attributes or {}).get("Opportunity Approval Status") or ""
+                    prop_status = (o.extra_attributes or {}).get("Proposal status For Renewal Opp") or ""
+                    if _is_blank(app_status) and _is_blank(prop_status):
+                        prop_pending_opps.append(o)
 
             # Tile 2: Jan 1st Renewals (Service Start Date exactly next Jan 1 on or after as-of date)
-            ssd_raw = (o.extra_attributes or {}).get("Service Start Date")
-            ssd_dt = parse_excel_datetime(ssd_raw)
-            if ssd_dt and ssd_dt.date() == target_jan1:
-                jan1_opps.append(o)
+            if not _is_jan1_stage_excluded(stage) and not o.is_deleted_or_lost:
+                ssd_raw = (o.extra_attributes or {}).get("Service Start Date") or (o.extra_attributes or {}).get("service_start_date")
+                ssd_d = parse_excel_date(ssd_raw)
+                if ssd_d and ssd_d == target_jan1:
+                    jan1_opps.append(o)
 
         t1_data = {
             "count": len(prop_pending_opps),
@@ -1075,7 +1080,7 @@ class V2OverviewService:
         }
 
         # ── Custom Overview Tiles: Proposal Pending & Jan 1st Renewals ─────
-        eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+        eff_types = res.effective_types
         curr_pp, curr_j1 = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
 
         yest_pp, yest_j1 = (None, None)
@@ -1675,7 +1680,7 @@ class V2OverviewService:
             target_fp = res.resolved_quarter
             yest_snap = self._yesterday_snap(snap)
             lw_snap = self._lastweek_snap(snap)
-            eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+            eff_types = res.effective_types
 
             t1_data, t2_data = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
             target_data = t1_data if kind == "proposal_pending" else t2_data

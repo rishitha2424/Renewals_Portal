@@ -178,7 +178,7 @@ export default function Opportunities() {
 
   // Filter Builder state
   const [filters, setFilters] = useState<FilterRule[]>([])
-  const [includeDeletedLost, setIncludeDeletedLost] = useState<boolean>(true)
+  const [includeDeletedLost, setIncludeDeletedLost] = useState<boolean>(false)
 
   // Quick filters selection states
   const [selectedSalesTypes, setSelectedSalesTypes] = useState<string[]>([])
@@ -346,7 +346,7 @@ export default function Opportunities() {
     setSelectedApprovals([])
     setSelectedBUs([])
     setFilters([])
-    setIncludeDeletedLost(true)
+    setIncludeDeletedLost(false)
     setPage(1)
   }
 
@@ -358,7 +358,7 @@ export default function Opportunities() {
     selectedApprovals.length +
     selectedBUs.length +
     filters.length +
-    (!includeDeletedLost ? 1 : 0)
+    (includeDeletedLost ? 1 : 0)
 
   // Starts collapsed once any filter is active
   useEffect(() => {
@@ -416,7 +416,7 @@ export default function Opportunities() {
     setIsDownloading(true)
     try {
       const payload = {
-        filter_spec: rowsMode === 'filtered' ? effectiveFilterSpec : { as_of: activeSnapshotId || undefined, include_deleted_lost: true },
+        filter_spec: rowsMode === 'filtered' ? effectiveFilterSpec : { as_of: activeSnapshotId || undefined, include_deleted_lost: false },
         filters: rowsMode === 'filtered' ? effectiveCustomFilters : [],
         search: rowsMode === 'filtered' ? dealSearchQuery : undefined,
         sort: sortCol,

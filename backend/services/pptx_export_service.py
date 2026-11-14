@@ -159,7 +159,7 @@ class PptxExportService:
         snapshot_id: str | None = None,
         compare_to: str | None = None,
         scope: str = "renewals",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         types: list[str] | None = None,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot

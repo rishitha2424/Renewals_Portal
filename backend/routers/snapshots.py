@@ -203,6 +203,7 @@ def get_snapshot_checks(
                 "website_value": c.website_value,
                 "diff": c.diff_value,
                 "status": c.status,
+                "note": getattr(c, "note", None),
             }
             for c in checks
         ],

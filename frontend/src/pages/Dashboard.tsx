@@ -1409,6 +1409,7 @@ export default function Dashboard() {
       {/* Deal modal */}
       {modal && (
         <DealListModal
+          key={modal.title}
           title={modal.title}
           deals={modal.deals}
           initialFilters={modalInitialFilters}

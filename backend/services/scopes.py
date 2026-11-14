@@ -50,8 +50,8 @@ class FilterSpec(BaseModel):
     business_units: List[str] = Field(default_factory=list)
     forecast_categories: List[str] = Field(default_factory=list)
     approval_statuses: List[str] = Field(default_factory=list)
-    types: Optional[List[str]] = None
-    include_deleted_lost: bool = True
+    types: Optional[List[str]] = Field(default_factory=lambda: ["all"])
+    include_deleted_lost: bool = False
 
     @classmethod
     def from_params(
@@ -65,7 +65,7 @@ class FilterSpec(BaseModel):
         forecast_categories: Optional[List[str] | str] = None,
         approval_statuses: Optional[List[str] | str] = None,
         types: Optional[List[str] | str] = None,
-        include_deleted_lost: Optional[bool] = True,
+        include_deleted_lost: Optional[bool] = False,
     ) -> FilterSpec:
         def _parse_list(val: Any, default: Any) -> Any:
             if val is None:
@@ -88,7 +88,7 @@ class FilterSpec(BaseModel):
         bu = _parse_list(business_units, [])
         fc = _parse_list(forecast_categories, [])
         appr = _parse_list(approval_statuses, [])
-        tp = _parse_list(types, None) if types is not None else None
+        tp = _parse_list(types, ["all"]) if types is not None else ["all"]
 
         return cls(
             as_of=as_of,
@@ -100,7 +100,7 @@ class FilterSpec(BaseModel):
             forecast_categories=fc,
             approval_statuses=appr,
             types=tp,
-            include_deleted_lost=True if include_deleted_lost is None else bool(include_deleted_lost),
+            include_deleted_lost=False if include_deleted_lost is None else bool(include_deleted_lost),
         )
 
 
@@ -519,9 +519,13 @@ class ScopeService:
             if not any(t.lower() == "all" for t in filter_spec.types):
                 effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
         else:
-            # Default to the "included types" Setting used by Delayed & Slippage
+            # Default to the "included types" Setting (default: All)
             from backend.services.settings_service import SettingsService
-            effective_types = SettingsService.get_included_types(db)
+            setting_types = SettingsService.get_included_types(db)
+            if setting_types and not any(t.lower() == "all" for t in setting_types):
+                effective_types = setting_types
+            else:
+                effective_types = None
 
         if effective_types is not None:
             if len(effective_types) == 0:

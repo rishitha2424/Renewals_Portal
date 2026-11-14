@@ -1113,6 +1113,7 @@ export default function DataUploads() {
                             <th className="py-2 px-2.5 text-right">Excel Value</th>
                             <th className="py-2 px-2.5 text-right">Website Value</th>
                             <th className="py-2 px-2.5 text-right">Difference</th>
+                            <th className="py-2 px-2.5">Note</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -1134,6 +1135,9 @@ export default function DataUploads() {
                               <td className="py-1.5 px-2.5 text-right font-mono font-semibold">{chk.website_value}</td>
                               <td className="py-1.5 px-2.5 text-right font-mono">
                                 {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : '0.00'}
+                              </td>
+                              <td className="py-1.5 px-2.5 text-[10px] text-[var(--text-muted)] max-w-xs truncate" title={chk.note || ''}>
+                                {chk.note || '-'}
                               </td>
                             </tr>
                           ))}
@@ -1605,6 +1609,7 @@ export default function DataUploads() {
                         <th className="py-2.5 px-3 text-right">Excel Value</th>
                         <th className="py-2.5 px-3 text-right">Website Value</th>
                         <th className="py-2.5 px-3 text-right">Diff</th>
+                        <th className="py-2.5 px-3">Note</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
@@ -1632,6 +1637,9 @@ export default function DataUploads() {
                           <td className="py-2 px-3 text-right font-mono font-semibold">{chk.website_value}</td>
                           <td className="py-2 px-3 text-right font-mono">
                             {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : Number(chk.diff || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-[11px] text-[var(--text-muted)] max-w-sm truncate" title={chk.note || ''}>
+                            {chk.note || '-'}
                           </td>
                         </tr>
                       ))}

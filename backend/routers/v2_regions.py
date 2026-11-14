@@ -29,10 +29,17 @@ def get_single_region_summary(
     region: str,
     as_of: Optional[str] = Query(None),
     exclude_deleted_lost: bool = Query(False),
+    filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2RegionsService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
 ):
-    return svc.get_region_summary(ctx, region=region, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost)
+    return svc.get_region_summary(
+        ctx,
+        region=region,
+        as_of=as_of,
+        exclude_deleted_lost=exclude_deleted_lost,
+        filter_spec=filter_spec,
+    )
 
 
 @router.get("/{region}/movements")
@@ -40,10 +47,11 @@ def get_region_movements(
     region: str,
     compare: str = Query("yesterday", pattern="^(yesterday|last_week)$"),
     exclude_deleted_lost: bool = Query(False),
+    filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2RegionsService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
 ):
-    return svc.get_movements(ctx, region=region, compare=compare, exclude_deleted_lost=exclude_deleted_lost)
+    return svc.get_movements(ctx, region=region, compare=compare, exclude_deleted_lost=exclude_deleted_lost, filter_spec=filter_spec)
 
 
 @router.get("/deals")
@@ -82,7 +90,8 @@ def get_region_deals(
 def get_region_top_opps(
     region: str,
     limit: int = Query(10),
+    filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2RegionsService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
 ):
-    return svc.get_top_opportunities(ctx, region=region, limit=limit)
+    return svc.get_top_opportunities(ctx, region=region, limit=limit, filter_spec=filter_spec)

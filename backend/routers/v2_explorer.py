@@ -196,7 +196,7 @@ def reconcile_explorer_get(
     as_of: Optional[str] = Query(None),
     sales_types: Optional[List[str]] = Query(None),
     period: Optional[str] = Query(None),
-    include_deleted_lost: bool = Query(True),
+    include_deleted_lost: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     svc = ExplorerService(db)

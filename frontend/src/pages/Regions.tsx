@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Building2,
   Calendar,
+  CalendarX2,
   PieChart,
   Lightbulb,
   ExternalLink
@@ -37,7 +38,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
 const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
-const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Blank']
+const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Not submitted']
 
 function RegionsContent() {
   const { activeSnapshotId } = useAppStore()
@@ -415,7 +416,7 @@ function RegionsContent() {
 
             {/* Top Stat Cards */}
             {regionDetail && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {/* 1. Region ACV & Deals */}
                 <div 
                   onClick={() => handleDrill(`${selectedRegion} Deals`, { region: selectedRegion })}
@@ -488,27 +489,50 @@ function RegionsContent() {
                   <div className="mt-2 text-xs text-gray-400">Formal opportunity approvals</div>
                 </div>
 
-                {/* 4. Overdue / Delayed Deals */}
+                {/* 4. Delayed Renewals Tile */}
                 <div 
-                  onClick={() => handleDrill(`${selectedRegion} Delayed Deals`, { region: selectedRegion, delayed: true })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-red-300 dark:hover:border-red-700 transition-all group"
+                  onClick={() => handleDrill(`${selectedRegion} Delayed Renewals`, { region: selectedRegion, kind: 'delayed' })}
+                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-all group"
                 >
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                     <span className="font-medium flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-red-500" /> Overdue Deals
+                      <Clock className="w-3.5 h-3.5 text-amber-500" /> Delayed Renewals
                     </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-red-500" />
+                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-amber-500" />
                   </div>
                   <div className={cn(
                     "text-xl font-bold transition-colors",
-                    (regionDetail.delayed_deals?.count || 0) > 0 ? "text-red-600 dark:text-red-400 group-hover:text-red-500" : "text-gray-900 dark:text-white"
+                    (regionDetail.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400 group-hover:text-amber-500" : "text-gray-900 dark:text-white"
                   )}>
-                    {formatACV(regionDetail.delayed_deals?.acv || 0)}
+                    {formatACV(regionDetail.delayed_acv || 0)}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    {regionDetail.delayed_deals?.count || 0} overdue deals
+                    {formatCount(regionDetail.delayed_count || 0)} deals
                   </div>
-                  <div className="mt-2 text-xs text-gray-400">Past close date & unclosed</div>
+                  <div className="mt-2 text-xs text-gray-400">Service start in past</div>
+                </div>
+
+                {/* 5. Slippage Tile */}
+                <div 
+                  onClick={() => handleDrill(`${selectedRegion} Slippage Deals`, { region: selectedRegion, kind: 'slippage' })}
+                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-all group"
+                >
+                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                    <span className="font-medium flex items-center gap-1">
+                      <CalendarX2 className="w-3.5 h-3.5 text-purple-500" /> Slippage
+                    </span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-purple-500" />
+                  </div>
+                  <div className={cn(
+                    "text-xl font-bold transition-colors",
+                    (regionDetail.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400 group-hover:text-purple-500" : "text-gray-900 dark:text-white"
+                  )}>
+                    {formatACV(regionDetail.slippage_acv || 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatCount(regionDetail.slippage_count || 0)} deals
+                  </div>
+                  <div className="mt-2 text-xs text-gray-400">Close slipped to next year</div>
                 </div>
               </div>
             )}
@@ -1049,8 +1073,17 @@ function RegionsContent() {
                   className="py-3 px-3.5 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   <div className="flex items-center justify-end gap-1.5">
-                    <span>Delayed ACV</span>
+                    <span>Delayed</span>
                     <ArrowUpDown className={cn("w-3.5 h-3.5", sortCol === 'delayed_acv' ? "text-blue-500" : "text-gray-400")} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => toggleSort('slippage_acv')}
+                  className="py-3 px-3.5 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Slippage</span>
+                    <ArrowUpDown className={cn("w-3.5 h-3.5", sortCol === 'slippage_acv' ? "text-blue-500" : "text-gray-400")} />
                   </div>
                 </th>
                 <th 
@@ -1134,15 +1167,26 @@ function RegionsContent() {
                       {r.approved_pct}%
                     </td>
 
-                    {/* Delayed ACV */}
+                    {/* Delayed */}
                     <td 
-                      onClick={() => handleDrill(`${r.region} Delayed Deals`, { region: r.region, delayed: true })}
+                      onClick={() => handleDrill(`${r.region} Delayed Renewals`, { region: r.region, kind: 'delayed' })}
                       className={cn(
                         "py-3 px-3.5 text-right font-medium cursor-pointer hover:underline",
-                        (r.delayed_count || 0) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-400"
+                        (r.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"
                       )}
                     >
                       {(r.delayed_count || 0) > 0 ? `${formatACV(r.delayed_acv)} (${r.delayed_count})` : '-'}
+                    </td>
+
+                    {/* Slippage */}
+                    <td 
+                      onClick={() => handleDrill(`${r.region} Slippage Deals`, { region: r.region, kind: 'slippage' })}
+                      className={cn(
+                        "py-3 px-3.5 text-right font-medium cursor-pointer hover:underline",
+                        (r.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
+                      )}
+                    >
+                      {(r.slippage_count || 0) > 0 ? `${formatACV(r.slippage_acv)} (${r.slippage_count})` : '-'}
                     </td>
 
                     {/* Change vs YDay */}
@@ -1205,13 +1249,22 @@ function RegionsContent() {
                   {summary.total.approved_pct}%
                 </td>
                 <td 
-                  onClick={() => handleDrill(`All Delayed Deals`, { delayed: true })}
+                  onClick={() => handleDrill(`Portfolio Delayed Renewals`, { kind: 'delayed' })}
                   className={cn(
                     "py-3 px-3.5 text-right cursor-pointer hover:underline",
-                    (summary.total.delayed_count || 0) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-400"
+                    (summary.total.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"
                   )}
                 >
                   {(summary.total.delayed_count || 0) > 0 ? `${formatACV(summary.total.delayed_acv)} (${summary.total.delayed_count})` : '-'}
+                </td>
+                <td 
+                  onClick={() => handleDrill(`Portfolio Slippage Deals`, { kind: 'slippage' })}
+                  className={cn(
+                    "py-3 px-3.5 text-right cursor-pointer hover:underline",
+                    (summary.total.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
+                  )}
+                >
+                  {(summary.total.slippage_count || 0) > 0 ? `${formatACV(summary.total.slippage_acv)} (${summary.total.slippage_count})` : '-'}
                 </td>
                 <td 
                   onClick={() => handleDrill(`All Regions Total Deals`, {})}

@@ -306,7 +306,7 @@ export const downloadReport = async (
   if (snapshotId) params.snapshot_id = snapshotId
   if (compareTo) params.compare_to = compareTo
   params.scope = scope || 'renewals'
-  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? true)
+  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? false)
   params.include_deleted_lost = incl ? 'true' : 'false'
   if (state.globalFilters?.types && state.globalFilters.types.length > 0) {
     params.types = state.globalFilters.types.join(',')

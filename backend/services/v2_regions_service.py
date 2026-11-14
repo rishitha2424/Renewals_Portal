@@ -13,7 +13,7 @@ from backend.services.scopes import ScopeService
 log = logging.getLogger(__name__)
 
 ALL_FC = ["Closed", "Commit", "Best Case", "Pipeline", "Blank"]
-FUNNEL_STAGES = ["Approved", "Pending Approval", "Blank"]
+FUNNEL_STAGES = ["Approved", "Pending Approval", "Not submitted"]
 REGION_ORDER = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"]
 
 def _sum(df: pd.DataFrame, col: str) -> float:
@@ -30,13 +30,15 @@ def _norm_fc(s: str | None) -> str:
     return s
 
 def _norm_approval(s: str | None) -> str:
-    if not s or str(s).strip() in ("", "nan", "None", "Blank"):
-        return "Blank"
+    if not s or str(s).strip() in ("", "nan", "None", "Blank", "Not submitted"):
+        return "Not submitted"
     s = str(s).strip()
     if s in ("Approved", "Approved - 2nd"):
         return "Approved"
     if s in ("Pending Approval", "Pending-Approval"):
         return "Pending Approval"
+    if s == "Rejected":
+        return "Rejected"
     return s
 
 def _map_region(s: str | None) -> str:
@@ -221,18 +223,13 @@ class V2RegionsService:
         if "Other / Unmapped" in found_regions or "Other" in found_regions:
             all_ordered.append("Other / Unmapped")
 
-        # Detect delayed deals: close_date < snap.snapshot_date, not Closed, not deleted/lost
-        snap_date = snap.snapshot_date
-        def _check_delayed_deal(row):
-            cd = row.get("close_date")
-            if pd.isna(cd): return False
-            try:
-                return pd.to_datetime(cd).date() < snap_date and row.get("forecast_category") != "Closed" and not row.get("is_deleted_or_lost")
-            except Exception:
-                return False
-
-        delayed_mask = df.apply(_check_delayed_deal, axis=1) if not df.empty else pd.Series(dtype=bool)
-        delayed_df = df[delayed_mask] if not df.empty else pd.DataFrame()
+        # Delayed and Slippage calculation (Section A rules)
+        from backend.services.v2_delayed_service import V2DelayedService
+        delayed_svc = V2DelayedService(self.db)
+        target_quarter = res.resolved_quarter
+        delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+        delayed_df = delayed_buckets.get("delayed_total", pd.DataFrame())
+        slippage_df = delayed_buckets.get("slippage_total", pd.DataFrame())
 
         regions_out = []
         for reg_name in all_ordered:
@@ -265,10 +262,16 @@ class V2RegionsService:
             approved_pct = round((approved_acv / d_today["acv"] * 100) if d_today["acv"] else 0, 1)
 
             reg_delayed = delayed_df[delayed_df["region"] == reg_name] if not delayed_df.empty else pd.DataFrame()
-            if reg_delayed.empty and reg_name in ("Other / Unmapped", "Other"):
-                reg_delayed = delayed_df[delayed_df["region"].isin(["Other", "Other / Unmapped"]) | (~delayed_df["region"].isin(known_ordered))] if not delayed_df.empty else pd.DataFrame()
+            if reg_delayed.empty and reg_name in ("Other / Unmapped", "Other") and not delayed_df.empty:
+                reg_delayed = delayed_df[delayed_df["region"].isin(["Other", "Other / Unmapped"]) | (~delayed_df["region"].isin(known_ordered))]
             del_cnt = len(reg_delayed)
             del_acv = round(float(reg_delayed["forecast_acv_amount"].sum()) if not reg_delayed.empty else 0.0, 2)
+
+            reg_slipped = slippage_df[slippage_df["region"] == reg_name] if not slippage_df.empty else pd.DataFrame()
+            if reg_slipped.empty and reg_name in ("Other / Unmapped", "Other") and not slippage_df.empty:
+                reg_slipped = slippage_df[slippage_df["region"].isin(["Other", "Other / Unmapped"]) | (~slippage_df["region"].isin(known_ordered))]
+            slip_cnt = len(reg_slipped)
+            slip_acv = round(float(reg_slipped["forecast_acv_amount"].sum()) if not reg_slipped.empty else 0.0, 2)
 
             regions_out.append({
                 "region": reg_name,
@@ -279,6 +282,8 @@ class V2RegionsService:
                 "approved_pct": approved_pct,
                 "delayed_count": del_cnt,
                 "delayed_acv": del_acv,
+                "slippage_count": slip_cnt,
+                "slippage_acv": slip_acv,
                 "cells": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["cells"].items()},
                 "approval": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["approval"].items()},
                 "delta_yesterday": {"count": d_today["count"] - d_y["count"], "acv": round(d_today["acv"] - d_y["acv"], 2)},
@@ -315,6 +320,8 @@ class V2RegionsService:
         total_approved_pct = round((total_approved_acv / grand_acv * 100) if grand_acv else 0.0, 1)
         total_delayed_acv = round(float(delayed_df["forecast_acv_amount"].sum()) if not delayed_df.empty else 0.0, 2)
         total_delayed_count = len(delayed_df)
+        total_slippage_acv = round(float(slippage_df["forecast_acv_amount"].sum()) if not slippage_df.empty else 0.0, 2)
+        total_slippage_count = len(slippage_df)
 
         known_set = set(REGION_ORDER)
         unmapped = {"count": 0, "acv": 0.0, "values": []}
@@ -377,6 +384,8 @@ class V2RegionsService:
                 "approved_pct": total_approved_pct,
                 "delayed_count": total_delayed_count,
                 "delayed_acv": total_delayed_acv,
+                "slippage_count": total_slippage_count,
+                "slippage_acv": total_slippage_acv,
                 "delta_yesterday": {"count": grand_count - len(y_df), "acv": round(grand_acv - float(y_df["forecast_acv_amount"].sum() if not y_df.empty else 0.0), 2)},
                 "delta_lastweek": {"count": grand_count - len(lw_df), "acv": round(grand_acv - float(lw_df["forecast_acv_amount"].sum() if not lw_df.empty else 0.0), 2)},
             },
@@ -389,8 +398,15 @@ class V2RegionsService:
             "other_types_excluded": other_types_excluded,
         }
 
-    def get_region_summary(self, ctx: UserContext, region: str, as_of: Optional[str] = None, exclude_deleted_lost: bool = False) -> dict:
-        base = self.get_summary(ctx, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost)
+    def get_region_summary(
+        self,
+        ctx: UserContext,
+        region: str,
+        as_of: Optional[str] = None,
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+    ) -> dict:
+        base = self.get_summary(ctx, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, filter_spec=filter_spec)
         if "error" in base:
             return base
 
@@ -398,13 +414,20 @@ class V2RegionsService:
         if not reg_data:
             return {"error": "not_found"}
 
-        snap = self._active_snap(as_of)
-        eff_date = snap.snapshot_date
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
-            try: eff_date = date.fromisoformat(as_of)
+            fs.as_of = as_of
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
+
+        snap = self._active_snap(fs.as_of)
+        eff_date = snap.snapshot_date
+        if fs.as_of:
+            try: eff_date = date.fromisoformat(fs.as_of)
             except ValueError: pass
         
-        opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost, target_date=eff_date)
+        opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_date)
         df = _opps_to_df(opps)
         
         known_set = set(REGION_ORDER)
@@ -442,7 +465,7 @@ class V2RegionsService:
 
         # 2. Approval status split
         app_split = []
-        for st in ["Approved", "Pending Approval", "Pending-Approval", "Approved - 2nd", "Not submitted", "Blank", "Rejected"]:
+        for st in ["Approved", "Pending Approval", "Not submitted", "Rejected"]:
             sub = reg_df[reg_df["approval_status"] == st] if not reg_df.empty else pd.DataFrame()
             if not sub.empty or st in ["Approved", "Pending Approval", "Not submitted"]:
                 cnt = len(sub)
@@ -508,34 +531,40 @@ class V2RegionsService:
                     })
             bus.sort(key=lambda x: x["acv"], reverse=True)
 
-        # 7. Delayed/overdue deals in that region
-        snap_date = snap.snapshot_date
-        delayed_deals = []
-        if not reg_df.empty:
-            for _, r in reg_df.iterrows():
-                c_date = r.get("close_date")
-                if pd.notna(c_date):
-                    try:
-                        c_d = pd.to_datetime(c_date).date()
-                        if c_d < snap_date and r.get("forecast_category") != "Closed" and not r.get("is_deleted_or_lost"):
-                            days_over = (snap_date - c_d).days
-                            delayed_deals.append({
-                                "opportunity_id_18": r.get("opportunity_id_18"),
-                                "opportunity_name": r.get("opportunity_name"),
-                                "account_name": r.get("account_name"),
-                                "business_unit": r.get("business_unit"),
-                                "forecast_category": r.get("forecast_category"),
-                                "approval_status": r.get("approval_status"),
-                                "acv": round(float(r.get("forecast_acv_amount") or 0.0), 2),
-                                "close_date": c_d.isoformat(),
-                                "days_overdue": days_over,
-                                "owner": r.get("opportunity_owner") or "-"
-                            })
-                    except Exception:
-                        pass
-        delayed_deals.sort(key=lambda x: x["acv"], reverse=True)
-        delayed_total_acv = round(sum(d["acv"] for d in delayed_deals), 2)
+        # 7. Delayed and Slippage deals in that region (Section A rules)
+        from backend.services.v2_delayed_service import V2DelayedService
+        delayed_svc = V2DelayedService(self.db)
+        target_quarter = res.resolved_quarter
+        delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+        del_df = delayed_buckets.get("delayed_total", pd.DataFrame())
+        slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
+
+        known_set = set(REGION_ORDER)
+        if region in ("Other / Unmapped", "Other"):
+            del_reg = del_df[del_df["region"].isin(["Other", "Other / Unmapped"]) | (~del_df["region"].isin(known_set))] if not del_df.empty else pd.DataFrame()
+            slip_reg = slip_df[slip_df["region"].isin(["Other", "Other / Unmapped"]) | (~slip_df["region"].isin(known_set))] if not slip_df.empty else pd.DataFrame()
+        else:
+            del_reg = del_df[del_df["region"] == region] if not del_df.empty else pd.DataFrame()
+            slip_reg = slip_df[slip_df["region"] == region] if not slip_df.empty else pd.DataFrame()
+
+        delayed_deals = del_reg.to_dict("records") if not del_reg.empty else []
+        for d in delayed_deals:
+            d["id"] = d.get("opportunity_id_18")
+            cd = d.get("close_date")
+            try:
+                c_d = pd.to_datetime(cd).date() if cd else None
+                d["days_overdue"] = (snap.snapshot_date - c_d).days if (c_d and c_d < snap.snapshot_date) else 0
+            except Exception:
+                d["days_overdue"] = 0
+
+        slippage_deals = slip_reg.to_dict("records") if not slip_reg.empty else []
+        for d in slippage_deals:
+            d["id"] = d.get("opportunity_id_18")
+
+        delayed_total_acv = round(float(del_reg["forecast_acv_amount"].sum()) if not del_reg.empty else 0.0, 2)
         delayed_total_count = len(delayed_deals)
+        slippage_total_acv = round(float(slip_reg["forecast_acv_amount"].sum()) if not slip_reg.empty else 0.0, 2)
+        slippage_total_count = len(slippage_deals)
 
         # 8. Concentration ("top 3 deals = X% of region ACV")
         sorted_deals = reg_df.sort_values(by="forecast_acv_amount", ascending=False) if not reg_df.empty else pd.DataFrame()
@@ -589,6 +618,15 @@ class V2RegionsService:
             "acv": delayed_total_acv,
             "deals": delayed_deals
         }
+        reg_data["slippage_deals"] = {
+            "count": slippage_total_count,
+            "acv": slippage_total_acv,
+            "deals": slippage_deals
+        }
+        reg_data["delayed_count"] = delayed_total_count
+        reg_data["delayed_acv"] = delayed_total_acv
+        reg_data["slippage_count"] = slippage_total_count
+        reg_data["slippage_acv"] = slippage_total_acv
         reg_data["concentration"] = {
             "top1_acv": round(top1_acv, 2),
             "top1_pct": top1_pct,
@@ -600,7 +638,14 @@ class V2RegionsService:
         reg_data["insights"] = insights
         return reg_data
 
-    def get_movements(self, ctx: UserContext, region: str, compare: str = "yesterday", exclude_deleted_lost: bool = False) -> dict:
+    def get_movements(
+        self,
+        ctx: UserContext,
+        region: str,
+        compare: str = "yesterday",
+        exclude_deleted_lost: bool = False,
+        filter_spec: Optional[ScopeService.FilterSpec] = None,
+    ) -> dict:
         snap = self._active_snap()
         if not snap: return {"error": "no_snapshot"}
 
@@ -608,10 +653,13 @@ class V2RegionsService:
         if not comp_snap:
             return {"category_moves": [], "approval_moves": [], "new_to_slice": [], "slipped_out": []}
 
-        target_fp = ScopeService.current_quarter(snap.snapshot_date)
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        if exclude_deleted_lost:
+            fs.include_deleted_lost = False
         
-        t_opps = self._q4_opps(snap, exclude_deleted=exclude_deleted_lost, target_date=snap.snapshot_date)
-        c_opps = self._q4_opps(comp_snap, exclude_deleted=exclude_deleted_lost, target_date=snap.snapshot_date)
+        t_opps, _ = self._scoped_opps(snap, filter_spec=fs, target_date=snap.snapshot_date)
+        c_opps, _ = self._scoped_opps(comp_snap, filter_spec=fs, target_date=snap.snapshot_date)
         
         t_df = _opps_to_df(t_opps)
         c_df = _opps_to_df(c_opps)
@@ -779,6 +827,50 @@ class V2RegionsService:
                 "deals": deals
             }
 
+        if kind == "delayed" or delayed:
+            from backend.services.v2_delayed_service import V2DelayedService
+            delayed_svc = V2DelayedService(self.db)
+            target_quarter = res.resolved_quarter
+            buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+            del_df = buckets.get("delayed_total", pd.DataFrame())
+            if region:
+                known_set = set(REGION_ORDER)
+                if region in ("Other", "Other / Unmapped"):
+                    del_df = del_df[del_df["region"].isin(["Other", "Other / Unmapped"]) | (~del_df["region"].isin(known_set))] if not del_df.empty else pd.DataFrame()
+                else:
+                    del_df = del_df[del_df["region"] == region] if not del_df.empty else pd.DataFrame()
+            deals = del_df.to_dict("records") if not del_df.empty else []
+            for d in deals:
+                d["id"] = d.get("opportunity_id_18")
+            return {
+                "count": len(deals),
+                "acv": round(float(del_df["forecast_acv_amount"].sum()) if not del_df.empty else 0.0, 2),
+                "filters_applied": res.filters_applied,
+                "deals": deals
+            }
+
+        if kind == "slippage":
+            from backend.services.v2_delayed_service import V2DelayedService
+            delayed_svc = V2DelayedService(self.db)
+            target_quarter = res.resolved_quarter
+            buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+            slip_df = buckets.get("slippage_total", pd.DataFrame())
+            if region:
+                known_set = set(REGION_ORDER)
+                if region in ("Other", "Other / Unmapped"):
+                    slip_df = slip_df[slip_df["region"].isin(["Other", "Other / Unmapped"]) | (~slip_df["region"].isin(known_set))] if not slip_df.empty else pd.DataFrame()
+                else:
+                    slip_df = slip_df[slip_df["region"] == region] if not slip_df.empty else pd.DataFrame()
+            deals = slip_df.to_dict("records") if not slip_df.empty else []
+            for d in deals:
+                d["id"] = d.get("opportunity_id_18")
+            return {
+                "count": len(deals),
+                "acv": round(float(slip_df["forecast_acv_amount"].sum()) if not slip_df.empty else 0.0, 2),
+                "filters_applied": res.filters_applied,
+                "deals": deals
+            }
+
         df = _opps_to_df(opps)
 
         if not df.empty:
@@ -798,17 +890,6 @@ class V2RegionsService:
             if quarter:
                 exp_col = "service_expiry_period" if "service_expiry_period" in df.columns and df["service_expiry_period"].notna().any() else "fiscal_period"
                 df = df[df[exp_col] == quarter]
-
-            if delayed:
-                snap_date = snap.snapshot_date
-                def _check_del(row):
-                    cd = row.get("close_date")
-                    if pd.isna(cd): return False
-                    try:
-                        return pd.to_datetime(cd).date() < snap_date and row.get("forecast_category") != "Closed" and not row.get("is_deleted_or_lost")
-                    except Exception:
-                        return False
-                df = df[df.apply(_check_del, axis=1)]
                 
         deals = df.to_dict("records") if not df.empty else []
         for d in deals:
@@ -820,11 +901,15 @@ class V2RegionsService:
             "deals": deals
         }
 
-    def get_top_opportunities(self, ctx: UserContext, region: str, limit: int = 10) -> list[dict]:
+    def get_top_opportunities(self, ctx: UserContext, region: str, limit: int = 10, filter_spec: Optional[ScopeService.FilterSpec] = None) -> list[dict]:
         snap = self._active_snap()
         if not snap: return []
+
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        fs.include_deleted_lost = False
         
-        opps = self._q4_opps(snap, exclude_deleted=True, target_date=snap.snapshot_date)
+        opps, _ = self._scoped_opps(snap, filter_spec=fs, target_date=snap.snapshot_date)
         df = _opps_to_df(opps)
         
         if df.empty: return []

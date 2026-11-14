@@ -69,8 +69,10 @@ export default function Shell() {
             Warning: The connected database was created by an older version of the app. Please re-upload the latest Excel snapshots for full compatibility.
           </div>
         )}
-        <Topbar />
-        <main className="flex-1 overflow-y-auto relative z-0">
+        <header className="relative z-30 flex-shrink-0">
+          <Topbar />
+        </header>
+        <main className="flex-1 overflow-y-auto relative z-10">
           <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <ErrorBoundary>
               <Outlet />

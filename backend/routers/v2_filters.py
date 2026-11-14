@@ -216,10 +216,26 @@ def get_filter_options(
     from backend.services.settings_service import SettingsService
     default_types = SettingsService.get_included_types(db)
     delayed_rules = SettingsService.get_delayed_rules(db)
-    type_filter_note = delayed_rules.get("type_filter_note", "MR and R types only")
+    type_filter_note = delayed_rules.get("type_filter_note", "All types")
+
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None
+
+    from datetime import datetime
+    tz_str = SettingsService.get_timezone(db)
+    if tz_str and ZoneInfo:
+        try:
+            current_date_val = datetime.now(ZoneInfo(tz_str)).date()
+        except Exception:
+            current_date_val = datetime.now().astimezone().date()
+    else:
+        current_date_val = datetime.now().astimezone().date()
 
     return {
         "as_of": snap.snapshot_date.isoformat(),
+        "current_date": current_date_val.isoformat(),
         "current_quarter": cq,
         "current_quarter_label": ScopeService.quarter_label(cq),
         "total_deals": total_deals,
