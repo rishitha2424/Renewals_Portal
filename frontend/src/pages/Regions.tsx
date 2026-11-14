@@ -727,136 +727,6 @@ function RegionsContent() {
                     </table>
                   </div>
                 </div>
-              </div>
-
-              {/* RIGHT COLUMN: Top Accounts, Top BUs, Delayed Deals, Movements */}
-              <div className="space-y-6">
-                {/* 1. Top 10 Accounts by ACV */}
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
-                  <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-blue-500" /> Top 10 Accounts by ACV
-                    </h3>
-                    <span className="text-xs text-gray-500">Account concentration</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-gray-50/50 dark:bg-gray-900/20 text-gray-500 font-medium border-b border-gray-100 dark:border-gray-800">
-                        <tr>
-                          <th className="py-2.5 px-3 w-8">#</th>
-                          <th className="py-2.5 px-3">Account</th>
-                          <th className="py-2.5 px-3 text-right">Deals</th>
-                          <th className="py-2.5 px-3 text-right">ACV</th>
-                          <th className="py-2.5 px-3.5 text-right">% Share</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {regionDetail?.top_accounts?.map((acc: any, i: number) => (
-                          <tr 
-                            key={acc.account_name}
-                            onClick={() => handleDrill(`${selectedRegion} - ${acc.account_name}`, { region: selectedRegion, account_name: acc.account_name })}
-                            className="hover:bg-blue-50/60 dark:hover:bg-blue-900/20 cursor-pointer transition-colors group"
-                          >
-                            <td className="py-2.5 px-3 text-gray-400 font-bold">{i + 1}</td>
-                            <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white truncate max-w-[180px] group-hover:text-blue-600">
-                              {acc.account_name}
-                            </td>
-                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-400">
-                              {formatCount(acc.count)}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
-                              {formatACV(acc.acv)}
-                            </td>
-                            <td className="py-2.5 px-3.5 text-right font-medium text-blue-600 dark:text-blue-400">
-                              {acc.pct_acv}%
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 2. Top Business Units with Share */}
-                {regionDetail?.business_units && regionDetail.business_units.length > 0 && (
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-indigo-500" /> Business Unit Mix & Share
-                      </span>
-                      <span className="text-xs font-normal text-gray-500">By contribution</span>
-                    </h3>
-                    <div className="space-y-2.5">
-                      {regionDetail.business_units.map((bu: any) => {
-                        const pct = bu.share_pct ?? (regionDetail.acv > 0 ? Math.round((bu.acv / regionDetail.acv) * 100) : 0)
-                        return (
-                          <div 
-                            key={bu.bu}
-                            className="cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
-                            onClick={() => handleDrill(`${selectedRegion} - ${bu.bu}`, { region: selectedRegion, bu: bu.bu })}
-                          >
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="font-semibold text-gray-800 dark:text-gray-200 group-hover:text-blue-600 transition-colors">
-                                {bu.bu}
-                              </span>
-                              <span className="text-gray-500 font-medium">
-                                {formatCount(bu.count)} deals • {formatACV(bu.acv)} ({pct}%)
-                              </span>
-                            </div>
-                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all group-hover:from-blue-400 group-hover:to-indigo-400"
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Delayed/Overdue Deals Table */}
-                {regionDetail?.delayed_deals?.deals && regionDetail.delayed_deals.deals.length > 0 && (
-                  <div className="rounded-xl border border-red-200 dark:border-red-900/40 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
-                    <div className="p-3.5 bg-red-50/80 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-red-500" /> Past close date deals in {selectedRegion}
-                      </h3>
-                      <button
-                        onClick={() => handleDrill(`${selectedRegion} Past Close Date Deals`, { region: selectedRegion, delayed: true })}
-                        className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline"
-                      >
-                        View all ({regionDetail.delayed_deals.count}) →
-                      </button>
-                    </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-y-auto">
-                      {regionDetail.delayed_deals.deals.slice(0, 5).map((d: any) => (
-                        <div 
-                          key={d.opportunity_id_18}
-                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                          className="p-3 hover:bg-gray-50 dark:hover:bg-gray-900/40 cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-gray-900 dark:text-white truncate hover:text-blue-500">
-                              {d.opportunity_name}
-                            </div>
-                            <div className="text-gray-500 truncate flex items-center gap-2 mt-0.5">
-                              <span>{d.account_name}</span>
-                              <span>•</span>
-                              <span className="text-red-500 font-medium">{d.days_overdue}d overdue</span>
-                              <span>•</span>
-                              <span>{d.owner || d.opportunity_owner || '—'}</span>
-                            </div>
-                          </div>
-                          <div className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                            {formatACV(d.acv || d.forecast_acv_amount || 0)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* 4. What Changed (Movements) */}
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
@@ -1007,6 +877,136 @@ function RegionsContent() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* RIGHT COLUMN: Top Accounts, Top BUs, Delayed Deals */}
+              <div className="space-y-6">
+                {/* 1. Top 10 Accounts by ACV */}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
+                  <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-blue-500" /> Top 10 Accounts by ACV
+                    </h3>
+                    <span className="text-xs text-gray-500">Account concentration</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/50 dark:bg-gray-900/20 text-gray-500 font-medium border-b border-gray-100 dark:border-gray-800">
+                        <tr>
+                          <th className="py-2.5 px-3 w-8">#</th>
+                          <th className="py-2.5 px-3">Account</th>
+                          <th className="py-2.5 px-3 text-right">Deals</th>
+                          <th className="py-2.5 px-3 text-right">ACV</th>
+                          <th className="py-2.5 px-3.5 text-right">% Share</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {regionDetail?.top_accounts?.map((acc: any, i: number) => (
+                          <tr 
+                            key={acc.account_name}
+                            onClick={() => handleDrill(`${selectedRegion} - ${acc.account_name}`, { region: selectedRegion, account_name: acc.account_name })}
+                            className="hover:bg-blue-50/60 dark:hover:bg-blue-900/20 cursor-pointer transition-colors group"
+                          >
+                            <td className="py-2.5 px-3 text-gray-400 font-bold">{i + 1}</td>
+                            <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white truncate max-w-[180px] group-hover:text-blue-600">
+                              {acc.account_name}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-400">
+                              {formatCount(acc.count)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
+                              {formatACV(acc.acv)}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right font-medium text-blue-600 dark:text-blue-400">
+                              {acc.pct_acv}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 2. Top Business Units with Share */}
+                {regionDetail?.business_units && regionDetail.business_units.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-indigo-500" /> Business Unit Mix & Share
+                      </span>
+                      <span className="text-xs font-normal text-gray-500">By contribution</span>
+                    </h3>
+                    <div className="space-y-2.5">
+                      {regionDetail.business_units.map((bu: any) => {
+                        const pct = bu.share_pct ?? (regionDetail.acv > 0 ? Math.round((bu.acv / regionDetail.acv) * 100) : 0)
+                        return (
+                          <div 
+                            key={bu.bu}
+                            className="cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
+                            onClick={() => handleDrill(`${selectedRegion} - ${bu.bu}`, { region: selectedRegion, bu: bu.bu })}
+                          >
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="font-semibold text-gray-800 dark:text-gray-200 group-hover:text-blue-600 transition-colors">
+                                {bu.bu}
+                              </span>
+                              <span className="text-gray-500 font-medium">
+                                {formatCount(bu.count)} deals • {formatACV(bu.acv)} ({pct}%)
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all group-hover:from-blue-400 group-hover:to-indigo-400"
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Delayed/Overdue Deals Table */}
+                {regionDetail?.delayed_deals?.deals && regionDetail.delayed_deals.deals.length > 0 && (
+                  <div className="rounded-xl border border-red-200 dark:border-red-900/40 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
+                    <div className="p-3.5 bg-red-50/80 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-red-500" /> Past close date deals in {selectedRegion}
+                      </h3>
+                      <button
+                        onClick={() => handleDrill(`${selectedRegion} Past Close Date Deals`, { region: selectedRegion, delayed: true })}
+                        className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline"
+                      >
+                        View all ({regionDetail.delayed_deals.count}) →
+                      </button>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-y-auto">
+                      {regionDetail.delayed_deals.deals.slice(0, 5).map((d: any) => (
+                        <div 
+                          key={d.opportunity_id_18}
+                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                          className="p-3 hover:bg-gray-50 dark:hover:bg-gray-900/40 cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-gray-900 dark:text-white truncate hover:text-blue-500">
+                              {d.opportunity_name}
+                            </div>
+                            <div className="text-gray-500 truncate flex items-center gap-2 mt-0.5">
+                              <span>{d.account_name}</span>
+                              <span>•</span>
+                              <span className="text-red-500 font-medium">{d.days_overdue}d overdue</span>
+                              <span>•</span>
+                              <span>{d.owner || d.opportunity_owner || '—'}</span>
+                            </div>
+                          </div>
+                          <div className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                            {formatACV(d.acv || d.forecast_acv_amount || 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </Card>
