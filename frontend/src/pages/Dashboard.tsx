@@ -609,16 +609,6 @@ export default function Dashboard() {
                 )
               })}
             </div>
-
-            {/* Color Legend */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs py-2.5 px-3.5 rounded-xl bg-[var(--bg-secondary)]/40 border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-              <span className="font-bold text-[var(--text-muted)] uppercase tracking-wider text-[10px]">Forecast Legend:</span>
-              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: FORECAST_COLORS['Closed'] }} /><span>Closed (Won & signed)</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: FORECAST_COLORS['Commit'] }} /><span>Commit (High confidence)</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: FORECAST_COLORS['Best Case'] }} /><span>Best Case (Likely upside)</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: FORECAST_COLORS['Pipeline'] }} /><span>Pipeline (Early stage)</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /><span>Deleted / Lost (Inactive)</span></div>
-            </div>
           </div>
         )
       })()}
@@ -1331,16 +1321,35 @@ export default function Dashboard() {
 
       {/* ── SECTION: Regional snapshot (always visible side-by-side) ──────── */}
       <section id="overview-regional-snapshot" className="scroll-mt-24 space-y-4">
-        <div>
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">Regional snapshot</h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Approval status and ACV by forecast category across regions for {summary?.data_slice || 'selected period'}
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">Regional snapshot</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Approval status and ACV by forecast category across regions for {summary?.data_slice || 'selected period'}
+            </p>
+          </div>
+          {regional?.total_acv_check_passes != null && (
+            <div
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${
+                regional.total_acv_check_passes
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                  : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
+              }`}
+              title={
+                regional.total_acv_check_passes
+                  ? `Regional trend total matches overview renewal ACV (${acvM(regTotals.total_acv)})`
+                  : `Regional trend total differs from overview renewal ACV — check for unmapped regions`
+              }
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{regional.total_acv_check_passes ? 'Totals match Overview' : 'Totals differ from Overview'}</span>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
           {/* ── Approval Status by Region ───────────────────────────────── */}
-          <div id="overview-proposal-confirmation" className="card p-6 space-y-4 scroll-mt-24">
+          <div id="overview-proposal-confirmation" className="card p-6 flex flex-col justify-between space-y-4 scroll-mt-24 h-full">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-bold text-base text-[var(--text-primary)]">Approval Status by Region</h2>
@@ -1348,7 +1357,7 @@ export default function Dashboard() {
                 </div>
                 <Globe2 className="w-5 h-5 text-[var(--text-muted)]" />
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
                 <table className="w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
@@ -1386,14 +1395,14 @@ export default function Dashboard() {
             </div>
 
             {/* ── Regional ACV by Forecast Category ───────────────────────────────────────── */}
-            <div id="overview-regional-trend" className="card p-6 space-y-4 scroll-mt-24">
+            <div id="overview-regional-trend" className="card p-6 flex flex-col justify-between space-y-4 scroll-mt-24 h-full">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-bold text-base text-[var(--text-primary)]">Regional ACV by Forecast Category</h2>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Closed, Commit and Best Case value per region for the selected period.</p>
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
                 <table className="w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
@@ -1448,18 +1457,6 @@ export default function Dashboard() {
                   </tbody>
                 </table>
               </div>
-              {regional?.total_acv_check_passes != null && (
-                <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg ${
-                  regional.total_acv_check_passes
-                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                    : 'bg-red-500/10 text-red-700 dark:text-red-400'
-                }`}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {regional.total_acv_check_passes
-                    ? `Regional Trend Total matches Overview Total Renewal ${summary?.data_slice || ''} ACV ✓`
-                    : '⚠️ Regional Trend Total does NOT match — check for unmapped regions'}
-                </div>
-              )}
             </div>
         </div>
       </section>
