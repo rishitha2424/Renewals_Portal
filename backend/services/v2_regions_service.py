@@ -605,7 +605,7 @@ class V2RegionsService:
         if delayed_total_count > 0:
             insights.append(f"{delayed_total_count} overdue deal{'s' if delayed_total_count > 1 else ''} totaling ${delayed_total_acv:,.2f} require attention")
         else:
-            d_y = reg_data.get("delta_yesterday", {})
+            d_y = reg_data.get("delta_yesterday") or {}
             d_y_acv = d_y.get("acv", 0.0)
             if d_y_acv != 0:
                 insights.append(f"{'+' if d_y_acv > 0 else ''}${d_y_acv:,.2f} ({'+' if d_y.get('count', 0) > 0 else ''}{d_y.get('count', 0)} deals) vs yesterday")
