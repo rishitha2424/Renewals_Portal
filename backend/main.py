@@ -64,6 +64,23 @@ async def lifespan(app: FastAPI):
             Base.metadata.create_all(bind=engine)
             migrations_status = "fallback to create_all"
 
+    # Defensive self-healing schema check: ensure all model columns exist on existing tables
+    try:
+        from sqlalchemy import inspect, text
+        from backend.database import Base
+        inspector = inspect(engine)
+        for table_name, table in Base.metadata.tables.items():
+            if inspector.has_table(table_name):
+                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+                for col in table.columns:
+                    if col.name not in existing_cols:
+                        col_type = col.type.compile(engine.dialect)
+                        log.info("Auto-migrating missing column %s.%s (%s)", table_name, col.name, col_type)
+                        with engine.begin() as conn:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"))
+    except Exception as exc:
+        log.warning("Self-healing column migration check warning: %s", exc)
+
     # Startup log: on boot, log one line such as Database: postgresql @ localhost:5432/renewals (migrations at head).
     try:
         from urllib.parse import urlparse

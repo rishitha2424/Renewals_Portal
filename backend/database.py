@@ -39,6 +39,19 @@ def get_db():
 
 
 def init_db():
-    """Create all tables (called at startup)."""
+    """Create all tables (called at startup) and ensure model columns exist."""
     from backend.models import opportunity, snapshot, change_log, daily_summary, setting, custom_column  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        for table_name, table in Base.metadata.tables.items():
+            if inspector.has_table(table_name):
+                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+                for col in table.columns:
+                    if col.name not in existing_cols:
+                        col_type = col.type.compile(engine.dialect)
+                        with engine.begin() as conn:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"))
+    except Exception:
+        pass
