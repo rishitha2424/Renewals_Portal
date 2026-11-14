@@ -44,26 +44,34 @@ function acvM(v: number | null | undefined): string {
 }
 
 function DeltaBadge({ val, label }: { val: number | null | undefined; label?: string }) {
-  if (val == null) return null
-  const up = val >= 0
+  if (val == null) return <span className="inline-flex items-center text-xs font-medium text-[var(--text-muted)]">n/a</span>
+  const up = val > 0
+  const down = val < 0
   return (
-    <span className={`inline-flex items-center text-xs font-medium tabular-nums ${
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
       up ? 'text-emerald-600 dark:text-emerald-400'
-         : 'text-rose-600 dark:text-rose-400'
+         : down ? 'text-rose-600 dark:text-rose-400'
+         : 'text-[var(--text-muted)]'
     }`}>
+      {up && <TrendingUp className="w-3 h-3 inline" />}
+      {down && <TrendingDown className="w-3 h-3 inline" />}
       {up ? '+' : ''}{val}{label ? ` ${label}` : ''}
     </span>
   )
 }
 
 function AcvDelta({ val }: { val: number | null | undefined }) {
-  if (val == null) return null
-  const up = val >= 0
+  if (val == null) return <span className="inline-flex items-center text-xs font-medium text-[var(--text-muted)]">n/a</span>
+  const up = (val ?? 0) > 0
+  const down = (val ?? 0) < 0
   return (
-    <span className={`inline-flex items-center text-xs font-medium tabular-nums ${
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
       up ? 'text-emerald-600 dark:text-emerald-400'
-         : 'text-rose-600 dark:text-rose-400'
+         : down ? 'text-rose-600 dark:text-rose-400'
+         : 'text-[var(--text-muted)]'
     }`}>
+      {up && <TrendingUp className="w-3 h-3 inline" />}
+      {down && <TrendingDown className="w-3 h-3 inline" />}
       {up ? '+' : ''}{acvM(val)}
     </span>
   )
@@ -221,7 +229,6 @@ export default function Dashboard() {
   const isError = Boolean(sumErr || movYErr || movLWErr || regErr || summary?.error || movements?.error || regional?.error)
   const errorMessage = (summary?.error || movements?.error || regional?.error) || "Couldn’t load this page. Try again"
 
-  const [showRegionDetails, setShowRegionDetails] = useState(false)
   const [showNeedsAttentionDetails, setShowNeedsAttentionDetails] = useState<Record<string, boolean>>({})
 
   const toggleDetails = (key: string) => {
@@ -230,10 +237,10 @@ export default function Dashboard() {
 
   const overviewSections = useMemo(() => {
     return [
-      { id: 'overview-where-we-stand', title: 'Where we stand' },
-      { id: 'overview-needs-attention', title: 'Needs attention' },
-      { id: 'overview-what-changed', title: 'What changed' },
-      { id: 'overview-more-detail', title: 'More detail by region' },
+      { id: 'overview-portfolio', title: 'Portfolio' },
+      { id: 'overview-focus-areas', title: 'Focus areas' },
+      { id: 'overview-movements', title: 'Movement summary' },
+      { id: 'overview-regional-snapshot', title: 'Regional snapshot' },
     ]
   }, [])
 
@@ -368,32 +375,8 @@ export default function Dashboard() {
         }
       />
 
-      {/* Overview Legend & Guidance */}
-      <div className="flex flex-wrap items-center justify-between text-[11px] text-[var(--text-muted)] bg-[var(--bg-secondary)]/50 px-3.5 py-2 rounded-xl border border-[var(--border)] gap-2">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="font-semibold text-[var(--text-primary)]">Legend:</span>
-          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Green = good for renewals</span>
-          <span>·</span>
-          <span className="text-rose-600 dark:text-rose-400 font-semibold">Red = needs attention</span>
-          <span>·</span>
-          <span className="text-slate-400 dark:text-slate-500 font-medium">Grey = no change / n/a</span>
-        </div>
-        <span className="text-[10px] text-[var(--text-muted)] italic">
-          Deltas are compared against the snapshot chosen in the 'vs' dropdown above
-        </span>
-      </div>
-
-      {/* ── BLOCK 1: Where we stand ─────────────────────────────────────── */}
-      <section id="overview-where-we-stand" className="space-y-4 scroll-mt-24">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-black text-[var(--text-primary)] tracking-tight">
-            Where we stand
-          </h2>
-          <span className="text-xs text-[var(--text-muted)]">
-            Total renewal portfolio and forecast categories
-          </span>
-        </div>
-
+      {/* ── BLOCK 1: Portfolio ─────────────────────────────────────────── */}
+      <section id="overview-portfolio" className="space-y-4 scroll-mt-24">
         {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
         <div id="overview-hero" className="card p-6 scroll-mt-24">
           <div>
@@ -461,7 +444,9 @@ export default function Dashboard() {
                   </span>
                   {delta ? (
                     <span className="text-xs tabular-nums flex items-center gap-1.5">
-                      <span className={acvColor}>
+                      <span className={`inline-flex items-center gap-0.5 ${acvColor}`}>
+                        {acvVal > 0 && <TrendingUp className="w-3 h-3 inline" />}
+                        {acvVal < 0 && <TrendingDown className="w-3 h-3 inline" />}
                         {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
                       </span>
                       <span className="text-[var(--text-muted)]">·</span>
@@ -746,14 +731,14 @@ export default function Dashboard() {
         const j1LWTitle = `Jan 1st Renewals · vs last week (${Math.abs(j1LWDelta?.count || 0)} deals · ${acvM(Math.abs(j1LWDelta?.acv || 0))})`
 
         return (
-          <section id="overview-needs-attention" className="space-y-4 scroll-mt-24">
+          <section id="overview-focus-areas" className="space-y-4 scroll-mt-24">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-black text-[var(--text-primary)] tracking-tight">
-                  Needs attention
+                  Focus areas
                 </h2>
                 <p className="text-xs text-[var(--text-muted)]">
-                  Key operational priorities requiring follow-up
+                  Deals that need follow-up this period
                 </p>
               </div>
             </div>
@@ -761,7 +746,7 @@ export default function Dashboard() {
             {/* 4 equal, compact tiles */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {/* Tile 1: Proposal Pending */}
-              <div className="card p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #6366F1' }}>
+              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #6366F1' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
@@ -769,7 +754,7 @@ export default function Dashboard() {
                     </span>
                     <Pill color="indigo"><FileText className="w-3 h-3" />{`${ppCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2" title="Open renewals with no approval status and no proposal status yet.">
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title="Open renewals with no approval status and no proposal status yet.">
                     Open renewals with no approval status and no proposal status yet.
                   </p>
                   <div
@@ -781,14 +766,24 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
                   {renderSubBox('vs yesterday', ppYDelta, yDateStr, () => openDealsQuery(ppYTitle, { kind: 'proposal_pending', compare: 'yesterday' }), ppYTitle, true)}
                   {renderSubBox('vs last week', ppLWDelta, lwDateStr, () => openDealsQuery(ppLWTitle, { kind: 'proposal_pending', compare: 'last_week' }), ppLWTitle, true)}
                 </div>
+
+                {ppData?.top_deal && (
+                  <div
+                    className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                    onClick={() => ppData.top_deal?.opportunity_id_18 && setSelectedOppId(ppData.top_deal.opportunity_id_18)}
+                    title={`Largest deal: ${ppData.top_deal.opportunity_name} (${formatCurrency(ppData.top_deal.acv)})`}
+                  >
+                    <span className="font-semibold text-[var(--text-secondary)]">Largest:</span> {ppData.top_deal.opportunity_name} · <span className="font-mono font-bold text-[var(--text-primary)]">{acvM(ppData.top_deal.acv)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Tile 2: Delayed Renewals */}
-              <div className="card p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #F43F5E' }}>
+              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #F43F5E' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
@@ -796,7 +791,7 @@ export default function Dashboard() {
                     </span>
                     <Pill color="rose"><AlertCircle className="w-3 h-3" />{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2" title={delSubtitle}>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={delSubtitle}>
                     {delSubtitle}
                   </p>
                   <div
@@ -808,24 +803,37 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                    {renderSubBox('vs yesterday', delYDelta, yDateStr, () => openDealsQuery(delYTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), delYTitle, true)}
-                    {renderSubBox('vs last week', delLWDelta, lwDateStr, () => openDealsQuery(delLWTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), delLWTitle, true)}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDelayedDetails(!showDelayedDetails)}
-                    className="mt-2.5 pt-2 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-between w-full"
-                  >
-                    <span>{showDelayedDetails ? 'Hide details' : 'Show details'}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDelayedDetails ? 'rotate-180' : ''}`} />
-                  </button>
+                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                  {renderSubBox('vs yesterday', delYDelta, yDateStr, () => openDealsQuery(delYTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), delYTitle, true)}
+                  {renderSubBox('vs last week', delLWDelta, lwDateStr, () => openDealsQuery(delLWTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), delLWTitle, true)}
                 </div>
+
+                {(() => {
+                  const delTop = delRenewals?.top_deal || summary?.top_deals?.[0] || summary?.delayed_renewals?.top_deal
+                  if (!delTop) return null
+                  return (
+                    <div
+                      className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                      onClick={() => delTop.opportunity_id_18 && setSelectedOppId(delTop.opportunity_id_18)}
+                      title={`Largest deal: ${delTop.opportunity_name} (${formatCurrency(delTop.acv || delTop.forecast_acv_amount)})`}
+                    >
+                      <span className="font-semibold text-[var(--text-secondary)]">Largest:</span> {delTop.opportunity_name} · <span className="font-mono font-bold text-[var(--text-primary)]">{acvM(delTop.acv || delTop.forecast_acv_amount)}</span>
+                    </div>
+                  )
+                })()}
+
+                <button
+                  type="button"
+                  onClick={() => setShowDelayedDetails(!showDelayedDetails)}
+                  className="pt-1.5 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-between w-full"
+                >
+                  <span>{showDelayedDetails ? 'Hide details' : 'Show details'}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDelayedDetails ? 'rotate-180' : ''}`} />
+                </button>
               </div>
 
               {/* Tile 3: Slippage */}
-              <div className="card p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #F59E0B' }}>
+              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #F59E0B' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
@@ -833,7 +841,7 @@ export default function Dashboard() {
                     </span>
                     <Pill color="amber"><AlertTriangle className="w-3 h-3" />{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2" title={slipSubtitle}>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={slipSubtitle}>
                     {slipSubtitle}
                   </p>
                   <div
@@ -845,24 +853,37 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                    {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, false)}
-                    {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, false)}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSlippageDetails(!showSlippageDetails)}
-                    className="mt-2.5 pt-2 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-between w-full"
-                  >
-                    <span>{showSlippageDetails ? 'Hide details' : 'Show details'}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSlippageDetails ? 'rotate-180' : ''}`} />
-                  </button>
+                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, false)}
+                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, false)}
                 </div>
+
+                {(() => {
+                  const slipTop = summary?.slippage?.top_deal || slippageSec?.top_deal
+                  if (!slipTop) return null
+                  return (
+                    <div
+                      className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                      onClick={() => slipTop.opportunity_id_18 && setSelectedOppId(slipTop.opportunity_id_18)}
+                      title={`Largest deal: ${slipTop.opportunity_name} (${formatCurrency(slipTop.acv || slipTop.forecast_acv_amount)})`}
+                    >
+                      <span className="font-semibold text-[var(--text-secondary)]">Largest:</span> {slipTop.opportunity_name} · <span className="font-mono font-bold text-[var(--text-primary)]">{acvM(slipTop.acv || slipTop.forecast_acv_amount)}</span>
+                    </div>
+                  )
+                })()}
+
+                <button
+                  type="button"
+                  onClick={() => setShowSlippageDetails(!showSlippageDetails)}
+                  className="pt-1.5 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-between w-full"
+                >
+                  <span>{showSlippageDetails ? 'Hide details' : 'Show details'}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSlippageDetails ? 'rotate-180' : ''}`} />
+                </button>
               </div>
 
               {/* Tile 4: Jan 1st Renewals */}
-              <div className="card p-5 flex flex-col justify-between" style={{ borderLeft: '4px solid #0EA5E9' }}>
+              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #0EA5E9' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
@@ -870,7 +891,7 @@ export default function Dashboard() {
                     </span>
                     <Pill color="sky"><Calendar className="w-3 h-3" />{`${j1Cnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-3 line-clamp-2" title="Service starts on the upcoming January 1st.">
+                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title="Service starts on the upcoming January 1st.">
                     Service starts on the upcoming January 1st.
                   </p>
                   <div
@@ -882,10 +903,20 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
                   {renderSubBox('vs yesterday', j1YDelta, yDateStr, () => openDealsQuery(j1YTitle, { kind: 'jan1_renewals', compare: 'yesterday' }), j1YTitle, true)}
                   {renderSubBox('vs last week', j1LWDelta, lwDateStr, () => openDealsQuery(j1LWTitle, { kind: 'jan1_renewals', compare: 'last_week' }), j1LWTitle, true)}
                 </div>
+
+                {j1Data?.top_deal && (
+                  <div
+                    className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                    onClick={() => j1Data.top_deal?.opportunity_id_18 && setSelectedOppId(j1Data.top_deal.opportunity_id_18)}
+                    title={`Largest deal: ${j1Data.top_deal.opportunity_name} (${formatCurrency(j1Data.top_deal.acv)})`}
+                  >
+                    <span className="font-semibold text-[var(--text-secondary)]">Largest:</span> {j1Data.top_deal.opportunity_name} · <span className="font-mono font-bold text-[var(--text-primary)]">{acvM(j1Data.top_deal.acv)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1104,10 +1135,10 @@ export default function Dashboard() {
                     const isSingleDeal = item.category_key === 'biggest_drop'
 
                     let headline = ''
-                    if (item.category_key === 'commit_not_approved') {
-                      headline = `${item.category_count} Commit deals not approved · ${acvM(item.category_acv)}`
-                    } else if (item.category_key === 'overdue') {
-                      headline = `${item.category_count} Overdue deals · ${acvM(item.category_acv)}`
+                    if (item.category_key === 'overdue') {
+                      headline = `${item.category_count} Past close date deals · ${acvM(item.category_acv)}`
+                    } else if (item.category_key === 'commit_not_approved') {
+                      headline = `${item.category_count} Commit deals still to be approved · ${acvM(item.category_acv)}`
                     } else if (item.category_key === 'closing_14d_unapproved') {
                       headline = `${item.category_count} ${item.category_label || 'Deals closing without approval'} · ${acvM(item.category_acv)}`
                     } else if (item.category_key === 'biggest_drop') {
@@ -1172,12 +1203,12 @@ export default function Dashboard() {
         )
       })()}
 
-      {/* ── BLOCK 3: What changed ─────────────────────────────────────────── */}
-      <section id="overview-what-changed" className="space-y-4 scroll-mt-24">
+      {/* ── BLOCK 3: Movement summary ─────────────────────────────────────────── */}
+      <section id="overview-movements" className="space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-black text-[var(--text-primary)] tracking-tight">
-              What changed
+              Movement summary
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
               Deal movements, category changes, and lost deals
@@ -1282,7 +1313,7 @@ export default function Dashboard() {
         })()}
 
         {/* Movements & changes */}
-        <div id="overview-movements" className="card p-6 scroll-mt-24">
+        <div className="card p-6 scroll-mt-24">
           <MovementsSummary
             movements={movements}
             compareMode={movCompare}
@@ -1292,36 +1323,18 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* ── COLLAPSED SECTION: More detail by region ────────────────────────── */}
-      <section id="overview-more-detail" className="scroll-mt-24 space-y-4">
-        <button
-          type="button"
-          onClick={() => setShowRegionDetails(!showRegionDetails)}
-          className="w-full flex items-center justify-between p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] hover:bg-[var(--bg-secondary)]/60 transition-colors cursor-pointer group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[var(--brand-teal)]/10 text-[var(--brand-teal)] flex items-center justify-center">
-              <Globe2 className="w-4 h-4" />
-            </div>
-            <div className="text-left">
-              <h2 className="font-bold text-sm text-[var(--text-primary)] group-hover:text-[var(--brand-teal)] transition-colors">
-                More detail by region
-              </h2>
-              <p className="text-xs text-[var(--text-muted)]">
-                Approval Status by Region and Regional ACV by Forecast Category
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-[var(--brand-teal)]">
-            <span>{showRegionDetails ? 'Hide regional tables' : 'Show regional tables'}</span>
-            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showRegionDetails ? 'rotate-180' : ''}`} />
-          </div>
-        </button>
+      {/* ── SECTION: Regional snapshot (always visible side-by-side) ──────── */}
+      <section id="overview-regional-snapshot" className="scroll-mt-24 space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-[var(--text-primary)]">Regional snapshot</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+            Approval status and ACV by forecast category across regions for {summary?.data_slice || 'selected period'}
+          </p>
+        </div>
 
-        {showRegionDetails && (
-          <div className="space-y-6 pt-2">
-            {/* ── Approval Status by Region ───────────────────────────────── */}
-            <div id="overview-proposal-confirmation" className="card p-6 space-y-4 scroll-mt-24">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          {/* ── Approval Status by Region ───────────────────────────────── */}
+          <div id="overview-proposal-confirmation" className="card p-6 space-y-4 scroll-mt-24">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-bold text-base text-[var(--text-primary)]">Approval Status by Region</h2>
@@ -1442,8 +1455,7 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-          </div>
-        )}
+        </div>
       </section>
 
       {/* Deal modal */}

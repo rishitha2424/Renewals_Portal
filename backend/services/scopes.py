@@ -228,6 +228,13 @@ class ScopeService:
         end_date = start_date + relativedelta(months=3, days=-1)
         return start_date, end_date
 
+    @classmethod
+    def is_exclude_reconciliation_enabled(cls, db: Optional[Session] = None) -> bool:
+        from backend.services.settings_service import SettingsService
+        return SettingsService.get_exclude_reconciliation_entry(db)
+
+    _is_exclude_reconciliation_enabled = is_exclude_reconciliation_enabled
+
     @staticmethod
     def is_renewals(db: Optional[Session] = None) -> ColumnElement[bool]:
         """Scope: renewals = sales_type == 'Renewals' and not is_reconciliation_entry"""

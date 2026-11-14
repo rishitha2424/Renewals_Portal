@@ -886,40 +886,14 @@ class V2OverviewService:
                 seen_categories.add(item_dict["category_key"])
                 items.append(item_dict)
 
-        # 1. Commit deals not approved
-        commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
-        if not commit_unappr.empty:
-            commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
-            c_cnt = len(commit_unappr)
-            c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
-            top_c = commit_unappr.iloc[0]
-            raw_app = str(top_c.get("approval_status", "")).strip()
-            norm_app = "Not submitted" if raw_app in ("Blank", "Not submitted", "", "None") else raw_app
-            category_summaries["commit_not_approved"] = {
-                "count": c_cnt,
-                "acv": c_tot_acv,
-                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
-            }
-            _add_item({
-                "category_key": "commit_not_approved",
-                "category_label": "Commit not approved",
-                "opportunity_id_18": str(top_c["opportunity_id_18"]),
-                "opportunity_name": str(top_c["opportunity_name"]),
-                "account_name": str(top_c["account_name"]),
-                "acv": round(float(top_c["forecast_acv_amount"]), 2),
-                "category_count": c_cnt,
-                "category_acv": c_tot_acv,
-                "badge": f"Commit · {norm_app}",
-                "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
-                "kind": "commit_not_approved",
-                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
-            })
-
-        # 2. Largest overdue deals across all renewals in snapshot
-        all_opps_q = self.db.query(Opportunity).filter(
+        # 1. Past close date deals (overdue renewals across snapshot)
+        all_opps_q_stmt = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
             Opportunity.sales_type == "Renewals",
-        ).all()
+        )
+        if ScopeService._is_exclude_reconciliation_enabled(self.db):
+            all_opps_q_stmt = all_opps_q_stmt.filter(Opportunity.is_reconciliation_entry == False)
+        all_opps_q = all_opps_q_stmt.all()
         all_df = _opps_to_df(all_opps_q)
         overdue_df = pd.DataFrame()
         if not all_df.empty and "close_date" in all_df.columns:
@@ -940,7 +914,7 @@ class V2OverviewService:
             }
             _add_item({
                 "category_key": "overdue",
-                "category_label": "Overdue deal",
+                "category_label": "Past close date deals",
                 "opportunity_id_18": str(top_od["opportunity_id_18"]),
                 "opportunity_name": str(top_od["opportunity_name"]),
                 "account_name": str(top_od["account_name"]),
@@ -951,6 +925,35 @@ class V2OverviewService:
                 "detail": f"{od_cnt} overdue deals totaling ${od_tot_acv:,.2f}",
                 "kind": "overdue",
                 "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+            })
+
+        # 2. Commit deals still to be approved
+        commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
+        if not commit_unappr.empty:
+            commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
+            c_cnt = len(commit_unappr)
+            c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
+            top_c = commit_unappr.iloc[0]
+            raw_app = str(top_c.get("approval_status", "")).strip()
+            norm_app = "Not submitted" if raw_app in ("Blank", "Not submitted", "", "None") else raw_app
+            category_summaries["commit_not_approved"] = {
+                "count": c_cnt,
+                "acv": c_tot_acv,
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
+            }
+            _add_item({
+                "category_key": "commit_not_approved",
+                "category_label": "Commit deals still to be approved",
+                "opportunity_id_18": str(top_c["opportunity_id_18"]),
+                "opportunity_name": str(top_c["opportunity_name"]),
+                "account_name": str(top_c["account_name"]),
+                "acv": round(float(top_c["forecast_acv_amount"]), 2),
+                "category_count": c_cnt,
+                "category_acv": c_tot_acv,
+                "badge": f"Commit · {norm_app}",
+                "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
+                "kind": "commit_not_approved",
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             })
 
         # 3. Biggest drop vs yesterday
@@ -1076,9 +1079,16 @@ class V2OverviewService:
         if lw_snap:
             lw_pp, lw_j1 = self._compute_overview_custom_tiles(lw_snap, eff_as_of_date, target_fp, eff_types)
 
+        top_pp = curr_pp["deals"][0] if curr_pp.get("deals") else None
         proposal_pending = {
             "count": curr_pp["count"],
             "acv": curr_pp["acv"],
+            "top_deal": {
+                "opportunity_id_18": str(top_pp.opportunity_id_18),
+                "opportunity_name": str(top_pp.opportunity_name or ""),
+                "account_name": str(top_pp.account_name or ""),
+                "acv": float(top_pp.forecast_acv_amount or 0.0),
+            } if top_pp else None,
             "delta_yesterday": {
                 "count": curr_pp["count"] - yest_pp["count"],
                 "acv": round(curr_pp["acv"] - yest_pp["acv"], 2),
@@ -1090,10 +1100,17 @@ class V2OverviewService:
             "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_pp["deals"]],
         }
 
+        top_j1 = curr_j1["deals"][0] if curr_j1.get("deals") else None
         jan1_renewals = {
             "count": curr_j1["count"],
             "acv": curr_j1["acv"],
             "target_date": curr_j1["target_date"],
+            "top_deal": {
+                "opportunity_id_18": str(top_j1.opportunity_id_18),
+                "opportunity_name": str(top_j1.opportunity_name or ""),
+                "account_name": str(top_j1.account_name or ""),
+                "acv": float(top_j1.forecast_acv_amount or 0.0),
+            } if top_j1 else None,
             "delta_yesterday": {
                 "count": curr_j1["count"] - yest_j1["count"],
                 "acv": round(curr_j1["acv"] - yest_j1["acv"], 2),
@@ -1104,6 +1121,20 @@ class V2OverviewService:
             } if lw_j1 else None,
             "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_j1["deals"]],
         }
+
+        del_top_deal = del_sum.get("top_deals", [None])[0] if del_sum.get("top_deals") else None
+        del_renewals_obj = del_sum.get("delayed_renewals")
+        if isinstance(del_renewals_obj, dict) and del_top_deal:
+            del_renewals_obj["top_deal"] = {
+                "opportunity_id_18": str(del_top_deal["opportunity_id_18"]),
+                "opportunity_name": str(del_top_deal.get("opportunity_name", "")),
+                "account_name": str(del_top_deal.get("account_name", "")),
+                "acv": float(del_top_deal.get("forecast_acv_amount") or del_top_deal.get("acv") or 0.0),
+            }
+
+        slip_sec = del_sum.get("slippage") or {}
+        if isinstance(slip_sec, dict) and slip_sec.get("top_deal"):
+            slippage_data["top_deal"] = slip_sec["top_deal"]
 
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
@@ -1217,6 +1248,8 @@ class V2OverviewService:
             Opportunity.snapshot_id == snap.id,
             ScopeService.is_renewals()
         )
+        if ScopeService._is_exclude_reconciliation_enabled(self.db):
+            q = q.filter(Opportunity.is_reconciliation_entry == False)
         if not fs.include_deleted_lost:
             q = q.filter(Opportunity.is_deleted_or_lost == False)
         today_all_df = _opps_to_df(q.all())
@@ -1584,10 +1617,13 @@ class V2OverviewService:
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
         elif kind == "overdue":
-            all_opps_q = self.db.query(Opportunity).filter(
+            all_opps_q_stmt = self.db.query(Opportunity).filter(
                 Opportunity.snapshot_id == snap.id,
                 Opportunity.sales_type == "Renewals",
-            ).all()
+            )
+            if ScopeService._is_exclude_reconciliation_enabled(self.db):
+                all_opps_q_stmt = all_opps_q_stmt.filter(Opportunity.is_reconciliation_entry == False)
+            all_opps_q = all_opps_q_stmt.all()
             df_all_ren = _opps_to_df(all_opps_q)
             cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce")
             snap_ts = pd.Timestamp(snap.snapshot_date)
