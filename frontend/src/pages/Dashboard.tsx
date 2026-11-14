@@ -29,6 +29,7 @@ import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import SlippageBreakdown from '@/components/delayed/SlippageBreakdown'
 import DelayedBreakdown from '@/components/delayed/DelayedBreakdown'
+import SectionHeading from '@/components/common/SectionHeading'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -619,12 +620,11 @@ export default function Dashboard() {
         )
 
         return (
-          <div id="overview-forecast-category" className="scroll-mt-24 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
-                Forecast category
-              </h2>
-            </div>
+          <div id="overview-forecast-category" className="scroll-mt-24 space-y-4">
+            <SectionHeading
+              title="Forecast category"
+              subtitle="Closed, Commit, Best Case and Pipeline value for the selected period."
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {categoryKeys.map((catKey) => {
                 const cat = cats[catKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
@@ -797,16 +797,10 @@ export default function Dashboard() {
 
         return (
           <section id="overview-focus-areas" className="space-y-4 scroll-mt-24">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-[var(--text-primary)] tracking-tight">
-                  Focus areas
-                </h2>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Deals that need follow-up this period
-                </p>
-              </div>
-            </div>
+            <SectionHeading
+              title="Focus areas"
+              subtitle="Deals that need follow-up this period"
+            />
 
             {/* 4 equal, compact tiles */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -1100,16 +1094,10 @@ export default function Dashboard() {
 
       {/* ── BLOCK 3: Movement summary ─────────────────────────────────────────── */}
       <section id="overview-movements" className="space-y-4 scroll-mt-24">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-black text-[var(--text-primary)] tracking-tight">
-              Movement summary
-            </h2>
-            <p className="text-xs text-[var(--text-muted)]">
-              Deal movements, category changes, and lost deals
-            </p>
-          </div>
-        </div>
+        <SectionHeading
+          title="Movement summary"
+          subtitle="Deal movements, category changes, and lost deals"
+        />
 
         {/* Lost / Removed compact tile */}
         {(() => {
@@ -1220,31 +1208,29 @@ export default function Dashboard() {
 
       {/* ── SECTION: Regional snapshot (always visible side-by-side) ──────── */}
       <section id="overview-regional-snapshot" className="scroll-mt-24 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">Regional snapshot</h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Approval status and ACV by forecast category across regions for {summary?.data_slice || 'selected period'}
-            </p>
-          </div>
-          {regional?.total_acv_check_passes != null && (
-            <div
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${
-                regional.total_acv_check_passes
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
-              }`}
-              title={
-                regional.total_acv_check_passes
-                  ? `Regional trend total matches overview renewal ACV (${acvM(regTotals.total_acv)})`
-                  : `Regional trend total differs from overview renewal ACV — check for unmapped regions`
-              }
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{regional.total_acv_check_passes ? 'Totals match Overview' : 'Totals differ from Overview'}</span>
-            </div>
-          )}
-        </div>
+        <SectionHeading
+          title="Regional snapshot"
+          subtitle={`Approval status and ACV by forecast category across regions for ${summary?.data_slice || 'selected period'}`}
+          action={
+            regional?.total_acv_check_passes != null && (
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${
+                  regional.total_acv_check_passes
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
+                }`}
+                title={
+                  regional.total_acv_check_passes
+                    ? `Regional trend total matches overview renewal ACV (${acvM(regTotals.total_acv)})`
+                    : `Regional trend total differs from overview renewal ACV — check for unmapped regions`
+                }
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{regional.total_acv_check_passes ? 'Totals match Overview' : 'Totals differ from Overview'}</span>
+              </div>
+            )
+          }
+        />
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
           {/* ── Approval Status by Region ───────────────────────────────── */}
