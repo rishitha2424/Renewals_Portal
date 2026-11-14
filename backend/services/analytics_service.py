@@ -128,7 +128,11 @@ class AnalyticsService:
         types: Optional[list[str]] = None,
     ) -> list[Opportunity]:
         from sqlalchemy import or_
+        from backend.services.settings_service import SettingsService
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id)
+
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            q = q.filter(Opportunity.is_reconciliation_entry == False)
 
         # Exclude Deleted & Lost unless explicitly requested
         if not include_deleted_lost:

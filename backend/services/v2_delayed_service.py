@@ -178,14 +178,20 @@ class V2DelayedService:
     def __init__(self, db: Session):
         self.db = db
 
-    def _active_snap(self, as_of: str | None = None) -> UploadSnapshot | None:
+    def _active_snap(self, as_of: str | date | None = None) -> UploadSnapshot | None:
         q = self.db.query(UploadSnapshot)
         if as_of:
-            by_id = q.filter(UploadSnapshot.id == as_of).first()
+            if isinstance(as_of, date):
+                d = as_of
+                exact = q.filter(UploadSnapshot.snapshot_date == d).first()
+                if exact:
+                    return exact
+                return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            by_id = q.filter(UploadSnapshot.id == str(as_of)).first()
             if by_id:
                 return by_id
             try:
-                d = date.fromisoformat(as_of)
+                d = date.fromisoformat(str(as_of))
                 exact = q.filter(UploadSnapshot.snapshot_date == d).first()
                 if exact:
                     return exact
@@ -255,7 +261,11 @@ class V2DelayedService:
         return None, False, "n/a"
 
     def _get_opps(self, snap: UploadSnapshot) -> list[Opportunity]:
-        return self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        from backend.services.settings_service import SettingsService
+        q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            q = q.filter(Opportunity.is_reconciliation_entry == False)
+        return q.all()
 
     def _parse_period_info(self, target_p_str: str, snap_d: date) -> tuple[bool, Optional[int], tuple[int, int], date, date, str, str]:
         snap_cq = ScopeService.quarter_of(snap_d)

@@ -124,3 +124,26 @@ def format_count(val: int | None) -> str:
     if val is None:
         return "—"
     return f"{val:,}"
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation Entry helpers
+# ---------------------------------------------------------------------------
+
+def is_reconciliation_header(header: str | None) -> bool:
+    """Check if header matches Reconciliation Entry (ignoring case, spaces, underscores, hyphens)."""
+    if not header:
+        return False
+    cleaned = re.sub(r"[\s_\-]+", "", str(header).replace("\u00a0", " ").strip().lower())
+    return cleaned in ("reconciliationentry", "reconentry")
+
+
+def is_reconciliation_entry_val(val: Any) -> bool:
+    """Return True if value represents 'Yes' (yes, y, true, 1, x, boolean True)."""
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val is True
+    s = str(val).strip().lower()
+    return s in ("yes", "y", "true", "1", "x")
+

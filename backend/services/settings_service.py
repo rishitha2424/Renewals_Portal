@@ -45,6 +45,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": json.dumps(["delayed", "slippage"]),
         "description": "Keywords used to detect extra manual sheets in workbooks for admin reconciliation.",
     },
+    "exclude_reconciliation_entry": {
+        "value": "true",
+        "description": "Exclude deals where Reconciliation Entry = Yes across the application.",
+    },
 }
 
 
@@ -153,6 +157,23 @@ class SettingsService:
             return SettingsService.get_setting(db, "timezone", "").strip()
         except Exception:
             return ""
+
+    @staticmethod
+    def get_exclude_reconciliation_entry(db: Optional[Session] = None) -> bool:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_exclude_reconciliation_entry(session)
+                session.close()
+                return res
+            except Exception:
+                return True
+        try:
+            val = SettingsService.get_setting(db, "exclude_reconciliation_entry", "true")
+            return str(val).strip().lower() in ("true", "1", "yes")
+        except Exception:
+            return True
 
     @staticmethod
     def get_all_settings(

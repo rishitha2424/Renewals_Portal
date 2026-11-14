@@ -412,6 +412,11 @@ class ExplorerService:
             if not filter_spec.include_deleted_lost:
                 conditions.append(Opportunity.is_deleted_or_lost == False)
 
+            # Exclude Reconciliation Entry = Yes
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                conditions.append(Opportunity.is_reconciliation_entry == False)
+
             # Deal Types
             effective_types: Optional[List[str]] = None
             if filter_spec.types is not None:
@@ -820,10 +825,16 @@ class ExplorerService:
         Also calculates current filter reconciliation if filters are provided.
         """
         # 1. Whole snapshot reconciliation
-        total_count = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).count()
+        from backend.services.settings_service import SettingsService
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(self.db)
+        base_filter = [Opportunity.snapshot_id == snap.id]
+        if exclude_recon:
+            base_filter.append(Opportunity.is_reconciliation_entry == False)
+
+        total_count = self.db.query(Opportunity).filter(*base_filter).count()
         total_acv = float(
             self.db.query(func.coalesce(func.sum(Opportunity.forecast_acv_amount), 0.0))
-            .filter(Opportunity.snapshot_id == snap.id)
+            .filter(*base_filter)
             .scalar()
             or 0.0
         )
@@ -834,7 +845,7 @@ class ExplorerService:
                 func.count(Opportunity.id),
                 func.coalesce(func.sum(Opportunity.forecast_acv_amount), 0.0),
             )
-            .filter(Opportunity.snapshot_id == snap.id)
+            .filter(*base_filter)
             .group_by(Opportunity.forecast_category)
             .all()
         )

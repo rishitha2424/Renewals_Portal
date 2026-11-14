@@ -100,6 +100,10 @@ class FullExcelExportService:
         if opp_ids is not None:
             clean_ids = [str(i).strip() for i in opp_ids if str(i).strip()]
             q = q.filter(Opportunity.opportunity_id_18.in_(clean_ids))
+        else:
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                q = q.filter(Opportunity.is_reconciliation_entry == False)
 
         opps = q.all()
 

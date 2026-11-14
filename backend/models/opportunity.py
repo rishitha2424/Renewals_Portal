@@ -62,6 +62,7 @@ class Opportunity(Base):
     # Stage & Active / Deleted / Lost
     stage_number: Mapped[str | None] = mapped_column(String(64))
     is_deleted_or_lost: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_reconciliation_entry: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
 
     # Rollover / scoping fields
     sales_type: Mapped[str | None] = mapped_column(String(128))

@@ -42,6 +42,8 @@ from backend.utils.normalise import (
     normalise_forecast_category,
     primary_business_unit,
     to_decimal,
+    is_reconciliation_header,
+    is_reconciliation_entry_val,
 )
 
 log = logging.getLogger(__name__)
@@ -425,7 +427,24 @@ class IngestService:
         
         stage_col = next((c for c in today_mapped.columns if c in ("stage_number", "stage")), None)
 
+        # Check for Reconciliation Entry column (Item 1f)
+        recon_col = next((c for c in today_raw.columns if is_reconciliation_header(c)), None) if today_raw is not None else None
+        excluded_recon_count = 0
+        if recon_col is not None:
+            recon_series = today_raw[recon_col]
+            excluded_recon_count = sum(1 for v in recon_series if is_reconciliation_entry_val(v))
+            recon_note = f"{excluded_recon_count} deals with Reconciliation Entry = Yes were excluded"
+        else:
+            recon_note = "No Reconciliation Entry column found"
+
         def _metrics_for(df_sub):
+            if "is_reconciliation_entry" in df_sub.columns:
+                recon_mask = df_sub["is_reconciliation_entry"].apply(is_reconciliation_entry_val)
+                df_sub = df_sub[~recon_mask]
+            elif recon_col and recon_col in df_sub.columns:
+                recon_mask = df_sub[recon_col].apply(is_reconciliation_entry_val)
+                df_sub = df_sub[~recon_mask]
+
             raw_cnt = len(df_sub)
             raw_acv = float(df_sub["forecast_acv_amount"].astype(float).sum()) if "forecast_acv_amount" in df_sub.columns else 0.0
             if stage_col:
@@ -567,6 +586,8 @@ class IngestService:
             "can_commit": can_commit,
             "fcr_changes_count": fcr_count,
             "schema_drift_warnings": schema_drift_warnings,
+            "reconciliation_entry_note": recon_note,
+            "excluded_recon_count": excluded_recon_count,
             "source_checks": {
                 "badge": checks_badge,
                 "total_checks": len(preview_checks),
@@ -697,7 +718,7 @@ class IngestService:
             if raw_dict is not None and isinstance(raw_dict, dict):
                 raw_dict["_row_order"] = i
             opp = self._row_to_opportunity(snap.id, row, scope_flags=flags, raw_row_dict=raw_dict)
-            if not opp.is_deleted_or_lost:
+            if not opp.is_deleted_or_lost and not opp.is_reconciliation_entry:
                 active_count += 1
             opp_objects.append(opp)
 
@@ -862,7 +883,7 @@ class IngestService:
         for i, (_, row) in enumerate(mapped.iterrows()):
             raw_d = raw_dicts[i] if i < len(raw_dicts) else None
             o = self._row_to_opportunity(snap.id, row, scope_flags=flag_fn(row), raw_row_dict=raw_d)
-            if not o.is_deleted_or_lost:
+            if not o.is_deleted_or_lost and not o.is_reconciliation_entry:
                 active += 1
             objs.append(o)
         self.db.bulk_save_objects(objs)
@@ -882,6 +903,15 @@ class IngestService:
         raw_stage = _safe_str(row.get("stage_number")) or _safe_str(row.get("stage"))
         flags = scope_flags or {}
         is_del_lost = (raw_stage or "").lower() in ("deleted", "lost")
+
+        raw_recon = row.get("is_reconciliation_entry")
+        if raw_recon is None and raw_row_dict:
+            for k, v in raw_row_dict.items():
+                if is_reconciliation_header(k):
+                    raw_recon = v
+                    break
+        is_recon = is_reconciliation_entry_val(raw_recon)
+
         return Opportunity(
             snapshot_id=snapshot_id,
             opportunity_id_18=_safe_str(row.get("opportunity_id_18")),
@@ -905,6 +935,7 @@ class IngestService:
             opportunity_owner=_safe_str(row.get("opportunity_owner")),
             stage_number=raw_stage,
             is_deleted_or_lost=is_del_lost,
+            is_reconciliation_entry=is_recon,
             sales_type=_safe_str(row.get("sales_type")),
             fiscal_period=_safe_str(row.get("fiscal_period")),
             in_renewals=flags.get("in_renewals") if flags else True,
@@ -913,7 +944,14 @@ class IngestService:
 
     def _build_daily_summaries_multi_scope(self, snapshot: UploadSnapshot) -> None:
         self.db.query(DailySummary).filter(DailySummary.snapshot_id == snapshot.id).delete()
-        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id).all()
+        opps = (
+            self.db.query(Opportunity)
+            .filter(
+                Opportunity.snapshot_id == snapshot.id,
+                Opportunity.is_reconciliation_entry == False,
+            )
+            .all()
+        )
         if not opps:
             return
         snap_date = snapshot.snapshot_date
@@ -962,6 +1000,8 @@ class IngestService:
 
         y_dict: dict[str, dict] = {}
         for _, r in yesterday_mapped.iterrows():
+            if is_reconciliation_entry_val(r.get("is_reconciliation_entry")):
+                continue
             opp_id = _safe_str(r.get(id_col))
             if opp_id:
                 stage = _safe_str(r.get("stage_number")) or _safe_str(r.get("stage"))
@@ -974,7 +1014,14 @@ class IngestService:
                     "approval_status": normalise_approval_status(_safe_str(r.get("approval_status"))),
                 }
 
-        today_opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id).all()
+        today_opps = (
+            self.db.query(Opportunity)
+            .filter(
+                Opportunity.snapshot_id == snapshot.id,
+                Opportunity.is_reconciliation_entry == False,
+            )
+            .all()
+        )
         t_dict = {o.opportunity_id_18: o for o in today_opps if o.opportunity_id_18}
 
         yesterday_snap = (

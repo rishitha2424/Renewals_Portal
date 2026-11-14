@@ -80,12 +80,14 @@ def get_filter_options(
 
     cq = ScopeService.quarter_of(snap.snapshot_date)
 
+    from backend.services.settings_service import SettingsService
+    exclude_recon = SettingsService.get_exclude_reconciliation_entry(db)
+
     # Query all opportunities in active snapshot
-    opps = (
-        db.query(Opportunity)
-        .filter(Opportunity.snapshot_id == snap.id)
-        .all()
-    )
+    opps_q = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+    if exclude_recon:
+        opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+    opps = opps_q.all()
 
     total_deals = len(opps)
 

@@ -42,6 +42,12 @@ RENEWALS_COLUMN_MAP: dict[str, str] = {
     "sales type":               "sales_type",
     "stage number":             "stage_number",
     "stage":                    "stage_number",
+    "reconciliation entry":     "is_reconciliation_entry",
+    "reconciliation_entry":     "is_reconciliation_entry",
+    "recon entry":              "is_reconciliation_entry",
+    "recon_entry":              "is_reconciliation_entry",
+    "reconciliationentry":      "is_reconciliation_entry",
+    "reconentry":               "is_reconciliation_entry",
 }
 
 RAW_DATA_SHEETS = ["Today_Data", "Yesterday_Data", "Lastweek_Data"]
@@ -156,6 +162,10 @@ def _map_columns(df: pd.DataFrame) -> pd.DataFrame:
         normed = _normalise_col(col)
         if normed in RENEWALS_COLUMN_MAP:
             rename[col] = RENEWALS_COLUMN_MAP[normed]
+        else:
+            cleaned = re.sub(r"[\s_\-]+", "", str(col).replace("\u00a0", " ").strip().lower())
+            if cleaned in ("reconciliationentry", "reconentry"):
+                rename[col] = "is_reconciliation_entry"
     return df.rename(columns=rename)
 
 

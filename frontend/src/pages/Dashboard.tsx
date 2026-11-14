@@ -307,7 +307,7 @@ export default function Dashboard() {
                 }`}
                 title={
                   summary.source_checks.failed > 0
-                    ? `Mismatches: ${summary.source_checks.failed_items?.join(', ') || `${summary.source_checks.failed} failed`}`
+                    ? `${summary.source_checks.failed} differences vs Excel summary: Excel summary counted raw rows including removed and reconciliation deals.`
                     : `${summary.source_checks.passed}/${summary.source_checks.total} control checks matched Excel summary sheets`
                 }
               >
@@ -315,7 +315,7 @@ export default function Dashboard() {
                 Source check:{' '}
                 {summary.source_checks.badge === 'green'
                   ? `yes (${summary.source_checks.passed} checks)`
-                  : `${summary.source_checks.failed} mismatches${summary.source_checks.failed_items?.length ? `: ${summary.source_checks.failed_items.slice(0, 2).join(', ')}` : ''}`}
+                  : `${summary.source_checks.failed} differences vs Excel summary`}
               </span>
             )}
           </div>

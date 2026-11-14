@@ -1026,6 +1026,13 @@ export default function DataUploads() {
                     </span>
                   </div>
                 </div>
+
+                {previewData.reconciliation_entry_note && (
+                  <div className="mt-2 text-xs text-[var(--text-muted)] flex items-center gap-1.5 px-3 py-1.5 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                    <span>{previewData.reconciliation_entry_note}</span>
+                  </div>
+                )}
               </div>
 
               {/* Replace Existing Warning */}

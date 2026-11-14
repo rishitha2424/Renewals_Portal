@@ -498,7 +498,11 @@ class V2OverviewService:
 
         is_all_types = effective_types is None or any(t.lower() == "all" for t in effective_types)
 
-        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        from backend.services.settings_service import SettingsService
+        opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+        opps = opps_q.all()
         prop_pending_opps = []
         jan1_opps = []
 

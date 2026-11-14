@@ -229,8 +229,14 @@ class ScopeService:
         return start_date, end_date
 
     @staticmethod
-    def is_renewals() -> ColumnElement[bool]:
-        """Scope: renewals = sales_type == 'Renewals'"""
+    def is_renewals(db: Optional[Session] = None) -> ColumnElement[bool]:
+        """Scope: renewals = sales_type == 'Renewals' and not is_reconciliation_entry"""
+        from backend.services.settings_service import SettingsService
+        if SettingsService.get_exclude_reconciliation_entry(db):
+            return and_(
+                Opportunity.sales_type == "Renewals",
+                Opportunity.is_reconciliation_entry == False,
+            )
         return Opportunity.sales_type == "Renewals"
 
     @staticmethod
@@ -510,6 +516,11 @@ class ScopeService:
         # 7. Include Deleted & Lost
         if not filter_spec.include_deleted_lost:
             conditions.append(Opportunity.is_deleted_or_lost == False)
+
+        # Exclude Reconciliation Entry = Yes
+        from backend.services.settings_service import SettingsService
+        if SettingsService.get_exclude_reconciliation_entry(db):
+            conditions.append(Opportunity.is_reconciliation_entry == False)
 
         base_conditions = list(conditions)
 

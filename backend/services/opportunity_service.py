@@ -54,21 +54,24 @@ class OpportunityService:
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
 
         if filter_spec:
-            res = ScopeService.resolve(filter_spec, snapshot=snap, as_of_date=snap.snapshot_date)
+            res = ScopeService.resolve(filter_spec, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
             q = q.filter(*res.conditions)
         else:
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                q = q.filter(Opportunity.is_reconciliation_entry == False)
             if not include_deleted_lost:
                 q = q.filter(Opportunity.is_deleted_or_lost == False)
 
             s = (scope or "renewals").lower()
             if s == "renewals":
-                q = q.filter(ScopeService.is_renewals())
+                q = q.filter(ScopeService.is_renewals(self.db))
             elif s == "all":
                 pass
             else:
                 # Fallback to resolve as period
                 fs = ScopeService.FilterSpec(period=s)
-                res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date)
+                res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
                 q = q.filter(*res.conditions)
 
         if forecast_category:
@@ -357,7 +360,11 @@ class OpportunityService:
         if snap is None:
             return {}
 
-        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        from backend.services.settings_service import SettingsService
+        opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            opps_q = opps_q.filter(Opportunity.is_reconciliation_entry == False)
+        opps = opps_q.all()
         acv_vals = [float(o.forecast_acv_amount) for o in opps if o.forecast_acv_amount]
         return {
             "forecast_categories": sorted({normalize_forecast_category(o.forecast_category) for o in opps if o.forecast_category}),
