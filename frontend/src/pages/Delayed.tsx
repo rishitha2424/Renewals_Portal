@@ -31,6 +31,8 @@ import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
+import { useRuleDeals } from '@/hooks/useRuleDeals'
+import SlippageBreakdown from '@/components/delayed/SlippageBreakdown'
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 type MetricMode = 'Amount' | 'Count' | 'Both'
@@ -42,9 +44,7 @@ function DelayedContent() {
 
   const [compare, setCompare] = useState<'yesterday' | 'last_week'>('yesterday')
   const [heatMode, setHeatMode] = useState<'Value' | 'Yesterday' | 'LastWeek'>('Value')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [modalTitle, setModalTitle] = useState('')
-  const [modalFilters, setModalFilters] = useState<any>({})
+  const { modalState, openRuleDeals, closeRuleDeals } = useRuleDeals()
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
   const { compare: _ignored, ...filters } = globalFilters
@@ -57,18 +57,6 @@ function DelayedContent() {
       })
       return res.data
     },
-  })
-
-
-  const { data: dealsData } = useQuery({
-    queryKey: ['v2-delayed-deals', activeSnapshotId, compare, filters, modalFilters],
-    queryFn: async () => {
-      const res = await api.get('/v2/delayed/deals', {
-        params: { ...filters, ...modalFilters, as_of: activeSnapshotId ?? undefined, compare: modalFilters?.compare || compare },
-      })
-      return res.data
-    },
-    enabled: modalOpen,
   })
 
   const delayedSections = React.useMemo(() => {
@@ -122,9 +110,7 @@ function DelayedContent() {
   }
 
   const handleDrill = (title: string, filters: any = {}) => {
-    setModalTitle(title)
-    setModalFilters({ ...filters, compare, as_of: activeSnapshotId ?? undefined })
-    setModalOpen(true)
+    openRuleDeals(title, filters)
   }
 
   const yDateStr = summary.yesterday_date ? format(parseISO(summary.yesterday_date), 'dd MMM') : 'Yday'
@@ -789,87 +775,12 @@ function DelayedContent() {
           )
         })()}
 
-        {/* Forecast Category Split */}
-        {summary.slippage?.categories && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {['Commit', 'Best Case', 'Pipeline', 'Blank'].map((cat) => {
-              const cData = summary.slippage.categories[cat] || { count: 0, acv: 0 }
-              const label = cat === 'Blank' ? 'Not yet proposed' : cat
-              const hasC = (cData.count || 0) > 0 || (cData.acv || 0) > 0
-              return (
-                <div
-                  key={cat}
-                  onClick={() => hasC && handleDrill(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
-                  className={cn(
-                    'p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] transition-colors',
-                    hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'
-                  )}
-                >
-                  <div className="text-xs font-semibold text-[var(--text-secondary)]">{label}</div>
-                  <div className="text-xl font-bold text-[var(--text-primary)] tabular-nums mt-1">
-                    {formatACV(cData.acv || 0)}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)] tabular-nums mt-0.5">
-                    {cData.count || 0} {(cData.count || 0) === 1 ? 'deal' : 'deals'}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Slipped From Table */}
-        {summary.slippage?.slipped_from && summary.slippage.slipped_from.length > 0 && (
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden shadow-[var(--card-shadow)]">
-            <div className="px-4 py-3 bg-[var(--bg-secondary)]/50 border-b border-[var(--border)] flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-                  Slipped from
-                </span>
-                <span className="text-xs text-[var(--text-muted)] ml-2">
-                  Service start year breakdown
-                </span>
-              </div>
-              <span className="text-[11px] text-[var(--text-muted)]">
-                Click any row to view deals in drawer
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
-                    <th className="px-4 py-2.5">Service start year</th>
-                    <th className="px-4 py-2.5 text-right">Deals</th>
-                    <th className="px-4 py-2.5 text-right">ACV</th>
-                    <th className="px-4 py-2.5">Expected Close</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {summary.slippage.slipped_from.map((sf: any) => (
-                    <tr
-                      key={sf.start_year || sf.expiry_year}
-                      onClick={() => handleDrill(`Slipped from ${sf.start_year || sf.expiry_year} (${sf.count} deals · ${formatACV(sf.acv)})`, { kind: 'slipped_from_year', start_year: sf.start_year || sf.expiry_year, expiry_year: sf.expiry_year })}
-                      className="hover:bg-amber-500/5 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-2.5 font-semibold text-[var(--text-primary)]">
-                        From {sf.start_year || sf.expiry_year}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
-                        {sf.count}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-[var(--text-primary)]">
-                        {formatACV(sf.acv)}
-                      </td>
-                      <td className="px-4 py-2.5 text-[var(--text-muted)]">
-                        Closing in {summary.slippage?.next_year || 'next year'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {/* Forecast Category Split & Slipped From Table */}
+        <SlippageBreakdown
+          slippageSec={summary.slippage}
+          slipTot={summary.slippage_total || summary.slippage?.total}
+          onDealsClick={handleDrill}
+        />
       </div>
 
       {/* ────────────────── SECTION 3: LOST SINCE START OF PERIOD ────────────────── */}
@@ -1196,18 +1107,15 @@ function DelayedContent() {
         )
       })()}
 
-      {modalOpen && (
+      {modalState.isOpen && (
         <DealListModal
-          title={modalTitle}
-          deals={dealsData?.deals || []}
-          initialFilters={modalFilters.kind ? {} : {
-            sub_region: modalFilters.region,
-            forecast_category: modalFilters.category,
-            approval_status: modalFilters.status,
-            business_unit_primary: modalFilters.bu,
-          }}
+          title={modalState.title}
+          deals={modalState.deals}
+          expectedCount={modalState.expectedCount}
+          deltaGroups={modalState.deltaGroups}
+          initialFilters={modalState.initialFilters || {}}
           onSelectOpp={setSelectedOppId}
-          onClose={() => setModalOpen(false)}
+          onClose={closeRuleDeals}
         />
       )}
 

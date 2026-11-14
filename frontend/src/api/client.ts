@@ -186,6 +186,12 @@ export const getV2OverviewDeals = (params: {
   category?: string
   region?: string
   approval_status?: string
+  bu?: string
+  ageing?: string
+  start_year?: number
+  expiry_year?: number
+  split_key?: string
+  review_type?: string
   kind?: string
   compare?: string
   as_of?: string

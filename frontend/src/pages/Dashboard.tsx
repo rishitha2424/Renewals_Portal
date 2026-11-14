@@ -27,6 +27,8 @@ import FilterBar from '@/components/common/FilterBar'
 import { MovementsSummary } from '@/components/common/MovementsSummary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import SlippageBreakdown from '@/components/delayed/SlippageBreakdown'
+import DelayedBreakdown from '@/components/delayed/DelayedBreakdown'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -985,201 +987,25 @@ export default function Dashboard() {
 
             {/* Expandable Delayed Breakdown */}
             {showDelayedDetails && (
-              <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                    Delayed Renewals Breakdown
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowDelayedDetails(false)}
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  >
-                    Close breakdown ✕
-                  </button>
-                </div>
-                {(() => {
-                  const overdueCat = delRenewals?.overdue || summary?.overdue || summary?.slippage?.categories?.overdue
-                  const laterCat = delRenewals?.ahead || delRenewals?.later_close || summary?.ahead || summary?.later_close || summary?.slippage?.categories?.ahead || summary?.slippage?.categories?.later_close
-
-                  const delayedCards = [
-                    {
-                      id: 'overdue',
-                      title: 'Overdue Deals',
-                      data: overdueCat,
-                      isOverdue: true,
-                      kind: 'overdue',
-                      deltaKind: 'delayed_overdue_delta',
-                      baselineLabel: 'Current',
-                    },
-                    {
-                      id: 'delayed_ahead',
-                      title: 'Delayed, close date ahead',
-                      data: laterCat,
-                      isOverdue: false,
-                      kind: 'delayed_ahead',
-                      deltaKind: 'delayed_ahead',
-                      baselineLabel: 'Since start of period',
-                    },
-                  ]
-
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {delayedCards.map(c => {
-                        const cnt = c.data?.count ?? 0
-                        const acvVal = c.data?.acv ?? 0
-                        const isNA = isFuture || c.data?.count === null
-                        const hasDeals = cnt > 0 || acvVal > 0
-                        const mainTitle = `${c.title} · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acvVal)})`
-
-                        const yDelta = c.data?.delayed_vs_yesterday ?? c.data?.delta_yesterday
-                        const lwDelta = c.data?.delayed_vs_lastweek ?? c.data?.delta_lastweek
-                        const yCnt = Math.abs(yDelta?.count || 0)
-                        const yAcv = Math.abs(yDelta?.acv || 0)
-                        const lwCnt = Math.abs(lwDelta?.count || 0)
-                        const lwAcv = Math.abs(lwDelta?.acv || 0)
-
-                        const yTitle = `${c.title} · vs yesterday (${yCnt} ${yCnt === 1 ? 'deal' : 'deals'} · ${acvM(yAcv)})`
-                        const lwTitle = `${c.title} · vs last week (${lwCnt} ${lwCnt === 1 ? 'deal' : 'deals'} · ${acvM(lwAcv)})`
-
-                        return (
-                          <div
-                            key={c.id}
-                            className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between gap-2 mb-1.5">
-                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{c.title}</span>
-                                <Pill color="rose">{isNA ? 'n/a' : `${cnt} deals`}</Pill>
-                              </div>
-                              <div
-                                className={`font-extrabold text-2xl text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
-                                onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: c.kind, compare: c.isOverdue ? undefined : 'period_start' })}
-                                title={hasDeals ? `Click to view ${c.title}` : '0 deals'}
-                              >
-                                {isNA ? 'n/a' : acvM(acvVal)}
-                              </div>
-                              <div className="text-[11px] text-[var(--text-muted)] mt-1 font-medium">{c.baselineLabel}</div>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                              {renderSubBox('vs yesterday', yDelta, yDateStr, () => openDealsQuery(yTitle, { kind: c.deltaKind, compare: 'yesterday' }), yTitle, c.isOverdue ? 'Overdue' : 'Delayed')}
-                              {renderSubBox('vs last week', lwDelta, lwDateStr, () => openDealsQuery(lwTitle, { kind: c.deltaKind, compare: 'last_week' }), lwTitle, c.isOverdue ? 'Overdue' : 'Delayed')}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
-              </div>
+              <DelayedBreakdown
+                delRenewals={delRenewals}
+                summary={summary}
+                yDateStr={yDateStr}
+                lwDateStr={lwDateStr}
+                isFuture={isFuture}
+                onDealsClick={openDealsQuery}
+                onClose={() => setShowDelayedDetails(false)}
+              />
             )}
 
             {/* Expandable Slippage Breakdown */}
             {showSlippageDetails && (
-              <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                      Slippage Breakdown & Slipped From
-                    </span>
-                    {(() => {
-                      const baseDate = summary?.slippage?.period_start_baseline_date || summary?.delayed_renewals?.period_start_baseline_date
-                      const baseDateStr = baseDate ? ` (baseline ${formatDate(baseDate)})` : ''
-                      return (
-                        <span className="text-[11px] text-[var(--text-muted)]">
-                          Since start of year{baseDateStr}: {slipTot?.delta_period_start && baseDate ? (
-                            <strong className="text-[var(--text-primary)] font-mono">{acvM(slipTot.delta_period_start.acv)} ({slipTot.delta_period_start.count} deals)</strong>
-                          ) : (
-                            <span className="text-slate-400 font-normal">n/a</span>
-                          )}
-                        </span>
-                      )
-                    })()}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSlippageDetails(false)}
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  >
-                    Close breakdown ✕
-                  </button>
-                </div>
-
-                {/* Forecast Category Split */}
-                {slippageSec?.categories && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {['Commit', 'Best Case', 'Pipeline', 'Blank'].map(cat => {
-                      const cData = slippageSec.categories[cat] || { count: 0, acv: 0 }
-                      const label = cat === 'Blank' ? 'Not yet proposed' : cat
-                      const hasC = (cData.count || 0) > 0 || (cData.acv || 0) > 0
-                      return (
-                        <div
-                          key={cat}
-                          onClick={() => hasC && openDealsQuery(`Slippage · ${label}`, { kind: 'slippage', category: cat })}
-                          className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] transition-colors ${hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'}`}
-                        >
-                          <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{label}</div>
-                          <div className="text-lg font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
-                            {acvM(cData.acv || 0)}
-                          </div>
-                          <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
-                            {cData.count || 0} {(cData.count || 0) === 1 ? 'deal' : 'deals'}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Slipped From Table */}
-                {slippageSec?.slipped_from && slippageSec.slipped_from.length > 0 && (
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-                    <div className="px-4 py-2.5 bg-[var(--bg-secondary)]/50 border-b border-[var(--border)] flex items-center justify-between">
-                      <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-                        Slipped From
-                      </span>
-                      <span className="text-[11px] text-[var(--text-muted)]">
-                        Service start year breakdown
-                      </span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead>
-                          <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
-                            <th className="px-4 py-2">Service start year</th>
-                            <th className="px-4 py-2 text-right">Deals</th>
-                            <th className="px-4 py-2 text-right">ACV</th>
-                            <th className="px-4 py-2">Expected Close</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[var(--border)]">
-                          {slippageSec.slipped_from.map((sf: any) => (
-                            <tr
-                              key={sf.start_year || sf.expiry_year}
-                              onClick={() => openDealsQuery(`Slipped from ${sf.start_year || sf.expiry_year} (${sf.count} deals · ${acvM(sf.acv)})`, { kind: 'slipped_from_year', start_year: sf.start_year || sf.expiry_year, expiry_year: sf.expiry_year })}
-                              className="hover:bg-amber-500/5 cursor-pointer transition-colors"
-                            >
-                              <td className="px-4 py-2 font-medium text-[var(--text-primary)]">
-                                From {sf.start_year || sf.expiry_year}
-                              </td>
-                              <td className="px-4 py-2 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">
-                                {sf.count}
-                              </td>
-                              <td className="px-4 py-2 text-right font-semibold tabular-nums text-[var(--text-primary)]">
-                                {acvM(sf.acv)}
-                              </td>
-                              <td className="px-4 py-2 text-[var(--text-muted)]">
-                                Closing in {slippageSec.next_year || 'next year'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <SlippageBreakdown
+                slippageSec={slippageSec}
+                slipTot={slipTot}
+                onDealsClick={openDealsQuery}
+                onClose={() => setShowSlippageDetails(false)}
+              />
             )}
 
             {/* Actionable exceptions list */}
