@@ -54,3 +54,4 @@ def normalize_approval_status(val: str | None) -> str:
     if cleaned_lower in ("rejected", "reject"):
         return "Rejected"
     return cleaned.title()
+

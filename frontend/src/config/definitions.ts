@@ -40,3 +40,4 @@ export const DEFINITIONS: Record<string, string> = {
 export function getDefinition(key: string, fallback = ''): string {
   return DEFINITIONS[key] || fallback
 }
+

@@ -28,3 +28,4 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
   { to: '/executive', icon: Printer, label: 'Executive Summary' },
 ]
+
