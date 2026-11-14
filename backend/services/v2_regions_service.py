@@ -286,8 +286,8 @@ class V2RegionsService:
                 "slippage_acv": slip_acv,
                 "cells": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["cells"].items()},
                 "approval": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["approval"].items()},
-                "delta_yesterday": {"count": d_today["count"] - d_y["count"], "acv": round(d_today["acv"] - d_y["acv"], 2)},
-                "delta_lastweek": {"count": d_today["count"] - d_lw["count"], "acv": round(d_today["acv"] - d_lw["acv"], 2)}
+                "delta_yesterday": {"count": d_today["count"] - d_y["count"], "acv": round(d_today["acv"] - d_y["acv"], 2)} if (y_snap and not y_df.empty) else None,
+                "delta_lastweek": {"count": d_today["count"] - d_lw["count"], "acv": round(d_today["acv"] - d_lw["acv"], 2)} if (lw_snap and not lw_df.empty) else None
             })
 
         fc_totals = {}
@@ -298,8 +298,8 @@ class V2RegionsService:
             fc_totals[fc] = {
                 "count": len(fc_df),
                 "acv": round(float(fc_df["forecast_acv_amount"].sum()) if not fc_df.empty else 0.0, 2),
-                "delta_yesterday": {"count": len(fc_df) - len(fc_y), "acv": round(float(fc_df["forecast_acv_amount"].sum() if not fc_df.empty else 0.0) - float(fc_y["forecast_acv_amount"].sum() if not fc_y.empty else 0.0), 2)},
-                "delta_lastweek": {"count": len(fc_df) - len(fc_lw), "acv": round(float(fc_df["forecast_acv_amount"].sum() if not fc_df.empty else 0.0) - float(fc_lw["forecast_acv_amount"].sum() if not fc_lw.empty else 0.0), 2)},
+                "delta_yesterday": {"count": len(fc_df) - len(fc_y), "acv": round(float(fc_df["forecast_acv_amount"].sum() if not fc_df.empty else 0.0) - float(fc_y["forecast_acv_amount"].sum() if not fc_y.empty else 0.0), 2)} if (y_snap and not y_df.empty) else None,
+                "delta_lastweek": {"count": len(fc_df) - len(fc_lw), "acv": round(float(fc_df["forecast_acv_amount"].sum() if not fc_df.empty else 0.0) - float(fc_lw["forecast_acv_amount"].sum() if not fc_lw.empty else 0.0), 2)} if (lw_snap and not lw_df.empty) else None,
             }
 
         app_totals = {}
@@ -310,8 +310,8 @@ class V2RegionsService:
             app_totals[st] = {
                 "count": len(st_df),
                 "acv": round(float(st_df["forecast_acv_amount"].sum()) if not st_df.empty else 0.0, 2),
-                "delta_yesterday": {"count": len(st_df) - len(st_y), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_y["forecast_acv_amount"].sum() if not st_y.empty else 0.0), 2)},
-                "delta_lastweek": {"count": len(st_df) - len(st_lw), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_lw["forecast_acv_amount"].sum() if not st_lw.empty else 0.0), 2)},
+                "delta_yesterday": {"count": len(st_df) - len(st_y), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_y["forecast_acv_amount"].sum() if not st_y.empty else 0.0), 2)} if (y_snap and not y_df.empty) else None,
+                "delta_lastweek": {"count": len(st_df) - len(st_lw), "acv": round(float(st_df["forecast_acv_amount"].sum() if not st_df.empty else 0.0) - float(st_lw["forecast_acv_amount"].sum() if not st_lw.empty else 0.0), 2)} if (lw_snap and not lw_df.empty) else None,
             }
 
         total_commit_acv = fc_totals.get("Commit", {}).get("acv", 0.0) + fc_totals.get("Closed", {}).get("acv", 0.0)
@@ -386,8 +386,8 @@ class V2RegionsService:
                 "delayed_acv": total_delayed_acv,
                 "slippage_count": total_slippage_count,
                 "slippage_acv": total_slippage_acv,
-                "delta_yesterday": {"count": grand_count - len(y_df), "acv": round(grand_acv - float(y_df["forecast_acv_amount"].sum() if not y_df.empty else 0.0), 2)},
-                "delta_lastweek": {"count": grand_count - len(lw_df), "acv": round(grand_acv - float(lw_df["forecast_acv_amount"].sum() if not lw_df.empty else 0.0), 2)},
+                "delta_yesterday": {"count": grand_count - len(y_df), "acv": round(grand_acv - float(y_df["forecast_acv_amount"].sum()), 2)} if (y_snap and not y_df.empty) else None,
+                "delta_lastweek": {"count": grand_count - len(lw_df), "acv": round(grand_acv - float(lw_df["forecast_acv_amount"].sum()), 2)} if (lw_snap and not lw_df.empty) else None,
             },
             "regions": regions_out,
             "totals": {

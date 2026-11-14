@@ -790,25 +790,26 @@ class V2OverviewService:
             y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=eff_as_of_date)
             y_df   = _opps_to_df(y_opps)
             y_total_count = len(y_df)
-            y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2) if not y_df.empty else 0.0
-            y_cats = self._category_summary(y_df)
-            y_slip_df = y_df[pd.to_datetime(y_df["close_date"]).dt.date > q_end_date] if not y_df.empty else pd.DataFrame()
-            delta_yesterday = {
-                "count": total_count - y_total_count,
-                "acv":   round(total_acv - y_total_acv, 2),
-                "snapshot_date": yest_snap.snapshot_date.isoformat(),
-            }
-            cats_delta_yesterday = {
-                fc: {
-                    "count": cats[fc]["count"] - y_cats[fc]["count"],
-                    "acv":   round(cats[fc]["acv"] - y_cats[fc]["acv"], 2),
+            if y_total_count > 0 and not y_df.empty:
+                y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2)
+                y_cats = self._category_summary(y_df)
+                y_slip_df = y_df[pd.to_datetime(y_df["close_date"]).dt.date > q_end_date]
+                delta_yesterday = {
+                    "count": total_count - y_total_count,
+                    "acv":   round(total_acv - y_total_acv, 2),
+                    "snapshot_date": yest_snap.snapshot_date.isoformat(),
                 }
-                for fc in ALL_FC
-            }
-            slip_delta_yesterday = {
-                "count": slippage["count"] - len(y_slip_df),
-                "acv":   round(slippage["acv"] - _sum(y_slip_df, "forecast_acv_amount"), 2),
-            }
+                cats_delta_yesterday = {
+                    fc: {
+                        "count": cats[fc]["count"] - y_cats[fc]["count"],
+                        "acv":   round(cats[fc]["acv"] - y_cats[fc]["acv"], 2),
+                    }
+                    for fc in ALL_FC
+                }
+                slip_delta_yesterday = {
+                    "count": slippage["count"] - len(y_slip_df),
+                    "acv":   round(slippage["acv"] - _sum(y_slip_df, "forecast_acv_amount"), 2),
+                }
 
         # ── Last-week deltas ──────────────────────────────────────────────────
         lw_snap = self._lastweek_snap(snap)
@@ -819,25 +820,26 @@ class V2OverviewService:
             lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=eff_as_of_date)
             lw_df   = _opps_to_df(lw_opps)
             lw_total_count = len(lw_df)
-            lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2) if not lw_df.empty else 0.0
-            lw_cats = self._category_summary(lw_df)
-            lw_slip_df = lw_df[pd.to_datetime(lw_df["close_date"]).dt.date > q_end_date] if not lw_df.empty else pd.DataFrame()
-            delta_lastweek = {
-                "count": total_count - lw_total_count,
-                "acv":   round(total_acv - lw_total_acv, 2),
-                "snapshot_date": lw_snap.snapshot_date.isoformat(),
-            }
-            cats_delta_lastweek = {
-                fc: {
-                    "count": cats[fc]["count"] - lw_cats[fc]["count"],
-                    "acv":   round(cats[fc]["acv"] - lw_cats[fc]["acv"], 2),
+            if lw_total_count > 0 and not lw_df.empty:
+                lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2)
+                lw_cats = self._category_summary(lw_df)
+                lw_slip_df = lw_df[pd.to_datetime(lw_df["close_date"]).dt.date > q_end_date]
+                delta_lastweek = {
+                    "count": total_count - lw_total_count,
+                    "acv":   round(total_acv - lw_total_acv, 2),
+                    "snapshot_date": lw_snap.snapshot_date.isoformat(),
                 }
-                for fc in ALL_FC
-            }
-            slip_delta_lastweek = {
-                "count": slippage["count"] - len(lw_slip_df),
-                "acv":   round(slippage["acv"] - _sum(lw_slip_df, "forecast_acv_amount"), 2),
-            }
+                cats_delta_lastweek = {
+                    fc: {
+                        "count": cats[fc]["count"] - lw_cats[fc]["count"],
+                        "acv":   round(cats[fc]["acv"] - lw_cats[fc]["acv"], 2),
+                    }
+                    for fc in ALL_FC
+                }
+                slip_delta_lastweek = {
+                    "count": slippage["count"] - len(lw_slip_df),
+                    "acv":   round(slippage["acv"] - _sum(lw_slip_df, "forecast_acv_amount"), 2),
+                }
 
         other_count = 0
         if not df.empty and "canonical_region" in df.columns:

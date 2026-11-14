@@ -124,11 +124,8 @@ export default function Expiry() {
       list.push({ id: 'expiry-profile', title: 'Expiry Profile' })
     }
     list.push({ id: 'expiry-insights', title: 'Closure & Insights' })
-    if (movementsData) {
-      list.push({ id: 'expiry-movements', title: 'Movements' })
-    }
     return list
-  }, [sum, movementsData])
+  }, [sum])
 
 
   if (!activeSnapshotId || snapshots.length === 0) {
@@ -274,13 +271,13 @@ export default function Expiry() {
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
               <span className={`text-xs tabular-nums text-right ${yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : yestGrand?.acv && yestGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : '—'}
+                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
               <span className={`text-xs tabular-nums text-right ${lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : lastGrand?.acv && lastGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : '—'}
+                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
               </span>
             </div>
           </div>
@@ -628,18 +625,6 @@ export default function Expiry() {
           </div>
         </Card>
       </div>
-
-      {/* Shared Movement Section */}
-      <Card id="expiry-movements" className="p-6 mt-8 scroll-mt-24">
-        <MovementsSummary
-          movements={movementsData}
-          onSelectDeals={(title, deals) => {
-            setModalTitle(title)
-            setDrillDeals(deals)
-            setModalOpen(true)
-          }}
-        />
-      </Card>
 
       {modalOpen && (
         <DealListModal

@@ -208,7 +208,7 @@ function BusinessUnitsContent() {
   }
 
   const deltaSpan = (d: any, isCount: boolean) => {
-    if (!d) return <span className="text-[var(--text-muted)]">—</span>
+    if (!d || d.count === undefined) return <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
     const v = isCount ? d.count : d.acv
     if (!v) return <span className="text-[var(--text-muted)]">0</span>
     const color = v > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'

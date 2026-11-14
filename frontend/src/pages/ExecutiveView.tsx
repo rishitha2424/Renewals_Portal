@@ -225,8 +225,8 @@ export default function ExecutiveView() {
     })
 
   // Movements vs yesterday & vs last week
-  const deltaYesterday = total.delta_yesterday || { count: 0, acv: 0, snapshot_date: '' }
-  const deltaLastWeek = total.delta_lastweek || { count: 0, acv: 0, snapshot_date: '' }
+  const deltaYesterday = total.delta_yesterday || null
+  const deltaLastWeek = total.delta_lastweek || null
 
   // Approval Status Summary - normalized and merged to prevent duplicate or conflicting statuses
   const rawApprovalStatuses = approvals.statuses || []
@@ -569,23 +569,41 @@ export default function ExecutiveView() {
               <tbody className="divide-y divide-slate-100">
                 <tr className="hover:bg-slate-50/50">
                   <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Yesterday</td>
-                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '')}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
-                  </td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
-                  </td>
+                  <td className="px-4 py-2 text-slate-500">{deltaYesterday ? formatDate(deltaYesterday.snapshot_date || '') : '—'}</td>
+                  {deltaYesterday ? (
+                    <>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                    </>
+                  )}
                 </tr>
                 <tr className="hover:bg-slate-50/50">
                   <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Last Week</td>
-                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '')}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
-                  </td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
-                  </td>
+                  <td className="px-4 py-2 text-slate-500">{deltaLastWeek ? formatDate(deltaLastWeek.snapshot_date || '') : '—'}</td>
+                  {deltaLastWeek ? (
+                    <>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                    </>
+                  )}
                 </tr>
               </tbody>
             </table>

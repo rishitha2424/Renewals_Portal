@@ -255,16 +255,20 @@ class V2ExpiryService:
             grand_total_count += g["totals"]["grand"]["count"]
             grand_total_acv += g["totals"]["grand"]["acv"]
             
-            cg = build_grid(comp_df, y_label) if not comp_df.empty else build_grid(pd.DataFrame(), y_label)
-            yg = build_grid(df_yest, y_label) if not df_yest.empty else build_grid(pd.DataFrame(), y_label)
-            lg = build_grid(df_lw, y_label) if not df_lw.empty else build_grid(pd.DataFrame(), y_label)
+            has_comp = not comp_df.empty
+            has_yest = not df_yest.empty
+            has_lw = not df_lw.empty
+
+            cg = build_grid(comp_df, y_label) if has_comp else None
+            yg = build_grid(df_yest, y_label) if has_yest else None
+            lg = build_grid(df_lw, y_label) if has_lw else None
             
             y_deltas = {
-                "yesterday": compute_deltas(g, yg),
-                "lastweek": compute_deltas(g, lg)
+                "yesterday": compute_deltas(g, yg) if yg is not None else None,
+                "lastweek": compute_deltas(g, lg) if lg is not None else None
             }
             if eff_compare:
-                y_deltas["custom"] = compute_deltas(g, cg)
+                y_deltas["custom"] = compute_deltas(g, cg) if cg is not None else None
             deltas[y_label] = y_deltas
             
         # Compute Slippage using the shared V2DelayedService (Section A rule)

@@ -192,12 +192,18 @@ function RegionsContent() {
     setModalOpen(true)
   }
 
-  const renderDelta = (countDelta: number, acvDelta: number, compareLabel: string) => {
-    const val = metricMode === 'Count' ? countDelta : acvDelta
-    const label = compareLabel.toLowerCase().includes('last') || compareLabel.toLowerCase().includes('wk')
-      ? 'vs last week'
-      : 'vs yesterday'
+  const renderDelta = (countDelta?: number | null, acvDelta?: number | null, isLastWeek: boolean = false) => {
+    const label = isLastWeek ? 'vs last week' : 'vs yesterday'
+    if (countDelta === null || countDelta === undefined || acvDelta === null || acvDelta === undefined) {
+      return (
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
+          <span>{label}</span>
+          <span className="tabular-nums text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+        </div>
+      )
+    }
 
+    const val = metricMode === 'Count' ? countDelta : acvDelta
     if (val === 0) {
       return (
         <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
@@ -322,21 +328,28 @@ function RegionsContent() {
               <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="All Regions">All Regions</span>
               <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total.count)} deals</span>
             </div>
-            <div 
-              className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDrill(`All Regions (${data_slice})`, {})
-              }}
-            >
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
               {metricMode === 'Count' ? formatCount(summary.total.count) : 
                metricMode === 'Amount' ? formatACV(summary.total.acv) : 
                `${formatCount(summary.total.count)} · ${formatACV(summary.total.acv)}`}
             </div>
+            <div className="flex items-center justify-between pt-0.5">
+              <span
+                role="button"
+                tabIndex={0}
+                className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDrill(`All Regions (${data_slice})`, {})
+                }}
+              >
+                View deals →
+              </span>
+            </div>
           </div>
           <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-            {renderDelta(summary.total.delta_yesterday.count, summary.total.delta_yesterday.acv, yDayStr)}
-            {renderDelta(summary.total.delta_lastweek.count, summary.total.delta_lastweek.acv, lwStr)}
+            {renderDelta(summary.total?.delta_yesterday?.count, summary.total?.delta_yesterday?.acv, false)}
+            {renderDelta(summary.total?.delta_lastweek?.count, summary.total?.delta_lastweek?.acv, true)}
           </div>
         </button>
 
@@ -368,21 +381,28 @@ function RegionsContent() {
                     </span>
                   )}
                 </div>
-                <div 
-                  className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDrill(`${rname} Deals`, { region: rname })
-                  }}
-                >
+                <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
                   {metricMode === 'Count' ? formatCount(reg.count) : 
                    metricMode === 'Amount' ? formatACV(reg.acv) : 
                    `${formatCount(reg.count)} · ${formatACV(reg.acv)}`}
                 </div>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDrill(`${rname} Deals`, { region: rname })
+                    }}
+                  >
+                    View deals →
+                  </span>
+                </div>
               </div>
               <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-                {renderDelta(reg.delta_yesterday.count, reg.delta_yesterday.acv, yDayStr)}
-                {renderDelta(reg.delta_lastweek.count, reg.delta_lastweek.acv, lwStr)}
+                {renderDelta(reg.delta_yesterday?.count, reg.delta_yesterday?.acv, false)}
+                {renderDelta(reg.delta_lastweek?.count, reg.delta_lastweek?.acv, true)}
               </div>
             </button>
           )
@@ -433,7 +453,7 @@ function RegionsContent() {
                     {formatCount(regionDetail.count)} deals ({regionDetail.pct_acv}% of portfolio)
                   </div>
                   <div className="mt-2 pt-2 border-t border-gray-200/60 dark:border-gray-800">
-                    {renderDelta(regionDetail.delta_yesterday?.count || 0, regionDetail.delta_yesterday?.acv || 0, yDayStr)}
+                    {renderDelta(regionDetail.delta_yesterday?.count, regionDetail.delta_yesterday?.acv, false)}
                   </div>
                 </div>
 

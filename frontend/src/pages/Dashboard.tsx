@@ -242,10 +242,10 @@ export default function Dashboard() {
       list.push({ id: 'overview-movements', title: 'Movements & changes' })
     }
     if (regional?.proposal_confirmation?.length) {
-      list.push({ id: 'overview-proposal-confirmation', title: 'Proposal confirmation' })
+      list.push({ id: 'overview-proposal-confirmation', title: 'Approval Status by Region' })
     }
     if (regional?.regional_trend?.length) {
-      list.push({ id: 'overview-regional-trend', title: 'Regional trend' })
+      list.push({ id: 'overview-regional-trend', title: 'Regional ACV by Forecast Category' })
     }
     return list
   }, [summary, movements, regional])
@@ -393,18 +393,18 @@ export default function Dashboard() {
             ) : (
               <span
                 className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
-                onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} Contracts · ${formatCurrency(total.acv ?? 0)})`, {})}
+                onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} deals · ${formatCurrency(total.acv ?? 0)})`, {})}
                 title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
               >
                 {acvM(total.acv ?? 0)}
               </span>
             )}
             <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
-              {total.count ?? 0} Contracts
+              {total.count ?? 0} deals
             </span>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count ?? 0} contracts
+            Fiscal Period = {summary?.data_slice || 'Selected Period'} · Click to view all {total.count ?? 0} deals
           </p>
 
           {/* Trend rows BELOW the total ACV and contract count */}
@@ -454,7 +454,7 @@ export default function Dashboard() {
                       </span>
                     </span>
                   ) : (
-                    <span className="text-[var(--text-muted)]">—</span>
+                    <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
                   )}
                 </div>
               )
@@ -593,7 +593,7 @@ export default function Dashboard() {
                         ) : (
                           <div key={l} className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
                             <span>{l}</span>
-                            <span>—</span>
+                            <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
                           </div>
                         ))}
                       </div>
@@ -1196,12 +1196,12 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── SECTION 6 – Proposal Confirmation ───────────────────────────────── */}
+      {/* ── SECTION 6 – Approval Status by Region ───────────────────────────────── */}
       <div id="overview-proposal-confirmation" className="card p-6 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-bold text-base text-[var(--text-primary)]">Proposal Confirmation</h2>
-            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Unit: Opportunity Count (#)</p>
+            <h2 className="font-bold text-base text-[var(--text-primary)]">Approval Status by Region</h2>
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Approved, waiting for approval, and not yet submitted deals per region for the selected period.</p>
           </div>
           <Globe2 className="w-5 h-5 text-[var(--text-muted)]" />
         </div>
@@ -1210,7 +1210,7 @@ export default function Dashboard() {
             <thead className="bg-[var(--bg-secondary)]">
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
-                <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total Opportunity Approval in the System</th>
+                <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total deals</th>
                 <th className="text-right px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">Approved</th>
                 <th className="text-right px-4 py-3 font-semibold text-amber-600 dark:text-amber-400">Pending Approval</th>
                 <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Not submitted</th>
@@ -1242,12 +1242,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── SECTION 7 – Regional Trend ───────────────────────────────────────── */}
+      {/* ── SECTION 7 – Regional ACV by Forecast Category ───────────────────────────────────────── */}
       <div id="overview-regional-trend" className="card p-6 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-bold text-base text-[var(--text-primary)]">Regional Trend</h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">ACV values in $M</p>
+            <h2 className="font-bold text-base text-[var(--text-primary)]">Regional ACV by Forecast Category</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Closed, Commit and Best Case value per region for the selected period.</p>
           </div>
         </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
