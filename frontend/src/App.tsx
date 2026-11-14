@@ -11,6 +11,7 @@ import Delayed from '@/pages/Delayed'
 import Opportunities from '@/pages/Opportunities'
 import ExecutiveView from '@/pages/ExecutiveView'
 import DataUploads from '@/pages/DataUploads'
+import Settings from '@/pages/Settings'
 import LoadingScreen from '@/pages/LoadingScreen'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
@@ -39,6 +40,7 @@ export default function App() {
         '/opportunities': 'Data Explorer — Mobileum Horizon',
         '/explore': 'Data Explorer — Mobileum Horizon',
         '/data-uploads': 'Data Uploads — Mobileum Horizon',
+        '/settings': 'Settings — Mobileum Horizon',
         '/executive': 'Executive Summary — Mobileum Horizon',
       }
       document.title = titleMap[path] || 'Mobileum Horizon'
@@ -82,6 +84,7 @@ export default function App() {
           <Route path="/opportunities" element={<Opportunities />} />
           <Route path="/explore" element={<Opportunities />} />
           <Route path="/data-uploads" element={<DataUploads />} />
+          <Route path="/settings" element={<Settings />} />
 
           {/* Redirects from old routes */}
           <Route path="/upload" element={<Navigate to="/data-uploads" replace />} />

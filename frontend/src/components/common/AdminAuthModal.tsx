@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Lock, LogOut, ShieldCheck, X, Loader2 } from 'lucide-react'
+import { Lock, LogOut, ShieldCheck, X, Loader2, Settings as SettingsIcon } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { adminLogin, adminLogout, getAdminStatus } from '@/api/client'
 import { showToast } from '@/components/ui/Toast'
@@ -61,11 +61,18 @@ export default function AdminAuthModal() {
         <div className="h-9 sm:h-10 px-2 sm:px-2.5 xl:px-3 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0">
           <ShieldCheck className="w-4 h-4 flex-shrink-0" />
           <span className="hidden sm:inline">{adminName || 'Admin'}</span>
+          <a
+            href="/settings"
+            title="System Settings & Security Status"
+            className="hover:text-emerald-800 dark:hover:text-emerald-200 transition-colors p-1 rounded"
+          >
+            <SettingsIcon className="w-3.5 h-3.5" />
+          </a>
           <button
             type="button"
             onClick={handleLogout}
             title="Sign out as administrator"
-            className="ml-0.5 hover:text-red-500 transition-colors p-1 rounded"
+            className="hover:text-red-500 transition-colors p-1 rounded"
             id="admin-sign-out-btn"
           >
             <LogOut className="w-3.5 h-3.5" />

@@ -46,7 +46,6 @@ export default function Topbar() {
     resetGlobalFilters,
     setMobileSidebarOpen,
     isAdmin,
-    securityWarnings,
   } = useAppStore()
 
   const [downloadOpen, setDownloadOpen] = useState(false)
@@ -401,24 +400,6 @@ export default function Topbar() {
 
   return (
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
-      {/* Admin Security Warning Banner */}
-      {isAdmin && securityWarnings && securityWarnings.length > 0 && (
-        <div
-          id="admin-security-banner"
-          className="bg-amber-500/15 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-2 text-xs flex items-center justify-between"
-        >
-          <div className="flex items-center gap-2 max-w-[1920px] mx-auto w-full">
-            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <div className="flex-1">
-              <span className="font-bold uppercase tracking-wider text-[10px] text-amber-700 dark:text-amber-300 mr-2">
-                Security Warning:
-              </span>
-              <span>{securityWarnings.join(' • ')}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
       <div className="w-full max-w-[1920px] mx-auto px-2.5 sm:px-4 lg:px-6 py-1.5 sm:py-2">
         <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">

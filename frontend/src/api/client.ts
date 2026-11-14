@@ -84,6 +84,15 @@ export const adminLogout = () =>
 export const getAdminStatus = () =>
   api.get('/admin/status').then(r => r.data)
 
+export const getSecurityChecks = () =>
+  api.get('/admin/security-checks').then(r => r.data)
+
+export const getSystemSettings = () =>
+  api.get('/settings').then(r => r.data)
+
+export const updateSystemSetting = (key: string, value: string, description?: string) =>
+  api.put('/settings', { key, value, description }).then(r => r.data)
+
 export const uploadFiles = (form: FormData) =>
   api.post('/snapshots/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
