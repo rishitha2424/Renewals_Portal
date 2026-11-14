@@ -249,6 +249,12 @@ export default function Expiry() {
         </div>
       )}
 
+      {(!isLoading && (grandTotal?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* Grand Total & Slippage KPI Strip */}
       <ErrorBoundary compact sectionTitle="Expiry Totals">
       <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">

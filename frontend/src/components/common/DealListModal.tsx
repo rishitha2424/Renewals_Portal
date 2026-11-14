@@ -83,7 +83,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
 
   const uniqueValues = (primaryField: keyof Deal, fallbackField?: keyof Deal) => {
     const vals = new Set(
-      deals
+      (deals || [])
         .map(d => (d[primaryField] || (fallbackField ? d[fallbackField] : '')) as string)
         .filter(v => v && typeof v === 'string' && v.trim().length > 0)
     )
@@ -107,7 +107,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   }
 
   const filteredDeals = useMemo(() => {
-    let result = deals.filter(d => {
+    let result = (deals || []).filter(d => {
       if (deltaGroups && selectedGroup !== 'All') {
         if (selectedGroup === 'added' && !(d.delta_group?.startsWith('Added to') || d.delta_group === 'Added to Q4')) return false
         if (selectedGroup === 'left' && !(d.delta_group?.startsWith('Left') || d.delta_group === 'Left Q4 – moved or lost')) return false

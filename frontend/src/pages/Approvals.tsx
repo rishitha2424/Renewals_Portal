@@ -196,7 +196,7 @@ export default function Approvals() {
   if (!activeSnapshotId || snapshots.length === 0) return <PageNoSnapshotState />
   if (isLoading) return <div className="p-8 text-center text-slate-500 animate-pulse">Loading approval data...</div>
   if (error || data?.error) return <PageErrorState message={(error as any)?.message || data?.error || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
-  if (!data || !data.total || data.total?.count === 0) return <PageNoSnapshotState />
+  if (!data || !data.total) return <PageNoSnapshotState />
 
   const total = data.total || { count: 0, acv: 0 }
   const statuses = data.statuses || []
@@ -293,6 +293,12 @@ export default function Approvals() {
         excluded={data?.other_types_excluded}
         onViewDeals={() => handleCellClick({ kind: 'other_types' }, 'Other Types Excluded')}
       />
+
+      {(!isLoading && (total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
 
       {/* Slim Stat Chips */}
       <div id="approvals-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">

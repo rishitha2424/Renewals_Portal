@@ -123,18 +123,23 @@ function RegionsContent() {
   // Sorted region comparison table rows
   const sortedRegions = useMemo(() => {
     if (!summary?.regions) return []
-    const list = [...summary.regions]
+    const list = [...summary.regions].filter(Boolean)
     list.sort((a: any, b: any) => {
-      let vA: any = a[sortCol]
-      let vB: any = b[sortCol]
+      let vA: any = a?.[sortCol]
+      let vB: any = b?.[sortCol]
       if (sortCol === 'delta_yesterday') {
-        vA = a.delta_yesterday?.acv ?? 0
-        vB = b.delta_yesterday?.acv ?? 0
+        vA = a?.delta_yesterday?.acv ?? 0
+        vB = b?.delta_yesterday?.acv ?? 0
+      } else if (sortCol === 'delta_lastweek') {
+        vA = a?.delta_lastweek?.acv ?? 0
+        vB = b?.delta_lastweek?.acv ?? 0
       }
-      if (typeof vA === 'string') {
-        return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA)
+      if (typeof vA === 'string' || typeof vB === 'string') {
+        return sortDir === 'asc' 
+          ? String(vA ?? '').localeCompare(String(vB ?? '')) 
+          : String(vB ?? '').localeCompare(String(vA ?? ''))
       }
-      return sortDir === 'asc' ? (vA || 0) - (vB || 0) : (vB || 0) - (vA || 0)
+      return sortDir === 'asc' ? (Number(vA) || 0) - (Number(vB) || 0) : (Number(vB) || 0) - (Number(vA) || 0)
     })
     return list
   }, [summary?.regions, sortCol, sortDir])
@@ -238,28 +243,40 @@ function RegionsContent() {
   const lwStr = formatUI(lastweek_date, 'last week')
 
   const knownRegions = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"]
-  const presentRegions = (regions || []).map((r: any) => r.region)
+  const presentRegions = (regions || []).map((r: any) => r?.region).filter(Boolean)
   const otherRegions = presentRegions.filter((r: string) => !knownRegions.includes(r) && r !== 'Other' && r !== 'Other / Unmapped')
   const unmappedRegions = presentRegions.filter((r: string) => r === 'Other' || r === 'Other / Unmapped')
   const tileOrder = [...knownRegions, ...otherRegions, ...unmappedRegions]
   // Generate Insight Lines
   const getInsightLines = () => {
     if (!summary || !summary.regions || summary.regions.length === 0) return []
-    const lines = []
+    const lines: string[] = []
     
     const deltaKey = compare === 'yesterday' ? 'delta_yesterday' : 'delta_lastweek'
-    const sorted = [...summary.regions].filter(r => r.region !== 'Other').sort((a, b) => {
-      const aVal = metricMode === 'Count' ? a[deltaKey].count : a[deltaKey].acv
-      const bVal = metricMode === 'Count' ? b[deltaKey].count : b[deltaKey].acv
+    const validRegions = (summary.regions || []).filter((r: any) => r && r.region !== 'Other')
+    if (validRegions.length === 0) return []
+
+    const sorted = [...validRegions].sort((a: any, b: any) => {
+      const aDelta = a?.[deltaKey]
+      const bDelta = b?.[deltaKey]
+      const aVal = metricMode === 'Count' ? (aDelta?.count ?? 0) : (aDelta?.acv ?? 0)
+      const bVal = metricMode === 'Count' ? (bDelta?.count ?? 0) : (bDelta?.acv ?? 0)
       return bVal - aVal
     })
     
     if (sorted.length > 0) {
       const best = sorted[0]
-      const bestVal = metricMode === 'Count' ? best[deltaKey].count : best[deltaKey].acv
-      if (bestVal > 0) {
-        const valStr = metricMode === 'Amount' ? '+' + formatACV(bestVal) : metricMode === 'Count' ? '+' + formatCount(bestVal) : `+${formatCount(best[deltaKey].count)} · +${formatACV(best[deltaKey].acv)}`
-        lines.push(`${best.region} gained ${valStr} vs ${compare === 'yesterday' ? yDayStr : lwStr}, the largest regional gain`)
+      const bestDelta = best?.[deltaKey]
+      if (bestDelta) {
+        const bestVal = metricMode === 'Count' ? (bestDelta.count ?? 0) : (bestDelta.acv ?? 0)
+        if (bestVal > 0) {
+          const valStr = metricMode === 'Amount' 
+            ? '+' + formatACV(bestVal) 
+            : metricMode === 'Count' 
+            ? '+' + formatCount(bestVal) 
+            : `+${formatCount(bestDelta.count ?? 0)} · +${formatACV(bestDelta.acv ?? 0)}`
+          lines.push(`${best.region || 'Region'} gained ${valStr} vs ${compare === 'yesterday' ? yDayStr : lwStr}, the largest regional gain`)
+        }
       }
     }
     return lines
@@ -312,6 +329,12 @@ function RegionsContent() {
         </div>
       )}
 
+      {(!isLoading && (summary?.total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* Tiles */}
       <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <button
@@ -326,12 +349,12 @@ function RegionsContent() {
           <div className="space-y-1.5 w-full">
             <div className="flex justify-between items-center gap-2">
               <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="All Regions">All Regions</span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total.count)} deals</span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total?.count ?? 0)} deals</span>
             </div>
             <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {metricMode === 'Count' ? formatCount(summary.total.count) : 
-               metricMode === 'Amount' ? formatACV(summary.total.acv) : 
-               `${formatCount(summary.total.count)} · ${formatACV(summary.total.acv)}`}
+              {metricMode === 'Count' ? formatCount(summary.total?.count ?? 0) : 
+               metricMode === 'Amount' ? formatACV(summary.total?.acv ?? 0) : 
+               `${formatCount(summary.total?.count ?? 0)} · ${formatACV(summary.total?.acv ?? 0)}`}
             </div>
             <div className="flex items-center justify-between pt-0.5">
               <span
@@ -1118,7 +1141,14 @@ function RegionsContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-800/80">
-              {sortedRegions.map((r: any) => {
+              {sortedRegions.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                    No deals for this selection
+                  </td>
+                </tr>
+              ) : (
+                sortedRegions.map((r: any) => {
                 const isSelected = selectedRegion === r.region
                 const yDelta = r.delta_yesterday?.acv || 0
                 const yDeltaCount = r.delta_yesterday?.count || 0
@@ -1195,7 +1225,7 @@ function RegionsContent() {
                         (r.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"
                       )}
                     >
-                      {(r.delayed_count || 0) > 0 ? `${formatACV(r.delayed_acv)} (${r.delayed_count})` : '-'}
+                      {(r.delayed_count || 0) > 0 ? `${formatACV(r.delayed_acv || 0)} (${r.delayed_count})` : '-'}
                     </td>
 
                     {/* Slippage */}
@@ -1206,7 +1236,7 @@ function RegionsContent() {
                         (r.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
                       )}
                     >
-                      {(r.slippage_count || 0) > 0 ? `${formatACV(r.slippage_acv)} (${r.slippage_count})` : '-'}
+                      {(r.slippage_count || 0) > 0 ? `${formatACV(r.slippage_acv || 0)} (${r.slippage_count})` : '-'}
                     </td>
 
                     {/* Change vs YDay */}
@@ -1230,7 +1260,7 @@ function RegionsContent() {
                     </td>
                   </tr>
                 )
-              })}
+              }))}
             </tbody>
             {/* Total / Portfolio Row */}
             <tfoot className="bg-gray-50 dark:bg-gray-900 font-bold border-t-2 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white">

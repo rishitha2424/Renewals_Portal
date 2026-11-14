@@ -375,6 +375,12 @@ export default function Dashboard() {
         }
       />
 
+      {(!isLoading && (total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* ── BLOCK 1: Portfolio ─────────────────────────────────────────── */}
       <section id="overview-portfolio" className="space-y-4 scroll-mt-24">
         {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}

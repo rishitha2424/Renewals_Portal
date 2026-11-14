@@ -560,6 +560,12 @@ function DelayedContent() {
         onViewDeals={() => handleDrill('Other Types Excluded', { kind: 'other_types' })}
       />
 
+      {(!isLoading && (summary?.total?.count ?? 0) === 0 && (summary?.slippage_to_2027?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
       <div id="delayed-renewals-group" className="space-y-4 scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">

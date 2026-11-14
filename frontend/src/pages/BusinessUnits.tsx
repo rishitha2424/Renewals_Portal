@@ -215,7 +215,7 @@ function BusinessUnitsContent() {
   const sortedRowsByAcv = [...rows].sort((a: any, b: any) => (b.acv || 0) - (a.acv || 0))
   const largestBu = sortedRowsByAcv[0] || null
   const numBUs = rows.length
-  const totalCommit = totals.categories['Commit']?.acv || 0
+  const totalCommit = totals?.categories?.['Commit']?.acv || 0
   const commitCov = total.acv > 0 ? ((totalCommit / total.acv) * 100).toFixed(1) : '0.0'
   const largestBuPct = total.acv > 0 && largestBu ? ((largestBu.acv / total.acv) * 100).toFixed(1) : '0.0'
 
@@ -229,18 +229,18 @@ function BusinessUnitsContent() {
   const gridRows = rows.map((r: any) => ({
     id: r.bu,
     label: r.bu,
-    cells: r.cells,
+    cells: r.cells || {},
     total: { count: r.count, acv: r.acv }
   }))
   const gridDeltas = {
-    category: totals.categories,
-    grand: totals.grand,
+    category: totals?.categories || {},
+    grand: totals?.grand || {},
     rows: Object.fromEntries(rows.map((r: any) => [r.bu, {
       delta_yesterday: r.delta_yesterday,
       delta_lastweek: r.delta_lastweek,
-      cells: Object.fromEntries(categories.map((c: string) => [c, {
-        delta_yesterday: r.cells[c]?.delta_yesterday,
-        delta_lastweek: r.cells[c]?.delta_lastweek,
+      cells: Object.fromEntries((categories || []).map((c: string) => [c, {
+        delta_yesterday: r.cells?.[c]?.delta_yesterday,
+        delta_lastweek: r.cells?.[c]?.delta_lastweek,
       }]))
     }]))
   }
@@ -369,6 +369,12 @@ function BusinessUnitsContent() {
         }}
       />
 
+      {(!isLoading && (total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
       <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         {/* Card 1: Total Portfolio ACV */}
@@ -392,11 +398,11 @@ function BusinessUnitsContent() {
           <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.grand.delta_yesterday, false)}</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_yesterday, false)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.grand.delta_lastweek, false)}</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_lastweek, false)}</span>
             </div>
           </div>
         </div>
@@ -482,11 +488,11 @@ function BusinessUnitsContent() {
           <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.categories['Commit']?.delta_yesterday, false)}</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_yesterday, false)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals.categories['Commit']?.delta_lastweek, false)}</span>
+              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_lastweek, false)}</span>
             </div>
           </div>
         </div>
