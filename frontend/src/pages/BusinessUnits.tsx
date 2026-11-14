@@ -501,7 +501,7 @@ function BusinessUnitsContent() {
       {/* 3. Equal-Height 12-Column Grid: Heatmap (8 cols) + BU Share (4 cols) */}
       <div id="bu-heatmap-share" className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch scroll-mt-24">
         {/* Heatmap Card (8 cols) */}
-        <div className="xl:col-span-8 flex flex-col">
+        <div className="xl:col-span-8 flex flex-col h-full">
           <CompactGrid
             title="BU x Forecast Category Heatmap"
             rowLabelName="Business Unit"
@@ -519,9 +519,9 @@ function BusinessUnitsContent() {
         </div>
 
         {/* Ranked Bar: BU Share Card (4 cols) - Matches Heatmap Height */}
-        <div className="xl:col-span-4 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border)]">
+        <div className="xl:col-span-4 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 flex flex-col justify-between h-full">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border)] shrink-0">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                   BU Share of Total ACV
@@ -535,7 +535,7 @@ function BusinessUnitsContent() {
               </span>
             </div>
 
-            <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 overflow-y-auto flex-1 pr-1 min-h-[220px]">
               {sortedRowsByAcv.map((r: any) => {
                 const pct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
                 return (
@@ -566,7 +566,7 @@ function BusinessUnitsContent() {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+          <div className="mt-4 pt-3 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between shrink-0">
             <span>{rows.length} units · Multi-value distinct</span>
             <span className="text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1">
               Click row to view deals <ArrowRight className="w-3 h-3" />
