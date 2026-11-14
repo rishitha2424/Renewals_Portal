@@ -19,6 +19,7 @@ from datetime import date
 from typing import Optional
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -139,29 +140,8 @@ class V2OverviewService:
         )
 
     def _opp_to_deal_dict(self, o: Opportunity) -> dict:
-        raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
-        type_code = ScopeService.extract_type_code(raw_type)
-        return {
-            "id": o.opportunity_id_18 or o.id,
-            "opportunity_id_18": o.opportunity_id_18,
-            "opportunity_name": o.opportunity_name,
-            "account_name": o.account_name,
-            "forecast_category": o.forecast_category,
-            "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
-            "sub_region": o.revised_sub_region or o.sub_region,
-            "region": o.revised_sub_region or o.sub_region,
-            "business_unit_primary": o.business_unit_primary,
-            "business_unit": o.business_unit_primary,
-            "approval_status": o.approval_status,
-            "type": raw_type,
-            "type_code": type_code,
-            "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
-            "owner": o.opportunity_owner,
-            "opportunity_owner": o.opportunity_owner,
-            "stage": o.stage_number or (o.extra_attributes or {}).get("Stage Number") or "",
-            "service_start_date": (o.extra_attributes or {}).get("Service Start Date"),
-            "service_expiry_date": (o.extra_attributes or {}).get("Service Expiry date") or (o.extra_attributes or {}).get("Service End Date"),
-        }
+        from backend.services.deal_serializer import serialize_opportunity
+        return serialize_opportunity(o)
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted: bool = False, target_date = None) -> tuple[list[Opportunity], Any]:
         from backend.services.scopes import FilterSpec
@@ -481,9 +461,11 @@ class V2OverviewService:
         snap: UploadSnapshot,
         as_of_date: date,
         period_val: str,
-        effective_types: list[str],
+        effective_types: list[str] | None,
     ) -> tuple[dict, dict]:
-        from backend.utils.excel_parser import parse_excel_datetime
+        import re
+        from backend.utils.excel_parser import parse_excel_date
+        from backend.services.settings_service import SettingsService
         if not snap:
             return {"count": 0, "acv": 0.0, "deals": []}, {"count": 0, "acv": 0.0, "deals": []}
 
@@ -500,20 +482,28 @@ class V2OverviewService:
             s = str(v).strip()
             return s == "" or s.lower() in ("nan", "none", "blank")
 
-        def _is_valid_stage(st):
-            if not st:
-                return False
-            s = str(st).strip()
-            if not s:
-                return False
-            s_lower = s.lower()
-            if any(k in s_lower for k in ("deleted", "lost", "won & closed", "white space")):
-                return False
-            if s_lower in ("deleted", "lost", "won & closed", "closed won", "white space"):
-                return False
-            return True
+        def _is_pp_stage_excluded(st):
+            if not st or not str(st).strip():
+                return True
+            s = re.sub(r"^\d+\.\s*", "", str(st)).strip().lower()
+            return not s or any(x in s for x in ("deleted", "lost", "won & closed"))
 
-        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        excluded_stages = SettingsService.get_excluded_stages(self.db)
+        norm_excluded = [re.sub(r"^\d+\.\s*", "", exc).strip().lower() for exc in excluded_stages]
+
+        def _is_jan1_stage_excluded(st):
+            if not st or not str(st).strip():
+                return True
+            s = re.sub(r"^\d+\.\s*", "", str(st)).strip().lower()
+            return not s or any(s == exc for exc in norm_excluded)
+
+        is_all_types = effective_types is None or any(t.lower() == "all" for t in effective_types)
+
+        from backend.services.settings_service import SettingsService
+        opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+        opps = opps_q.all()
         prop_pending_opps = []
         jan1_opps = []
 
@@ -523,30 +513,29 @@ class V2OverviewService:
             if str(st).strip().lower() != "renewals":
                 continue
 
-            # Type: global Type filter (default MR and R)
+            # Type: global Type filter (default All)
             raw_type = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type or ""
             type_code = ScopeService.extract_type_code(raw_type)
-            if effective_types and type_code not in effective_types:
+            if not is_all_types and type_code not in effective_types:
                 continue
 
-            # Stage Number: exclude Deleted, Lost, Won & Closed, and blank or whitespace
             stage = o.stage_number or (o.extra_attributes or {}).get("Stage Number") or ""
-            if not _is_valid_stage(stage):
-                continue
 
             # Tile 1: Proposal Pending (Fiscal Period = selected Period, approval & proposal status blank)
-            fp = o.fiscal_period or (o.extra_attributes or {}).get("Fiscal Period") or ""
-            if period_val == "All" or str(fp).strip() == str(period_val).strip():
-                app_status = o.approval_status or (o.extra_attributes or {}).get("Opportunity Approval Status") or ""
-                prop_status = (o.extra_attributes or {}).get("Proposal status For Renewal Opp") or ""
-                if _is_blank(app_status) and _is_blank(prop_status):
-                    prop_pending_opps.append(o)
+            if not _is_pp_stage_excluded(stage) and not o.is_deleted_or_lost:
+                fp = o.fiscal_period or (o.extra_attributes or {}).get("Fiscal Period") or ""
+                if period_val in ("All", "all_periods") or str(fp).strip() == str(period_val).strip():
+                    app_status = o.approval_status or (o.extra_attributes or {}).get("Opportunity Approval Status") or ""
+                    prop_status = (o.extra_attributes or {}).get("Proposal status For Renewal Opp") or ""
+                    if _is_blank(app_status) and _is_blank(prop_status):
+                        prop_pending_opps.append(o)
 
             # Tile 2: Jan 1st Renewals (Service Start Date exactly next Jan 1 on or after as-of date)
-            ssd_raw = (o.extra_attributes or {}).get("Service Start Date")
-            ssd_dt = parse_excel_datetime(ssd_raw)
-            if ssd_dt and ssd_dt.date() == target_jan1:
-                jan1_opps.append(o)
+            if not _is_jan1_stage_excluded(stage) and not o.is_deleted_or_lost:
+                ssd_raw = (o.extra_attributes or {}).get("Service Start Date") or (o.extra_attributes or {}).get("service_start_date")
+                ssd_d = parse_excel_date(ssd_raw)
+                if ssd_d and ssd_d == target_jan1:
+                    jan1_opps.append(o)
 
         t1_data = {
             "count": len(prop_pending_opps),
@@ -785,25 +774,26 @@ class V2OverviewService:
             y_opps, _ = self._scoped_opps(yest_snap, filter_spec=fs, target_date=eff_as_of_date)
             y_df   = _opps_to_df(y_opps)
             y_total_count = len(y_df)
-            y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2) if not y_df.empty else 0.0
-            y_cats = self._category_summary(y_df)
-            y_slip_df = y_df[pd.to_datetime(y_df["close_date"]).dt.date > q_end_date] if not y_df.empty else pd.DataFrame()
-            delta_yesterday = {
-                "count": total_count - y_total_count,
-                "acv":   round(total_acv - y_total_acv, 2),
-                "snapshot_date": yest_snap.snapshot_date.isoformat(),
-            }
-            cats_delta_yesterday = {
-                fc: {
-                    "count": cats[fc]["count"] - y_cats[fc]["count"],
-                    "acv":   round(cats[fc]["acv"] - y_cats[fc]["acv"], 2),
+            if y_total_count > 0 and not y_df.empty:
+                y_total_acv   = round(_sum(y_df, "forecast_acv_amount"), 2)
+                y_cats = self._category_summary(y_df)
+                y_slip_df = y_df[pd.to_datetime(y_df["close_date"]).dt.date > q_end_date]
+                delta_yesterday = {
+                    "count": total_count - y_total_count,
+                    "acv":   round(total_acv - y_total_acv, 2),
+                    "snapshot_date": yest_snap.snapshot_date.isoformat(),
                 }
-                for fc in ALL_FC
-            }
-            slip_delta_yesterday = {
-                "count": slippage["count"] - len(y_slip_df),
-                "acv":   round(slippage["acv"] - _sum(y_slip_df, "forecast_acv_amount"), 2),
-            }
+                cats_delta_yesterday = {
+                    fc: {
+                        "count": cats[fc]["count"] - y_cats[fc]["count"],
+                        "acv":   round(cats[fc]["acv"] - y_cats[fc]["acv"], 2),
+                    }
+                    for fc in ALL_FC
+                }
+                slip_delta_yesterday = {
+                    "count": slippage["count"] - len(y_slip_df),
+                    "acv":   round(slippage["acv"] - _sum(y_slip_df, "forecast_acv_amount"), 2),
+                }
 
         # ── Last-week deltas ──────────────────────────────────────────────────
         lw_snap = self._lastweek_snap(snap)
@@ -814,25 +804,26 @@ class V2OverviewService:
             lw_opps, _ = self._scoped_opps(lw_snap, filter_spec=fs, target_date=eff_as_of_date)
             lw_df   = _opps_to_df(lw_opps)
             lw_total_count = len(lw_df)
-            lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2) if not lw_df.empty else 0.0
-            lw_cats = self._category_summary(lw_df)
-            lw_slip_df = lw_df[pd.to_datetime(lw_df["close_date"]).dt.date > q_end_date] if not lw_df.empty else pd.DataFrame()
-            delta_lastweek = {
-                "count": total_count - lw_total_count,
-                "acv":   round(total_acv - lw_total_acv, 2),
-                "snapshot_date": lw_snap.snapshot_date.isoformat(),
-            }
-            cats_delta_lastweek = {
-                fc: {
-                    "count": cats[fc]["count"] - lw_cats[fc]["count"],
-                    "acv":   round(cats[fc]["acv"] - lw_cats[fc]["acv"], 2),
+            if lw_total_count > 0 and not lw_df.empty:
+                lw_total_acv   = round(_sum(lw_df, "forecast_acv_amount"), 2)
+                lw_cats = self._category_summary(lw_df)
+                lw_slip_df = lw_df[pd.to_datetime(lw_df["close_date"]).dt.date > q_end_date]
+                delta_lastweek = {
+                    "count": total_count - lw_total_count,
+                    "acv":   round(total_acv - lw_total_acv, 2),
+                    "snapshot_date": lw_snap.snapshot_date.isoformat(),
                 }
-                for fc in ALL_FC
-            }
-            slip_delta_lastweek = {
-                "count": slippage["count"] - len(lw_slip_df),
-                "acv":   round(slippage["acv"] - _sum(lw_slip_df, "forecast_acv_amount"), 2),
-            }
+                cats_delta_lastweek = {
+                    fc: {
+                        "count": cats[fc]["count"] - lw_cats[fc]["count"],
+                        "acv":   round(cats[fc]["acv"] - lw_cats[fc]["acv"], 2),
+                    }
+                    for fc in ALL_FC
+                }
+                slip_delta_lastweek = {
+                    "count": slippage["count"] - len(lw_slip_df),
+                    "acv":   round(slippage["acv"] - _sum(lw_slip_df, "forecast_acv_amount"), 2),
+                }
 
         other_count = 0
         if not df.empty and "canonical_region" in df.columns:
@@ -896,40 +887,14 @@ class V2OverviewService:
                 seen_categories.add(item_dict["category_key"])
                 items.append(item_dict)
 
-        # 1. Commit deals not approved
-        commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
-        if not commit_unappr.empty:
-            commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
-            c_cnt = len(commit_unappr)
-            c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
-            top_c = commit_unappr.iloc[0]
-            raw_app = str(top_c.get("approval_status", "")).strip()
-            norm_app = "Not submitted" if raw_app in ("Blank", "Not submitted", "", "None") else raw_app
-            category_summaries["commit_not_approved"] = {
-                "count": c_cnt,
-                "acv": c_tot_acv,
-                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
-            }
-            _add_item({
-                "category_key": "commit_not_approved",
-                "category_label": "Commit not approved",
-                "opportunity_id_18": str(top_c["opportunity_id_18"]),
-                "opportunity_name": str(top_c["opportunity_name"]),
-                "account_name": str(top_c["account_name"]),
-                "acv": round(float(top_c["forecast_acv_amount"]), 2),
-                "category_count": c_cnt,
-                "category_acv": c_tot_acv,
-                "badge": f"Commit · {norm_app}",
-                "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
-                "kind": "commit_not_approved",
-                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
-            })
-
-        # 2. Largest overdue deals across all renewals in snapshot
-        all_opps_q = self.db.query(Opportunity).filter(
+        # 1. Past close date deals (overdue renewals across snapshot)
+        all_opps_q_stmt = self.db.query(Opportunity).filter(
             Opportunity.snapshot_id == snap.id,
             Opportunity.sales_type == "Renewals",
-        ).all()
+        )
+        if ScopeService._is_exclude_reconciliation_enabled(self.db):
+            all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+        all_opps_q = all_opps_q_stmt.all()
         all_df = _opps_to_df(all_opps_q)
         overdue_df = pd.DataFrame()
         if not all_df.empty and "close_date" in all_df.columns:
@@ -950,7 +915,7 @@ class V2OverviewService:
             }
             _add_item({
                 "category_key": "overdue",
-                "category_label": "Overdue deal",
+                "category_label": "Past close date deals",
                 "opportunity_id_18": str(top_od["opportunity_id_18"]),
                 "opportunity_name": str(top_od["opportunity_name"]),
                 "account_name": str(top_od["account_name"]),
@@ -961,6 +926,35 @@ class V2OverviewService:
                 "detail": f"{od_cnt} overdue deals totaling ${od_tot_acv:,.2f}",
                 "kind": "overdue",
                 "deal_ids": [str(d) for d in overdue_df["opportunity_id_18"]],
+            })
+
+        # 2. Commit deals still to be approved
+        commit_unappr = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")].copy() if not df.empty else pd.DataFrame()
+        if not commit_unappr.empty:
+            commit_unappr = commit_unappr.sort_values(by="forecast_acv_amount", ascending=False)
+            c_cnt = len(commit_unappr)
+            c_tot_acv = round(float(_sum(commit_unappr, "forecast_acv_amount")), 2)
+            top_c = commit_unappr.iloc[0]
+            raw_app = str(top_c.get("approval_status", "")).strip()
+            norm_app = "Not submitted" if raw_app in ("Blank", "Not submitted", "", "None") else raw_app
+            category_summaries["commit_not_approved"] = {
+                "count": c_cnt,
+                "acv": c_tot_acv,
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
+            }
+            _add_item({
+                "category_key": "commit_not_approved",
+                "category_label": "Commit deals still to be approved",
+                "opportunity_id_18": str(top_c["opportunity_id_18"]),
+                "opportunity_name": str(top_c["opportunity_name"]),
+                "account_name": str(top_c["account_name"]),
+                "acv": round(float(top_c["forecast_acv_amount"]), 2),
+                "category_count": c_cnt,
+                "category_acv": c_tot_acv,
+                "badge": f"Commit · {norm_app}",
+                "detail": f"{c_cnt} unapproved Commit deals totaling ${c_tot_acv:,.2f}",
+                "kind": "commit_not_approved",
+                "deal_ids": [str(d) for d in commit_unappr["opportunity_id_18"]],
             })
 
         # 3. Biggest drop vs yesterday
@@ -1075,7 +1069,7 @@ class V2OverviewService:
         }
 
         # ── Custom Overview Tiles: Proposal Pending & Jan 1st Renewals ─────
-        eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+        eff_types = res.effective_types
         curr_pp, curr_j1 = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
 
         yest_pp, yest_j1 = (None, None)
@@ -1086,9 +1080,16 @@ class V2OverviewService:
         if lw_snap:
             lw_pp, lw_j1 = self._compute_overview_custom_tiles(lw_snap, eff_as_of_date, target_fp, eff_types)
 
+        top_pp = curr_pp["deals"][0] if curr_pp.get("deals") else None
         proposal_pending = {
             "count": curr_pp["count"],
             "acv": curr_pp["acv"],
+            "top_deal": {
+                "opportunity_id_18": str(top_pp.opportunity_id_18),
+                "opportunity_name": str(top_pp.opportunity_name or ""),
+                "account_name": str(top_pp.account_name or ""),
+                "acv": float(top_pp.forecast_acv_amount or 0.0),
+            } if top_pp else None,
             "delta_yesterday": {
                 "count": curr_pp["count"] - yest_pp["count"],
                 "acv": round(curr_pp["acv"] - yest_pp["acv"], 2),
@@ -1100,10 +1101,17 @@ class V2OverviewService:
             "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_pp["deals"]],
         }
 
+        top_j1 = curr_j1["deals"][0] if curr_j1.get("deals") else None
         jan1_renewals = {
             "count": curr_j1["count"],
             "acv": curr_j1["acv"],
             "target_date": curr_j1["target_date"],
+            "top_deal": {
+                "opportunity_id_18": str(top_j1.opportunity_id_18),
+                "opportunity_name": str(top_j1.opportunity_name or ""),
+                "account_name": str(top_j1.account_name or ""),
+                "acv": float(top_j1.forecast_acv_amount or 0.0),
+            } if top_j1 else None,
             "delta_yesterday": {
                 "count": curr_j1["count"] - yest_j1["count"],
                 "acv": round(curr_j1["acv"] - yest_j1["acv"], 2),
@@ -1114,6 +1122,20 @@ class V2OverviewService:
             } if lw_j1 else None,
             "deal_ids": [str(o.opportunity_id_18 or o.id) for o in curr_j1["deals"]],
         }
+
+        del_top_deal = del_sum.get("top_deals", [None])[0] if del_sum.get("top_deals") else None
+        del_renewals_obj = del_sum.get("delayed_renewals")
+        if isinstance(del_renewals_obj, dict) and del_top_deal:
+            del_renewals_obj["top_deal"] = {
+                "opportunity_id_18": str(del_top_deal["opportunity_id_18"]),
+                "opportunity_name": str(del_top_deal.get("opportunity_name", "")),
+                "account_name": str(del_top_deal.get("account_name", "")),
+                "acv": float(del_top_deal.get("forecast_acv_amount") or del_top_deal.get("acv") or 0.0),
+            }
+
+        slip_sec = del_sum.get("slippage") or {}
+        if isinstance(slip_sec, dict) and slip_sec.get("top_deal"):
+            slippage_data["top_deal"] = slip_sec["top_deal"]
 
         return {
             "snapshot_date":    snap.snapshot_date.isoformat(),
@@ -1160,6 +1182,7 @@ class V2OverviewService:
             "quarter_total_acv": del_sum.get("quarter_total_acv"),
             # Jan 1st Renewals Tile
             "jan1_renewals": jan1_renewals,
+            "rules": del_sum.get("rules"),
             "proposal_confirmation_totals": prop_totals,
             "source_checks": {
                 "total": len(snap.checks),
@@ -1226,6 +1249,8 @@ class V2OverviewService:
             Opportunity.snapshot_id == snap.id,
             ScopeService.is_renewals()
         )
+        if ScopeService._is_exclude_reconciliation_enabled(self.db):
+            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         if not fs.include_deleted_lost:
             q = q.filter(Opportunity.is_deleted_or_lost == False)
         today_all_df = _opps_to_df(q.all())
@@ -1372,10 +1397,16 @@ class V2OverviewService:
         approval_status: str | None = None,
         kind: str | None = None,
         compare: str | None = None,
+        bu: str | None = None,
+        ageing: str | None = None,
         exclude_deleted: bool = False,
         as_of: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
         deal_ids: Optional[list[str]] = None,
+        expiry_year: int | None = None,
+        start_year: int | None = None,
+        split_key: str | None = None,
+        review_type: str | None = None,
     ) -> dict:
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
@@ -1407,8 +1438,16 @@ class V2OverviewService:
             filters_applied["compare"] = compare
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
-        if kind in ("delayed_overdue", "slippage_total", "delayed_total", "delayed_renewals_total", "lost", "later_close") or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_") or (kind == "slipped" and not compare))):
-            target_kind = kind.replace("delayed_", "") if kind.startswith("delayed_") else kind
+        delayed_kinds = (
+            "delayed", "delayed_total", "delayed_overdue", "overdue", "delayed_ahead",
+            "later_close", "ahead", "slippage", "slippage_total", "slipped", "slipped_total",
+            "slipped_from_year", "slipped_from_start_year", "newly_delayed", "lost",
+            "needs_review", "review", "delayed_ahead_split", "delayed_other_type", "slipped_other_type"
+        )
+        if kind in delayed_kinds or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_"))):
+            target_kind = kind
+            if kind.startswith("delayed_") and kind not in ("delayed_overdue", "delayed_ahead", "delayed_ahead_split", "delayed_other_type", "delayed_total"):
+                target_kind = kind.replace("delayed_", "")
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
             return del_svc.get_deals(
@@ -1418,7 +1457,12 @@ class V2OverviewService:
                 region=region,
                 category=category,
                 status=approval_status,
-                bu=None,
+                bu=bu,
+                ageing=ageing,
+                expiry_year=expiry_year,
+                start_year=start_year,
+                split_key=split_key,
+                review_type=review_type,
                 filter_spec=fs,
             )
 
@@ -1593,10 +1637,13 @@ class V2OverviewService:
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
         elif kind == "overdue":
-            all_opps_q = self.db.query(Opportunity).filter(
+            all_opps_q_stmt = self.db.query(Opportunity).filter(
                 Opportunity.snapshot_id == snap.id,
                 Opportunity.sales_type == "Renewals",
-            ).all()
+            )
+            if ScopeService._is_exclude_reconciliation_enabled(self.db):
+                all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+            all_opps_q = all_opps_q_stmt.all()
             df_all_ren = _opps_to_df(all_opps_q)
             cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce")
             snap_ts = pd.Timestamp(snap.snapshot_date)
@@ -1675,7 +1722,7 @@ class V2OverviewService:
             target_fp = res.resolved_quarter
             yest_snap = self._yesterday_snap(snap)
             lw_snap = self._lastweek_snap(snap)
-            eff_types = res.effective_types if res.effective_types is not None else ["MR", "R"]
+            eff_types = res.effective_types
 
             t1_data, t2_data = self._compute_overview_custom_tiles(snap, eff_as_of_date, target_fp, eff_types)
             target_data = t1_data if kind == "proposal_pending" else t2_data

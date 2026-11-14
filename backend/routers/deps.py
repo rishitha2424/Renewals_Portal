@@ -20,7 +20,7 @@ def get_filter_spec(
     exclude_deleted_lost: bool = Query(False),
     exclude_deleted: bool = Query(False),
 ) -> FilterSpec:
-    idl = True
+    idl = False
     if include_deleted_lost is not None:
         idl = bool(include_deleted_lost)
     elif exclude_deleted or exclude_deleted_lost:

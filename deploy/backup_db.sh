@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
+# ==============================================================================
 # deploy/backup_db.sh
 # Daily PostgreSQL backup script with 30-day retention
 #
 # Cron Example:
-# Run daily at 02:00 AM:
 # 0 2 * * * /opt/renewals/deploy/backup_db.sh >> /var/log/renewals_backup.log 2>&1
-#
+# ==============================================================================
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/opt/renewals/backups}"

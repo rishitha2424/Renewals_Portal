@@ -21,6 +21,7 @@ from typing import Any, Optional
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import Font, PatternFill
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -100,6 +101,10 @@ class FullExcelExportService:
         if opp_ids is not None:
             clean_ids = [str(i).strip() for i in opp_ids if str(i).strip()]
             q = q.filter(Opportunity.opportunity_id_18.in_(clean_ids))
+        else:
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         opps = q.all()
 

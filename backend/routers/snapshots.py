@@ -27,16 +27,23 @@ def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get
         quarter_str = ScopeService.quarter_of(s.snapshot_date)
         q_label = ScopeService.quarter_label(quarter_str)
 
+        from backend.services.settings_service import SettingsService
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(db)
+
+        q_filter = [
+            Opportunity.snapshot_id == s.id,
+            Opportunity.fiscal_period == quarter_str,
+            Opportunity.sales_type == "Renewals",
+        ]
+        if exclude_recon:
+            q_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+
         q_agg = (
             db.query(
                 func.count(Opportunity.id),
                 func.sum(Opportunity.forecast_acv_amount),
             )
-            .filter(
-                Opportunity.snapshot_id == s.id,
-                Opportunity.fiscal_period == quarter_str,
-                Opportunity.sales_type == "Renewals",
-            )
+            .filter(*q_filter)
             .first()
         )
         q_deals = int(q_agg[0] or 0)
@@ -93,16 +100,23 @@ def upload_history(db: Session = Depends(get_db), ctx: UserContext = Depends(get
     for s in snaps:
         quarter_str = ScopeService.quarter_of(s.snapshot_date)
         q_label = ScopeService.quarter_label(quarter_str)
+        from backend.services.settings_service import SettingsService
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(db)
+
+        q_filter = [
+            Opportunity.snapshot_id == s.id,
+            Opportunity.fiscal_period == quarter_str,
+            Opportunity.sales_type == "Renewals",
+        ]
+        if exclude_recon:
+            q_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+
         q_agg = (
             db.query(
                 func.count(Opportunity.id),
                 func.sum(Opportunity.forecast_acv_amount),
             )
-            .filter(
-                Opportunity.snapshot_id == s.id,
-                Opportunity.fiscal_period == quarter_str,
-                Opportunity.sales_type == "Renewals",
-            )
+            .filter(*q_filter)
             .first()
         )
         q_deals = int(q_agg[0] or 0)
@@ -203,6 +217,7 @@ def get_snapshot_checks(
                 "website_value": c.website_value,
                 "diff": c.diff_value,
                 "status": c.status,
+                "note": getattr(c, "note", None),
             }
             for c in checks
         ],

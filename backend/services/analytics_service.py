@@ -12,6 +12,7 @@ from decimal import Decimal
 import re
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -124,11 +125,15 @@ class AnalyticsService:
         self,
         snapshot: UploadSnapshot,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         types: Optional[list[str]] = None,
     ) -> list[Opportunity]:
         from sqlalchemy import or_
+        from backend.services.settings_service import SettingsService
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id)
+
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         # Exclude Deleted & Lost unless explicitly requested
         if not include_deleted_lost:
@@ -230,7 +235,7 @@ class AnalyticsService:
         ctx: UserContext,
         snapshot_id: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -315,7 +320,7 @@ class AnalyticsService:
         snapshot_id: str | None = None,
         compare_to: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -506,7 +511,7 @@ class AnalyticsService:
         snapshot_id: str | None = None,
         compare_to: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -679,7 +684,7 @@ class AnalyticsService:
         snapshot_id: str | None = None,
         mode: str = "as_in_excel",
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -805,7 +810,7 @@ class AnalyticsService:
         snapshot_id: str | None = None,
         top_n: int = 10,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -833,7 +838,7 @@ class AnalyticsService:
         snapshot_id: str | None = None,
         top_n: int = 10,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -962,7 +967,7 @@ class AnalyticsService:
         ctx: UserContext,
         snapshot_id: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -1012,7 +1017,7 @@ class AnalyticsService:
         ctx: UserContext,
         snapshot_id: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -1070,7 +1075,7 @@ class AnalyticsService:
         from_date: date,
         to_date: date,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         from_snap = self.get_snapshot_by_date(ctx, from_date)
         to_snap = self.get_snapshot_by_date(ctx, to_date)
@@ -1881,7 +1886,7 @@ class AnalyticsService:
         compare_to: str | None = None,
         mode: str = "as_in_excel",
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snap = self._resolve_snapshot(ctx, snapshot_id)
         if snap is None:
@@ -2118,7 +2123,7 @@ class AnalyticsService:
         self,
         ctx: UserContext,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> dict:
         snapshots = (
             self.db.query(UploadSnapshot)

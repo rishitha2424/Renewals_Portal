@@ -44,6 +44,13 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "close_date": o.close_date,
             "approval_status": o.approval_status or "",
         })
+    if not records:
+        return pd.DataFrame(columns=[
+            "opportunity_id_18", "opportunity_name", "account_name",
+            "forecast_acv_amount", "forecast_category", "business_unit",
+            "business_unit_primary", "sub_region", "is_deleted_or_lost",
+            "fiscal_period", "close_date", "approval_status"
+        ])
     return pd.DataFrame(records)
 
 
@@ -260,13 +267,19 @@ class V2BusinessUnitsService:
                 fc_grand_totals[fc]["count"] = len(fc_df)
                 fc_grand_totals[fc]["acv"] = float(fc_df["forecast_acv_amount"].sum())
 
-        def _calc_delta(td, prev):
-            if not prev: return {"count": 0, "acv": 0.0}
+        has_yest = bool(y_snap and not y_df.empty)
+        has_lw = bool(lw_snap and not lw_df.empty)
+
+        def _calc_delta(td, prev, has_comp=True):
+            if not has_comp or not prev:
+                return None
             c = td.get("count", 0) - prev.get("count", 0)
             a = td.get("acv", 0.0) - prev.get("acv", 0.0)
             return {"count": c, "acv": round(a, 2)}
             
-        def _get_grand_delta(fc, df_in, prev_df_in):
+        def _get_grand_delta(fc, df_in, prev_df_in, has_comp=True):
+            if not has_comp:
+                return None
             td_c = len(df_in[df_in["forecast_category"] == fc]) if not df_in.empty else 0
             td_a = float(df_in[df_in["forecast_category"] == fc]["forecast_acv_amount"].sum()) if not df_in.empty else 0.0
             
@@ -277,8 +290,8 @@ class V2BusinessUnitsService:
 
         for bu in all_bus:
             t = today_totals[bu]
-            yt = y_totals.get(bu, {})
-            lwt = lw_totals.get(bu, {})
+            yt = y_totals.get(bu, {}) if has_yest else {}
+            lwt = lw_totals.get(bu, {}) if has_lw else {}
             
             cells = {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}
             for fc, c_data in t["cells"].items():
@@ -287,10 +300,10 @@ class V2BusinessUnitsService:
             
             # calculate deltas per cell
             for fc in ALL_FC:
-                y_cell = yt.get("cells", {}).get(fc, {})
-                lw_cell = lwt.get("cells", {}).get(fc, {})
-                cells[fc]["delta_yesterday"] = _calc_delta(cells[fc], y_cell)
-                cells[fc]["delta_lastweek"] = _calc_delta(cells[fc], lw_cell)
+                y_cell = yt.get("cells", {}).get(fc, {}) if has_yest else {}
+                lw_cell = lwt.get("cells", {}).get(fc, {}) if has_lw else {}
+                cells[fc]["delta_yesterday"] = _calc_delta(cells[fc], y_cell, has_yest)
+                cells[fc]["delta_lastweek"] = _calc_delta(cells[fc], lw_cell, has_lw)
 
             commit_acv = cells["Commit"]["acv"]
             commit_pct = round((commit_acv / t["acv"] * 100), 1) if t["acv"] > 0 else 0.0
@@ -302,11 +315,14 @@ class V2BusinessUnitsService:
                 "pct_acv": round((t["acv"] / grand_acv * 100), 1) if grand_acv > 0 else 0.0,
                 "commit_pct": commit_pct,
                 "cells": cells,
-                "delta_yesterday": _calc_delta(t, yt),
-                "delta_lastweek": _calc_delta(t, lwt),
+                "delta_yesterday": _calc_delta(t, yt, has_yest),
+                "delta_lastweek": _calc_delta(t, lwt, has_lw),
                 "yesterday_date": y_snap.snapshot_date.isoformat() if y_snap else None,
                 "lastweek_date": lw_snap.snapshot_date.isoformat() if lw_snap else None,
             })
+
+        y_acv = float(y_df["forecast_acv_amount"].sum()) if (has_yest and "forecast_acv_amount" in y_df.columns) else 0.0
+        lw_acv = float(lw_df["forecast_acv_amount"].sum()) if (has_lw and "forecast_acv_amount" in lw_df.columns) else 0.0
 
         # Calculate category and grand totals
         totals = {
@@ -314,8 +330,8 @@ class V2BusinessUnitsService:
             "grand": {
                 "count": grand_count,
                 "acv": round(grand_acv, 2),
-                "delta_yesterday": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(y_df) if not y_df.empty else 0, "acv": float(y_df["forecast_acv_amount"].sum()) if not y_df.empty else 0.0}),
-                "delta_lastweek": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(lw_df) if not lw_df.empty else 0, "acv": float(lw_df["forecast_acv_amount"].sum()) if not lw_df.empty else 0.0})
+                "delta_yesterday": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(y_df), "acv": y_acv}, has_yest),
+                "delta_lastweek": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(lw_df), "acv": lw_acv}, has_lw)
             }
         }
         
@@ -598,19 +614,13 @@ class V2BusinessUnitsService:
                 "deals": deals
             }
 
-        df = _opps_to_df(opps)
-        
-        if df.empty:
-            return {"count": 0, "acv": 0.0, "filters_applied": res.filters_applied, "deals": []}
+        from backend.services.deal_serializer import serialize_opportunity
+        deals = [serialize_opportunity(o) for o in opps]
+        deals.sort(key=lambda d: float(d["forecast_acv_amount"] or 0.0), reverse=True)
 
-        df = df.sort_values("forecast_acv_amount", ascending=False)
-        deals = df.to_dict(orient="records")
-        for d in deals:
-            if d["close_date"]: d["close_date"] = d["close_date"].isoformat()
-            
         return {
             "count": len(deals),
-            "acv": round(float(df["forecast_acv_amount"].sum()) if not df.empty else 0.0, 2),
+            "acv": round(sum(d["forecast_acv_amount"] for d in deals), 2),
             "filters_applied": res.filters_applied,
             "deals": deals
         }

@@ -3,7 +3,8 @@ Application configuration — all settings come from environment variables or .e
 Never hard-code secrets or model names here.
 """
 import os
-from typing import Optional
+from typing import Optional, Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
@@ -19,22 +20,34 @@ class Settings(BaseSettings):
     )
 
     # Database
-    DATABASE_URL: str = f"sqlite:///{ROOT_DIR / 'renewals.db'}"
+    DATABASE_URL: str = f"sqlite:///{(ROOT_DIR / 'renewals.db').as_posix()}"
 
     @property
     def sqlalchemy_database_url(self) -> str:
         """Ensure standard postgres:// or postgresql:// URLs use an available psycopg dialect."""
         url = self.DATABASE_URL
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql+psycopg://", 1)
-        elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
-            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-        elif url.startswith("postgresql+psycopg2://"):
+        if not url:
+            db_path = (ROOT_DIR / 'renewals.db').resolve().as_posix()
+            return f"sqlite:///{db_path}"
+
+        if url.startswith(("postgres://", "postgresql://", "postgresql+")):
+            has_psycopg3 = False
+            has_psycopg2 = False
+            try:
+                import psycopg  # noqa: F401
+                has_psycopg3 = True
+            except ImportError:
+                pass
             try:
                 import psycopg2  # noqa: F401
+                has_psycopg2 = True
             except ImportError:
-                # Fall back to psycopg (v3) if psycopg2 binary is not installed in the environment
-                url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+                pass
+
+            target_driver = "postgresql+psycopg://" if has_psycopg3 else ("postgresql+psycopg2://" if has_psycopg2 else "postgresql://")
+            for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://", "postgresql://", "postgres://"):
+                if url.startswith(prefix):
+                    return target_driver + url[len(prefix):]
         return url
 
     # AI provider (stub by default; swap to "gemini" or "openai" via .env)
@@ -59,7 +72,29 @@ class Settings(BaseSettings):
     # App
     APP_TITLE: str = "Mobileum Horizon"
     APP_VERSION: str = "1.0.0"
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: Any = ["http://localhost:5173", "http://localhost:3000"]
+
+    @field_validator("CORS_ORIGINS")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return ["*"]
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(x).strip() for x in parsed if str(x).strip()]
+                except Exception:
+                    pass
+            # Split comma or whitespace separated string
+            parts = [part.strip() for part in v.replace(",", " ").split() if part.strip()]
+            return parts or ["*"]
+        if isinstance(v, (list, tuple, set)):
+            return [str(x).strip() for x in v if str(x).strip()]
+        return ["*"]
     FISCAL_YEAR_START_MONTH: int = 1
     DELAYED_INCLUDE_PRIOR_FY: bool = True
     APPROVAL_DEAL_SIZE_THRESHOLD: float = 100000.0

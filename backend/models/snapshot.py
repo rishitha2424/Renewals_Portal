@@ -93,6 +93,7 @@ class SnapshotCheck(Base):
     website_value: Mapped[str] = mapped_column(String(256))
     diff_value: Mapped[str] = mapped_column(String(256))
     status: Mapped[str] = mapped_column(String(32), index=True)  # pass | fail | warning
+    note: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     snapshot: Mapped["UploadSnapshot"] = relationship("UploadSnapshot", back_populates="checks")

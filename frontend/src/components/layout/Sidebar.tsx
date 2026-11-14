@@ -16,19 +16,8 @@ import {
   X,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
+import { NAV_ITEMS } from '@/config/nav'
 import clsx from 'clsx'
-
-const NAV_ITEMS = [
-  { to: '/', icon: LayoutDashboard, label: 'Overview' },
-  { to: '/expiry', icon: Calendar, label: 'Expiry' },
-  { to: '/approvals', icon: CheckCircle2, label: 'Approvals' },
-  { to: '/business-units', icon: Building2, label: 'Business Units' },
-  { to: '/regions', icon: Globe2, label: 'Regions' },
-  { to: '/delayed', icon: Clock, label: 'Delayed Renewals' },
-  { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
-  { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
-  { to: '/executive', icon: Printer, label: 'Executive' },
-]
 
 export default function Sidebar() {
   const {

@@ -225,8 +225,8 @@ export default function ExecutiveView() {
     })
 
   // Movements vs yesterday & vs last week
-  const deltaYesterday = total.delta_yesterday || { count: 0, acv: 0, snapshot_date: '' }
-  const deltaLastWeek = total.delta_lastweek || { count: 0, acv: 0, snapshot_date: '' }
+  const deltaYesterday = total.delta_yesterday || null
+  const deltaLastWeek = total.delta_lastweek || null
 
   // Approval Status Summary - normalized and merged to prevent duplicate or conflicting statuses
   const rawApprovalStatuses = approvals.statuses || []
@@ -472,7 +472,7 @@ export default function ExecutiveView() {
             <img src="/assets/logo.png" alt="Mobileum" className="w-10 h-10 object-contain" />
             <div>
               <h1 className="font-extrabold text-2xl tracking-tight text-[#12284C]">
-                Mobileum Renewals Intelligence
+                Mobileum Renewals Intelligence · Executive Summary
               </h1>
               <p className="text-xs text-slate-500 font-medium">
                 Executive Portfolio Update · As of <span className="font-semibold text-slate-800">{formatDate(snapshotDate)}</span> · Period: <span className="font-semibold text-slate-800">{period}</span> · Scope: <span className="font-semibold text-slate-800">Renewals</span>
@@ -569,23 +569,41 @@ export default function ExecutiveView() {
               <tbody className="divide-y divide-slate-100">
                 <tr className="hover:bg-slate-50/50">
                   <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Yesterday</td>
-                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaYesterday.snapshot_date || '')}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
-                  </td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
-                  </td>
+                  <td className="px-4 py-2 text-slate-500">{deltaYesterday ? formatDate(deltaYesterday.snapshot_date || '') : '—'}</td>
+                  {deltaYesterday ? (
+                    <>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.count < 0 ? 'text-rose-600' : deltaYesterday.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaYesterday.count > 0 ? `+${deltaYesterday.count}` : deltaYesterday.count}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaYesterday.acv < 0 ? 'text-rose-600' : deltaYesterday.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaYesterday.acv >= 0 ? `+${formatCurrency(deltaYesterday.acv)}` : `-${formatCurrency(Math.abs(deltaYesterday.acv))}`}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                    </>
+                  )}
                 </tr>
                 <tr className="hover:bg-slate-50/50">
                   <td className="px-4 py-2 font-medium text-slate-800">Movement vs. Last Week</td>
-                  <td className="px-4 py-2 text-slate-500">{formatDate(deltaLastWeek.snapshot_date || '')}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
-                  </td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
-                  </td>
+                  <td className="px-4 py-2 text-slate-500">{deltaLastWeek ? formatDate(deltaLastWeek.snapshot_date || '') : '—'}</td>
+                  {deltaLastWeek ? (
+                    <>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.count < 0 ? 'text-rose-600' : deltaLastWeek.count > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaLastWeek.count > 0 ? `+${deltaLastWeek.count}` : deltaLastWeek.count}
+                      </td>
+                      <td className={`px-4 py-2 text-right tabular-nums font-semibold ${deltaLastWeek.acv < 0 ? 'text-rose-600' : deltaLastWeek.acv > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {deltaLastWeek.acv >= 0 ? `+${formatCurrency(deltaLastWeek.acv)}` : `-${formatCurrency(Math.abs(deltaLastWeek.acv))}`}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                      <td className="px-4 py-2 text-right text-slate-400 font-normal">n/a</td>
+                    </>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -874,7 +892,7 @@ export default function ExecutiveView() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="px-4 py-2">Slipped From (Service Expiry Year)</th>
+                  <th className="px-4 py-2">Service start year</th>
                   <th className="px-4 py-2 text-right">Deals</th>
                   <th className="px-4 py-2 text-right">ACV (USD)</th>
                   <th className="px-4 py-2">Expected Close Year</th>
@@ -961,7 +979,7 @@ export default function ExecutiveView() {
 
         <div className="text-right">
           <p>Generated: <span className="tabular-nums text-slate-700">{generatedAt}</span></p>
-          <p className="text-[10px] text-slate-400">Mobileum Horizon Renewals Intelligence · Executive Report</p>
+          <p className="text-[10px] text-slate-400">Mobileum Horizon Renewals Intelligence · Executive Summary</p>
         </div>
       </footer>
     </div>

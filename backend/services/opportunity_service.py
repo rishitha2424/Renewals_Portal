@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
 from backend.models.opportunity import Opportunity
@@ -15,6 +15,8 @@ from backend.models.change_log import ChangeLog
 from backend.services.scopes import ScopeService
 from backend.services.context import UserContext
 from backend.services.analytics_service import AnalyticsService
+from backend.constants import normalize_forecast_category, normalize_approval_status
+from backend.services.deal_serializer import serialize_opportunity
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class OpportunityService:
         max_acv: float | None = None,
         search: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ):
         snap = self._analytics._resolve_snapshot(ctx, snapshot_id)
@@ -52,21 +54,24 @@ class OpportunityService:
         q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
 
         if filter_spec:
-            res = ScopeService.resolve(filter_spec, snapshot=snap, as_of_date=snap.snapshot_date)
+            res = ScopeService.resolve(filter_spec, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
             q = q.filter(*res.conditions)
         else:
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
             if not include_deleted_lost:
                 q = q.filter(Opportunity.is_deleted_or_lost == False)
 
             s = (scope or "renewals").lower()
             if s == "renewals":
-                q = q.filter(ScopeService.is_renewals())
+                q = q.filter(ScopeService.is_renewals(self.db))
             elif s == "all":
                 pass
             else:
                 # Fallback to resolve as period
                 fs = ScopeService.FilterSpec(period=s)
-                res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date)
+                res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
                 q = q.filter(*res.conditions)
 
         if forecast_category:
@@ -141,7 +146,7 @@ class OpportunityService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
     ) -> dict:
         q, snap = self._build_filtered_query(
@@ -226,7 +231,7 @@ class OpportunityService:
         max_acv: float | None = None,
         search: str | None = None,
         scope: str = "all",
-        include_deleted_lost: bool = True,
+        include_deleted_lost: bool = False,
     ) -> str:
         import csv
         import io
@@ -355,11 +360,16 @@ class OpportunityService:
         if snap is None:
             return {}
 
-        opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).all()
+        from backend.services.settings_service import SettingsService
+        opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(self.db):
+            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+        opps = opps_q.all()
         acv_vals = [float(o.forecast_acv_amount) for o in opps if o.forecast_acv_amount]
         return {
-            "forecast_categories": sorted({o.forecast_category for o in opps if o.forecast_category}),
-            "approval_statuses": sorted({o.approval_status for o in opps if o.approval_status}),
+            "forecast_categories": sorted({normalize_forecast_category(o.forecast_category) for o in opps if o.forecast_category}),
+            "approval_statuses": sorted({normalize_approval_status(o.approval_status) for o in opps if o.approval_status}),
+            "stages": sorted({o.stage_number or (o.extra_attributes or {}).get("Stage Number") for o in opps if (o.stage_number or (o.extra_attributes or {}).get("Stage Number"))}),
             "sub_regions": sorted({o.sub_region for o in opps if o.sub_region}),
             "business_units": sorted({o.business_unit_primary for o in opps if o.business_unit_primary}),
             "service_expiry_periods": sorted({o.service_expiry_period for o in opps if o.service_expiry_period}),
@@ -369,7 +379,8 @@ class OpportunityService:
         }
 
     def _to_dict(self, o: Opportunity) -> dict:
-        return {
+        base = serialize_opportunity(o)
+        base.update({
             "id": o.id,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
@@ -379,15 +390,16 @@ class OpportunityService:
             "country_territory": o.country_territory,
             "business_unit_primary": o.business_unit_primary,
             "business_unit_raw": o.business_unit_raw,
-            "forecast_category": o.forecast_category,
+            "forecast_category": base.get("forecast_category") or o.forecast_category,
             "forecast_acv_amount": float(o.forecast_acv_amount) if o.forecast_acv_amount else None,
             "close_date": o.close_date.isoformat() if o.close_date else None,
             "probability_pct": o.probability_pct,
-            "approval_status": o.approval_status,
+            "approval_status": base.get("approval_status") or o.approval_status,
             "service_expiry_period": o.service_expiry_period,
             "closing_year": o.closing_year,
             "renewal_category": o.renewal_category,
             "months_delayed": o.months_delayed,
             "opportunity_owner": o.opportunity_owner,
             "last_modified_date": o.last_modified_date.isoformat() if o.last_modified_date else None,
-        }
+        })
+        return base

@@ -39,8 +39,8 @@ export const DEFAULT_FILTER_SPEC: FilterSpec = {
   business_units: [],
   forecast_categories: [],
   approval_statuses: [],
-  types: ['MR', 'R'],
-  include_deleted_lost: true,
+  types: ['all'],
+  include_deleted_lost: false,
 }
 
 interface AppState {
@@ -137,9 +137,9 @@ export const useAppStore = create<AppState>()(
           globalFilters: { ...s.globalFilters, ...f, sales_types: ['Renewals'] },
           includeDeletedLost: f.include_deleted_lost !== undefined ? f.include_deleted_lost : s.includeDeletedLost,
         })),
-      resetGlobalFilters: () => set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: true }),
+      resetGlobalFilters: () => set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: false }),
 
-      includeDeletedLost: true,
+      includeDeletedLost: false,
       setIncludeDeletedLost: (includeDeletedLost) =>
         set((s) => ({
           includeDeletedLost,

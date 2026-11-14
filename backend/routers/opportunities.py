@@ -33,7 +33,7 @@ def list_opportunities(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     scope: str = Query("renewals"),
-    include_deleted_lost: bool = Query(True),
+    include_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: OpportunityService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),

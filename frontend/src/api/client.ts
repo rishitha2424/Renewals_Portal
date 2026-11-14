@@ -84,6 +84,15 @@ export const adminLogout = () =>
 export const getAdminStatus = () =>
   api.get('/admin/status').then(r => r.data)
 
+export const getSecurityChecks = () =>
+  api.get('/admin/security-checks').then(r => r.data)
+
+export const getSystemSettings = () =>
+  api.get('/settings').then(r => r.data)
+
+export const updateSystemSetting = (key: string, value: string, description?: string) =>
+  api.put('/settings', { key, value, description }).then(r => r.data)
+
 export const uploadFiles = (form: FormData) =>
   api.post('/snapshots/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -186,6 +195,12 @@ export const getV2OverviewDeals = (params: {
   category?: string
   region?: string
   approval_status?: string
+  bu?: string
+  ageing?: string
+  start_year?: number
+  expiry_year?: number
+  split_key?: string
+  review_type?: string
   kind?: string
   compare?: string
   as_of?: string
@@ -306,7 +321,7 @@ export const downloadReport = async (
   if (snapshotId) params.snapshot_id = snapshotId
   if (compareTo) params.compare_to = compareTo
   params.scope = scope || 'renewals'
-  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? true)
+  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? false)
   params.include_deleted_lost = incl ? 'true' : 'false'
   if (state.globalFilters?.types && state.globalFilters.types.length > 0) {
     params.types = state.globalFilters.types.join(',')

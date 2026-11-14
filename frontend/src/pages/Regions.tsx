@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Building2,
   Calendar,
+  CalendarX2,
   PieChart,
   Lightbulb,
   ExternalLink
@@ -37,7 +38,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
 const ALL_FC = ['Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
-const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Blank']
+const FUNNEL_STAGES = ['Approved', 'Pending Approval', 'Not submitted']
 
 function RegionsContent() {
   const { activeSnapshotId } = useAppStore()
@@ -122,18 +123,23 @@ function RegionsContent() {
   // Sorted region comparison table rows
   const sortedRegions = useMemo(() => {
     if (!summary?.regions) return []
-    const list = [...summary.regions]
+    const list = [...summary.regions].filter(Boolean)
     list.sort((a: any, b: any) => {
-      let vA: any = a[sortCol]
-      let vB: any = b[sortCol]
+      let vA: any = a?.[sortCol]
+      let vB: any = b?.[sortCol]
       if (sortCol === 'delta_yesterday') {
-        vA = a.delta_yesterday?.acv ?? 0
-        vB = b.delta_yesterday?.acv ?? 0
+        vA = a?.delta_yesterday?.acv ?? 0
+        vB = b?.delta_yesterday?.acv ?? 0
+      } else if (sortCol === 'delta_lastweek') {
+        vA = a?.delta_lastweek?.acv ?? 0
+        vB = b?.delta_lastweek?.acv ?? 0
       }
-      if (typeof vA === 'string') {
-        return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA)
+      if (typeof vA === 'string' || typeof vB === 'string') {
+        return sortDir === 'asc' 
+          ? String(vA ?? '').localeCompare(String(vB ?? '')) 
+          : String(vB ?? '').localeCompare(String(vA ?? ''))
       }
-      return sortDir === 'asc' ? (vA || 0) - (vB || 0) : (vB || 0) - (vA || 0)
+      return sortDir === 'asc' ? (Number(vA) || 0) - (Number(vB) || 0) : (Number(vB) || 0) - (Number(vA) || 0)
     })
     return list
   }, [summary?.regions, sortCol, sortDir])
@@ -191,12 +197,18 @@ function RegionsContent() {
     setModalOpen(true)
   }
 
-  const renderDelta = (countDelta: number, acvDelta: number, compareLabel: string) => {
-    const val = metricMode === 'Count' ? countDelta : acvDelta
-    const label = compareLabel.toLowerCase().includes('last') || compareLabel.toLowerCase().includes('wk')
-      ? 'vs last week'
-      : 'vs yesterday'
+  const renderDelta = (countDelta?: number | null, acvDelta?: number | null, isLastWeek: boolean = false) => {
+    const label = isLastWeek ? 'vs last week' : 'vs yesterday'
+    if (countDelta === null || countDelta === undefined || acvDelta === null || acvDelta === undefined) {
+      return (
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
+          <span>{label}</span>
+          <span className="tabular-nums text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+        </div>
+      )
+    }
 
+    const val = metricMode === 'Count' ? countDelta : acvDelta
     if (val === 0) {
       return (
         <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
@@ -231,28 +243,40 @@ function RegionsContent() {
   const lwStr = formatUI(lastweek_date, 'last week')
 
   const knownRegions = ["North America", "LATAM", "Middle East and North Africa", "APAC", "Europe", "Africa"]
-  const presentRegions = (regions || []).map((r: any) => r.region)
+  const presentRegions = (regions || []).map((r: any) => r?.region).filter(Boolean)
   const otherRegions = presentRegions.filter((r: string) => !knownRegions.includes(r) && r !== 'Other' && r !== 'Other / Unmapped')
   const unmappedRegions = presentRegions.filter((r: string) => r === 'Other' || r === 'Other / Unmapped')
   const tileOrder = [...knownRegions, ...otherRegions, ...unmappedRegions]
   // Generate Insight Lines
   const getInsightLines = () => {
     if (!summary || !summary.regions || summary.regions.length === 0) return []
-    const lines = []
+    const lines: string[] = []
     
     const deltaKey = compare === 'yesterday' ? 'delta_yesterday' : 'delta_lastweek'
-    const sorted = [...summary.regions].filter(r => r.region !== 'Other').sort((a, b) => {
-      const aVal = metricMode === 'Count' ? a[deltaKey].count : a[deltaKey].acv
-      const bVal = metricMode === 'Count' ? b[deltaKey].count : b[deltaKey].acv
+    const validRegions = (summary.regions || []).filter((r: any) => r && r.region !== 'Other')
+    if (validRegions.length === 0) return []
+
+    const sorted = [...validRegions].sort((a: any, b: any) => {
+      const aDelta = a?.[deltaKey]
+      const bDelta = b?.[deltaKey]
+      const aVal = metricMode === 'Count' ? (aDelta?.count ?? 0) : (aDelta?.acv ?? 0)
+      const bVal = metricMode === 'Count' ? (bDelta?.count ?? 0) : (bDelta?.acv ?? 0)
       return bVal - aVal
     })
     
     if (sorted.length > 0) {
       const best = sorted[0]
-      const bestVal = metricMode === 'Count' ? best[deltaKey].count : best[deltaKey].acv
-      if (bestVal > 0) {
-        const valStr = metricMode === 'Amount' ? '+' + formatACV(bestVal) : metricMode === 'Count' ? '+' + formatCount(bestVal) : `+${formatCount(best[deltaKey].count)} · +${formatACV(best[deltaKey].acv)}`
-        lines.push(`${best.region} gained ${valStr} vs ${compare === 'yesterday' ? yDayStr : lwStr}, the largest regional gain`)
+      const bestDelta = best?.[deltaKey]
+      if (bestDelta) {
+        const bestVal = metricMode === 'Count' ? (bestDelta.count ?? 0) : (bestDelta.acv ?? 0)
+        if (bestVal > 0) {
+          const valStr = metricMode === 'Amount' 
+            ? '+' + formatACV(bestVal) 
+            : metricMode === 'Count' 
+            ? '+' + formatCount(bestVal) 
+            : `+${formatCount(bestDelta.count ?? 0)} · +${formatACV(bestDelta.acv ?? 0)}`
+          lines.push(`${best.region || 'Region'} gained ${valStr} vs ${compare === 'yesterday' ? yDayStr : lwStr}, the largest regional gain`)
+        }
       }
     }
     return lines
@@ -305,6 +329,12 @@ function RegionsContent() {
         </div>
       )}
 
+      {(!isLoading && (summary?.total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* Tiles */}
       <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <button
@@ -319,23 +349,30 @@ function RegionsContent() {
           <div className="space-y-1.5 w-full">
             <div className="flex justify-between items-center gap-2">
               <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="All Regions">All Regions</span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total.count)} deals</span>
+              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total?.count ?? 0)} deals</span>
             </div>
-            <div 
-              className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDrill(`All Regions (${data_slice})`, {})
-              }}
-            >
-              {metricMode === 'Count' ? formatCount(summary.total.count) : 
-               metricMode === 'Amount' ? formatACV(summary.total.acv) : 
-               `${formatCount(summary.total.count)} · ${formatACV(summary.total.acv)}`}
+            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
+              {metricMode === 'Count' ? formatCount(summary.total?.count ?? 0) : 
+               metricMode === 'Amount' ? formatACV(summary.total?.acv ?? 0) : 
+               `${formatCount(summary.total?.count ?? 0)} · ${formatACV(summary.total?.acv ?? 0)}`}
+            </div>
+            <div className="flex items-center justify-between pt-0.5">
+              <span
+                role="button"
+                tabIndex={0}
+                className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDrill(`All Regions (${data_slice})`, {})
+                }}
+              >
+                View deals →
+              </span>
             </div>
           </div>
           <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-            {renderDelta(summary.total.delta_yesterday.count, summary.total.delta_yesterday.acv, yDayStr)}
-            {renderDelta(summary.total.delta_lastweek.count, summary.total.delta_lastweek.acv, lwStr)}
+            {renderDelta(summary.total?.delta_yesterday?.count, summary.total?.delta_yesterday?.acv, false)}
+            {renderDelta(summary.total?.delta_lastweek?.count, summary.total?.delta_lastweek?.acv, true)}
           </div>
         </button>
 
@@ -367,21 +404,28 @@ function RegionsContent() {
                     </span>
                   )}
                 </div>
-                <div 
-                  className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight cursor-pointer hover:underline"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDrill(`${rname} Deals`, { region: rname })
-                  }}
-                >
+                <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
                   {metricMode === 'Count' ? formatCount(reg.count) : 
                    metricMode === 'Amount' ? formatACV(reg.acv) : 
                    `${formatCount(reg.count)} · ${formatACV(reg.acv)}`}
                 </div>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDrill(`${rname} Deals`, { region: rname })
+                    }}
+                  >
+                    View deals →
+                  </span>
+                </div>
               </div>
               <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-                {renderDelta(reg.delta_yesterday.count, reg.delta_yesterday.acv, yDayStr)}
-                {renderDelta(reg.delta_lastweek.count, reg.delta_lastweek.acv, lwStr)}
+                {renderDelta(reg.delta_yesterday?.count, reg.delta_yesterday?.acv, false)}
+                {renderDelta(reg.delta_lastweek?.count, reg.delta_lastweek?.acv, true)}
               </div>
             </button>
           )
@@ -415,7 +459,7 @@ function RegionsContent() {
 
             {/* Top Stat Cards */}
             {regionDetail && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {/* 1. Region ACV & Deals */}
                 <div 
                   onClick={() => handleDrill(`${selectedRegion} Deals`, { region: selectedRegion })}
@@ -432,7 +476,7 @@ function RegionsContent() {
                     {formatCount(regionDetail.count)} deals ({regionDetail.pct_acv}% of portfolio)
                   </div>
                   <div className="mt-2 pt-2 border-t border-gray-200/60 dark:border-gray-800">
-                    {renderDelta(regionDetail.delta_yesterday?.count || 0, regionDetail.delta_yesterday?.acv || 0, yDayStr)}
+                    {renderDelta(regionDetail.delta_yesterday?.count, regionDetail.delta_yesterday?.acv, false)}
                   </div>
                 </div>
 
@@ -488,27 +532,50 @@ function RegionsContent() {
                   <div className="mt-2 text-xs text-gray-400">Formal opportunity approvals</div>
                 </div>
 
-                {/* 4. Overdue / Delayed Deals */}
+                {/* 4. Delayed Renewals Tile */}
                 <div 
-                  onClick={() => handleDrill(`${selectedRegion} Delayed Deals`, { region: selectedRegion, delayed: true })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-red-300 dark:hover:border-red-700 transition-all group"
+                  onClick={() => handleDrill(`${selectedRegion} Delayed Renewals`, { region: selectedRegion, kind: 'delayed' })}
+                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-all group"
                 >
                   <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                     <span className="font-medium flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-red-500" /> Overdue Deals
+                      <Clock className="w-3.5 h-3.5 text-amber-500" /> Delayed Renewals
                     </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-red-500" />
+                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-amber-500" />
                   </div>
                   <div className={cn(
                     "text-xl font-bold transition-colors",
-                    (regionDetail.delayed_deals?.count || 0) > 0 ? "text-red-600 dark:text-red-400 group-hover:text-red-500" : "text-gray-900 dark:text-white"
+                    (regionDetail.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400 group-hover:text-amber-500" : "text-gray-900 dark:text-white"
                   )}>
-                    {formatACV(regionDetail.delayed_deals?.acv || 0)}
+                    {formatACV(regionDetail.delayed_acv || 0)}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    {regionDetail.delayed_deals?.count || 0} overdue deals
+                    {formatCount(regionDetail.delayed_count || 0)} deals
                   </div>
-                  <div className="mt-2 text-xs text-gray-400">Past close date & unclosed</div>
+                  <div className="mt-2 text-xs text-gray-400">Service start in past</div>
+                </div>
+
+                {/* 5. Slippage Tile */}
+                <div 
+                  onClick={() => handleDrill(`${selectedRegion} Slippage Deals`, { region: selectedRegion, kind: 'slippage' })}
+                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-all group"
+                >
+                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                    <span className="font-medium flex items-center gap-1">
+                      <CalendarX2 className="w-3.5 h-3.5 text-purple-500" /> Slippage
+                    </span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-purple-500" />
+                  </div>
+                  <div className={cn(
+                    "text-xl font-bold transition-colors",
+                    (regionDetail.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400 group-hover:text-purple-500" : "text-gray-900 dark:text-white"
+                  )}>
+                    {formatACV(regionDetail.slippage_acv || 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatCount(regionDetail.slippage_count || 0)} deals
+                  </div>
+                  <div className="mt-2 text-xs text-gray-400">Close slipped to next year</div>
                 </div>
               </div>
             )}
@@ -683,136 +750,6 @@ function RegionsContent() {
                     </table>
                   </div>
                 </div>
-              </div>
-
-              {/* RIGHT COLUMN: Top Accounts, Top BUs, Delayed Deals, Movements */}
-              <div className="space-y-6">
-                {/* 1. Top 10 Accounts by ACV */}
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
-                  <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-blue-500" /> Top 10 Accounts by ACV
-                    </h3>
-                    <span className="text-xs text-gray-500">Account concentration</span>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-gray-50/50 dark:bg-gray-900/20 text-gray-500 font-medium border-b border-gray-100 dark:border-gray-800">
-                        <tr>
-                          <th className="py-2.5 px-3 w-8">#</th>
-                          <th className="py-2.5 px-3">Account</th>
-                          <th className="py-2.5 px-3 text-right">Deals</th>
-                          <th className="py-2.5 px-3 text-right">ACV</th>
-                          <th className="py-2.5 px-3.5 text-right">% Share</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {regionDetail?.top_accounts?.map((acc: any, i: number) => (
-                          <tr 
-                            key={acc.account_name}
-                            onClick={() => handleDrill(`${selectedRegion} - ${acc.account_name}`, { region: selectedRegion, account_name: acc.account_name })}
-                            className="hover:bg-blue-50/60 dark:hover:bg-blue-900/20 cursor-pointer transition-colors group"
-                          >
-                            <td className="py-2.5 px-3 text-gray-400 font-bold">{i + 1}</td>
-                            <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white truncate max-w-[180px] group-hover:text-blue-600">
-                              {acc.account_name}
-                            </td>
-                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-400">
-                              {formatCount(acc.count)}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
-                              {formatACV(acc.acv)}
-                            </td>
-                            <td className="py-2.5 px-3.5 text-right font-medium text-blue-600 dark:text-blue-400">
-                              {acc.pct_acv}%
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* 2. Top Business Units with Share */}
-                {regionDetail?.business_units && regionDetail.business_units.length > 0 && (
-                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-indigo-500" /> Business Unit Mix & Share
-                      </span>
-                      <span className="text-xs font-normal text-gray-500">By contribution</span>
-                    </h3>
-                    <div className="space-y-2.5">
-                      {regionDetail.business_units.map((bu: any) => {
-                        const pct = bu.share_pct ?? (regionDetail.acv > 0 ? Math.round((bu.acv / regionDetail.acv) * 100) : 0)
-                        return (
-                          <div 
-                            key={bu.bu}
-                            className="cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
-                            onClick={() => handleDrill(`${selectedRegion} - ${bu.bu}`, { region: selectedRegion, bu: bu.bu })}
-                          >
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="font-semibold text-gray-800 dark:text-gray-200 group-hover:text-blue-600 transition-colors">
-                                {bu.bu}
-                              </span>
-                              <span className="text-gray-500 font-medium">
-                                {formatCount(bu.count)} deals • {formatACV(bu.acv)} ({pct}%)
-                              </span>
-                            </div>
-                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all group-hover:from-blue-400 group-hover:to-indigo-400"
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Delayed/Overdue Deals Table */}
-                {regionDetail?.delayed_deals?.deals && regionDetail.delayed_deals.deals.length > 0 && (
-                  <div className="rounded-xl border border-red-200 dark:border-red-900/40 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
-                    <div className="p-3.5 bg-red-50/80 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-red-500" /> Overdue Deals in {selectedRegion}
-                      </h3>
-                      <button
-                        onClick={() => handleDrill(`${selectedRegion} Delayed Deals`, { region: selectedRegion, delayed: true })}
-                        className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline"
-                      >
-                        View all ({regionDetail.delayed_deals.count}) →
-                      </button>
-                    </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-y-auto">
-                      {regionDetail.delayed_deals.deals.slice(0, 5).map((d: any) => (
-                        <div 
-                          key={d.opportunity_id_18}
-                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                          className="p-3 hover:bg-gray-50 dark:hover:bg-gray-900/40 cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-gray-900 dark:text-white truncate hover:text-blue-500">
-                              {d.opportunity_name}
-                            </div>
-                            <div className="text-gray-500 truncate flex items-center gap-2 mt-0.5">
-                              <span>{d.account_name}</span>
-                              <span>•</span>
-                              <span className="text-red-500 font-medium">{d.days_overdue}d overdue</span>
-                              <span>•</span>
-                              <span>{d.owner}</span>
-                            </div>
-                          </div>
-                          <div className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                            {formatACV(d.acv)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* 4. What Changed (Movements) */}
                 <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
@@ -964,6 +901,136 @@ function RegionsContent() {
                   )}
                 </div>
               </div>
+
+              {/* RIGHT COLUMN: Top Accounts, Top BUs, Delayed Deals */}
+              <div className="space-y-6">
+                {/* 1. Top 10 Accounts by ACV */}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
+                  <div className="p-3.5 bg-gray-50/80 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-blue-500" /> Top 10 Accounts by ACV
+                    </h3>
+                    <span className="text-xs text-gray-500">Account concentration</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50/50 dark:bg-gray-900/20 text-gray-500 font-medium border-b border-gray-100 dark:border-gray-800">
+                        <tr>
+                          <th className="py-2.5 px-3 w-8">#</th>
+                          <th className="py-2.5 px-3">Account</th>
+                          <th className="py-2.5 px-3 text-right">Deals</th>
+                          <th className="py-2.5 px-3 text-right">ACV</th>
+                          <th className="py-2.5 px-3.5 text-right">% Share</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {regionDetail?.top_accounts?.map((acc: any, i: number) => (
+                          <tr 
+                            key={acc.account_name}
+                            onClick={() => handleDrill(`${selectedRegion} - ${acc.account_name}`, { region: selectedRegion, account_name: acc.account_name })}
+                            className="hover:bg-blue-50/60 dark:hover:bg-blue-900/20 cursor-pointer transition-colors group"
+                          >
+                            <td className="py-2.5 px-3 text-gray-400 font-bold">{i + 1}</td>
+                            <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white truncate max-w-[180px] group-hover:text-blue-600">
+                              {acc.account_name}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-400">
+                              {formatCount(acc.count)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
+                              {formatACV(acc.acv)}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-right font-medium text-blue-600 dark:text-blue-400">
+                              {acc.pct_acv}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 2. Top Business Units with Share */}
+                {regionDetail?.business_units && regionDetail.business_units.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-indigo-500" /> Business Unit Mix & Share
+                      </span>
+                      <span className="text-xs font-normal text-gray-500">By contribution</span>
+                    </h3>
+                    <div className="space-y-2.5">
+                      {regionDetail.business_units.map((bu: any) => {
+                        const pct = bu.share_pct ?? (regionDetail.acv > 0 ? Math.round((bu.acv / regionDetail.acv) * 100) : 0)
+                        return (
+                          <div 
+                            key={bu.bu}
+                            className="cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
+                            onClick={() => handleDrill(`${selectedRegion} - ${bu.bu}`, { region: selectedRegion, bu: bu.bu })}
+                          >
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="font-semibold text-gray-800 dark:text-gray-200 group-hover:text-blue-600 transition-colors">
+                                {bu.bu}
+                              </span>
+                              <span className="text-gray-500 font-medium">
+                                {formatCount(bu.count)} deals • {formatACV(bu.acv)} ({pct}%)
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all group-hover:from-blue-400 group-hover:to-indigo-400"
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Delayed/Overdue Deals Table */}
+                {regionDetail?.delayed_deals?.deals && regionDetail.delayed_deals.deals.length > 0 && (
+                  <div className="rounded-xl border border-red-200 dark:border-red-900/40 overflow-hidden bg-white dark:bg-gray-800/80 shadow-sm">
+                    <div className="p-3.5 bg-red-50/80 dark:bg-red-950/20 border-b border-red-100 dark:border-red-900/30 flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-red-900 dark:text-red-300 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-red-500" /> Past close date deals in {selectedRegion}
+                      </h3>
+                      <button
+                        onClick={() => handleDrill(`${selectedRegion} Past Close Date Deals`, { region: selectedRegion, delayed: true })}
+                        className="text-xs text-red-600 dark:text-red-400 font-semibold hover:underline"
+                      >
+                        View all ({regionDetail.delayed_deals.count}) →
+                      </button>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-y-auto">
+                      {regionDetail.delayed_deals.deals.slice(0, 5).map((d: any) => (
+                        <div 
+                          key={d.opportunity_id_18}
+                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                          className="p-3 hover:bg-gray-50 dark:hover:bg-gray-900/40 cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-gray-900 dark:text-white truncate hover:text-blue-500">
+                              {d.opportunity_name}
+                            </div>
+                            <div className="text-gray-500 truncate flex items-center gap-2 mt-0.5">
+                              <span>{d.account_name}</span>
+                              <span>•</span>
+                              <span className="text-red-500 font-medium">{d.days_overdue}d overdue</span>
+                              <span>•</span>
+                              <span>{d.owner || d.opportunity_owner || '—'}</span>
+                            </div>
+                          </div>
+                          <div className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                            {formatACV(d.acv || d.forecast_acv_amount || 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
         </div>
@@ -1049,8 +1116,17 @@ function RegionsContent() {
                   className="py-3 px-3.5 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   <div className="flex items-center justify-end gap-1.5">
-                    <span>Delayed ACV</span>
+                    <span>Delayed</span>
                     <ArrowUpDown className={cn("w-3.5 h-3.5", sortCol === 'delayed_acv' ? "text-blue-500" : "text-gray-400")} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => toggleSort('slippage_acv')}
+                  className="py-3 px-3.5 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Slippage</span>
+                    <ArrowUpDown className={cn("w-3.5 h-3.5", sortCol === 'slippage_acv' ? "text-blue-500" : "text-gray-400")} />
                   </div>
                 </th>
                 <th 
@@ -1065,7 +1141,14 @@ function RegionsContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-800/80">
-              {sortedRegions.map((r: any) => {
+              {sortedRegions.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-sm text-[var(--text-muted)]">
+                    No deals for this selection
+                  </td>
+                </tr>
+              ) : (
+                sortedRegions.map((r: any) => {
                 const isSelected = selectedRegion === r.region
                 const yDelta = r.delta_yesterday?.acv || 0
                 const yDeltaCount = r.delta_yesterday?.count || 0
@@ -1134,15 +1217,26 @@ function RegionsContent() {
                       {r.approved_pct}%
                     </td>
 
-                    {/* Delayed ACV */}
+                    {/* Delayed */}
                     <td 
-                      onClick={() => handleDrill(`${r.region} Delayed Deals`, { region: r.region, delayed: true })}
+                      onClick={() => handleDrill(`${r.region} Delayed Renewals`, { region: r.region, kind: 'delayed' })}
                       className={cn(
                         "py-3 px-3.5 text-right font-medium cursor-pointer hover:underline",
-                        (r.delayed_count || 0) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-400"
+                        (r.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"
                       )}
                     >
-                      {(r.delayed_count || 0) > 0 ? `${formatACV(r.delayed_acv)} (${r.delayed_count})` : '-'}
+                      {(r.delayed_count || 0) > 0 ? `${formatACV(r.delayed_acv || 0)} (${r.delayed_count})` : '-'}
+                    </td>
+
+                    {/* Slippage */}
+                    <td 
+                      onClick={() => handleDrill(`${r.region} Slippage Deals`, { region: r.region, kind: 'slippage' })}
+                      className={cn(
+                        "py-3 px-3.5 text-right font-medium cursor-pointer hover:underline",
+                        (r.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
+                      )}
+                    >
+                      {(r.slippage_count || 0) > 0 ? `${formatACV(r.slippage_acv || 0)} (${r.slippage_count})` : '-'}
                     </td>
 
                     {/* Change vs YDay */}
@@ -1166,7 +1260,7 @@ function RegionsContent() {
                     </td>
                   </tr>
                 )
-              })}
+              }))}
             </tbody>
             {/* Total / Portfolio Row */}
             <tfoot className="bg-gray-50 dark:bg-gray-900 font-bold border-t-2 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white">
@@ -1205,13 +1299,22 @@ function RegionsContent() {
                   {summary.total.approved_pct}%
                 </td>
                 <td 
-                  onClick={() => handleDrill(`All Delayed Deals`, { delayed: true })}
+                  onClick={() => handleDrill(`Portfolio Delayed Renewals`, { kind: 'delayed' })}
                   className={cn(
                     "py-3 px-3.5 text-right cursor-pointer hover:underline",
-                    (summary.total.delayed_count || 0) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-400"
+                    (summary.total.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"
                   )}
                 >
                   {(summary.total.delayed_count || 0) > 0 ? `${formatACV(summary.total.delayed_acv)} (${summary.total.delayed_count})` : '-'}
+                </td>
+                <td 
+                  onClick={() => handleDrill(`Portfolio Slippage Deals`, { kind: 'slippage' })}
+                  className={cn(
+                    "py-3 px-3.5 text-right cursor-pointer hover:underline",
+                    (summary.total.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
+                  )}
+                >
+                  {(summary.total.slippage_count || 0) > 0 ? `${formatACV(summary.total.slippage_acv)} (${summary.total.slippage_count})` : '-'}
                 </td>
                 <td 
                   onClick={() => handleDrill(`All Regions Total Deals`, {})}

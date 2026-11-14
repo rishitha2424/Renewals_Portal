@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Any
 from pydantic import BaseModel
 
@@ -31,7 +32,10 @@ def get_all_settings(
         active_snap = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
 
     if active_snap:
-        opps = db.query(Opportunity).filter(Opportunity.snapshot_id == active_snap.id).all()
+        opps_q = db.query(Opportunity).filter(Opportunity.snapshot_id == active_snap.id)
+        if SettingsService.get_exclude_reconciliation_entry(db):
+            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+        opps = opps_q.all()
         groups_set: set[str] = set()
         types_set: set[str] = set()
         for o in opps:

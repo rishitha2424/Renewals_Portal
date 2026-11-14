@@ -25,6 +25,7 @@ import {
 import { useAppStore } from '@/store/appStore'
 import { getApprovalsDistribution, getApprovalsDeals } from '@/api/client'
 import { formatCurrency, formatNumber, acvM, formatDate, getApprovalStatusLabel, getForecastCategoryLabel } from '@/utils/format'
+import { DEFINITIONS } from '@/config/definitions'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
 import { PageErrorState } from '@/components/ui/PageErrorState'
@@ -44,7 +45,7 @@ function formatDelta(val: number, isCount: boolean) {
   return <span className={color}>{text}</span>
 }
 
-function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSetting }: any) {
+function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSetting, tooltip, pctOfPeriod }: any) {
   const isCount = metricMode === 'Count'
   const isBoth = metricMode === 'Both'
   const isAmount = metricMode === 'Amount'
@@ -90,9 +91,19 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSet
     <div className="card p-4 flex flex-col justify-between gap-2.5 transition-colors hover:border-[var(--brand-teal)]">
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={label}>{label}</span>
+          <span className="text-xs font-medium text-[var(--text-muted)] truncate flex items-center gap-1" title={tooltip || label}>
+            <span>{label}</span>
+            {tooltip && (
+              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={tooltip}>i</span>
+            )}
+          </span>
           <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatNumber(data.count)} deals</span>
         </div>
+        {pctOfPeriod != null && (
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            {pctOfPeriod.toFixed(1)}% of period ACV
+          </div>
+        )}
         {isBoth ? (
           <div className="flex flex-col">
             <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight" title={formatCurrency(data.acv)}>
@@ -122,6 +133,7 @@ export default function Approvals() {
   const [modalFilters, setModalFilters] = useState<any>({})
   const [coverageTab, setCoverageTab] = useState<'category' | 'region' | 'bu'>('category')
   const [movementsMode, setMovementsMode] = useState<'yesterday' | 'lastweek'>('yesterday')
+  const [commitFilter, setCommitFilter] = useState<'All' | 'Not submitted' | 'Waiting for approval'>('All')
 
   const activeSnapshot = snapshots.find(s => s.id === activeSnapshotId)
   const compareSnapshot = snapshots.find(s => s.id === compareSnapshotId)
@@ -160,9 +172,6 @@ export default function Approvals() {
     if (data?.total?.count != null) {
       list.push({ id: 'approvals-summary', title: 'Approval Status' })
     }
-    if (data?.funnel && data.funnel.length > 0) {
-      list.push({ id: 'approvals-funnel', title: 'Funnel Pipeline' })
-    }
     if (data?.matrix && Object.keys(data.matrix).length > 0) {
       list.push({ id: 'approvals-matrix', title: 'Status vs Category' })
     }
@@ -176,7 +185,7 @@ export default function Approvals() {
       list.push({ id: 'approvals-commit-risk', title: 'Commit Risks & Ageing' })
     }
     if (data?.approved_trend && data.approved_trend.length > 0) {
-      list.push({ id: 'approvals-trend', title: 'Approval Trend' })
+      list.push({ id: 'approvals-trend', title: 'Approved Share Over Time' })
     }
     if ((data?.movements_yesterday && data.movements_yesterday.length > 0) || (data?.movements_lastweek && data.movements_lastweek.length > 0) || (data?.movements_custom && data.movements_custom.length > 0)) {
       list.push({ id: 'approvals-movements', title: 'Status Movements' })
@@ -187,7 +196,7 @@ export default function Approvals() {
   if (!activeSnapshotId || snapshots.length === 0) return <PageNoSnapshotState />
   if (isLoading) return <div className="p-8 text-center text-slate-500 animate-pulse">Loading approval data...</div>
   if (error || data?.error) return <PageErrorState message={(error as any)?.message || data?.error || "Couldn’t load this page. Try again"} onRetry={() => refetch()} />
-  if (!data || !data.total || data.total?.count === 0) return <PageNoSnapshotState />
+  if (!data || !data.total) return <PageNoSnapshotState />
 
   const total = data.total || { count: 0, acv: 0 }
   const statuses = data.statuses || []
@@ -285,12 +294,62 @@ export default function Approvals() {
         onViewDeals={() => handleCellClick({ kind: 'other_types' }, 'Other Types Excluded')}
       />
 
+      {(!isLoading && (total?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* Slim Stat Chips */}
       <div id="approvals-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}><StatChip label="Approved" data={attachDates(getStatus('Approved'))} icon={CheckCircle2} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}><StatChip label="Pending" data={attachDates(getStatus('Pending Approval'))} icon={Clock} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}><StatChip label="Not submitted" data={attachDates(getStatus('Blank'))} icon={FileQuestion} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
-        <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}><StatChip label="Total" data={attachDates(total)} icon={Sigma} metricMode={metricMode} compareDate={compareSnapshot?.snapshot_date} compareSetting={movementsMode} /></div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}>
+          <StatChip
+            label="Approved"
+            data={attachDates(getStatus('Approved'))}
+            icon={CheckCircle2}
+            metricMode={metricMode}
+            compareDate={compareSnapshot?.snapshot_date}
+            compareSetting={movementsMode}
+            tooltip={DEFINITIONS.approvals_approved}
+            pctOfPeriod={total.acv ? (getStatus('Approved').acv / total.acv) * 100 : 0}
+          />
+        </div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>
+          <StatChip
+            label="Pending"
+            data={attachDates(getStatus('Pending Approval'))}
+            icon={Clock}
+            metricMode={metricMode}
+            compareDate={compareSnapshot?.snapshot_date}
+            compareSetting={movementsMode}
+            tooltip={DEFINITIONS.approvals_pending}
+            pctOfPeriod={total.acv ? (getStatus('Pending Approval').acv / total.acv) * 100 : 0}
+          />
+        </div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}>
+          <StatChip
+            label="Not submitted"
+            data={attachDates(getStatus('Blank'))}
+            icon={FileQuestion}
+            metricMode={metricMode}
+            compareDate={compareSnapshot?.snapshot_date}
+            compareSetting={movementsMode}
+            tooltip={DEFINITIONS.approvals_not_submitted}
+            pctOfPeriod={total.acv ? (getStatus('Blank').acv / total.acv) * 100 : 0}
+          />
+        </div>
+        <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}>
+          <StatChip
+            label="Total"
+            data={attachDates(total)}
+            icon={Sigma}
+            metricMode={metricMode}
+            compareDate={compareSnapshot?.snapshot_date}
+            compareSetting={movementsMode}
+            tooltip={DEFINITIONS.approvals_total}
+            pctOfPeriod={100}
+          />
+        </div>
       </div>
 
       {/* Overview Reconciliation Banner */}
@@ -310,107 +369,6 @@ export default function Approvals() {
             Portfolio Scope: {data_slice}
           </span>
         </div>
-      )}
-
-      {/* 1. Approval Funnel Pipeline Card */}
-      {funnel.length > 0 && (
-        <Card id="approvals-funnel" className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors scroll-mt-24">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
-            <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Layers className="w-5 h-5 text-[var(--primary)]" />
-                <span>Approval Funnel Pipeline</span>
-              </h2>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Progression of deals from Not submitted → Pending Approval → Approved for {data_slice}
-              </p>
-            </div>
-            <div className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
-              {formatNumber(total.count)} deals · {formatCurrency(total.acv)} total
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 relative">
-            {funnel.map((stage: any, idx: number) => {
-              const badgeStyle =
-                stage.status_key === 'Approved'
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                  : stage.status_key === 'Pending Approval'
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                  : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20'
-
-              return (
-                <div
-                  key={stage.stage}
-                  className="group relative bg-[var(--bg-secondary)]/50 p-4 rounded-xl border border-[var(--border)] hover:border-[var(--primary)] transition-all cursor-pointer shadow-xs hover:shadow-md"
-                  onClick={() => handleCellClick({ approval_status: stage.status_key }, `${stage.stage} Deals`)}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}`}>
-                      {getApprovalStatusLabel(stage.stage)}
-                    </span>
-                    <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 group-hover:text-[var(--primary)] font-semibold">
-                      <span>View deals</span>
-                      <ChevronRight className="w-3 h-3" />
-                    </span>
-                  </div>
-
-                  {metricMode === 'Both' ? (
-                    <div className="mt-3 space-y-1.5 pt-2 border-t border-[var(--border)]">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">ACV</span>
-                        <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums" title={formatCurrency(stage.acv)}>
-                          {acvM(stage.acv)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Deals</span>
-                        <span className="text-xl font-black text-[var(--text-primary)] font-mono tabular-nums">
-                          {formatNumber(stage.count)} deals
-                        </span>
-                      </div>
-                    </div>
-                  ) : metricMode === 'Amount' ? (
-                    <div className="mt-3">
-                      <div className="text-2xl font-black text-[var(--text-primary)] font-mono tabular-nums" title={formatCurrency(stage.acv)}>
-                        {acvM(stage.acv)}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3">
-                      <div className="text-2xl font-black text-[var(--text-primary)] font-mono tabular-nums">
-                        {formatNumber(stage.count)} deals
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-3 space-y-1">
-                    {metricMode !== 'Count' && (
-                      <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-medium">
-                        <span>% of Period ACV</span>
-                        <span className="font-bold text-[var(--text-primary)] font-mono tabular-nums">{stage.pct_acv}%</span>
-                      </div>
-                    )}
-                    <div className="w-full bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          stage.status_key === 'Approved' ? 'bg-emerald-500' : stage.status_key === 'Pending Approval' ? 'bg-amber-500' : 'bg-slate-400'
-                        }`}
-                        style={{ width: `${Math.min(100, metricMode === 'Count' ? stage.pct_count : stage.pct_acv)}%` }}
-                      />
-                    </div>
-                    {metricMode !== 'Amount' && (
-                      <div className="flex justify-between text-[10px] text-[var(--text-muted)] pt-0.5">
-                        <span>% of Deals</span>
-                        <span className="font-semibold">{stage.pct_count}%</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </Card>
       )}
 
       {/* Grid: Donut Chart & Status vs FC Matrix */}
@@ -514,26 +472,6 @@ export default function Approvals() {
                           {formatNumber(seg.count)} deals ({pctOfDeals}%)
                         </span>
                       )}
-                    </div>
-                    <div className="flex justify-between items-center text-[9px] text-[var(--text-muted)] mt-1 font-medium pl-4">
-                      <span title={yesterday_date ? formatDate(yesterday_date) : undefined} className="cursor-help">
-                        vs yesterday{' '}
-                        {metricMode === 'Count'
-                          ? formatDelta(seg.delta_yesterday?.count, true)
-                          : metricMode === 'Amount'
-                          ? formatDelta(seg.delta_yesterday?.acv, false)
-                          : <>{formatDelta(seg.delta_yesterday?.count, true)} · {formatDelta(seg.delta_yesterday?.acv, false)}</>
-                        }
-                      </span>
-                      <span title={lastweek_date ? formatDate(lastweek_date) : undefined} className="cursor-help">
-                        vs last week{' '}
-                        {metricMode === 'Count'
-                          ? formatDelta(seg.delta_lastweek?.count, true)
-                          : metricMode === 'Amount'
-                          ? formatDelta(seg.delta_lastweek?.acv, false)
-                          : <>{formatDelta(seg.delta_lastweek?.count, true)} · {formatDelta(seg.delta_lastweek?.acv, false)}</>
-                        }
-                      </span>
                     </div>
                   </div>
                 )
@@ -1092,166 +1030,211 @@ export default function Approvals() {
       </Card>
 
       {/* Row: Commit Not Approved & Pending Ageing */}
-      <div id="approvals-commit-risk" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-24">
-        {/* 4. Commit But Not Approved Table */}
-        <Card className="xl:col-span-7 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              <AlertTriangle className="w-5 h-5 text-rose-500 flex-shrink-0" />
-              <div>
-                <h3 className="font-bold text-base">Commit Deals Not Approved</h3>
-                <p className="text-xs text-[var(--text-muted)]">High-conviction Commit renewals awaiting submission or approval</p>
+      {(() => {
+        const commitDeals = commit_not_approved.deals || []
+        const commitNotSubmitted = commitDeals.filter((d: any) => d.approval_status_key === 'Blank' || d.approval_status === 'Not submitted' || !d.approval_status || d.approval_status === 'Blank')
+        const commitWaiting = commitDeals.filter((d: any) => d.approval_status_key === 'Pending Approval' || d.approval_status === 'Pending Approval')
+        const commitNotSubmittedAcv = commitNotSubmitted.reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
+        const commitWaitingAcv = commitWaiting.reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
+
+        const filteredCommitDeals = commitDeals.filter((d: any) => {
+          if (commitFilter === 'Not submitted') {
+            return d.approval_status_key === 'Blank' || d.approval_status === 'Not submitted' || !d.approval_status || d.approval_status === 'Blank'
+          }
+          if (commitFilter === 'Waiting for approval') {
+            return d.approval_status_key === 'Pending Approval' || d.approval_status === 'Pending Approval'
+          }
+          return true
+        })
+
+        return (
+          <div id="approvals-commit-risk" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-24">
+            {/* 4. Commit But Not Approved Table */}
+            <Card className="xl:col-span-7 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
+                <div className="flex items-start gap-2 text-[var(--text-primary)]">
+                  <AlertTriangle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-bold text-base">Commit deals still to be approved</h3>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Deals we expect to close (Commit) whose approval is not done yet: either not sent for approval or waiting for approval.
+                    </p>
+                    <div className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1">
+                      = {commitNotSubmitted.length} not submitted ({formatCurrency(commitNotSubmittedAcv)}) + {commitWaiting.length} waiting for approval ({formatCurrency(commitWaitingAcv)})
+                    </div>
+                  </div>
+                </div>
+                <button
+                  className="text-xs font-bold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors self-start sm:self-auto font-mono flex-shrink-0"
+                  onClick={() => handleCellClick({ forecast_category: 'Commit', approval_status: 'not_approved' }, 'All Commit Deals Still To Be Approved')}
+                >
+                  {commit_not_approved.count} Deals · {formatCurrency(commit_not_approved.acv)}
+                </button>
               </div>
-            </div>
-            <button
-              className="text-xs font-bold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors self-start sm:self-auto font-mono"
-              onClick={() => handleCellClick({ forecast_category: 'Commit', approval_status: 'not_approved' }, 'All Commit Not Approved Deals')}
-            >
-              {commit_not_approved.count} Deals · {formatCurrency(commit_not_approved.acv)}
-            </button>
-          </div>
 
-          <div className="flex-1 overflow-x-auto max-h-[320px]">
-            <table className="w-full text-xs text-left">
-              <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <tr>
-                  <th className="py-2 px-2.5">Opportunity</th>
-                  <th className="py-2 px-2.5">Account</th>
-                  <th className="py-2 px-2.5 text-right">ACV</th>
-                  <th className="py-2 px-2.5">Status</th>
-                  <th className="py-2 px-2.5">Owner</th>
-                  <th className="py-2 px-2.5">Region</th>
-                  <th className="py-2 px-2.5 text-right">Close Date</th>
-                  <th className="py-2 px-2.5 text-right">Days Left</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)] font-mono text-[11px]">
-                {commit_not_approved.deals?.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-[var(--text-muted)] italic font-sans">
-                      All Commit deals are approved!
-                    </td>
-                  </tr>
-                ) : (
-                  commit_not_approved.deals.map((d: any) => (
-                    <tr
-                      key={d.opportunity_id_18}
-                      className="hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
-                      onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                    >
-                      <td className="py-2 px-2.5 font-sans font-semibold text-[var(--text-primary)] max-w-[160px] truncate" title={d.opportunity_name}>
-                        {d.opportunity_name}
-                      </td>
-                      <td className="py-2 px-2.5 font-sans text-[var(--text-secondary)] max-w-[120px] truncate" title={d.account_name}>
-                        {d.account_name}
-                      </td>
-                      <td className="py-2 px-2.5 text-right font-bold text-rose-600 dark:text-rose-400">
-                        {formatCurrency(d.forecast_acv_amount)}
-                      </td>
-                      <td className="py-2 px-2.5 font-sans">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          d.approval_status_key === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-500/10 text-slate-600'
-                        }`}>
-                          {d.approval_status}
-                        </span>
-                      </td>
-                      <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
-                        {d.owner}
-                      </td>
-                      <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
-                        {d.region}
-                      </td>
-                      <td className="py-2 px-2.5 text-right text-[var(--text-muted)]">
-                        {d.close_date || '—'}
-                      </td>
-                      <td className="py-2 px-2.5 text-right">
-                        {d.days_to_close != null ? (
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                            d.days_to_close < 0 ? 'bg-red-500/10 text-red-600' : d.days_to_close <= 14 ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-500/10 text-slate-600'
-                          }`}>
-                            {d.days_to_close < 0 ? 'Past due' : `${d.days_to_close}d`}
-                          </span>
-                        ) : '—'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* 5. Pending Ageing Card */}
-        <Card className="xl:col-span-5 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2 text-[var(--text-primary)]">
-              <Clock className="w-5 h-5 text-amber-500 flex-shrink-0" />
-              <div>
-                <h3 className="font-bold text-base">Pending Approvals Ageing</h3>
-                <p className="text-xs text-[var(--text-muted)]">Ranked oldest first by continuous snapshot history</p>
+              {/* Sub-filter tabs */}
+              <div className="flex items-center gap-1.5 mb-2.5">
+                {(['All', 'Not submitted', 'Waiting for approval'] as const).map(f => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setCommitFilter(f)}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
+                      commitFilter === f
+                        ? 'bg-[#12284C] text-white shadow-sm'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)]'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
               </div>
-            </div>
-            <button
-              className="text-xs font-bold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors self-start sm:self-auto font-mono"
-              onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'All Pending Deals')}
-            >
-              {pending_ageing.count} Pending · {formatCurrency(pending_ageing.acv)}
-            </button>
-          </div>
 
-          <div className="flex-1 overflow-x-auto max-h-[320px]">
-            <table className="w-full text-xs text-left">
-              <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <tr>
-                  <th className="py-2 px-2.5">Deal</th>
-                  <th className="py-2 px-2.5 text-right">ACV</th>
-                  <th className="py-2 px-2.5 text-right">Ageing</th>
-                  <th className="py-2 px-2.5">Pending Since</th>
-                  <th className="py-2 px-2.5">Owner</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)] font-mono text-[11px]">
-                {pending_ageing.deals?.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-[var(--text-muted)] italic font-sans">
-                      No pending approvals recorded.
-                    </td>
-                  </tr>
-                ) : (
-                  pending_ageing.deals.map((d: any) => (
-                    <tr
-                      key={d.opportunity_id_18}
-                      className="hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
-                      onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                    >
-                      <td className="py-2 px-2.5 font-sans font-semibold text-[var(--text-primary)] max-w-[150px] truncate" title={d.opportunity_name}>
-                        <div>{d.opportunity_name}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] truncate">{d.account_name}</div>
-                      </td>
-                      <td className="py-2 px-2.5 text-right font-bold text-amber-600 dark:text-amber-400">
-                        {formatCurrency(d.forecast_acv_amount)}
-                      </td>
-                      <td className="py-2 px-2.5 text-right">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          d.days_pending >= 14 ? 'bg-rose-500/10 text-rose-600' : 'bg-amber-500/10 text-amber-600'
-                        }`}>
-                          {d.days_pending}d pending
-                        </span>
-                      </td>
-                      <td className="py-2 px-2.5 text-[var(--text-muted)]">
-                        {d.pending_since || '—'}
-                      </td>
-                      <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
-                        {d.owner}
-                      </td>
+              <div className="flex-1 overflow-x-auto max-h-[320px]">
+                <table className="w-full text-xs text-left">
+                  <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    <tr>
+                      <th className="py-2 px-2.5">Opportunity</th>
+                      <th className="py-2 px-2.5">Account</th>
+                      <th className="py-2 px-2.5 text-right">ACV</th>
+                      <th className="py-2 px-2.5">Approval</th>
+                      <th className="py-2 px-2.5">Owner</th>
+                      <th className="py-2 px-2.5">Region</th>
+                      <th className="py-2 px-2.5 text-right">Close Date</th>
+                      <th className="py-2 px-2.5 text-right">Days to close</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)] font-mono text-[11px]">
+                    {filteredCommitDeals.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-[var(--text-muted)] italic font-sans">
+                          No matching Commit deals.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredCommitDeals.map((d: any) => (
+                        <tr
+                          key={d.opportunity_id_18}
+                          className="hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
+                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                        >
+                          <td className="py-2 px-2.5 font-sans font-semibold text-[var(--text-primary)] max-w-[160px] truncate" title={d.opportunity_name}>
+                            {d.opportunity_name}
+                          </td>
+                          <td className="py-2 px-2.5 font-sans text-[var(--text-secondary)] max-w-[120px] truncate" title={d.account_name}>
+                            {d.account_name}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-bold text-rose-600 dark:text-rose-400">
+                            {formatCurrency(d.forecast_acv_amount)}
+                          </td>
+                          <td className="py-2 px-2.5 font-sans">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              d.approval_status_key === 'Pending Approval' || d.approval_status === 'Pending Approval' ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-500/10 text-slate-600'
+                            }`}>
+                              {getApprovalStatusLabel(d.approval_status)}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
+                            {d.owner || d.opportunity_owner}
+                          </td>
+                          <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
+                            {d.region || d.sub_region}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-[var(--text-muted)]">
+                            {d.close_date || '—'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right">
+                            {d.days_to_close != null ? (
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                d.days_to_close < 0 ? 'bg-red-500/10 text-red-600' : d.days_to_close <= 14 ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-500/10 text-slate-600'
+                              }`}>
+                                {d.days_to_close < 0 ? 'Past due' : `${d.days_to_close}d`}
+                              </span>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* 5. Pending Ageing Card */}
+            <Card className="xl:col-span-5 p-5 flex flex-col hover:border-[var(--primary)] transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
+                <div className="flex items-start gap-2 text-[var(--text-primary)]">
+                  <Clock className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-bold text-base">How long approvals have been waiting</h3>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Deals sent for approval and still waiting, oldest first. 'Waiting since' is the first snapshot date we saw the deal waiting.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  className="text-xs font-bold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors self-start sm:self-auto font-mono flex-shrink-0"
+                  onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'All Deals Waiting for Approval')}
+                >
+                  {pending_ageing.count} Pending · {formatCurrency(pending_ageing.acv)}
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-x-auto max-h-[320px]">
+                <table className="w-full text-xs text-left">
+                  <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    <tr>
+                      <th className="py-2 px-2.5">Deal</th>
+                      <th className="py-2 px-2.5 text-right">ACV</th>
+                      <th className="py-2 px-2.5 text-right">Ageing</th>
+                      <th className="py-2 px-2.5">Waiting Since</th>
+                      <th className="py-2 px-2.5">Owner</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)] font-mono text-[11px]">
+                    {pending_ageing.deals?.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-[var(--text-muted)] italic font-sans">
+                          No pending approvals recorded.
+                        </td>
+                      </tr>
+                    ) : (
+                      pending_ageing.deals.map((d: any) => (
+                        <tr
+                          key={d.opportunity_id_18}
+                          className="hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer"
+                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                        >
+                          <td className="py-2 px-2.5 font-sans font-semibold text-[var(--text-primary)] max-w-[150px] truncate" title={d.opportunity_name}>
+                            <div>{d.opportunity_name}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate">{d.account_name}</div>
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-bold text-amber-600 dark:text-amber-400">
+                            {formatCurrency(d.forecast_acv_amount)}
+                          </td>
+                          <td className="py-2 px-2.5 text-right">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              d.days_pending >= 14 ? 'bg-rose-500/10 text-rose-600' : 'bg-amber-500/10 text-amber-600'
+                            }`}>
+                              {d.days_pending}d pending
+                            </span>
+                          </td>
+                          <td className="py-2 px-2.5 text-[var(--text-muted)]">
+                            {d.pending_since ? formatDate(d.pending_since) : '—'}
+                          </td>
+                          <td className="py-2 px-2.5 font-sans text-[var(--text-muted)] truncate max-w-[90px]">
+                            {d.owner || d.opportunity_owner}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
+        )
+      })()}
 
       {/* 6. Trend of Approved % over recent snapshots Card */}
       {approved_trend.length > 0 && (
@@ -1260,7 +1243,7 @@ export default function Approvals() {
             <div>
               <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-500" />
-                <span>Approval Rate Trend Across Recent Snapshots</span>
+                <span>Approved share over time</span>
               </h2>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">
                 Trajectory of Approved % over time (labeled in <strong className="font-semibold text-[var(--text-primary)]">% of ACV</strong> and <strong className="font-semibold text-[var(--text-primary)]">% of Deals</strong>)
@@ -1323,16 +1306,24 @@ export default function Approvals() {
                   : (lastweek_date ? formatDate(lastweek_date) : 'last week'));
 
             const renderStatus = (st: string) => {
-              const isOdd = st === 'New to slice';
+              const isNewly = st === 'Newly in this period' || st === 'New to slice'
+              const isNotSubmitted = st === 'Not submitted' || st === 'Blank'
+              const label = isNewly ? 'Newly in this period' : (isNotSubmitted ? 'Not submitted' : st)
+              const tooltip = isNewly
+                ? DEFINITIONS.newly_in_period
+                : isNotSubmitted
+                ? DEFINITIONS.not_submitted
+                : undefined
+
               return (
-                <span className="inline-flex items-center gap-1.5 font-semibold text-[11px] text-[var(--text-primary)]">
-                  <span>{st}</span>
-                  {isOdd && (
-                    <span 
-                      className="group relative inline-flex items-center cursor-help text-sky-500 hover:text-sky-600"
-                      title="New to slice: Deals that newly entered this renewals dataset or slice since the comparison date."
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[11px] text-[var(--text-primary)]" title={tooltip}>
+                  <span className={isNewly ? 'text-teal-600 dark:text-teal-400 font-bold' : ''}>{label}</span>
+                  {tooltip && (
+                    <span
+                      className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-slate-200 dark:bg-slate-700 text-[8px] font-bold text-slate-600 dark:text-slate-300 cursor-help"
+                      title={tooltip}
                     >
-                      <Info className="w-3.5 h-3.5" />
+                      i
                     </span>
                   )}
                 </span>
@@ -1477,45 +1468,35 @@ export default function Approvals() {
           })()}
         </Card>
 
-        {/* Companion Cards */}
+        {/* Approved Deals Companion Card */}
         <div className="xl:col-span-5 flex flex-col gap-6">
-          <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-            <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-               <Clock className="w-5 h-5 text-amber-500" />
-               <h3 className="font-bold">Submitted, waiting for approval</h3>
+          <Card className="p-5 flex flex-col hover:border-[var(--primary)] transition-colors justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-[var(--text-primary)]">
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-bold text-base">Approved deals</h3>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">
+                Deals in this period with finalized Opportunity Approval, ready for booking.
+              </p>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-xl border border-[var(--border)] flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-[var(--text-muted)] font-medium">Approved ACV</div>
+                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(getStatus('Approved').acv)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-[var(--text-muted)] font-medium">Deals Count</div>
+                  <div className="text-2xl font-bold text-[var(--text-primary)]">{formatNumber(getStatus('Approved').count)} deals</div>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto max-h-[220px] text-xs space-y-2">
-               <p className="text-[var(--text-muted)] text-[11px] italic cursor-pointer hover:underline" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>All {pending_deals?.length || 0} pending deals...</p>
-               {(!pending_deals || pending_deals.length === 0) ? (
-                  <div className="text-center py-6 text-[var(--text-muted)]">No pending deals.</div>
-               ) : (
-                  pending_deals.map((p: any, idx: number) => {
-                    const daysToClose = p.close_date && activeSnapshot ? Math.floor((new Date(p.close_date).getTime() - new Date(activeSnapshot.snapshot_date).getTime()) / (1000 * 3600 * 24)) : 999;
-                    return (
-                    <div key={idx} className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => { setSelectedOppId(p.opportunity_id_18); handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals'); }}>
-                      <div className="flex justify-between font-bold text-[var(--text-primary)]"><span className="truncate pr-2">{p.account_name || p.opportunity_name}</span> <span className="text-amber-600">{acvM(p.forecast_acv_amount)}</span></div>
-                      <div className="flex justify-between items-center text-[10px] text-[var(--text-muted)] mt-1">
-                        <span>{p.close_date ? p.close_date.substring(0,10) : 'No close date'}</span>
-                        {daysToClose <= 30 && <span className="bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded-sm font-bold border border-red-500/20">closes in {daysToClose}d</span>}
-                      </div>
-                    </div>
-                  )})
-               )}
-            </div>
-          </Card>
-
-          <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-            <div className="flex items-center gap-2 mb-3 text-[var(--text-primary)]">
-               <AlertOctagon className="w-5 h-5 text-rose-500" />
-               <h3 className="font-bold">Not Submitted</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto max-h-[160px] text-xs space-y-2">
-               <p className="text-[var(--text-muted)] text-[11px] italic">Commit deals with Not submitted status...</p>
-               <div className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors" onClick={() => handleCellClick({ approval_status: 'Blank', forecast_category: 'Commit' }, 'Not Submitted · Commit Deals')}>
-                 <div className="flex justify-between font-bold text-[var(--text-primary)]"><span>Total Not Submitted Commits</span> <span className="text-rose-600">{acvM(matrix['Blank']?.['Commit']?.acv || 0)}</span></div>
-                 <div className="text-[10px] text-[var(--text-muted)] mt-1">{matrix['Blank']?.['Commit']?.count || 0} deals at risk</div>
-               </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleCellClick({ approval_status: 'Approved' }, 'All Approved Deals')}
+              className="mt-4 w-full py-2 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold text-xs border border-emerald-500/30 transition-colors text-center"
+            >
+              View all approved deals →
+            </button>
           </Card>
         </div>
       </div>

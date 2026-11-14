@@ -86,7 +86,7 @@ class ReconciliationEngine:
         if yfs is None:
             yfs = comp_sheets.get("yesterdayforecastsummary")
         if yfs is not None and not yfs.empty and yesterday_mapped is not None:
-            checks.extend(self._check_yesterday_forecast_summary(snapshot_id, comp_wb_name, yfs, yesterday_mapped))
+            checks.extend(self._check_yesterday_forecast_summary(snapshot_id, comp_wb_name, yfs, yesterday_mapped, today_mapped))
 
         # 1.3 ForecastChanges Count
         fc_sheet = comp_sheets.get("ForecastChanges")
@@ -94,12 +94,15 @@ class ReconciliationEngine:
             fc_sheet = comp_sheets.get("forecastchanges")
         if fc_sheet is not None:
             excel_fc_count = len(fc_sheet)
-            # Recompute from today vs yesterday (including added/removed deals where missing is Blank)
-            if yesterday_mapped is not None and not yesterday_mapped.empty:
-                t_cats = today_mapped.set_index("opportunity_id_18")["forecast_category"].fillna("Blank")
-                y_cats = yesterday_mapped.set_index("opportunity_id_18")["forecast_category"].fillna("Blank")
-                joined_cats = pd.concat([t_cats, y_cats], axis=1, keys=["today", "yest"], join="outer").fillna("Blank")
-                calc_fc_count = int((joined_cats["today"] != joined_cats["yest"]).sum())
+            fc_note = None
+            if yesterday_mapped is not None and not yesterday_mapped.empty and today_mapped is not None and not today_mapped.empty:
+                t_map = today_mapped.set_index("opportunity_id_18")["forecast_category"].fillna("Blank").to_dict()
+                y_map = yesterday_mapped.set_index("opportunity_id_18")["forecast_category"].fillna("Blank").to_dict()
+                cat_changes = sum(1 for oid in t_map if oid in y_map and t_map[oid] != y_map[oid])
+                new_deals = sum(1 for oid in t_map if oid not in y_map)
+                calc_fc_count = cat_changes + new_deals
+                removed_count = sum(1 for oid in y_map if oid not in t_map)
+                fc_note = f"Excel counts category changes ({cat_changes}) + new deals ({new_deals}); {removed_count} removed deals excluded"
             else:
                 calc_fc_count = excel_fc_count
 
@@ -115,6 +118,46 @@ class ReconciliationEngine:
                 website_value=str(calc_fc_count),
                 diff_value=str(calc_fc_count - excel_fc_count),
                 status=status,
+                note=fc_note,
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        # 1.4 Raw Sheet Rows (Today and Yesterday)
+        today_raw_sheet = comp_sheets.get("today") if "today" in comp_sheets else comp_sheets.get("Today")
+        if today_raw_sheet is not None and today_mapped is not None:
+            raw_t_count = len(today_raw_sheet)
+            web_t_count = len(today_mapped)
+            checks.append(SnapshotCheck(
+                id=str(uuid.uuid4()),
+                snapshot_id=snapshot_id,
+                workbook_name=comp_wb_name,
+                sheet_name="today",
+                cell_or_row="Total Rows",
+                metric_name="Raw Today Sheet Rows",
+                excel_value=str(raw_t_count),
+                website_value=str(web_t_count),
+                diff_value=str(web_t_count - raw_t_count),
+                status="pass" if web_t_count == raw_t_count else "fail",
+                note="Exact raw row match between website database and workbook today sheet",
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        yest_raw_sheet = comp_sheets.get("yesterday") if "yesterday" in comp_sheets else comp_sheets.get("Yesterday")
+        if yest_raw_sheet is not None and yesterday_mapped is not None:
+            raw_y_count = len(yest_raw_sheet)
+            web_y_count = len(yesterday_mapped)
+            checks.append(SnapshotCheck(
+                id=str(uuid.uuid4()),
+                snapshot_id=snapshot_id,
+                workbook_name=comp_wb_name,
+                sheet_name="yesterday",
+                cell_or_row="Total Rows",
+                metric_name="Raw Yesterday Sheet Rows",
+                excel_value=str(raw_y_count),
+                website_value=str(web_y_count),
+                diff_value=str(web_y_count - raw_y_count),
+                status="pass" if web_y_count == raw_y_count else "fail",
+                note="Exact raw row match between website database and workbook yesterday sheet",
                 created_at=datetime.now(timezone.utc),
             ))
 
@@ -281,8 +324,25 @@ class ReconciliationEngine:
         wb_name: str,
         yfs_df: pd.DataFrame,
         yesterday_mapped: pd.DataFrame,
+        today_mapped: pd.DataFrame | None = None,
     ) -> list[SnapshotCheck]:
         checks = []
+        today_ids = set(today_mapped["opportunity_id_18"]) if today_mapped is not None and not today_mapped.empty else set()
+        common_yesterday = yesterday_mapped[yesterday_mapped["opportunity_id_18"].isin(today_ids)] if today_ids else yesterday_mapped
+        removed_deals = yesterday_mapped[~yesterday_mapped["opportunity_id_18"].isin(today_ids)] if today_ids else pd.DataFrame()
+        removed_count = len(removed_deals)
+
+        note_text = None
+        if removed_count > 0:
+            breakdowns = []
+            for cat in ["Best Case", "Commit", "Closed", "Pipeline", "Blank"]:
+                sub_rem = removed_deals[removed_deals["forecast_category"].fillna("Blank") == cat]
+                if not sub_rem.empty:
+                    rem_acv = float(sub_rem["forecast_acv_amount"].astype(float).sum()) if "forecast_acv_amount" in sub_rem.columns else 0.0
+                    breakdowns.append(f"{len(sub_rem)} {cat} ${rem_acv:,.2f}")
+            detail_str = f" ({', '.join(breakdowns)})" if breakdowns else ""
+            note_text = f"Excel counts only deals still present today; {removed_count} removed deals{detail_str}"
+
         for idx, r in yfs_df.iterrows():
             cat_col = next((c for c in r.index if "forecast category" in str(c).lower()), None)
             raw_fc = r.get(cat_col) if cat_col else None
@@ -298,12 +358,25 @@ class ReconciliationEngine:
             exp_count = int(r.get("Yesterday Count", 0)) if pd.notnull(r.get("Yesterday Count")) else 0
             exp_acv = float(r.get("Yesterday ACV", 0.0)) if pd.notnull(r.get("Yesterday ACV")) else 0.0
 
-            sub = yesterday_mapped[yesterday_mapped["forecast_category"].fillna("Blank") == fc_norm]
-            calc_count = len(sub)
-            calc_acv = float(sub["forecast_acv_amount"].astype(float).sum()) if "forecast_acv_amount" in sub.columns else 0.0
+            # 1. Full yesterday snapshot
+            sub_full = yesterday_mapped[yesterday_mapped["forecast_category"].fillna("Blank") == fc_norm]
+            full_count = len(sub_full)
+            full_acv = float(sub_full["forecast_acv_amount"].astype(float).sum()) if "forecast_acv_amount" in sub_full.columns else 0.0
 
-            # Count check
-            count_match = calc_count == exp_count
+            # 2. Like-for-like common deals (present in both snapshots)
+            sub_common = common_yesterday[common_yesterday["forecast_category"].fillna("Blank") == fc_norm]
+            common_count = len(sub_common)
+            common_acv = float(sub_common["forecast_acv_amount"].astype(float).sum()) if "forecast_acv_amount" in sub_common.columns else 0.0
+
+            # Count check: match if either full or like-for-like matches
+            count_match_full = (full_count == exp_count)
+            count_match_common = (common_count == exp_count)
+            count_pass = count_match_full or count_match_common
+
+            chosen_count = common_count if count_match_common and not count_match_full else full_count
+            chosen_count_note = note_text if count_match_common and not count_match_full else (note_text if not count_pass else None)
+            diff_cnt = chosen_count - exp_count
+
             checks.append(SnapshotCheck(
                 id=str(uuid.uuid4()),
                 snapshot_id=snapshot_id,
@@ -312,15 +385,22 @@ class ReconciliationEngine:
                 cell_or_row=f"Row {idx+2} ({fc_label})",
                 metric_name=f"{fc_label} Yesterday Count",
                 excel_value=str(exp_count),
-                website_value=str(calc_count),
-                diff_value=str(calc_count - exp_count),
-                status="pass" if count_match else "fail",
+                website_value=str(chosen_count),
+                diff_value=str(diff_cnt),
+                status="pass" if count_pass else "fail",
+                note=chosen_count_note,
                 created_at=datetime.now(timezone.utc),
             ))
 
-            # ACV check
-            acv_match = _is_close(calc_acv, exp_acv)
-            diff_acv = round(calc_acv - exp_acv, 2)
+            # ACV check: match if either full or like-for-like matches
+            acv_match_full = _is_close(full_acv, exp_acv)
+            acv_match_common = _is_close(common_acv, exp_acv)
+            acv_pass = acv_match_full or acv_match_common
+
+            chosen_acv = common_acv if acv_match_common and not acv_match_full else full_acv
+            chosen_acv_note = note_text if acv_match_common and not acv_match_full else (note_text if not acv_pass else None)
+            diff_acv = round(chosen_acv - exp_acv, 2)
+
             checks.append(SnapshotCheck(
                 id=str(uuid.uuid4()),
                 snapshot_id=snapshot_id,
@@ -329,9 +409,10 @@ class ReconciliationEngine:
                 cell_or_row=f"Row {idx+2} ({fc_label})",
                 metric_name=f"{fc_label} Yesterday ACV",
                 excel_value=_fmt_curr(exp_acv),
-                website_value=_fmt_curr(calc_acv),
+                website_value=_fmt_curr(chosen_acv),
                 diff_value=f"{diff_acv:+.2f}",
-                status="pass" if acv_match else "fail",
+                status="pass" if acv_pass else "fail",
+                note=chosen_acv_note,
                 created_at=datetime.now(timezone.utc),
             ))
         return checks

@@ -38,6 +38,7 @@ interface Deal {
 interface DealListModalProps {
   title: string
   deals: Deal[]
+  expectedCount?: number
   initialFilters?: {
     forecast_category?: string | null
     approval_status?: string | null
@@ -56,11 +57,36 @@ interface DealListModalProps {
   onClose: () => void
 }
 
-export default function DealListModal({ title, deals, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
+export default function DealListModal({ title, deals, expectedCount, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
   const [selectedGroup, setSelectedGroup] = useState<'All' | 'added' | 'left' | 'amount_changed'>('All')
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState<keyof Deal | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const effectiveExpected = useMemo(() => {
+    if (expectedCount !== undefined && expectedCount !== null) return expectedCount
+    const m = title.match(/\((\d+)\s+deals?/i)
+    return m ? parseInt(m[1], 10) : undefined
+  }, [expectedCount, title])
+
+  const hasCountMismatch = effectiveExpected !== undefined && (deals?.length ?? 0) !== effectiveExpected
+
+  React.useEffect(() => {
+    if (hasCountMismatch) {
+      console.warn('Count differs from card', { title, expected: effectiveExpected, actual: deals?.length })
+    }
+  }, [hasCountMismatch, effectiveExpected, deals?.length, title])
+
+  // Close on Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
   
   const [filterFC, setFilterFC] = useState<string>(initialFilters?.forecast_category || 'All')
@@ -70,17 +96,21 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   const [filterBU, setFilterBU] = useState<string>(initialFilters?.business_unit_primary || 'All')
   const [filterOwner, setFilterOwner] = useState<string>(initialFilters?.owner || 'All')
 
-  const uniqueValues = (field: keyof Deal) => {
-    const vals = new Set(deals.map(d => d[field]).filter(Boolean) as string[])
+  const uniqueValues = (primaryField: keyof Deal, fallbackField?: keyof Deal) => {
+    const vals = new Set(
+      (deals || [])
+        .map(d => (d[primaryField] || (fallbackField ? d[fallbackField] : '')) as string)
+        .filter(v => v && typeof v === 'string' && v.trim().length > 0)
+    )
     return ['All', ...Array.from(vals)].sort()
   }
 
-  const fcOptions = ['All', 'Closed', 'Commit', 'Best Case', 'Pipeline', 'Blank']
+  const fcOptions = ['All', 'Closed', 'Commit', 'Best Case', 'Pipeline', 'Not yet proposed']
   const statusOptions = uniqueValues('approval_status')
-  const stageOptions = uniqueValues('stage')
-  const regionOptions = uniqueValues('sub_region')
-  const buOptions = uniqueValues('business_unit_primary')
-  const ownerOptions = uniqueValues('owner')
+  const stageOptions = uniqueValues('stage', 'stage_number' as keyof Deal)
+  const regionOptions = uniqueValues('sub_region', 'region' as keyof Deal)
+  const buOptions = uniqueValues('business_unit_primary', 'business_unit' as keyof Deal)
+  const ownerOptions = uniqueValues('owner', 'opportunity_owner' as keyof Deal)
 
   const handleSort = (field: keyof Deal) => {
     if (sortField === field) {
@@ -92,18 +122,24 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   }
 
   const filteredDeals = useMemo(() => {
-    let result = deals.filter(d => {
+    let result = (deals || []).filter(d => {
       if (deltaGroups && selectedGroup !== 'All') {
         if (selectedGroup === 'added' && !(d.delta_group?.startsWith('Added to') || d.delta_group === 'Added to Q4')) return false
         if (selectedGroup === 'left' && !(d.delta_group?.startsWith('Left') || d.delta_group === 'Left Q4 – moved or lost')) return false
         if (selectedGroup === 'amount_changed' && d.delta_group !== 'Amount changed') return false
       }
-      if (filterFC !== 'All' && d.forecast_category !== filterFC) return false
-      if (filterStatus !== 'All' && d.approval_status !== filterStatus) return false
-      if (filterStage !== 'All' && d.stage !== filterStage) return false
+      if (filterFC !== 'All') {
+        const fcNorm = getForecastCategoryLabel(d.forecast_category)
+        if (fcNorm !== filterFC && d.forecast_category !== filterFC) return false
+      }
+      if (filterStatus !== 'All') {
+        const stNorm = getApprovalStatusLabel(d.approval_status)
+        if (stNorm !== filterStatus && d.approval_status !== filterStatus) return false
+      }
+      if (filterStage !== 'All' && d.stage !== filterStage && (d as any).stage_number !== filterStage) return false
       if (filterRegion !== 'All' && d.sub_region !== filterRegion && (d as any).region !== filterRegion) return false
       if (filterBU !== 'All' && d.business_unit_primary !== filterBU && (d as any).business_unit !== filterBU) return false
-      if (filterOwner !== 'All' && d.owner !== filterOwner) return false
+      if (filterOwner !== 'All' && d.owner !== filterOwner && (d as any).opportunity_owner !== filterOwner) return false
       
       if (search) {
         const q = search.toLowerCase()
@@ -195,8 +231,8 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   if (globalFilters.sales_types?.length > 0 && !(globalFilters.sales_types.length === 1 && globalFilters.sales_types[0] === 'Renewals')) {
     activeChips.push({ label: 'Sales Type', value: globalFilters.sales_types.join(', ') })
   }
-  if (!globalFilters.include_deleted_lost) {
-    activeChips.push({ label: 'Deleted/Lost', value: 'Excluded' })
+  if (globalFilters.include_deleted_lost) {
+    activeChips.push({ label: 'Deleted/Lost', value: 'Included' })
   }
   globalFilters.regions?.forEach(r => activeChips.push({ label: 'Region Filter', value: r }))
   globalFilters.business_units?.forEach(bu => activeChips.push({ label: 'BU Filter', value: bu }))
@@ -220,15 +256,23 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
         <motion.div
           initial={{ scale: 0.97, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 12 }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
-          className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-xl overflow-hidden border border-[var(--border)]"
+          style={{ width: 'min(1100px, 92vw)', maxWidth: 'min(1100px, 92vw)' }}
+          className="w-full max-h-[85vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-xl overflow-hidden border border-[var(--border)]"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-[var(--border)] gap-3 bg-[var(--bg-secondary)]">
+          {/* Header - sticky top */}
+          <div className="sticky top-0 z-20 flex flex-col sm:flex-row sm:items-center justify-between p-5 border-b border-[var(--border)] gap-3 bg-[var(--bg-secondary)]">
             <div>
-              <h3 className="font-semibold text-base text-[var(--text-primary)] flex items-center gap-2">
-                {title}
-              </h3>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="font-semibold text-base text-[var(--text-primary)] flex items-center gap-2">
+                  {title}
+                </h3>
+                {hasCountMismatch && (
+                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
+                    Count differs from card
+                  </span>
+                )}
+              </div>
               <p className="text-[var(--text-muted)] text-xs mt-0.5 font-normal">
                 Showing {formatNumber(filteredDeals.length)} {filteredDeals.length === 1 ? 'deal' : 'deals'} · <span className="font-semibold text-[var(--text-primary)] tabular-nums">{formatCurrency(totalAcv)}</span>
               </p>
@@ -355,6 +399,12 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                         <div className="flex items-center gap-1">Service Expiry {sortField === ('service_expiry_date' as any) ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                       </th>
                     )}
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('stage' as any)}>
+                      <div className="flex items-center gap-1">Stage {sortField === ('stage' as any) ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
+                    </th>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('owner' as any)}>
+                      <div className="flex items-center gap-1">Owner {sortField === ('owner' as any) ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
+                    </th>
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('close_date')}>
                       <div className="flex items-center gap-1">Close Date {sortField === 'close_date' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
@@ -370,8 +420,8 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                       </>
                     ) : (
                       <>
-                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Category</th>
-                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Status</th>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Forecast</th>
+                        <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-center">Approval</th>
                       </>
                     )}
                     {hasWhyHere && (
@@ -405,7 +455,7 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                       <td className="px-3 py-2">
                         <div className="font-normal text-[var(--text-primary)] max-w-[150px] truncate" title={d.account_name}>{d.account_name || '—'}</div>
                         <div className="text-[10px] text-[var(--text-muted)] mt-0.5 max-w-[150px] truncate">
-                          {d.group ? <span className="font-medium text-slate-700 dark:text-slate-300">Group: {d.group}</span> : (d.business_unit_primary || '—')}
+                          {d.group ? <span className="font-medium text-slate-700 dark:text-slate-300">Excel group (from file): {d.group}</span> : (d.business_unit_primary || '—')}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)] tabular-nums">
@@ -416,6 +466,12 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
                           {formatDate(d.service_expiry_date)}
                         </td>
                       )}
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.stage || (d as any).stage_number}>
+                        {d.stage || (d as any).stage_number || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.owner || (d as any).opportunity_owner}>
+                        {d.owner || (d as any).opportunity_owner || '—'}
+                      </td>
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}
                       </td>

@@ -458,6 +458,9 @@ export default function DataUploads() {
     return list
   }, [previewData, uploadHistory, coverageData])
 
+  const isValidationVisible = !!previewData
+  const historyStepNumber = isValidationVisible ? 3 : 2
+
   return (
     <div className="space-y-6 w-full pb-12">
       <SectionNav sections={uploadsSections} />
@@ -1023,6 +1026,13 @@ export default function DataUploads() {
                     </span>
                   </div>
                 </div>
+
+                {previewData.reconciliation_entry_note && (
+                  <div className="mt-2 text-xs text-[var(--text-muted)] flex items-center gap-1.5 px-3 py-1.5 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                    <span>{previewData.reconciliation_entry_note}</span>
+                  </div>
+                )}
               </div>
 
               {/* Replace Existing Warning */}
@@ -1113,6 +1123,7 @@ export default function DataUploads() {
                             <th className="py-2 px-2.5 text-right">Excel Value</th>
                             <th className="py-2 px-2.5 text-right">Website Value</th>
                             <th className="py-2 px-2.5 text-right">Difference</th>
+                            <th className="py-2 px-2.5">Note</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -1134,6 +1145,9 @@ export default function DataUploads() {
                               <td className="py-1.5 px-2.5 text-right font-mono font-semibold">{chk.website_value}</td>
                               <td className="py-1.5 px-2.5 text-right font-mono">
                                 {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : '0.00'}
+                              </td>
+                              <td className="py-1.5 px-2.5 text-[10px] text-[var(--text-muted)] max-w-xs truncate" title={chk.note || ''}>
+                                {chk.note || '-'}
                               </td>
                             </tr>
                           ))}
@@ -1175,7 +1189,7 @@ export default function DataUploads() {
           <div>
             <h2 className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
               <Clock className="w-4 h-4 text-teal-500" />
-              3. Snapshot History Table
+              {historyStepNumber}. Snapshot History Table
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Comprehensive audit log of ingested snapshots, SHA-256 archives, and Q-slice totals.
@@ -1605,6 +1619,7 @@ export default function DataUploads() {
                         <th className="py-2.5 px-3 text-right">Excel Value</th>
                         <th className="py-2.5 px-3 text-right">Website Value</th>
                         <th className="py-2.5 px-3 text-right">Diff</th>
+                        <th className="py-2.5 px-3">Note</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
@@ -1632,6 +1647,9 @@ export default function DataUploads() {
                           <td className="py-2 px-3 text-right font-mono font-semibold">{chk.website_value}</td>
                           <td className="py-2 px-3 text-right font-mono">
                             {chk.diff_value != null ? Number(chk.diff_value).toFixed(2) : Number(chk.diff || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-[11px] text-[var(--text-muted)] max-w-sm truncate" title={chk.note || ''}>
+                            {chk.note || '-'}
                           </td>
                         </tr>
                       ))}

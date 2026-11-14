@@ -4,6 +4,9 @@ import Card from '@/components/ui/Card'
 
 interface Props {
   children?: ReactNode
+  compact?: boolean
+  sectionTitle?: string
+  onRetry?: () => void
 }
 
 interface State {
@@ -41,6 +44,29 @@ class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.compact) {
+        return (
+          <div className="p-3 my-2 rounded border border-rose-500/30 bg-rose-500/10 text-xs text-rose-700 dark:text-rose-300 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+              <span>Failed to load this section{this.props.sectionTitle ? ` (${this.props.sectionTitle})` : ''}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, error: null, errorInfo: null })
+                if (this.props.onRetry) {
+                  this.props.onRetry()
+                }
+              }}
+              className="px-2.5 py-1 text-xs font-semibold rounded bg-rose-600 text-white hover:bg-rose-700 transition-colors inline-flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" /> Retry
+            </button>
+          </div>
+        )
+      }
+
       return (
         <div className="p-8 flex items-center justify-center min-h-[400px]">
           <Card className="max-w-2xl w-full p-6 text-center shadow-xl border-red-500/20 bg-red-500/5 dark:bg-red-500/10">

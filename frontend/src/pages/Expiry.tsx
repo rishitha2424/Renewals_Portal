@@ -19,6 +19,7 @@ import FilterBar from '@/components/common/FilterBar'
 import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import ErrorBoundary from '@/components/common/ErrorBoundary'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -124,11 +125,8 @@ export default function Expiry() {
       list.push({ id: 'expiry-profile', title: 'Expiry Profile' })
     }
     list.push({ id: 'expiry-insights', title: 'Closure & Insights' })
-    if (movementsData) {
-      list.push({ id: 'expiry-movements', title: 'Movements' })
-    }
     return list
-  }, [sum, movementsData])
+  }, [sum])
 
 
   if (!activeSnapshotId || snapshots.length === 0) {
@@ -251,7 +249,14 @@ export default function Expiry() {
         </div>
       )}
 
+      {(!isLoading && (grandTotal?.count ?? 0) === 0) && (
+        <div className="card p-8 text-center text-sm text-[var(--text-muted)]">
+          No deals for this selection
+        </div>
+      )}
+
       {/* Grand Total & Slippage KPI Strip */}
+      <ErrorBoundary compact sectionTitle="Expiry Totals">
       <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
         <Card
           className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
@@ -274,13 +279,13 @@ export default function Expiry() {
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
               <span className={`text-xs tabular-nums text-right ${yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : yestGrand?.acv && yestGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : '—'}
+                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
               <span className={`text-xs tabular-nums text-right ${lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : lastGrand?.acv && lastGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : '—'}
+                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
               </span>
             </div>
           </div>
@@ -304,12 +309,14 @@ export default function Expiry() {
             </div>
           </div>
           <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">Close date after FY{fy1} year end</span>
+            <span className="text-xs text-[var(--text-muted)]">{sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}</span>
             <span className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:underline">View slippage deals →</span>
           </div>
         </Card>
       </div>
+      </ErrorBoundary>
 
+      <ErrorBoundary compact sectionTitle="Expiry Grids">
       {sum.fiscal_years?.map((fyObj: any) => {
         const yLabel = fyObj.label
         const grid = sum.grids?.[yLabel]
@@ -344,9 +351,10 @@ export default function Expiry() {
           </div>
         )
       })}
-
+      </ErrorBoundary>
 
       {/* Expiry Profile Stacked Column Chart Section */}
+      <ErrorBoundary compact sectionTitle="Expiry Profile">
       <Card id="expiry-profile" className="p-5 mt-6 hover:border-[var(--primary)] transition-colors scroll-mt-24">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
@@ -506,8 +514,10 @@ export default function Expiry() {
           )
         })()}
       </Card>
+      </ErrorBoundary>
 
       {/* Insights Section */}
+      <ErrorBoundary compact sectionTitle="Expiry Insights">
       <div id="expiry-insights" className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 scroll-mt-24">
 
         <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
@@ -628,18 +638,7 @@ export default function Expiry() {
           </div>
         </Card>
       </div>
-
-      {/* Shared Movement Section */}
-      <Card id="expiry-movements" className="p-6 mt-8 scroll-mt-24">
-        <MovementsSummary
-          movements={movementsData}
-          onSelectDeals={(title, deals) => {
-            setModalTitle(title)
-            setDrillDeals(deals)
-            setModalOpen(true)
-          }}
-        />
-      </Card>
+      </ErrorBoundary>
 
       {modalOpen && (
         <DealListModal

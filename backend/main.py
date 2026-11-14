@@ -22,6 +22,19 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Starting up...")
+    # Ensure required application and storage directories exist
+    from pathlib import Path
+    for d in [
+        settings.DATA_DIR,
+        settings.DATA_DIR / "backups" / "annotations",
+        Path("uploads"),
+        Path("scratch"),
+    ]:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            log.warning("Could not create directory %s: %s", d, exc)
+
     from backend.database import engine
     dialect = getattr(engine.dialect, "name", "sqlite")
     is_postgres = dialect == "postgresql"
@@ -50,6 +63,25 @@ async def lifespan(app: FastAPI):
             from backend.database import Base
             Base.metadata.create_all(bind=engine)
             migrations_status = "fallback to create_all"
+
+    # Defensive self-healing schema check: ensure all model columns exist on existing tables
+    try:
+        from sqlalchemy import inspect, text
+        from backend.database import Base
+        inspector = inspect(engine)
+        for table_name, table in Base.metadata.tables.items():
+            if inspector.has_table(table_name):
+                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+                for col in table.columns:
+                    if col.name not in existing_cols:
+                        col_type = col.type.compile(engine.dialect)
+                        log.info("Auto-migrating missing column %s.%s (%s)", table_name, col.name, col_type)
+                        with engine.begin() as conn:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"))
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE opportunities SET is_reconciliation_entry = 0 WHERE is_reconciliation_entry IS NULL"))
+    except Exception as exc:
+        log.warning("Self-healing column migration check warning: %s", exc)
 
     # Startup log: on boot, log one line such as Database: postgresql @ localhost:5432/renewals (migrations at head).
     try:
@@ -119,9 +151,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else ["*"]
+allow_all = "*" in cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"] if allow_all else cors_origins,
+    allow_origin_regex=r"^https?://.*$" if allow_all else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -173,7 +209,8 @@ def compare_api(
 
 
 
-@app.get("/api/health")
+@app.get("/health", tags=["health"])
+@app.get("/api/health", tags=["health"])
 def health(db: Session = Depends(get_db)):
     dialect = "unknown"
     db_name = "unknown"

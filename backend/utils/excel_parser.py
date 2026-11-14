@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +42,12 @@ RENEWALS_COLUMN_MAP: dict[str, str] = {
     "sales type":               "sales_type",
     "stage number":             "stage_number",
     "stage":                    "stage_number",
+    "reconciliation entry":     "is_reconciliation_entry",
+    "reconciliation_entry":     "is_reconciliation_entry",
+    "recon entry":              "is_reconciliation_entry",
+    "recon_entry":              "is_reconciliation_entry",
+    "reconciliationentry":      "is_reconciliation_entry",
+    "reconentry":               "is_reconciliation_entry",
 }
 
 RAW_DATA_SHEETS = ["Today_Data", "Yesterday_Data", "Lastweek_Data"]
@@ -63,8 +69,11 @@ def parse_excel_datetime(val) -> datetime | None:
     """Convert any date-like cell value to datetime, or None.
     Handles Timestamp/datetime/date, Excel serial numbers, ISO and US text.
     Any date serial at or below zero, or an empty cell, is treated as missing (None).
-    Years below 1900 (such as 1899 from Excel serial 0) are treated as missing (None)."""
+    Years below 1900 (such as 1899 from Excel serial 0) are treated as missing (None).
+    Time-only values (e.g. datetime.time, '00:00:00') are treated as missing (None)."""
     if val is None or pd.isna(val):
+        return None
+    if isinstance(val, time):
         return None
     if isinstance(val, (int, float)):
         if val <= 0:
@@ -82,9 +91,12 @@ def parse_excel_datetime(val) -> datetime | None:
     if isinstance(val, date):
         return datetime(val.year, val.month, val.day) if val.year >= 1900 else None
     s = str(val).strip()
-    if not s or s.lower() in ("nan", "nat", "none", "null", "0", "0.0", "blank"):
+    if not s or s.lower() in ("nan", "nat", "none", "null", "0", "0.0", "blank", "00:00:00"):
         return None
     if s.startswith("-"):
+        return None
+    # Check for time-only strings (e.g. "00:00:00", "12:30", "14:15:30")
+    if re.fullmatch(r"^\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$", s):
         return None
     # Excel serial number
     if re.fullmatch(r"\d{1,6}(\.\d+)?", s):
@@ -99,6 +111,9 @@ def parse_excel_datetime(val) -> datetime | None:
         except Exception:
             return None
     try:
+        # Check if string has date separators or month names
+        if not re.search(r"[-/]|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", s, re.IGNORECASE):
+            return None
         ts = pd.to_datetime(s, errors="coerce")
         if pd.isna(ts) or ts.year < 1900:
             return None
@@ -115,10 +130,12 @@ def parse_excel_date(val) -> date | None:
 
 
 def clean_record(rec: dict) -> dict:
-    """Make a row dict JSON-safe: NaN/NaT -> None, Timestamps -> ISO strings."""
+    """Make a row dict JSON-safe: NaN/NaT -> None, Timestamps -> ISO strings, time-only -> None."""
     out = {}
     for k, v in rec.items():
         if v is None or (isinstance(v, float) and pd.isna(v)):
+            out[str(k)] = None
+        elif isinstance(v, time):
             out[str(k)] = None
         elif isinstance(v, (pd.Timestamp, datetime, date)):
             out[str(k)] = v.isoformat()
@@ -145,6 +162,10 @@ def _map_columns(df: pd.DataFrame) -> pd.DataFrame:
         normed = _normalise_col(col)
         if normed in RENEWALS_COLUMN_MAP:
             rename[col] = RENEWALS_COLUMN_MAP[normed]
+        else:
+            cleaned = re.sub(r"[\s_\-]+", "", str(col).replace("\u00a0", " ").strip().lower())
+            if cleaned in ("reconciliationentry", "reconentry"):
+                rename[col] = "is_reconciliation_entry"
     return df.rename(columns=rename)
 
 

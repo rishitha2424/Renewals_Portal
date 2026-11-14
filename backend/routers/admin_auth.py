@@ -127,9 +127,108 @@ def get_security_warnings() -> list[str]:
         warnings.append("ADMIN_SECRET_KEY is unset or using a default insecure key.")
 
     if settings.ENVIRONMENT.lower() == "production" and not settings.is_cookie_secure:
-        warnings.append("Cookies are not secure in production (COOKIE_SECURE=false).")
+        log.warning("Cookies are not secure in production (COOKIE_SECURE=false).")
 
     return warnings
+
+
+def get_security_checks() -> list[dict]:
+    """Inspect environment configuration and return structured security checks."""
+    checks = []
+
+    # 1. ADMIN_PASSWORD not default
+    pwd = (settings.ADMIN_PASSWORD or "").strip()
+    is_default_pwd = pwd in ("admin", "password", "admin123")
+    is_empty_pwd = not pwd
+    if is_empty_pwd:
+        checks.append({
+            "id": "admin_password",
+            "name": "Admin Password",
+            "status": "warning",
+            "message": "ADMIN_PASSWORD is empty or unset.",
+            "fix": "Set a strong, non-default ADMIN_PASSWORD environment variable.",
+        })
+    elif is_default_pwd:
+        checks.append({
+            "id": "admin_password",
+            "name": "Admin Password",
+            "status": "warning",
+            "message": "ADMIN_PASSWORD is using an insecure default value.",
+            "fix": "Set a strong, non-default ADMIN_PASSWORD environment variable.",
+        })
+    else:
+        checks.append({
+            "id": "admin_password",
+            "name": "Admin Password",
+            "status": "ok",
+            "message": "Strong non-default ADMIN_PASSWORD configured.",
+            "fix": "No action needed.",
+        })
+
+    # 2. ADMIN_SECRET_KEY set
+    sec_key = (settings.ADMIN_SECRET_KEY or "").strip()
+    disallowed_keys = {
+        "",
+        "supersecret_renewals_admin_signing_key_change_in_prod",
+        "change_this_to_a_long_random_secret_in_production",
+    }
+    if not sec_key or sec_key in disallowed_keys:
+        checks.append({
+            "id": "admin_secret_key",
+            "name": "Admin Secret Key",
+            "status": "warning",
+            "message": "ADMIN_SECRET_KEY is unset or using a default insecure key.",
+            "fix": "Generate a 32+ character random secret and set ADMIN_SECRET_KEY.",
+        })
+    else:
+        checks.append({
+            "id": "admin_secret_key",
+            "name": "Admin Secret Key",
+            "status": "ok",
+            "message": "Custom ADMIN_SECRET_KEY is configured.",
+            "fix": "No action needed.",
+        })
+
+    # 3. Cookie Secure flag vs HTTPS
+    is_prod = settings.ENVIRONMENT.lower() == "production"
+    is_cookie_secure = getattr(settings, "is_cookie_secure", False)
+    if is_prod and not is_cookie_secure:
+        checks.append({
+            "id": "cookie_secure",
+            "name": "Cookie Secure Flag vs HTTPS",
+            "status": "warning",
+            "message": "Cookies are not marked Secure while ENVIRONMENT is production.",
+            "fix": "Set COOKIE_SECURE=true when serving over HTTPS in production.",
+        })
+    else:
+        checks.append({
+            "id": "cookie_secure",
+            "name": "Cookie Secure Flag vs HTTPS",
+            "status": "ok",
+            "message": "Cookie security flag aligns with current environment.",
+            "fix": "Ensure COOKIE_SECURE=true when deploying over HTTPS.",
+        })
+
+    # 4. CORS Origins
+    cors = getattr(settings, "CORS_ORIGINS", []) or []
+    if is_prod and ("*" in cors):
+        checks.append({
+            "id": "cors_origins",
+            "name": "CORS Origins",
+            "status": "warning",
+            "message": "Wildcard '*' CORS origin is active in production.",
+            "fix": "Set CORS_ORIGINS to specific allowed domain URLs in production.",
+        })
+    else:
+        checks.append({
+            "id": "cors_origins",
+            "name": "CORS Origins",
+            "status": "ok",
+            "message": f"Allowed CORS origins configured ({len(cors)} allowed).",
+            "fix": "No action needed.",
+        })
+
+    return checks
 
 
 @router.get("/status")
@@ -142,4 +241,11 @@ def admin_status(ctx: UserContext = Depends(get_user_context)):
         "user_name": ctx.user_id if is_admin else None,
         "is_configured": configured,
         "security_warnings": get_security_warnings() if is_admin else [],
+        "security_checks": get_security_checks() if is_admin else [],
     }
+
+
+@router.get("/security-checks")
+def admin_security_checks(ctx: UserContext = Depends(get_user_context)):
+    """Admin-only security posture checks."""
+    return {"checks": get_security_checks()}

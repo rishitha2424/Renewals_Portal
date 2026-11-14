@@ -255,24 +255,39 @@ class V2ExpiryService:
             grand_total_count += g["totals"]["grand"]["count"]
             grand_total_acv += g["totals"]["grand"]["acv"]
             
-            cg = build_grid(comp_df, y_label) if not comp_df.empty else build_grid(pd.DataFrame(), y_label)
-            yg = build_grid(df_yest, y_label) if not df_yest.empty else build_grid(pd.DataFrame(), y_label)
-            lg = build_grid(df_lw, y_label) if not df_lw.empty else build_grid(pd.DataFrame(), y_label)
+            has_comp = not comp_df.empty
+            has_yest = not df_yest.empty
+            has_lw = not df_lw.empty
+
+            cg = build_grid(comp_df, y_label) if has_comp else None
+            yg = build_grid(df_yest, y_label) if has_yest else None
+            lg = build_grid(df_lw, y_label) if has_lw else None
             
             y_deltas = {
-                "yesterday": compute_deltas(g, yg),
-                "lastweek": compute_deltas(g, lg)
+                "yesterday": compute_deltas(g, yg) if yg is not None else None,
+                "lastweek": compute_deltas(g, lg) if lg is not None else None
             }
             if eff_compare:
-                y_deltas["custom"] = compute_deltas(g, cg)
+                y_deltas["custom"] = compute_deltas(g, cg) if cg is not None else None
             deltas[y_label] = y_deltas
             
-        _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-        grid_quarters = [q["key"] for q in quarters]
-        grid_df = df[df[period_col].isin(grid_quarters)] if (not df.empty and period_col in df.columns) else pd.DataFrame()
-        slip_df = grid_df[grid_df["close_date"] > fy_end_date] if not grid_df.empty else pd.DataFrame()
+        # Compute Slippage using the shared V2DelayedService (Section A rule)
+        from backend.services.v2_delayed_service import V2DelayedService
+        from backend.services.scopes import FilterSpec
+        fs = filter_spec.model_copy() if filter_spec else FilterSpec()
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
+        target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else target_quarter
+
+        delayed_svc = V2DelayedService(self.db)
+        delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+        slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
         slip_count = len(slip_df)
-        slip_acv = _sum(slip_df, "forecast_acv_amount")
+        slip_acv = round(float(slip_df["forecast_acv_amount"].sum()) if not slip_df.empty else 0.0, 2)
+        
+        from backend.services.settings_service import SettingsService
+        eff_snap_year = eff_date.year if eff_date else snap.snapshot_date.year
+        lookback_y = SettingsService.get_lookback_years(self.db)
+        slip_rule_caption = f"Service started in {eff_snap_year - lookback_y} to {eff_snap_year}, closing in {eff_snap_year + 1}"
         
         slip_by_quarter = []
         if not slip_df.empty:
@@ -396,7 +411,8 @@ class V2ExpiryService:
             "slippage": {
                 "count": slip_count,
                 "acv": round(slip_acv, 2),
-                "by_quarter": slip_by_quarter
+                "by_quarter": slip_by_quarter,
+                "rule_caption": slip_rule_caption
             },
             "deltas": deltas
         }
@@ -429,6 +445,7 @@ class V2ExpiryService:
         res = ScopeService.resolve(fs_for_expiry, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
         
         if kind == "other_types" or category == "other_types":
+            from backend.services.deal_serializer import serialize_opportunity
             deals = []
             if res.effective_types is not None:
                 base_opps = self.db.query(Opportunity).filter(
@@ -438,21 +455,7 @@ class V2ExpiryService:
                 for o in base_opps:
                     raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
                     if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
-                        deals.append({
-                            "id": o.id,
-                            "opportunity_id_18": o.opportunity_id_18,
-                            "opportunity_name": o.opportunity_name,
-                            "account_name": o.account_name,
-                            "forecast_category": o.forecast_category,
-                            "forecast_acv_amount": float(o.forecast_acv_amount or 0),
-                            "approval_status": o.approval_status,
-                            "sub_region": o.sub_region,
-                            "business_unit_primary": o.business_unit_primary,
-                            "service_expiry_period": o.service_expiry_period,
-                            "fiscal_period": o.fiscal_period,
-                            "close_date": o.close_date.isoformat() if o.close_date else None,
-                            "type": raw_tp,
-                        })
+                        deals.append(serialize_opportunity(o))
             return deals
 
         q = self.db.query(Opportunity).filter(
@@ -469,9 +472,21 @@ class V2ExpiryService:
 
         period_col_attr = Opportunity.fiscal_period if period_type == "fiscal" else Opportunity.service_expiry_period
 
-        if slippage:
-            _, fy_end_date = ScopeService.quarter_bounds(f"Q4-{current_y_str}")
-            q = q.filter(Opportunity.close_date > fy_end_date, period_col_attr.in_(default_grid_quarters))
+        if slippage or kind == "slippage":
+            from backend.services.v2_delayed_service import V2DelayedService
+            from backend.services.deal_serializer import serialize_opportunity
+            delayed_svc = V2DelayedService(self.db)
+            target_quarter = res.resolved_quarter if hasattr(res, "resolved_quarter") else ScopeService.quarter_of(snap.snapshot_date)
+            delayed_buckets = delayed_svc._compute_snapshot_buckets(snap, target_quarter, filter_spec=fs)
+            slip_df = delayed_buckets.get("slippage_total", pd.DataFrame())
+            if slip_df.empty:
+                return []
+            slip_ids = [str(x) for x in slip_df["opportunity_id_18"].dropna().unique()]
+            opps = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                Opportunity.opportunity_id_18.in_(slip_ids)
+            ).all()
+            return [serialize_opportunity(o) for o in opps]
 
         if quarter:
             q = q.filter(period_col_attr == quarter)
@@ -492,19 +507,5 @@ class V2ExpiryService:
                 seen.add(o.opportunity_id_18)
                 deduped.append(o)
         
-        def to_dict(o):
-            return {
-                "id": o.id,
-                "opportunity_id_18": o.opportunity_id_18,
-                "opportunity_name": o.opportunity_name,
-                "account_name": o.account_name,
-                "forecast_category": o.forecast_category,
-                "forecast_acv_amount": float(o.forecast_acv_amount or 0),
-                "approval_status": o.approval_status,
-                "sub_region": o.sub_region,
-                "business_unit_primary": o.business_unit_primary,
-                "service_expiry_period": o.service_expiry_period,
-                "fiscal_period": o.fiscal_period,
-                "close_date": o.close_date.isoformat() if o.close_date else None
-            }
-        return [to_dict(o) for o in reversed(deduped)]
+        from backend.services.deal_serializer import serialize_opportunity
+        return [serialize_opportunity(o) for o in reversed(deduped)]

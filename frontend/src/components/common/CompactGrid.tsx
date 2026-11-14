@@ -145,10 +145,11 @@ export default function CompactGrid({
             {rows.map(r => {
               const rowLabel = rowLabelName === 'Status' ? getApprovalStatusLabel(r.label) : r.label
               return (
-                <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group">
+                <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group hover:bg-[var(--bg-secondary)]/40 transition-colors">
                   <td 
-                    className="sticky left-0 bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors h-[36px] shadow-xs"
+                    className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs"
                     onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
+                    title={`${rowLabel}: Click to view deals`}
                   >
                     {rowLabel}
                   </td>

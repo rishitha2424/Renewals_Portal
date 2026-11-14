@@ -35,6 +35,7 @@ from backend.models.opportunity import Opportunity
 from backend.models.snapshot import UploadSnapshot
 from backend.services.scopes import FilterSpec, ScopeService
 from backend.utils.excel_parser import parse_excel_date
+from backend.constants import normalize_forecast_category, normalize_approval_status
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +411,11 @@ class ExplorerService:
             # Include Deleted & Lost
             if not filter_spec.include_deleted_lost:
                 conditions.append(Opportunity.is_deleted_or_lost == False)
+
+            # Exclude Reconciliation Entry = Yes
+            from backend.services.settings_service import SettingsService
+            if SettingsService.get_exclude_reconciliation_entry(self.db):
+                conditions.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
             # Deal Types
             effective_types: Optional[List[str]] = None
@@ -819,10 +825,16 @@ class ExplorerService:
         Also calculates current filter reconciliation if filters are provided.
         """
         # 1. Whole snapshot reconciliation
-        total_count = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id).count()
+        from backend.services.settings_service import SettingsService
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(self.db)
+        base_filter = [Opportunity.snapshot_id == snap.id]
+        if exclude_recon:
+            base_filter.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+
+        total_count = self.db.query(Opportunity).filter(*base_filter).count()
         total_acv = float(
             self.db.query(func.coalesce(func.sum(Opportunity.forecast_acv_amount), 0.0))
-            .filter(Opportunity.snapshot_id == snap.id)
+            .filter(*base_filter)
             .scalar()
             or 0.0
         )
@@ -833,7 +845,7 @@ class ExplorerService:
                 func.count(Opportunity.id),
                 func.coalesce(func.sum(Opportunity.forecast_acv_amount), 0.0),
             )
-            .filter(Opportunity.snapshot_id == snap.id)
+            .filter(*base_filter)
             .group_by(Opportunity.forecast_category)
             .all()
         )
@@ -955,15 +967,18 @@ class ExplorerService:
         sorted_fp_rows = sorted(fp_rows, key=_fp_sort_key)
         fiscal_periods = [{"name": r[0] or "Blank", "count": r[1]} for r in sorted_fp_rows if r[0]]
 
-        # Forecast categories with deal counts
+        # Forecast categories with deal counts (normalized)
         fc_rows = (
             self.db.query(Opportunity.forecast_category, func.count(Opportunity.id))
             .filter(Opportunity.snapshot_id == snap.id)
             .group_by(Opportunity.forecast_category)
-            .order_by(func.count(Opportunity.id).desc())
             .all()
         )
-        forecast_categories = [{"name": r[0] or "Blank", "count": r[1]} for r in fc_rows]
+        fc_counts: dict[str, int] = {}
+        for r in fc_rows:
+            norm = normalize_forecast_category(r[0])
+            fc_counts[norm] = fc_counts.get(norm, 0) + (r[1] or 0)
+        forecast_categories = [{"name": k, "count": v} for k, v in sorted(fc_counts.items(), key=lambda x: -x[1])]
 
         # Regions with deal counts
         reg_rows = (
@@ -973,7 +988,7 @@ class ExplorerService:
             .order_by(func.count(Opportunity.id).desc())
             .all()
         )
-        regions = [{"name": r[0] or "Blank", "count": r[1]} for r in reg_rows if r[0]]
+        regions = [{"name": r[0] or "Other / Unmapped", "count": r[1]} for r in reg_rows if r[0]]
 
         # Business units with deal counts
         bu_rows = (
@@ -983,17 +998,30 @@ class ExplorerService:
             .order_by(func.count(Opportunity.id).desc())
             .all()
         )
-        business_units = [{"name": r[0] or "Blank", "count": r[1]} for r in bu_rows if r[0]]
+        business_units = [{"name": r[0] or "Unassigned", "count": r[1]} for r in bu_rows if r[0]]
 
-        # Approval status with deal counts
+        # Approval status with deal counts (normalized)
         app_rows = (
             self.db.query(Opportunity.approval_status, func.count(Opportunity.id))
             .filter(Opportunity.snapshot_id == snap.id)
             .group_by(Opportunity.approval_status)
+            .all()
+        )
+        app_counts: dict[str, int] = {}
+        for r in app_rows:
+            norm = normalize_approval_status(r[0])
+            app_counts[norm] = app_counts.get(norm, 0) + (r[1] or 0)
+        approval_statuses = [{"name": k, "count": v} for k, v in sorted(app_counts.items(), key=lambda x: -x[1])]
+
+        # Stage with deal counts
+        stage_rows = (
+            self.db.query(Opportunity.stage_number, func.count(Opportunity.id))
+            .filter(Opportunity.snapshot_id == snap.id)
+            .group_by(Opportunity.stage_number)
             .order_by(func.count(Opportunity.id).desc())
             .all()
         )
-        approval_statuses = [{"name": r[0] or "Blank", "count": r[1]} for r in app_rows]
+        stages = [{"name": r[0] or "Blank", "count": r[1]} for r in stage_rows if r[0]]
 
         return {
             "sales_types": sales_types,
@@ -1002,4 +1030,5 @@ class ExplorerService:
             "regions": regions,
             "business_units": business_units,
             "approval_statuses": approval_statuses,
+            "stages": stages,
         }

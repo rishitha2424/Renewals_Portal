@@ -18,8 +18,20 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "description": "Group column value representing Delayed Renewals. Leave empty for automatic detection.",
     },
     "included_type_codes": {
-        "value": json.dumps(["MR", "R"]),
-        "description": "Deal Type codes to include in Delayed Renewals and Slippage (default MR, R). Deals with other codes are reviewed separately.",
+        "value": "All",
+        "description": "Deal Type codes to include across the application (default All). Specific codes narrow every page.",
+    },
+    "lookback_years": {
+        "value": "1",
+        "description": "Number of lookback years for Delayed Renewals and Slippage service start date calculations.",
+    },
+    "excluded_stages": {
+        "value": json.dumps(["Deleted", "Lost", "Won & Closed", "PO & Signed Contract", "Finance Review"]),
+        "description": "Stage names excluded from Delayed Renewals, Slippage, and Jan 1st Renewals.",
+    },
+    "timezone": {
+        "value": "",
+        "description": "Server timezone for calculating current date (e.g. UTC, America/New_York, Asia/Kolkata). Leave empty for server local timezone.",
     },
     "exclude_zero_negative_acv": {
         "value": "true",
@@ -32,6 +44,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
     "manual_sheet_keywords": {
         "value": json.dumps(["delayed", "slippage"]),
         "description": "Keywords used to detect extra manual sheets in workbooks for admin reconciliation.",
+    },
+    "exclude_reconciliation_entry": {
+        "value": "true",
+        "description": "Exclude deals where Reconciliation Entry = Yes across the application.",
     },
 }
 
@@ -96,13 +112,68 @@ class SettingsService:
                 session.close()
                 return res
             except Exception:
-                return ["MR", "R"]
+                return ["ALL"]
         try:
-            raw_types = SettingsService.get_setting(db, "included_type_codes", '["MR", "R"]')
-            parsed = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
-            return [str(x).strip().upper() for x in parsed if str(x).strip()] or ["MR", "R"]
+            raw_types = SettingsService.get_setting(db, "included_type_codes", "All")
+            raw_clean = raw_types.strip()
+            if not raw_clean or raw_clean.lower() in ("all", "['all']", '["all"]'):
+                return ["ALL"]
+            parsed = json.loads(raw_clean) if raw_clean.startswith("[") else [s.strip() for s in raw_clean.split(",")]
+            types = [str(x).strip().upper() for x in parsed if str(x).strip()]
+            if not types or any(t.lower() == "all" for t in types):
+                return ["ALL"]
+            return types
         except Exception:
-            return ["MR", "R"]
+            return ["ALL"]
+
+    @staticmethod
+    def get_lookback_years(db: Optional[Session] = None) -> int:
+        if db is None:
+            return 1
+        try:
+            val = SettingsService.get_setting(db, "lookback_years", "1")
+            return max(1, int(val))
+        except Exception:
+            return 1
+
+    @staticmethod
+    def get_excluded_stages(db: Optional[Session] = None) -> list[str]:
+        default_stages = ["Deleted", "Lost", "Won & Closed", "PO & Signed Contract", "Finance Review"]
+        if db is None:
+            return default_stages
+        try:
+            val = SettingsService.get_setting(db, "excluded_stages", json.dumps(default_stages))
+            parsed = json.loads(val) if val.strip().startswith("[") else [s.strip() for s in val.split(",")]
+            res = [str(x).strip() for x in parsed if str(x).strip()]
+            return res or default_stages
+        except Exception:
+            return default_stages
+
+    @staticmethod
+    def get_timezone(db: Optional[Session] = None) -> str:
+        if db is None:
+            return ""
+        try:
+            return SettingsService.get_setting(db, "timezone", "").strip()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def get_exclude_reconciliation_entry(db: Optional[Session] = None) -> bool:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_exclude_reconciliation_entry(session)
+                session.close()
+                return res
+            except Exception:
+                return True
+        try:
+            val = SettingsService.get_setting(db, "exclude_reconciliation_entry", "true")
+            return str(val).strip().lower() in ("true", "1", "yes")
+        except Exception:
+            return True
 
     @staticmethod
     def get_all_settings(
@@ -134,16 +205,20 @@ class SettingsService:
         result["delayed_group"]["available_groups"] = available_groups or []
 
         # Resolve included type codes
-        raw_types = result.get("included_type_codes", {}).get("value", '["MR", "R"]')
-        try:
-            parsed_types = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
-            type_list = [str(x).strip().upper() for x in parsed_types if str(x).strip()] or ["MR", "R"]
-        except Exception:
-            type_list = ["MR", "R"]
+        raw_types = result.get("included_type_codes", {}).get("value", "All")
+        raw_clean = str(raw_types).strip()
+        if not raw_clean or raw_clean.lower() in ("all", "['all']", '["all"]'):
+            type_list = ["ALL"]
+        else:
+            try:
+                parsed_types = json.loads(raw_clean) if raw_clean.startswith("[") else [s.strip() for s in raw_clean.split(",")]
+                type_list = [str(x).strip().upper() for x in parsed_types if str(x).strip()] or ["ALL"]
+            except Exception:
+                type_list = ["ALL"]
 
         result["included_type_codes"]["effective_value"] = type_list
         result["included_type_codes"]["available_types"] = available_types or []
-        note = " and ".join(type_list) + " types only" if type_list else "All types"
+        note = "All types" if (type_list == ["ALL"] or "ALL" in type_list) else (" and ".join(type_list) + " types only")
         result["included_type_codes"]["note"] = note
 
         return result
@@ -168,14 +243,11 @@ class SettingsService:
         effective_group = configured_group if configured_group else detected_group
         exclude_non_pos = SettingsService.get_setting(db, "exclude_zero_negative_acv", "true").lower() in ("true", "1", "yes")
 
-        try:
-            raw_types = SettingsService.get_setting(db, "included_type_codes", '["MR", "R"]')
-            parsed = json.loads(raw_types) if raw_types.strip().startswith("[") else [s.strip() for s in raw_types.split(",")]
-            included_types = [str(x).strip().upper() for x in parsed if str(x).strip()] or ["MR", "R"]
-        except Exception:
-            included_types = ["MR", "R"]
+        included_types = SettingsService.get_included_types(db)
+        type_note = "All types" if (included_types == ["ALL"] or "ALL" in included_types) else (" and ".join(included_types) + " types only")
 
-        type_note = " and ".join(included_types) + " types only" if included_types else "All types"
+        lookback_years = SettingsService.get_lookback_years(db)
+        excluded_stages = SettingsService.get_excluded_stages(db)
 
         try:
             far_ahead_years = int(SettingsService.get_setting(db, "close_date_far_ahead_years", "5"))
@@ -198,4 +270,6 @@ class SettingsService:
             "exclude_zero_negative_acv": exclude_non_pos,
             "close_date_far_ahead_years": far_ahead_years,
             "manual_sheet_keywords": manual_keywords,
+            "lookback_years": lookback_years,
+            "excluded_stages": excluded_stages,
         }

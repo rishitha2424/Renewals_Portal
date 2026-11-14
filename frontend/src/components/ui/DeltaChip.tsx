@@ -38,19 +38,19 @@ export default function DeltaChip({
 
   const sizeClasses = size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'
 
-  // Soft muted tint styling per design correction
-  let colorClasses = 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-[#8A9BB5]'
+  // Neutral background with text-only polarity coloring
+  let colorClasses = 'bg-[var(--bg-secondary)] border border-[var(--border)] text-slate-500 dark:text-slate-400'
   if (!isZero) {
     if (isBadDirectionIncrease) {
-      // bad direction: increase -> rose-50/rose-700; decrease -> emerald-50/emerald-700
+      // bad direction: increase -> rose text; decrease -> emerald text
       colorClasses = isPositive
-        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
-        : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+        ? 'bg-[var(--bg-secondary)] border border-[var(--border)] text-rose-600 dark:text-rose-400 font-medium'
+        : 'bg-[var(--bg-secondary)] border border-[var(--border)] text-emerald-600 dark:text-emerald-400 font-medium'
     } else {
-      // standard: increase -> emerald-50/emerald-700; decrease -> rose-50/rose-700
+      // standard: increase -> emerald text; decrease -> rose text
       colorClasses = isPositive
-        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
-        : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
+        ? 'bg-[var(--bg-secondary)] border border-[var(--border)] text-emerald-600 dark:text-emerald-400 font-medium'
+        : 'bg-[var(--bg-secondary)] border border-[var(--border)] text-rose-600 dark:text-rose-400 font-medium'
     }
   }
 

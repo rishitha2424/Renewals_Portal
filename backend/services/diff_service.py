@@ -13,6 +13,7 @@ import re
 from decimal import Decimal
 
 import pandas as pd
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.change_log import ChangeLog, ForecastMovementLog
@@ -101,18 +102,24 @@ class DiffService:
         """
         self._clear_pair(from_snapshot.id, to_snapshot.id)
 
+        from backend.services.settings_service import SettingsService
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(self.db)
+
+        from_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == from_snapshot.id)
+        if exclude_recon:
+            from_q = from_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         from_opps = {
             o.opportunity_id_18: o
-            for o in self.db.query(Opportunity)
-            .filter(Opportunity.snapshot_id == from_snapshot.id)
-            .all()
+            for o in from_q.all()
             if o.opportunity_id_18
         }
+
+        to_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == to_snapshot.id)
+        if exclude_recon:
+            to_q = to_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         to_opps = {
             o.opportunity_id_18: o
-            for o in self.db.query(Opportunity)
-            .filter(Opportunity.snapshot_id == to_snapshot.id)
-            .all()
+            for o in to_q.all()
             if o.opportunity_id_18
         }
 
