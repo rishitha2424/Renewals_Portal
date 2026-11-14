@@ -21,7 +21,7 @@ import Card from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
 import { PageErrorState } from '@/components/ui/PageErrorState'
-import Drawer from '@/components/ui/Drawer'
+import DealListModal from '@/components/common/DealListModal'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import CompactGrid from '@/components/common/CompactGrid'
 import MetricToggle from '@/components/common/MetricToggle'
@@ -56,12 +56,10 @@ function BusinessUnitsContent() {
   const [compare, setCompare] = useState<'yesterday' | 'last_week'>('yesterday')
   const [heatMode, setHeatMode] = useState<'Value' | 'Yesterday' | 'LastWeek'>('Value')
 
-  // Drawer state for drill-through
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerTitle, setDrawerTitle] = useState('')
-  const [drawerSubtitle, setDrawerSubtitle] = useState('')
-  const [drawerFilters, setDrawerFilters] = useState<{ bu?: string; category?: string }>({})
-  const [drawerSearch, setDrawerSearch] = useState('')
+  // Modal state for drill-through
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalTitle, setModalTitle] = useState('')
+  const [modalFilters, setModalFilters] = useState<{ bu?: string; category?: string }>({})
 
   // Opportunity Detail drawer
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
@@ -86,21 +84,21 @@ function BusinessUnitsContent() {
     },
   })
 
-  // Fetch Deals for Drawer
-  const { data: dealsData, isLoading: isDealsLoading } = useQuery({
-    queryKey: ['v2-bu-deals', activeSnapshotId, drawerFilters, globalFilters?.period, globalFilters?.include_deleted_lost],
+  // Fetch Deals for Modal
+  const { data: dealsData } = useQuery({
+    queryKey: ['v2-bu-deals', activeSnapshotId, modalFilters, globalFilters?.period, globalFilters?.include_deleted_lost],
     queryFn: async () => {
       const res = await api.get('/v2/business-units/deals', {
         params: {
           as_of: activeSnapshotId ?? undefined,
           period: globalFilters?.period,
           exclude_deleted_lost: globalFilters?.include_deleted_lost === false ? true : undefined,
-          ...drawerFilters,
+          ...modalFilters,
         }
       })
       return res.data
     },
-    enabled: drawerOpen
+    enabled: modalOpen
   })
 
   // Fetch Top Opportunities
@@ -138,11 +136,9 @@ function BusinessUnitsContent() {
       formattedTitle = `${bu} · ${category === 'Blank' ? 'Not yet proposed' : category}`
     }
 
-    setDrawerTitle(formattedTitle)
-    setDrawerSubtitle('Loading deals...')
-    setDrawerFilters({ bu, category })
-    setDrawerSearch('')
-    setDrawerOpen(true)
+    setModalTitle(formattedTitle)
+    setModalFilters({ bu, category })
+    setModalOpen(true)
   }
 
   const handleBuShareClick = (bu: string) => {
@@ -248,18 +244,6 @@ function BusinessUnitsContent() {
       }]))
     }]))
   }
-
-  // Filter drawer deals
-  const drawerDeals = dealsData?.deals || []
-  const filteredDrawerDeals = drawerDeals.filter((d: any) => {
-    if (!drawerSearch.trim()) return true
-    const q = drawerSearch.toLowerCase()
-    return (
-      d.opportunity_name?.toLowerCase().includes(q) ||
-      d.account_name?.toLowerCase().includes(q) ||
-      d.owner_name?.toLowerCase().includes(q)
-    )
-  })
 
   // Filter top opportunities
   const topDeals = topOppsData?.deals || []
@@ -379,10 +363,9 @@ function BusinessUnitsContent() {
       <ExcludedTypesNote
         excluded={summary?.other_types_excluded}
         onViewDeals={() => {
-          setDrawerTitle('Other Types Excluded')
-          setDrawerSubtitle(`${summary?.other_types_excluded?.count ?? 0} deals · ${formatACV(summary?.other_types_excluded?.acv ?? 0)}`)
-          setDrawerFilters({ kind: 'other_types' } as any)
-          setDrawerOpen(true)
+          setModalTitle('Other Types Excluded')
+          setModalFilters({ kind: 'other_types' } as any)
+          setModalOpen(true)
         }}
       />
 
@@ -599,7 +582,7 @@ function BusinessUnitsContent() {
           </div>
           <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-            <span>Click any row to open deals drawer</span>
+            <span>Click any row to view deals</span>
           </div>
         </div>
 
@@ -804,108 +787,21 @@ function BusinessUnitsContent() {
       </div>
 
       {/* 6. Click-Through Deals Slide-Out Drawer */}
-      <Drawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title={drawerTitle}
-        subtitle={
-          isDealsLoading
-            ? 'Loading deals...'
-            : `${dealsData?.count ?? 0} deals · ${formatCurrency(dealsData?.acv ?? 0)} total ACV`
-        }
-        size="xl"
-      >
-        <div className="space-y-4">
-          {/* Drawer Search & Summary */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search deals in this segment..."
-                value={drawerSearch}
-                onChange={e => setDrawerSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="text-xs text-[var(--text-muted)] shrink-0 font-mono">
-              Showing <span className="font-semibold text-[var(--text-primary)]">{filteredDrawerDeals.length}</span> of {dealsData?.count ?? 0} deals
-            </div>
-          </div>
-
-          {/* Deals Table */}
-          {isDealsLoading ? (
-            <div className="space-y-2 py-4">
-              <Skeleton className="h-10 w-full rounded" />
-              <Skeleton className="h-10 w-full rounded" />
-              <Skeleton className="h-10 w-full rounded" />
-              <Skeleton className="h-10 w-full rounded" />
-            </div>
-          ) : filteredDrawerDeals.length === 0 ? (
-            <div className="py-12 text-center text-[var(--text-muted)] border border-dashed border-[var(--border)] rounded-xl">
-              <p className="text-sm font-medium">No deals match your search criteria</p>
-              <p className="text-xs mt-1">Try clearing the search filter</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0 z-10">
-                  <tr>
-                    <th className="py-2.5 px-3 font-semibold">Opportunity Name</th>
-                    <th className="py-2.5 px-3 font-semibold">Account</th>
-                    <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
-                    <th className="py-2.5 px-3 font-semibold text-center">Forecast</th>
-                    <th className="py-2.5 px-3 font-semibold">Stage</th>
-                    <th className="py-2.5 px-3 font-semibold">Close Date</th>
-                    <th className="py-2.5 px-3 font-semibold">Owner</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {filteredDrawerDeals.map((deal: any) => (
-                    <tr
-                      key={deal.opportunity_id_18}
-                      onClick={() => setSelectedOppId(deal.opportunity_id_18)}
-                      className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
-                    >
-                      <td className="py-2.5 px-3 font-medium text-[var(--text-primary)] max-w-[200px] truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400" title={deal.opportunity_name}>
-                        {deal.opportunity_name}
-                      </td>
-                      <td className="py-2.5 px-3 text-[var(--text-secondary)] max-w-[150px] truncate" title={deal.account_name}>
-                        {deal.account_name}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
-                        {formatCurrency(deal.forecast_acv_amount)}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getCategoryBadgeStyle(deal.forecast_category)}`}>
-                          {deal.forecast_category || 'Not yet proposed'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-[var(--text-secondary)] text-[11px] max-w-[120px] truncate" title={deal.stage || deal.stage_number}>
-                        {deal.stage || deal.stage_number || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-[var(--text-muted)] text-[11px] font-mono">
-                        {deal.close_date ? new Date(deal.close_date).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-[var(--text-muted)] text-[11px] max-w-[120px] truncate" title={deal.owner || deal.opportunity_owner || deal.owner_name}>
-                        {deal.owner || deal.opportunity_owner || deal.owner_name || '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Drawer Footer Metrics */}
-          <div className="pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <span>Click any deal row to open details</span>
-            <span className="font-mono font-semibold text-[var(--text-primary)]">
-              Exact Cell ACV: {formatCurrency(dealsData?.acv ?? 0)}
-            </span>
-          </div>
-        </div>
-      </Drawer>
+      {/* 6. Click-Through Deals Centered Modal */}
+      {modalOpen && (
+        <DealListModal
+          title={modalTitle}
+          deals={dealsData?.deals || []}
+          initialFilters={{
+            business_unit_primary: modalFilters?.bu || undefined,
+            forecast_category: modalFilters?.category || undefined,
+          }}
+          onSelectOpp={(id) => {
+            setSelectedOppId(id)
+          }}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
 
       {/* Opportunity Detail Drawer */}
       <OpportunityDrawer

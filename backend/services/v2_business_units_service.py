@@ -44,6 +44,13 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "close_date": o.close_date,
             "approval_status": o.approval_status or "",
         })
+    if not records:
+        return pd.DataFrame(columns=[
+            "opportunity_id_18", "opportunity_name", "account_name",
+            "forecast_acv_amount", "forecast_category", "business_unit",
+            "business_unit_primary", "sub_region", "is_deleted_or_lost",
+            "fiscal_period", "close_date", "approval_status"
+        ])
     return pd.DataFrame(records)
 
 
@@ -314,14 +321,17 @@ class V2BusinessUnitsService:
                 "lastweek_date": lw_snap.snapshot_date.isoformat() if lw_snap else None,
             })
 
+        y_acv = float(y_df["forecast_acv_amount"].sum()) if (has_yest and "forecast_acv_amount" in y_df.columns) else 0.0
+        lw_acv = float(lw_df["forecast_acv_amount"].sum()) if (has_lw and "forecast_acv_amount" in lw_df.columns) else 0.0
+
         # Calculate category and grand totals
         totals = {
             "categories": {},
             "grand": {
                 "count": grand_count,
                 "acv": round(grand_acv, 2),
-                "delta_yesterday": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(y_df), "acv": float(y_df["forecast_acv_amount"].sum())}, has_yest),
-                "delta_lastweek": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(lw_df), "acv": float(lw_df["forecast_acv_amount"].sum())}, has_lw)
+                "delta_yesterday": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(y_df), "acv": y_acv}, has_yest),
+                "delta_lastweek": _calc_delta({"count": grand_count, "acv": grand_acv}, {"count": len(lw_df), "acv": lw_acv}, has_lw)
             }
         }
         

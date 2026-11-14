@@ -62,6 +62,17 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
   const [sortField, setSortField] = useState<keyof Deal | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  // Close on Escape key
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   
   const [filterFC, setFilterFC] = useState<string>(initialFilters?.forecast_category || 'All')
   const [filterStatus, setFilterStatus] = useState<string>(initialFilters?.approval_status || 'All')
@@ -230,8 +241,8 @@ export default function DealListModal({ title, deals, initialFilters, deltaGroup
         <motion.div
           initial={{ scale: 0.97, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 12 }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
-          style={{ width: 'min(960px, 92vw)', maxWidth: 'min(960px, 92vw)' }}
-          className="w-full max-h-[90vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-xl overflow-hidden border border-[var(--border)]"
+          style={{ width: 'min(1100px, 92vw)', maxWidth: 'min(1100px, 92vw)' }}
+          className="w-full max-h-[85vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-xl overflow-hidden border border-[var(--border)]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header - sticky top */}
