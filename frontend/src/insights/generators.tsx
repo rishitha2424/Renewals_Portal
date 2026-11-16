@@ -111,7 +111,7 @@ export function getOverviewInsights(summary: any, regional: any, movements: any,
   return items
 }
 
-/** 2. Regions Matrix Insights Generator */
+/** 2. Regions Matrix Insights Generator (Regional Signals with at least 6 points) */
 export function getRegionsMatrixInsights(summaryOrRegional: any, summary?: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
   const data = summaryOrRegional || summary
@@ -119,9 +119,9 @@ export function getRegionsMatrixInsights(summaryOrRegional: any, summary?: any, 
 
   const trends: any[] = data.regional_trend || data.regions || summary?.regions || []
   const totalAcv = summary?.total?.acv || data.total?.acv || data.regional_sum || 1
+  const categoriesTotal = summary?.totals?.categories || data.totals?.categories || {}
 
   if (trends.length > 0) {
-    // Helper to extract values
     const getAcv = (r: any) => r.total_acv ?? r.acv ?? 0
     const getDeltaY = (r: any) => {
       if (r.delta_yesterday?.acv != null) return r.delta_yesterday.acv
@@ -129,16 +129,16 @@ export function getRegionsMatrixInsights(summaryOrRegional: any, summary?: any, 
       return 0
     }
 
-    // Top region
+    // 1. Top region share
     const sorted = [...trends].sort((a: any, b: any) => getAcv(b) - getAcv(a))
     const topReg = sorted[0]
     if (topReg && getAcv(topReg) > 0) {
+      const share = ((getAcv(topReg) / totalAcv) * 100).toFixed(1)
       items.push({
         id: 'matrix-top-region',
-        icon: Award,
         text: (
           <span>
-            <strong>{topReg.region}</strong> leads with <strong>{acvM(getAcv(topReg))}</strong> ({((getAcv(topReg) / totalAcv) * 100).toFixed(1)}% of total).
+            <strong>{topReg.region}</strong> is the primary territory representing <strong>{share}%</strong> ({acvM(getAcv(topReg))}) of portfolio renewals.
           </span>
         ),
         linkText: 'View region',
@@ -146,68 +146,155 @@ export function getRegionsMatrixInsights(summaryOrRegional: any, summary?: any, 
       })
     }
 
-    // Top gain vs yesterday/compare
+    // 2. Top-2 concentration
+    if (sorted.length >= 2) {
+      const top2Sum = getAcv(sorted[0]) + getAcv(sorted[1])
+      const top2Share = ((top2Sum / totalAcv) * 100).toFixed(1)
+      items.push({
+        id: 'matrix-top2-concentration',
+        text: (
+          <span>
+            Territory concentration: <strong>{sorted[0]?.region}</strong> and <strong>{sorted[1]?.region}</strong> hold <strong>{top2Share}%</strong> of total renewals.
+          </span>
+        ),
+      })
+    }
+
+    // 3. Top gain vs comparison
     const gains = trends.filter((r: any) => getDeltaY(r) > 0)
     if (gains.length > 0) {
       const topGain = gains.sort((a: any, b: any) => getDeltaY(b) - getDeltaY(a))[0]
       const delta = getDeltaY(topGain)
       items.push({
         id: 'matrix-top-gain',
-        icon: TrendingUp,
         text: (
           <span>
-            <strong>{topGain.region}</strong> registered the largest regional gain of <strong>+{acvM(delta)}</strong> vs yesterday.
+            Largest gain: <strong>{topGain.region}</strong> expanded by <strong>+{acvM(delta)}</strong> vs baseline.
           </span>
         ),
+        linkText: 'View deals',
+        onLinkClick: onDrill ? () => onDrill(`${topGain.region} Gains`, { region: topGain.region }) : undefined,
       })
     }
 
-    // Top drop vs yesterday
+    // 4. Top drop vs comparison
     const drops = trends.filter((r: any) => getDeltaY(r) < 0)
     if (drops.length > 0) {
       const topDrop = drops.sort((a: any, b: any) => getDeltaY(a) - getDeltaY(b))[0]
       const delta = Math.abs(getDeltaY(topDrop))
       items.push({
         id: 'matrix-top-drop',
-        icon: TrendingDown,
         text: (
           <span>
-            <strong>{topDrop.region}</strong> dropped <strong>-{acvM(delta)}</strong> vs yesterday.
+            Largest contraction: <strong>{topDrop.region}</strong> contracted by <strong>-{acvM(delta)}</strong> vs baseline.
           </span>
         ),
+        linkText: 'Inspect',
+        onLinkClick: onDrill ? () => onDrill(`${topDrop.region} Losses`, { region: topDrop.region }) : undefined,
       })
     }
 
-    // Lowest approval share or unapproved count
-    const withApprovals = trends.filter((r: any) => r.approved_pct != null || r.approval != null || r.approved_count != null)
-    if (withApprovals.length > 0) {
-      const sortedByApp = [...withApprovals].sort((a: any, b: any) => {
-        const aPct = a.approved_pct ?? (a.approval?.Approved?.count ? (a.approval.Approved.count / (a.count || 1)) * 100 : 100)
-        const bPct = b.approved_pct ?? (b.approval?.Approved?.count ? (b.approval.Approved.count / (b.count || 1)) * 100 : 100)
+    // 5. Lowest Commit coverage region
+    const withCommit = trends.filter((r: any) => r.commit_pct != null || r.cells?.Commit != null || r.cells?.Closed != null)
+    if (withCommit.length > 0) {
+      const sortedByCommit = [...withCommit].sort((a: any, b: any) => {
+        const aPct = parseFloat(String(a.commit_pct ?? (getAcv(a) > 0 ? (((a.cells?.Commit?.acv || 0) + (a.cells?.Closed?.acv || 0)) / getAcv(a)) * 100 : 0)))
+        const bPct = parseFloat(String(b.commit_pct ?? (getAcv(b) > 0 ? (((b.cells?.Commit?.acv || 0) + (b.cells?.Closed?.acv || 0)) / getAcv(b)) * 100 : 0)))
         return aPct - bPct
       })
-      const lowest = sortedByApp[0]
-      const lowestPct = lowest?.approved_pct ?? (lowest?.approval?.Approved?.count ? ((lowest.approval.Approved.count / (lowest.count || 1)) * 100).toFixed(1) : 0)
-      if (lowest) {
+      const lowestCommit = sortedByCommit[0]
+      if (lowestCommit) {
+        const cPct = parseFloat(String(lowestCommit.commit_pct ?? (getAcv(lowestCommit) > 0 ? (((lowestCommit.cells?.Commit?.acv || 0) + (lowestCommit.cells?.Closed?.acv || 0)) / getAcv(lowestCommit)) * 100 : 0))).toFixed(1)
         items.push({
-          id: 'matrix-lowest-approval',
-          icon: AlertTriangle,
+          id: 'matrix-lowest-commit',
           text: (
             <span>
-              <strong>{lowest.region}</strong> has the lowest approval readiness at <strong>{lowestPct}%</strong> approved.
+              Lowest Commit coverage: <strong>{lowestCommit.region}</strong> is at <strong>{cPct}%</strong> (Closed + Commit).
+            </span>
+          ),
+          linkText: 'Review pipeline',
+          onLinkClick: onDrill ? () => onDrill(`${lowestCommit.region} Pipeline`, { region: lowestCommit.region, category: 'Pipeline' }) : undefined,
+        })
+      }
+    }
+
+    // 6. Highest Not submitted share
+    const withNotSubmitted = trends.filter((r: any) => {
+      const notSub = r.approval?.['Not submitted'] || r.approval?.['Blank'] || r.approval?.['not_submitted']
+      return notSub && (notSub.count > 0 || notSub.acv > 0)
+    })
+    if (withNotSubmitted.length > 0) {
+      const sortedNotSub = [...withNotSubmitted].sort((a: any, b: any) => {
+        const aVal = a.approval?.['Not submitted']?.acv || a.approval?.['Blank']?.acv || 0
+        const bVal = b.approval?.['Not submitted']?.acv || b.approval?.['Blank']?.acv || 0
+        return bVal - aVal
+      })
+      const topNotSub = sortedNotSub[0]
+      if (topNotSub) {
+        const unsubmittedAcv = topNotSub.approval?.['Not submitted']?.acv || topNotSub.approval?.['Blank']?.acv || 0
+        const unsubmittedCount = topNotSub.approval?.['Not submitted']?.count || topNotSub.approval?.['Blank']?.count || 0
+        items.push({
+          id: 'matrix-highest-not-submitted',
+          text: (
+            <span>
+              Highest unsubmitted: <strong>{topNotSub.region}</strong> has <strong>{unsubmittedCount} deals</strong> ({acvM(unsubmittedAcv)}) awaiting proposal submission.
+            </span>
+          ),
+          linkText: 'View deals',
+          onLinkClick: onDrill ? () => onDrill(`${topNotSub.region} Unsubmitted`, { region: topNotSub.region, status: 'Not submitted' }) : undefined,
+        })
+      }
+    }
+
+    // 7. Largest Pending approval ACV region
+    const withPending = trends.filter((r: any) => {
+      const pending = r.approval?.['Pending Approval'] || r.approval?.['Waiting for approval']
+      return pending && (pending.count > 0 || pending.acv > 0)
+    })
+    if (withPending.length > 0) {
+      const sortedPending = [...withPending].sort((a: any, b: any) => {
+        const aVal = a.approval?.['Pending Approval']?.acv || a.approval?.['Waiting for approval']?.acv || 0
+        const bVal = b.approval?.['Pending Approval']?.acv || b.approval?.['Waiting for approval']?.acv || 0
+        return bVal - aVal
+      })
+      const topPending = sortedPending[0]
+      if (topPending) {
+        const pAcv = topPending.approval?.['Pending Approval']?.acv || topPending.approval?.['Waiting for approval']?.acv || 0
+        const pCount = topPending.approval?.['Pending Approval']?.count || topPending.approval?.['Waiting for approval']?.count || 0
+        items.push({
+          id: 'matrix-top-pending',
+          text: (
+            <span>
+              Largest pending approval: <strong>{topPending.region}</strong> has <strong>{acvM(pAcv)}</strong> ({pCount} deals) currently in review.
             </span>
           ),
           linkText: 'Inspect',
-          onLinkClick: onDrill ? () => onDrill(`${lowest.region} Deals`, { region: lowest.region }) : undefined,
+          onLinkClick: onDrill ? () => onDrill(`${topPending.region} Pending Approval`, { region: topPending.region, status: 'Pending Approval' }) : undefined,
         })
       }
+    }
+
+    // 8. Share of Closed vs Best Case
+    const totalClosed = categoriesTotal['Closed']?.acv || 0
+    const totalBestCase = categoriesTotal['Best Case']?.acv || 0
+    if (totalAcv > 0) {
+      const closedPct = ((totalClosed / totalAcv) * 100).toFixed(1)
+      const bestCasePct = ((totalBestCase / totalAcv) * 100).toFixed(1)
+      items.push({
+        id: 'matrix-closed-vs-bestcase',
+        text: (
+          <span>
+            Forecast posture: Closed contracts represent <strong>{closedPct}%</strong> ({acvM(totalClosed)}) while Best Case stands at <strong>{bestCasePct}%</strong> ({acvM(totalBestCase)}).
+          </span>
+        ),
+      })
     }
   }
 
   return items
 }
 
-/** 3. Region Deep Dive Insights */
+/** 3. Region Deep Dive Insights (at least 6 points) */
 export function getRegionDeepDiveInsights(regionName: string, regData: any, portfolioTotal: number, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
   if (!regData) return items
@@ -216,9 +303,9 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
   const portTotal = portfolioTotal || 1
   const shareOfPort = ((regAcv / portTotal) * 100).toFixed(1)
 
+  // 1. Portfolio share
   items.push({
     id: 'rdd-share',
-    icon: PieChart,
     text: (
       <span>
         <strong>{regionName}</strong> represents <strong>{shareOfPort}%</strong> ({acvM(regAcv)}) of total portfolio renewals.
@@ -226,30 +313,29 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
     ),
   })
 
-  // Commit coverage
+  // 2. Commit coverage
   const fcMap = (regData.forecast_categories || []).reduce((acc: any, c: any) => ({ ...acc, [c.category]: c.acv }), {})
   const commitAcv = regData.categories?.['Commit']?.acv || fcMap['Commit'] || 0
+  const closedAcv = regData.categories?.['Closed']?.acv || fcMap['Closed'] || 0
   const bestCaseAcv = regData.categories?.['Best Case']?.acv || fcMap['Best Case'] || 0
   if (regAcv > 0) {
-    const covPct = regData.commit_pct != null ? regData.commit_pct : (((commitAcv + bestCaseAcv) / regAcv) * 100).toFixed(1)
+    const covPct = regData.commit_pct != null ? regData.commit_pct : (((commitAcv + closedAcv) / regAcv) * 100).toFixed(1)
     items.push({
       id: 'rdd-coverage',
-      icon: ShieldCheck,
       text: (
         <span>
-          Commit + Best Case coverage in {regionName} stands at <strong>{covPct}%</strong> ({acvM(commitAcv + bestCaseAcv || regAcv * (Number(covPct) / 100))}).
+          Commit coverage in {regionName} stands at <strong>{covPct}%</strong> ({acvM(commitAcv + closedAcv)} Closed + Commit).
         </span>
       ),
     })
   }
 
-  // Delayed / slippage
+  // 3. Delayed / slippage
   const delayedAcv = regData.delayed_acv ?? regData.delayed?.acv ?? 0
   const delayedCount = regData.delayed_count ?? regData.delayed?.count ?? 0
   if (delayedAcv > 0 || delayedCount > 0) {
     items.push({
       id: 'rdd-delayed',
-      icon: Clock,
       text: (
         <span>
           <strong>{acvM(delayedAcv)}</strong> ({delayedCount} deals) are currently classified as delayed in this region.
@@ -258,32 +344,69 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
       linkText: 'View delayed',
       onLinkClick: onDrill ? () => onDrill(`${regionName} Delayed Deals`, { region: regionName, kind: 'delayed' }) : undefined,
     })
-  }
-
-  // Top account
-  const topAcc = regData.top_accounts?.[0]
-  if (topAcc) {
+  } else {
     items.push({
-      id: 'rdd-top-account',
-      icon: Award,
+      id: 'rdd-delayed-clean',
       text: (
         <span>
-          Key account: <strong>{topAcc.account_name || topAcc.name}</strong> holds <strong>{acvM(topAcc.acv)}</strong> of regional renewals.
+          Clean execution: <strong>Zero deals</strong> are currently flagged as overdue or delayed in {regionName}.
         </span>
       ),
     })
   }
 
-  // Signal / Concentration
-  if (regData.concentration?.summary_text) {
+  // 4. Top account
+  const topAcc = regData.top_accounts?.[0]
+  if (topAcc) {
     items.push({
-      id: 'rdd-concentration',
-      icon: Lightbulb,
+      id: 'rdd-top-account',
       text: (
         <span>
-          Concentration: <strong>{regData.concentration.summary_text}</strong>.
+          Key account: <strong>{topAcc.account_name || topAcc.name}</strong> holds <strong>{acvM(topAcc.acv)}</strong> ({topAcc.pct_acv || '—'}% of territory).
         </span>
       ),
+      linkText: 'View account',
+      onLinkClick: onDrill ? () => onDrill(`${topAcc.account_name} Deals`, { region: regionName, account_name: topAcc.account_name }) : undefined,
+    })
+  }
+
+  // 5. Governance / Approval status
+  const approvedPct = regData.approved_pct ?? '—'
+  const unsubmitted = regData.approval_statuses?.find((s: any) => s.status === 'Not submitted' || s.status === 'Blank')
+  if (unsubmitted && (unsubmitted.count > 0 || unsubmitted.acv > 0)) {
+    items.push({
+      id: 'rdd-governance',
+      text: (
+        <span>
+          Governance readiness: <strong>{approvedPct}%</strong> approved; <strong>{unsubmitted.count} deals</strong> ({acvM(unsubmitted.acv)}) not yet submitted.
+        </span>
+      ),
+      linkText: 'View unsubmitted',
+      onLinkClick: onDrill ? () => onDrill(`${regionName} Unsubmitted`, { region: regionName, status: 'Not submitted' }) : undefined,
+    })
+  } else {
+    items.push({
+      id: 'rdd-governance-clean',
+      text: (
+        <span>
+          Governance posture: <strong>{approvedPct}%</strong> of {regionName} renewals have secured formal approval.
+        </span>
+      ),
+    })
+  }
+
+  // 6. Business Unit mix
+  const topBu = regData.business_units?.[0]
+  if (topBu) {
+    items.push({
+      id: 'rdd-top-bu',
+      text: (
+        <span>
+          Leading business unit: <strong>{topBu.bu}</strong> contributes <strong>{acvM(topBu.acv)}</strong> ({topBu.share_pct || '—'}% of region).
+        </span>
+      ),
+      linkText: 'View BU',
+      onLinkClick: onDrill ? () => onDrill(`${regionName} - ${topBu.bu}`, { region: regionName, bu: topBu.bu }) : undefined,
     })
   }
 

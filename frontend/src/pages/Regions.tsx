@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import clsx from 'clsx'
 import {
   Globe2,
   AlertOctagon,
@@ -576,8 +577,8 @@ function RegionsContent() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <PieChart className="w-4 h-4 text-blue-500" /> Forecast Category Breakdown
+                      <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                        Forecast Category Breakdown
                       </h3>
                       <span className="text-xs text-[var(--text-muted)]">% of {selectedRegion} ACV</span>
                     </div>
@@ -632,8 +633,8 @@ function RegionsContent() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-blue-500" /> Top 10 Accounts by ACV
+                      <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                        Top 10 Accounts by ACV
                       </h3>
                       <span className="text-xs text-[var(--text-muted)]">Account concentration</span>
                     </div>
@@ -683,8 +684,8 @@ function RegionsContent() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-emerald-500" /> Approval Status Breakdown
+                      <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                        Approval Status Breakdown
                       </h3>
                       <span className="text-xs text-[var(--text-muted)]">Governance flow</span>
                     </div>
@@ -729,8 +730,8 @@ function RegionsContent() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-indigo-500" /> Business Unit Mix & Share
+                      <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                        Business Unit Mix & Share
                       </h3>
                       <span className="text-xs text-[var(--text-muted)]">By contribution</span>
                     </div>
@@ -767,55 +768,285 @@ function RegionsContent() {
                 </div>
               </CardRow>
 
-              {/* ROW 3: [Expiry Schedule by Quarter | Top Deals Search] */}
+              {/* ROW 3: [Expiry Schedule by Quarter | What Changed vs Prior Snapshot] (F1-F5) */}
               <CardRow cols="1fr 1fr" gap="gap-6">
                 {/* 5. Expiry Schedule by Quarter */}
-                <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-purple-500" /> Expiry Schedule by Quarter
-                      </h3>
-                      <span className="text-xs text-[var(--text-muted)]">Service period schedule</span>
-                    </div>
-                    <ScrollList maxHeight="280px">
-                      <table className="w-full text-left text-xs data-table">
-                        <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-medium border-b border-[var(--border-subtle)] sticky top-0">
-                          <tr>
-                            <th className="py-2 px-3">Quarter</th>
-                            <th className="py-2 px-3 text-right">Deals</th>
-                            <th className="py-2 px-3 text-right">ACV</th>
-                            <th className="py-2 px-3 text-right">% Region ACV</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[var(--border-subtle)]">
-                          {regionDetail?.expiry_quarters?.map((eq: any) => (
-                            <tr 
-                              key={eq.quarter}
-                              onClick={() => handleDrill(`${selectedRegion} - ${eq.quarter}`, { region: selectedRegion, quarter: eq.quarter })}
-                              className="hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors group"
-                            >
-                              <td className="py-2 px-3 font-medium text-[var(--text-primary)] group-hover:text-blue-600">
-                                {eq.quarter}
-                              </td>
-                              <td className="py-2 px-3 text-right text-[var(--text-secondary)] font-mono">
-                                {formatCount(eq.count)}
-                              </td>
-                              <td className="py-2 px-3 text-right font-semibold text-[var(--text-primary)] font-mono">
-                                {formatACV(eq.acv)}
-                              </td>
-                              <td className="py-2 px-3 text-right font-medium text-blue-600 dark:text-blue-400 font-mono">
-                                {eq.pct_acv}%
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </ScrollList>
-                  </div>
-                </div>
+                {(() => {
+                  const quartersShown = regionDetail?.expiry_quarters?.length || 0
+                  const totalDeals = regionDetail?.expiry_quarters?.reduce((s: number, q: any) => s + (q.count || 0), 0) || regionDetail?.count || 0
+                  const totalAcv = regionDetail?.expiry_quarters?.reduce((s: number, q: any) => s + (q.acv || 0), 0) || regionDetail?.acv || 0
+                  const closedAcv = regionDetail?.categories?.find((c: any) => c.category === 'Closed')?.acv || 0
+                  const closedShare = regionDetail?.acv > 0 ? ((closedAcv / regionDetail.acv) * 100).toFixed(1) : '0.0'
+                  const commitCoverage = regionDetail?.commit_pct ?? (regionDetail?.acv > 0 ? (((closedAcv + (regionDetail?.categories?.find((c: any) => c.category === 'Commit')?.acv || 0)) / regionDetail.acv) * 100).toFixed(1) : '0.0')
 
-                {/* 6. Top Deals Search */}
+                  return (
+                    <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex items-center justify-between mb-3 shrink-0">
+                          <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                            Expiry Schedule by Quarter
+                          </h3>
+                          <span className="text-xs text-[var(--text-muted)]">Service period schedule</span>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto">
+                          <table className="w-full text-left text-xs data-table">
+                            <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-medium border-b border-[var(--border-subtle)] sticky top-0">
+                              <tr>
+                                <th className="py-2 px-3">Quarter</th>
+                                <th className="py-2 px-3 text-right">Deals</th>
+                                <th className="py-2 px-3 text-right">ACV</th>
+                                <th className="py-2 px-3 text-right">% Region ACV</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--border-subtle)]">
+                              {regionDetail?.expiry_quarters?.map((eq: any) => (
+                                <tr 
+                                  key={eq.quarter}
+                                  onClick={() => handleDrill(`${selectedRegion} - ${eq.quarter}`, { region: selectedRegion, quarter: eq.quarter })}
+                                  className="hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors group"
+                                >
+                                  <td className="py-2 px-3 font-medium text-[var(--text-primary)] group-hover:text-blue-600">
+                                    {eq.quarter}
+                                  </td>
+                                  <td className="py-2 px-3 text-right text-[var(--text-secondary)] font-mono">
+                                    {formatCount(eq.count)}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-semibold text-[var(--text-primary)] font-mono">
+                                    {formatACV(eq.acv)}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-medium text-blue-600 dark:text-blue-400 font-mono">
+                                    {eq.pct_acv}%
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Stat strip under table (F2) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-2 border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Quarters / Deals</span>
+                            <span className="font-bold text-[var(--text-primary)] font-mono">{quartersShown} Qtrs · {formatCount(totalDeals)}</span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Total Expiry ACV</span>
+                            <span className="font-bold text-[var(--text-primary)] font-mono">{formatACV(totalAcv)}</span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Closed Share</span>
+                            <span className="font-bold text-teal-600 dark:text-teal-400 font-mono">{closedShare}%</span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Commit Coverage</span>
+                            <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">{commitCoverage}%</span>
+                          </div>
+                        </div>
+
+                        {/* Category distribution column chart (F3) */}
+                        {regionDetail?.forecast_categories && regionDetail.forecast_categories.length > 0 && (
+                          <div className="pt-2 shrink-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">Period Category Distribution</div>
+                            <div className="h-16 flex items-end justify-between gap-3 pt-1 pb-1 border-b border-[var(--border-subtle)]">
+                              {regionDetail.forecast_categories
+                                .filter((c: any) => ['Closed', 'Commit', 'Best Case', 'Pipeline'].includes(c.category))
+                                .map((c: any) => {
+                                  const catMax = Math.max(...regionDetail.forecast_categories.map((x: any) => x.acv || 0), 1)
+                                  const hPct = Math.max(12, ((c.acv || 0) / catMax) * 100)
+                                  const color = c.category === 'Closed' ? '#00A3AD' : c.category === 'Commit' ? '#1B365D' : c.category === 'Best Case' ? '#4B6B94' : '#F58220'
+                                  return (
+                                    <div key={c.category} className="flex-1 flex flex-col items-center justify-end h-full gap-0.5">
+                                      <span className="text-[9px] font-bold text-[var(--text-primary)] tabular-nums">{formatACV(c.acv)}</span>
+                                      <div className="w-full max-w-[28px] rounded-t-sm" style={{ height: `${hPct}%`, backgroundColor: color }} />
+                                      <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate w-full text-center">{c.category}</span>
+                                    </div>
+                                  )
+                                })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* 6. What Changed vs Prior Snapshot */}
+                {(() => {
+                  const netChange = movementsData?.net_acv_change ?? ((movementsData?.positive_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0) - (movementsData?.negative_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0))
+                  const newDealsCount = movementsData?.new_to_slice?.count || 0
+                  const leftDealsCount = movementsData?.left_slice?.count || movementsData?.slipped_out?.count || 0
+                  const catMovesCount = movementsData?.category_moves?.length || 0
+                  const appMovesCount = movementsData?.approval_moves?.length || 0
+
+                  const catMovesByCat = (movementsData?.category_moves || []).reduce((acc: any, m: any) => {
+                    if (m.to_category) acc[m.to_category] = (acc[m.to_category] || 0) + (m.acv || 0)
+                    if (m.from_category) acc[m.from_category] = (acc[m.from_category] || 0) - (m.acv || 0)
+                    return acc
+                  }, {})
+                  const divergingData = Object.entries(catMovesByCat).map(([cat, val]: [string, any]) => ({
+                    label: cat,
+                    value: val,
+                  })).filter(d => d.value !== 0)
+                  const maxDivergingAbs = Math.max(...divergingData.map(d => Math.abs(d.value)), 1)
+
+                  return (
+                    <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex items-center justify-between mb-3 shrink-0">
+                          <h3 className="text-sm font-bold text-[var(--text-primary)]">What Changed vs Prior Snapshot</h3>
+                          <div className="flex bg-[var(--bg-secondary)] p-0.5 rounded-lg border border-[var(--border)]">
+                            <button
+                              onClick={() => setMoveCompare('yesterday')}
+                              className={cn(
+                                "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
+                                moveCompare === 'yesterday' ? "bg-[var(--bg-card)] shadow-xs text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                              )}
+                            >
+                              Vs YDay
+                            </button>
+                            <button
+                              onClick={() => setMoveCompare('last_week')}
+                              className={cn(
+                                "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
+                                moveCompare === 'last_week' ? "bg-[var(--bg-card)] shadow-xs text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                              )}
+                            >
+                              Vs 7d
+                            </button>
+                          </div>
+                        </div>
+
+                        {!movementsData ? (
+                          <div className="h-24 flex items-center justify-center my-auto">
+                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
+                            {movementsData.category_moves.map((m: any, i: number) => (
+                              <div 
+                                key={`c-${i}`} 
+                                className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors border border-[var(--border-subtle)] text-xs"
+                                onClick={() => handleDrill(`Moved ${m.from_category} → ${m.to_category}`, { region: selectedRegion, deals: m.deals })}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.from_category}</span>
+                                  <span className="text-[var(--text-muted)]">→</span>
+                                  <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.to_category}</span>
+                                </div>
+                                <div className="font-semibold text-[var(--text-primary)] font-mono">
+                                  {formatACV(m.acv)} ({formatCount(m.count)})
+                                </div>
+                              </div>
+                            ))}
+                            {movementsData.approval_moves.map((m: any, i: number) => (
+                              <div 
+                                key={`a-${i}`} 
+                                className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors border border-[var(--border-subtle)] text-xs"
+                                onClick={() => handleDrill(`Moved ${m.from_status} → ${m.to_status}`, { region: selectedRegion, deals: m.deals })}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.from_status}</span>
+                                  <span className="text-[var(--text-muted)]">→</span>
+                                  <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.to_status}</span>
+                                </div>
+                                <div className="font-semibold text-[var(--text-primary)] font-mono">
+                                  {formatACV(m.acv)} ({formatCount(m.count)})
+                                </div>
+                              </div>
+                            ))}
+                            {movementsData.new_to_slice?.count > 0 && (
+                              <div 
+                                className="flex justify-between items-center p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer transition-colors border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs"
+                                onClick={() => handleDrill(`Newly In-Scope Deals`, { region: selectedRegion, deals: movementsData.new_to_slice.deals })}
+                              >
+                                <span className="font-semibold flex items-center gap-1">
+                                  <ArrowUpRight className="w-3.5 h-3.5" /> Newly In-Scope
+                                </span>
+                                <span className="font-bold font-mono">
+                                  {formatACV(movementsData.new_to_slice.acv)} ({formatCount(movementsData.new_to_slice.count)})
+                                </span>
+                              </div>
+                            )}
+                            {movementsData.slipped_out?.count > 0 && (
+                              <div 
+                                className="flex justify-between items-center p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer transition-colors border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs"
+                                onClick={() => handleDrill(`Slipped Out Deals`, { region: selectedRegion, deals: movementsData.slipped_out.deals })}
+                              >
+                                <span className="font-semibold flex items-center gap-1">
+                                  <ArrowDownRight className="w-3.5 h-3.5" /> Slipped Out of Quarter
+                                </span>
+                                <span className="font-bold font-mono">
+                                  {formatACV(movementsData.slipped_out.acv)} ({formatCount(movementsData.slipped_out.count)})
+                                </span>
+                              </div>
+                            )}
+                            {movementsData.category_moves?.length === 0 && movementsData.approval_moves?.length === 0 && (!movementsData.new_to_slice?.count) && (!movementsData.slipped_out?.count) && (
+                              <div className="text-xs text-[var(--text-muted)] italic p-4 text-center my-auto">No deal movements recorded since {moveCompare === 'yesterday' ? yDayStr : lwStr}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Stat strip (F2) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-2 border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Net ACV Change</span>
+                            <span className={clsx("font-bold font-mono", netChange >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+                              {netChange >= 0 ? `+${formatACV(netChange)}` : `-${formatACV(Math.abs(netChange))}`}
+                            </span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Deals In / Out</span>
+                            <span className="font-bold text-[var(--text-primary)] font-mono">+{newDealsCount} / -{leftDealsCount}</span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Category Shifts</span>
+                            <span className="font-bold text-[var(--text-primary)] font-mono">{catMovesCount}</span>
+                          </div>
+                          <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                            <span className="text-[var(--text-muted)] block text-[10px]">Approval Shifts</span>
+                            <span className="font-bold text-[var(--text-primary)] font-mono">{appMovesCount}</span>
+                          </div>
+                        </div>
+
+                        {/* Diverging bar chart of change by category (F3, F7) */}
+                        {divergingData.length > 0 && (
+                          <div className="pt-2 shrink-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">Category Movement Profile</div>
+                            <div className="space-y-1">
+                              {divergingData.map((d: any) => {
+                                const isPos = d.value >= 0
+                                const widthPct = Math.min(50, (Math.abs(d.value) / maxDivergingAbs) * 50)
+                                return (
+                                  <div key={d.label} className="text-xs space-y-0.5">
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="font-medium text-[var(--text-secondary)]">{d.label}</span>
+                                      <span className={clsx("font-bold tabular-nums", isPos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
+                                        {isPos ? `+${formatACV(d.value)}` : `-${formatACV(Math.abs(d.value))}`}
+                                      </span>
+                                    </div>
+                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-sm relative overflow-hidden">
+                                      <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-400 dark:bg-slate-500 z-10" />
+                                      {isPos ? (
+                                        <div className="h-full bg-emerald-500 absolute left-1/2 rounded-r-sm" style={{ width: `${widthPct}%` }} />
+                                      ) : (
+                                        <div className="h-full bg-rose-500 absolute right-1/2 rounded-l-sm" style={{ width: `${widthPct}%` }} />
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </CardRow>
+
+              {/* ROW 4: [Top Deals Search | Region signals] */}
+              <CardRow cols="1fr 1fr" gap="gap-6">
+                {/* 7. Top Deals Search */}
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
@@ -871,122 +1102,18 @@ function RegionsContent() {
                     )}
                   </div>
                 </div>
-              </CardRow>
 
-              {/* ROW 4: [What Changed vs Prior Snapshot | Region insights] */}
-              <CardRow cols="1fr 1fr" gap="gap-6">
-                {/* 7. What Changed vs Prior Snapshot */}
-                <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-bold text-[var(--text-primary)]">What Changed vs Prior Snapshot</h3>
-                      <div className="flex bg-[var(--bg-secondary)] p-0.5 rounded-lg border border-[var(--border)]">
-                        <button
-                          onClick={() => setMoveCompare('yesterday')}
-                          className={cn(
-                            "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
-                            moveCompare === 'yesterday' ? "bg-[var(--bg-card)] shadow-xs text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                          )}
-                        >
-                          Vs YDay
-                        </button>
-                        <button
-                          onClick={() => setMoveCompare('last_week')}
-                          className={cn(
-                            "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
-                            moveCompare === 'last_week' ? "bg-[var(--bg-card)] shadow-xs text-[var(--text-primary)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                          )}
-                        >
-                          Vs 7d
-                        </button>
-                      </div>
-                    </div>
-
-                    {!movementsData ? (
-                      <div className="h-24 flex items-center justify-center">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      </div>
-                    ) : (
-                      <ScrollList maxHeight="280px">
-                        <div className="space-y-2">
-                          {movementsData.category_moves.map((m: any, i: number) => (
-                            <div 
-                              key={`c-${i}`} 
-                              className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors border border-[var(--border-subtle)] text-xs"
-                              onClick={() => handleDrill(`Moved ${m.from_category} → ${m.to_category}`, { region: selectedRegion, deals: m.deals })}
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.from_category}</span>
-                                <span className="text-[var(--text-muted)]">→</span>
-                                <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.to_category}</span>
-                              </div>
-                              <div className="font-semibold text-[var(--text-primary)] font-mono">
-                                {formatACV(m.acv)} ({formatCount(m.count)})
-                              </div>
-                            </div>
-                          ))}
-                          {movementsData.approval_moves.map((m: any, i: number) => (
-                            <div 
-                              key={`a-${i}`} 
-                              className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors border border-[var(--border-subtle)] text-xs"
-                              onClick={() => handleDrill(`Moved ${m.from_status} → ${m.to_status}`, { region: selectedRegion, deals: m.deals })}
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.from_status}</span>
-                                <span className="text-[var(--text-muted)]">→</span>
-                                <span className="font-medium px-2 py-0.5 bg-[var(--bg-secondary)] rounded">{m.to_status}</span>
-                              </div>
-                              <div className="font-semibold text-[var(--text-primary)] font-mono">
-                                {formatACV(m.acv)} ({formatCount(m.count)})
-                              </div>
-                            </div>
-                          ))}
-                          {movementsData.new_to_slice?.count > 0 && (
-                            <div 
-                              className="flex justify-between items-center p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer transition-colors border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs"
-                              onClick={() => handleDrill(`Newly In-Scope Deals`, { region: selectedRegion, deals: movementsData.new_to_slice.deals })}
-                            >
-                              <span className="font-semibold flex items-center gap-1">
-                                <ArrowUpRight className="w-3.5 h-3.5" /> Newly In-Scope
-                              </span>
-                              <span className="font-bold font-mono">
-                                {formatACV(movementsData.new_to_slice.acv)} ({formatCount(movementsData.new_to_slice.count)})
-                              </span>
-                            </div>
-                          )}
-                          {movementsData.slipped_out?.count > 0 && (
-                            <div 
-                              className="flex justify-between items-center p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer transition-colors border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs"
-                              onClick={() => handleDrill(`Slipped Out Deals`, { region: selectedRegion, deals: movementsData.slipped_out.deals })}
-                            >
-                              <span className="font-semibold flex items-center gap-1">
-                                <ArrowDownRight className="w-3.5 h-3.5" /> Slipped Out of Quarter
-                              </span>
-                              <span className="font-bold font-mono">
-                                {formatACV(movementsData.slipped_out.acv)} ({formatCount(movementsData.slipped_out.count)})
-                              </span>
-                            </div>
-                          )}
-                          {movementsData.category_moves?.length === 0 && movementsData.approval_moves?.length === 0 && (!movementsData.new_to_slice?.count) && (!movementsData.slipped_out?.count) && (
-                            <div className="text-xs text-[var(--text-muted)] italic p-3 text-center">No deal movements recorded vs {moveCompare === 'yesterday' ? yDayStr : lwStr}</div>
-                          )}
-                        </div>
-                      </ScrollList>
-                    )}
-                  </div>
-                </div>
-
-                {/* 8. Region Insights Card */}
+                {/* 8. Region signals (InsightCard) */}
                 <InsightCard
-                  title={`${selectedRegion} Insights`}
-                  subtitle="Key signals and concentration metrics"
-                  insights={getRegionDeepDiveInsights(selectedRegion, regionDetail, summary.total?.acv, (title, p) => handleDrill(title, p))}
+                  title={`${selectedRegion} signals`}
+                  subtitle="Territory dynamics & governance"
+                  insights={getRegionDeepDiveInsights(selectedRegion, regionDetail, summary.total?.acv || 1, (title, p) => handleDrill(title, p))}
                   className="h-full"
                   footer={
                     regionDetail?.delayed_deals?.count > 0 ? (
                       <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                         <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" /> {regionDetail.delayed_deals.count} delayed deals ({formatACV(regionDetail.delayed_acv || 0)})
+                          {regionDetail.delayed_deals.count} delayed deals ({formatACV(regionDetail.delayed_acv || 0)})
                         </span>
                         <button
                           type="button"
@@ -1340,8 +1467,8 @@ function RegionsContent() {
         <CardRow cols="max-content minmax(320px, 1fr)" gap="gap-6">
           {/* Stacked left column with SAME width */}
           <div className="space-y-6 w-full max-w-full">
-            <div className="card p-5 border border-[var(--border)] shadow-xs">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Regions (Forecast Category)</h3>
+            <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Forecast category by region</h3>
               {(() => {
                 const rawFc = summary.categories && summary.categories.length > 0 ? summary.categories : Object.keys(summary.totals?.categories || {})
                 const displayFc = rawFc.filter((fc: string) => {
@@ -1350,7 +1477,7 @@ function RegionsContent() {
                 })
                 return (
                   <CompactGrid
-                    title="Regions (Forecast Category)"
+                    title="Forecast category by region"
                     rowLabelName="Region"
                     columns={displayFc}
                     columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
@@ -1375,15 +1502,17 @@ function RegionsContent() {
                     compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
                     yesterdayDate={summary.yesterday_date}
                     lastweekDate={summary.lastweek_date}
+                    hideCardWrapper={true}
+                    tableLayoutFixed={true}
                   />
                 )
               })()}
             </div>
 
-            <div className="card p-5 border border-[var(--border)] shadow-xs">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Regions (Approval Status)</h3>
+            <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Approval status by region</h3>
               <CompactGrid
-                title="Regions (Approval Status)"
+                title="Approval status by region"
                 rowLabelName="Region"
                 columns={FUNNEL_STAGES}
                 rows={regions.map((r: any) => ({
@@ -1407,22 +1536,17 @@ function RegionsContent() {
                 compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
                 yesterdayDate={summary.yesterday_date}
                 lastweekDate={summary.lastweek_date}
+                hideCardWrapper={true}
+                tableLayoutFixed={true}
               />
             </div>
           </div>
 
-          {/* Right column: Regional insights + ChartCard */}
+          {/* Right column: TOP is Regional ACV share (vertical-bars), BOTTOM is Regional signals (InsightCard) */}
           <div className="flex flex-col gap-6 h-full">
-            <InsightCard
-              title="Regional Insights"
-              subtitle="Key movements and territory signals"
-              insights={getRegionsMatrixInsights(summary, summary, (title, p) => handleDrill(title, p))}
-              className="flex-1"
-            />
-
             <ChartCard
-              type="horizontal-bars"
-              title="Regional ACV Share"
+              type="vertical-bars"
+              title="Regional ACV share"
               subtitle="ACV contribution by territory"
               data={(summary.regions || []).map((r: any) => ({
                 label: r.region,
@@ -1432,6 +1556,13 @@ function RegionsContent() {
                 color: getRegionColor(r.region),
                 onClick: () => handleDrill(`${r.region} Deals`, { region: r.region }),
               }))}
+              className="flex-1"
+            />
+
+            <InsightCard
+              title="Regional signals"
+              subtitle="Key movements and territory signals"
+              insights={getRegionsMatrixInsights(summary, summary, (title, p) => handleDrill(title, p))}
               className="flex-1"
             />
           </div>
