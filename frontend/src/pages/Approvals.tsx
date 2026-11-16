@@ -1353,26 +1353,26 @@ export default function Approvals() {
                     {items.map((m: any, idx: number) => (
                       <div 
                         key={idx}
-                        className="grid grid-cols-12 items-center py-1.5 px-2 rounded-md hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer text-xs"
+                        className="grid grid-cols-[1fr_24px_1fr_54px_116px] items-center gap-x-3.5 py-1.5 px-2 rounded-md hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer text-xs"
                         onClick={() => {
                           if (m.deal_ids && m.deal_ids.length > 0) {
                             handleCellClick({ approval_status: m.to_status }, `${title}: From ${m.from_status} → ${m.to_status}`);
                           }
                         }}
                       >
-                        <div className="col-span-4 flex items-center">
+                        <div className="flex items-center min-w-0">
                           {renderStatus(m.from_status)}
                         </div>
-                        <div className="col-span-1 flex items-center justify-center text-[var(--text-muted)] font-bold">
+                        <div className="flex items-center justify-center text-[var(--text-muted)] font-bold">
                           →
                         </div>
-                        <div className="col-span-4 flex items-center">
+                        <div className="flex items-center min-w-0">
                           {renderStatus(m.to_status)}
                         </div>
-                        <div className="col-span-1 text-right font-bold font-mono text-[var(--text-primary)]">
+                        <div className="text-right font-bold font-mono text-[var(--text-primary)] tabular-nums">
                           {m.count}
                         </div>
-                        <div className="col-span-2 text-right font-bold font-mono text-[var(--text-primary)]">
+                        <div className="text-right font-bold font-mono text-[var(--text-primary)] tabular-nums">
                           {formatCurrency(m.acv)}
                         </div>
                       </div>
@@ -1419,12 +1419,12 @@ export default function Approvals() {
                     </div>
 
                     {/* Table Header */}
-                    <div className="grid grid-cols-12 py-2 px-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 rounded-t-lg shrink-0">
-                      <div className="col-span-4">From status</div>
-                      <div className="col-span-1 text-center"></div>
-                      <div className="col-span-4">To status</div>
-                      <div className="col-span-1 text-right">Deals</div>
-                      <div className="col-span-2 text-right">ACV</div>
+                    <div className="grid grid-cols-[1fr_24px_1fr_54px_116px] items-center gap-x-3.5 py-2 px-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 rounded-t-lg shrink-0">
+                      <div>From status</div>
+                      <div className="text-center"></div>
+                      <div>To status</div>
+                      <div className="text-right">Deals</div>
+                      <div className="text-right">ACV</div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto space-y-4 py-1 min-h-0">
@@ -1457,10 +1457,10 @@ export default function Approvals() {
                     </div>
 
                     {/* Totals Row */}
-                    <div className="mt-3 pt-2.5 border-t-2 border-[var(--border)] grid grid-cols-12 items-center px-2 text-xs font-black text-[var(--text-primary)] bg-[var(--bg-secondary)]/30 rounded-b-lg shrink-0">
-                      <div className="col-span-9">Total Changes</div>
-                      <div className="col-span-1 text-right font-mono">{totalDeals}</div>
-                      <div className="col-span-2 text-right font-mono">{formatCurrency(totalACV)}</div>
+                    <div className="mt-3 pt-2.5 border-t-2 border-[var(--border)] grid grid-cols-[1fr_24px_1fr_54px_116px] items-center gap-x-3.5 px-2 text-xs font-black text-[var(--text-primary)] bg-[var(--bg-secondary)]/30 rounded-b-lg shrink-0">
+                      <div className="col-span-3">Total Changes</div>
+                      <div className="text-right font-mono tabular-nums">{totalDeals}</div>
+                      <div className="text-right font-mono tabular-nums">{formatCurrency(totalACV)}</div>
                     </div>
                   </div>
                 </Card>
