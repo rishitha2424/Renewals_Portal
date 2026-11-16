@@ -1,5 +1,5 @@
 import React from 'react'
-import { TrendingUp, TrendingDown, AlertTriangle, ShieldCheck, PieChart, Clock, Award, CheckCircle2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, AlertTriangle, ShieldCheck, PieChart, Clock, Award, CheckCircle2, Lightbulb } from 'lucide-react'
 import { InsightItem } from '@/components/common/InsightCard'
 import { formatCurrency, formatNumber, formatDate } from '@/utils/format'
 
@@ -112,22 +112,33 @@ export function getOverviewInsights(summary: any, regional: any, movements: any,
 }
 
 /** 2. Regions Matrix Insights Generator */
-export function getRegionsMatrixInsights(regional: any, summary: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
+export function getRegionsMatrixInsights(summaryOrRegional: any, summary?: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
-  const trends = regional?.regional_trend || []
-  const totalAcv = summary?.total?.acv || regional?.regional_sum || 1
+  const data = summaryOrRegional || summary
+  if (!data) return items
+
+  const trends: any[] = data.regional_trend || data.regions || summary?.regions || []
+  const totalAcv = summary?.total?.acv || data.total?.acv || data.regional_sum || 1
 
   if (trends.length > 0) {
+    // Helper to extract values
+    const getAcv = (r: any) => r.total_acv ?? r.acv ?? 0
+    const getDeltaY = (r: any) => {
+      if (r.delta_yesterday?.acv != null) return r.delta_yesterday.acv
+      if (r.y_total_acv != null) return (r.total_acv || 0) - r.y_total_acv
+      return 0
+    }
+
     // Top region
-    const sorted = [...trends].sort((a: any, b: any) => (b.total_acv || 0) - (a.total_acv || 0))
+    const sorted = [...trends].sort((a: any, b: any) => getAcv(b) - getAcv(a))
     const topReg = sorted[0]
-    if (topReg) {
+    if (topReg && getAcv(topReg) > 0) {
       items.push({
         id: 'matrix-top-region',
         icon: Award,
         text: (
           <span>
-            <strong>{topReg.region}</strong> leads with <strong>{acvM(topReg.total_acv)}</strong> ({((topReg.total_acv / totalAcv) * 100).toFixed(1)}% of total).
+            <strong>{topReg.region}</strong> leads with <strong>{acvM(getAcv(topReg))}</strong> ({((getAcv(topReg) / totalAcv) * 100).toFixed(1)}% of total).
           </span>
         ),
         linkText: 'View region',
@@ -136,26 +147,26 @@ export function getRegionsMatrixInsights(regional: any, summary: any, onDrill?: 
     }
 
     // Top gain vs yesterday/compare
-    const gains = trends.filter((r: any) => (r.y_total_acv != null ? r.total_acv - r.y_total_acv : 0) > 0)
+    const gains = trends.filter((r: any) => getDeltaY(r) > 0)
     if (gains.length > 0) {
-      const topGain = gains.sort((a: any, b: any) => (b.total_acv - b.y_total_acv) - (a.total_acv - a.y_total_acv))[0]
-      const delta = topGain.total_acv - topGain.y_total_acv
+      const topGain = gains.sort((a: any, b: any) => getDeltaY(b) - getDeltaY(a))[0]
+      const delta = getDeltaY(topGain)
       items.push({
         id: 'matrix-top-gain',
         icon: TrendingUp,
         text: (
           <span>
-            <strong>{topGain.region}</strong> registered the largest gain of <strong>+{acvM(delta)}</strong> vs yesterday.
+            <strong>{topGain.region}</strong> registered the largest regional gain of <strong>+{acvM(delta)}</strong> vs yesterday.
           </span>
         ),
       })
     }
 
     // Top drop vs yesterday
-    const drops = trends.filter((r: any) => (r.y_total_acv != null ? r.total_acv - r.y_total_acv : 0) < 0)
+    const drops = trends.filter((r: any) => getDeltaY(r) < 0)
     if (drops.length > 0) {
-      const topDrop = drops.sort((a: any, b: any) => (a.total_acv - a.y_total_acv) - (b.total_acv - b.y_total_acv))[0]
-      const delta = Math.abs(topDrop.total_acv - topDrop.y_total_acv)
+      const topDrop = drops.sort((a: any, b: any) => getDeltaY(a) - getDeltaY(b))[0]
+      const delta = Math.abs(getDeltaY(topDrop))
       items.push({
         id: 'matrix-top-drop',
         icon: TrendingDown,
@@ -167,27 +178,27 @@ export function getRegionsMatrixInsights(regional: any, summary: any, onDrill?: 
       })
     }
 
-    // Lowest approval share
-    const propConf = regional?.proposal_confirmation || []
-    if (propConf.length > 0) {
-      const withApprovals = propConf.map((r: any) => {
-        const totalCount = (r.approved_count || 0) + (r.pending_count || 0) + (r.blank_count || 0) || 1
-        const appShare = ((r.approved_count || 0) / totalCount) * 100
-        return { region: r.region, appShare, approved: r.approved_count || 0, blank: r.blank_count || 0 }
-      }).sort((a: any, b: any) => a.appShare - b.appShare)
-
-      const lowest = withApprovals[0]
-      if (lowest && lowest.blank > 0) {
+    // Lowest approval share or unapproved count
+    const withApprovals = trends.filter((r: any) => r.approved_pct != null || r.approval != null || r.approved_count != null)
+    if (withApprovals.length > 0) {
+      const sortedByApp = [...withApprovals].sort((a: any, b: any) => {
+        const aPct = a.approved_pct ?? (a.approval?.Approved?.count ? (a.approval.Approved.count / (a.count || 1)) * 100 : 100)
+        const bPct = b.approved_pct ?? (b.approval?.Approved?.count ? (b.approval.Approved.count / (b.count || 1)) * 100 : 100)
+        return aPct - bPct
+      })
+      const lowest = sortedByApp[0]
+      const lowestPct = lowest?.approved_pct ?? (lowest?.approval?.Approved?.count ? ((lowest.approval.Approved.count / (lowest.count || 1)) * 100).toFixed(1) : 0)
+      if (lowest) {
         items.push({
           id: 'matrix-lowest-approval',
           icon: AlertTriangle,
           text: (
             <span>
-              <strong>{lowest.region}</strong> has the lowest approval readiness with <strong>{lowest.blank} unsubmitted contracts</strong> ({lowest.appShare.toFixed(1)}% approved).
+              <strong>{lowest.region}</strong> has the lowest approval readiness at <strong>{lowestPct}%</strong> approved.
             </span>
           ),
           linkText: 'Inspect',
-          onLinkClick: onDrill ? () => onDrill(`${lowest.region} Not Submitted`, { region: lowest.region, approval_status: 'Blank' }) : undefined,
+          onLinkClick: onDrill ? () => onDrill(`${lowest.region} Deals`, { region: lowest.region }) : undefined,
         })
       }
     }
@@ -210,36 +221,38 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
     icon: PieChart,
     text: (
       <span>
-        <strong>{regionName}</strong> represents <strong>{shareOfPort}%</strong> ({acvM(regAcv)}) of total company renewals.
+        <strong>{regionName}</strong> represents <strong>{shareOfPort}%</strong> ({acvM(regAcv)}) of total portfolio renewals.
       </span>
     ),
   })
 
   // Commit coverage
-  const commitAcv = regData.categories?.['Commit']?.acv || 0
-  const bestCaseAcv = regData.categories?.['Best Case']?.acv || 0
+  const fcMap = (regData.forecast_categories || []).reduce((acc: any, c: any) => ({ ...acc, [c.category]: c.acv }), {})
+  const commitAcv = regData.categories?.['Commit']?.acv || fcMap['Commit'] || 0
+  const bestCaseAcv = regData.categories?.['Best Case']?.acv || fcMap['Best Case'] || 0
   if (regAcv > 0) {
-    const covPct = (((commitAcv + bestCaseAcv) / regAcv) * 100).toFixed(1)
+    const covPct = regData.commit_pct != null ? regData.commit_pct : (((commitAcv + bestCaseAcv) / regAcv) * 100).toFixed(1)
     items.push({
       id: 'rdd-coverage',
       icon: ShieldCheck,
       text: (
         <span>
-          Commit + Best Case coverage in {regionName} stands at <strong>{covPct}%</strong> ({acvM(commitAcv + bestCaseAcv)}).
+          Commit + Best Case coverage in {regionName} stands at <strong>{covPct}%</strong> ({acvM(commitAcv + bestCaseAcv || regAcv * (Number(covPct) / 100))}).
         </span>
       ),
     })
   }
 
   // Delayed / slippage
-  const delayedAcv = regData.delayed?.acv || 0
-  if (delayedAcv > 0) {
+  const delayedAcv = regData.delayed_acv ?? regData.delayed?.acv ?? 0
+  const delayedCount = regData.delayed_count ?? regData.delayed?.count ?? 0
+  if (delayedAcv > 0 || delayedCount > 0) {
     items.push({
       id: 'rdd-delayed',
       icon: Clock,
       text: (
         <span>
-          <strong>{acvM(delayedAcv)}</strong> ({regData.delayed?.count || 0} deals) are currently classified as delayed in this region.
+          <strong>{acvM(delayedAcv)}</strong> ({delayedCount} deals) are currently classified as delayed in this region.
         </span>
       ),
       linkText: 'View delayed',
@@ -256,6 +269,19 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
       text: (
         <span>
           Key account: <strong>{topAcc.account_name || topAcc.name}</strong> holds <strong>{acvM(topAcc.acv)}</strong> of regional renewals.
+        </span>
+      ),
+    })
+  }
+
+  // Signal / Concentration
+  if (regData.concentration?.summary_text) {
+    items.push({
+      id: 'rdd-concentration',
+      icon: Lightbulb,
+      text: (
+        <span>
+          Concentration: <strong>{regData.concentration.summary_text}</strong>.
         </span>
       ),
     })
