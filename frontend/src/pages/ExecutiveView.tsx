@@ -159,6 +159,18 @@ export default function ExecutiveView() {
     return list
   }, [overviewQuery.data, approvalsQuery.data, expiryQuery.data, regionsQuery.data, buQuery.data, delayedQuery.data])
 
+  const currentSnapshotDate = overviewQuery.data?.snapshot_date || ''
+
+  useEffect(() => {
+    const prevTitle = document.title
+    if (currentSnapshotDate) {
+      document.title = `Renewals Executive Summary - ${formatDate(currentSnapshotDate)}`
+    }
+    return () => {
+      document.title = prevTitle
+    }
+  }, [currentSnapshotDate])
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-loading">
@@ -221,16 +233,6 @@ export default function ExecutiveView() {
     { name: 'Delayed', date: delayed.snapshot_date },
     { name: 'Reconcile', date: reconcile.snapshot_date },
   ].filter(x => !!x.date)
-
-  useEffect(() => {
-    const prevTitle = document.title
-    if (snapshotDate) {
-      document.title = `Renewals Executive Summary - ${formatDate(snapshotDate)}`
-    }
-    return () => {
-      document.title = prevTitle
-    }
-  }, [snapshotDate])
 
   const distinctDates = Array.from(new Set(responseDates.map(x => x.date)))
   const hasSnapshotDateMismatch = distinctDates.length > 1
