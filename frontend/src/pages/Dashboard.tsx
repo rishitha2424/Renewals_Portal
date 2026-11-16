@@ -507,8 +507,7 @@ export default function Dashboard() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
                         Approval Readiness
                       </span>
                       <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
@@ -1000,7 +999,7 @@ export default function Dashboard() {
                     <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                       Delayed Renewals
                     </span>
-                    <Pill color="rose"><AlertCircle className="w-3 h-3" />{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
+                    <Pill color="rose">{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={delSubtitle}>
                     {delSubtitle}
@@ -1050,7 +1049,7 @@ export default function Dashboard() {
                     <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                       Slippage
                     </span>
-                    <Pill color="amber"><AlertTriangle className="w-3 h-3" />{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
+                    <Pill color="amber">{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={slipSubtitle}>
                     {slipSubtitle}
@@ -1392,39 +1391,38 @@ export default function Dashboard() {
                   <h2 className="font-bold text-sm text-[var(--text-primary)]">Approval Status by Region</h2>
                   <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Approved, waiting for approval, and unsubmitted deals.</p>
                 </div>
-                <Globe2 className="w-4 h-4 text-[var(--text-muted)]" />
               </div>
               <div className="overflow-x-auto rounded-lg border border-[var(--border)] flex-1 table-compact-container">
                 <table className="data-table w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
-                      <th className="text-right px-3 py-2 font-semibold text-[#00A3AD] dark:text-[#00c9d6] col-num">Total deals</th>
-                      <th className="text-right px-3 py-2 font-semibold text-emerald-600 dark:text-emerald-400 col-num">Approved</th>
-                      <th className="text-right px-3 py-2 font-semibold text-amber-600 dark:text-amber-400 col-num">Pending</th>
-                      <th className="text-right px-3 py-2 font-semibold text-slate-500 dark:text-slate-400 col-num">Not submitted</th>
+                      <th className="text-right px-3 py-2 font-bold text-[#12284C] dark:text-[#38bdf8] col-num">Total deals</th>
+                      <th className="text-right px-3 py-2 font-bold text-emerald-600 dark:text-emerald-400 col-num">Approved</th>
+                      <th className="text-right px-3 py-2 font-bold text-amber-600 dark:text-amber-400 col-num">Pending</th>
+                      <th className="text-right px-3 py-2 font-bold text-slate-500 dark:text-slate-400 col-num">Not submitted</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {propRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
                         <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[#00A3AD] dark:text-[#00c9d6] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[#12284C] dark:text-[#38bdf8] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
                           {(row.approved_count ?? 0) + (row.pending_count ?? 0) + (row.blank_count ?? 0)}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
                         <td className="px-3 py-2 text-right font-mono text-amber-600 dark:text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
                       </tr>
                     ))}
                     <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
                       <td className="px-3 py-2 col-main">Total</td>
-                      <td className="px-3 py-2 text-right font-mono cursor-pointer hover:underline text-[#00A3AD] dark:text-[#00c9d6] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
+                      <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[#12284C] dark:text-[#38bdf8] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
                         {(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
-                      <td className="px-3 py-2 text-right font-mono text-amber-600 dark:text-amber-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono text-amber-600 dark:text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
                     </tr>
                   </tbody>
                 </table>
