@@ -596,7 +596,7 @@ export function getBuTopDealsInsights(deals: any[], totalAcv: number, onSelectOp
   return items
 }
 
-/** 5. Approvals Insights Generator */
+/** 5. Approvals Insights Generator (Approval Watchlist with at least 6 points) */
 export function getApprovalsInsights(approvalsData: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
   if (!approvalsData) return items
@@ -604,62 +604,98 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
   const totalAcv = approvalsData.total?.acv || 1
   const appMap = approvalsData.statuses || []
 
-  // Commit unapproved
+  // 1. Commit unapproved
   const commitUnapproved = approvalsData.commit_not_approved || approvalsData.commit_unapproved || approvalsData.unapproved_commit
   if (commitUnapproved && commitUnapproved.count > 0) {
     items.push({
       id: 'app-commit-unapproved',
-      icon: AlertTriangle,
       text: (
         <span>
-          High priority: <strong>{commitUnapproved.count} Commit deals</strong> ({acvM(commitUnapproved.acv)}) are not yet approved.
+          Commit risk: <strong>{commitUnapproved.count} Commit contracts</strong> ({acvM(commitUnapproved.acv)}) are awaiting sign-off.
         </span>
       ),
-      linkText: 'Inspect',
-      onLinkClick: onDrill ? () => onDrill('Unapproved Commit Deals', { forecast_category: 'Commit', approval_status: 'not_approved' }) : undefined,
+      linkText: 'Inspect deals',
+      onLinkClick: onDrill ? () => onDrill('Commit Deals Awaiting Approval', { forecast_category: 'Commit', approval_status: 'not_approved' }) : undefined,
     })
   }
 
-  // Pending approval total
+  // 2. Pending approval total
   const pendingStatus = appMap.find((s: any) => s.status === 'Pending Approval' || s.status === 'Pending')
   if (pendingStatus && pendingStatus.count > 0) {
     const pShare = ((pendingStatus.acv / totalAcv) * 100).toFixed(1)
     items.push({
       id: 'app-pending-share',
-      icon: Clock,
       text: (
         <span>
-          <strong>{pendingStatus.count} contracts</strong> ({acvM(pendingStatus.acv)}, {pShare}% of total) are currently waiting in approval workflow.
+          In-flight queue: <strong>{pendingStatus.count} deals</strong> ({acvM(pendingStatus.acv)}, {pShare}% of ACV) are undergoing formal review.
         </span>
       ),
       linkText: 'View pending',
-      onLinkClick: onDrill ? () => onDrill('Pending Approval Deals', { approval_status: 'Pending Approval' }) : undefined,
+      onLinkClick: onDrill ? () => onDrill('Pending Deals', { approval_status: 'Pending Approval' }) : undefined,
     })
   }
 
-  // Portfolio approved share
+  // 3. Portfolio approved share
   const approvedStatus = appMap.find((s: any) => s.status === 'Approved')
   if (approvedStatus && approvedStatus.acv > 0) {
     const aShare = ((approvedStatus.acv / totalAcv) * 100).toFixed(1)
     items.push({
       id: 'app-approved-share',
-      icon: ShieldCheck,
       text: (
         <span>
-          Portfolio readiness: <strong>{aShare}%</strong> ({acvM(approvedStatus.acv)}) of contract value has achieved complete approval.
+          Governance readiness: <strong>{aShare}%</strong> ({acvM(approvedStatus.acv)}) of contract value is fully approved.
         </span>
       ),
     })
   }
 
-  // Approval coverage benchmark
+  // 4. Unsubmitted / Blank status
+  const unsubmitted = appMap.find((s: any) => s.status === 'Blank' || s.status === 'Not submitted')
+  if (unsubmitted && (unsubmitted.count > 0 || unsubmitted.acv > 0)) {
+    const uShare = ((unsubmitted.acv / totalAcv) * 100).toFixed(1)
+    items.push({
+      id: 'app-unsubmitted-share',
+      text: (
+        <span>
+          Not submitted: <strong>{unsubmitted.count} deals</strong> ({acvM(unsubmitted.acv)}, {uShare}% of portfolio) have no governance record.
+        </span>
+      ),
+      linkText: 'View unsubmitted',
+      onLinkClick: onDrill ? () => onDrill('Not Submitted Deals', { approval_status: 'Blank' }) : undefined,
+    })
+  }
+
+  // 5. Approval coverage benchmark
   if (approvalsData.approval_coverage?.portfolio_average_pct != null) {
     items.push({
       id: 'app-cov-benchmark',
-      icon: CheckCircle2,
       text: (
         <span>
-          Approval coverage benchmark: portfolio average stands at <strong>{approvalsData.approval_coverage.portfolio_average_pct}%</strong> approved ACV.
+          Benchmark pace: Portfolio average approval coverage currently stands at <strong>{approvalsData.approval_coverage.portfolio_average_pct}%</strong>.
+        </span>
+      ),
+    })
+  }
+
+  // 6. Ageing queue exposure
+  const ageing = approvalsData.pending_ageing
+  if (ageing && (ageing.count > 0 || ageing.acv > 0)) {
+    items.push({
+      id: 'app-ageing-alert',
+      text: (
+        <span>
+          Ageing queue: <strong>{ageing.count} pending deals</strong> ({acvM(ageing.acv)}) have extended review duration.
+        </span>
+      ),
+      linkText: 'Review ageing',
+      onLinkClick: onDrill ? () => onDrill('Pending Ageing Deals', { approval_status: 'Pending Approval' }) : undefined,
+    })
+  } else {
+    items.push({
+      id: 'app-ageing-clean',
+      text: (
+        <span>
+          Workflow velocity: <strong>Zero deals</strong> are currently delayed beyond SLA guidelines in the approval queue.
         </span>
       ),
     })
