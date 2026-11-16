@@ -1,6 +1,27 @@
 import React from 'react'
 import { TrendingUp, TrendingDown, ArrowRight, AlertTriangle, Users } from 'lucide-react'
 import { formatCurrency, formatDate, getApprovalStatusLabel } from '@/utils/format'
+import { CONCEPT_COLORS } from '@/design/conceptColors'
+
+function getCategoryChip(cat: string) {
+  if (!cat) return null
+  const lower = cat.trim().toLowerCase()
+  let color = '#64748B'
+  if (lower.includes('closed')) color = CONCEPT_COLORS.closed.hex
+  else if (lower.includes('commit')) color = CONCEPT_COLORS.commit.hex
+  else if (lower.includes('best case') || lower.includes('bestcase')) color = CONCEPT_COLORS.best_case.hex
+  else if (lower.includes('pipeline')) color = CONCEPT_COLORS.pipeline.hex
+  else if (lower.includes('lost') || lower.includes('removed')) color = CONCEPT_COLORS.lost.hex
+
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold"
+      style={{ backgroundColor: `${color}18`, color: color, border: `1px solid ${color}33` }}
+    >
+      {cat}
+    </span>
+  )
+}
 
 interface MovementsSummaryProps {
   movements: any
@@ -73,146 +94,162 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
       {/* Positive / Negative tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* GREEN – Positive */}
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-900/10 overflow-hidden">
-          <div className="px-4 py-3 bg-emerald-500/10 border-b border-emerald-500/20">
-            <h3 className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Positive Movements
+        <div className="rounded-xl border border-emerald-500/20 bg-[var(--bg-card)] overflow-hidden shadow-xs">
+          <div className="px-4 py-2.5 bg-emerald-600 text-white flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-white" /> Positive Movements
             </h3>
+            <span className="text-[11px] font-semibold text-emerald-100 font-mono">
+              +{acvM(posTotal)}
+            </span>
           </div>
           <table className="w-full text-xs">
-            <thead>
+            <thead className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-emerald-500/10">
               <tr className="text-[var(--text-muted)]">
-                <th className="text-left px-4 py-2.5 font-semibold">Movement</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Count</th>
-                <th className="text-right px-4 py-2.5 font-semibold">ACV</th>
+                <th className="text-left px-4 py-2 font-semibold">Movement</th>
+                <th className="text-right px-4 py-2 font-semibold">Count</th>
+                <th className="text-right px-4 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emerald-500/10">
-              {pos.map((row: any, i: number) => (
-                <tr
-                  key={i}
-                  className="hover:bg-emerald-500/10 cursor-pointer transition-colors"
-                  onClick={() =>
-                    row.deals?.length &&
-                    onSelectDeals?.(
-                      row.label ?? `${row.from_category} → ${row.to_category}`,
-                      row.deals
-                    )
-                  }
-                >
-                  <td className="px-4 py-2.5 font-medium flex items-center gap-1.5">
-                    {row.label ? (
-                      <span className="font-bold">{row.label}</span>
-                    ) : (
-                      <>
-                        <span className="text-[var(--text-muted)]">{row.from_category}</span>
-                        <ArrowRight className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                        <span className="font-bold">{row.to_category}</span>
-                      </>
-                    )}
+              {pos.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-4 text-center text-xs text-[var(--text-muted)] italic">
+                    No positive movements {compareDate ? `since ${formatDate(compareDate)}` : ''}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                    {row.count}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono">{acvM(row.acv)}</td>
                 </tr>
-              ))}
-              <tr className="bg-emerald-500/10 border-t-2 border-emerald-500/30 font-bold">
-                <td className="px-4 py-2.5 text-emerald-700 dark:text-emerald-400">Total</td>
-                <td className="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
-                  {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
-                  {acvM(posTotal)}
-                </td>
-              </tr>
+              ) : (
+                pos.map((row: any, i: number) => (
+                  <tr
+                    key={i}
+                    className="hover:bg-emerald-500/10 cursor-pointer transition-colors"
+                    onClick={() =>
+                      row.deals?.length &&
+                      onSelectDeals?.(
+                        row.label ?? `${row.from_category} → ${row.to_category}`,
+                        row.deals
+                      )
+                    }
+                  >
+                    <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
+                      {row.label ? (
+                        <span className="font-bold text-[var(--text-primary)]">{row.label}</span>
+                      ) : (
+                        <>
+                          {getCategoryChip(row.from_category)}
+                          <ArrowRight className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                          {getCategoryChip(row.to_category)}
+                        </>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                      {row.count}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      +{acvM(row.acv)}
+                    </td>
+                  </tr>
+                ))
+              )}
+              {pos.length > 0 && (
+                <tr className="bg-emerald-500/10 border-t-2 border-emerald-500/30 font-bold">
+                  <td className="px-4 py-2 text-emerald-700 dark:text-emerald-400">Total</td>
+                  <td className="px-4 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                    {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                    +{acvM(posTotal)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-          <div className="px-4 py-2 bg-emerald-500/5 border-t border-emerald-500/10 min-h-[34px] flex items-center justify-center text-center text-[11px] text-[var(--text-muted)] italic">
-            {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 ? (
-              <span>No upgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}</span>
-            ) : (
-              <span>&nbsp;</span>
-            )}
-          </div>
         </div>
 
         {/* RED – Negative */}
-        <div className="rounded-xl border border-red-500/20 bg-red-50/40 dark:bg-red-900/10 overflow-hidden">
-          <div className="px-4 py-3 bg-red-500/10 border-b border-red-500/20">
-            <h3 className="text-xs font-bold text-red-700 dark:text-red-400 uppercase tracking-wider flex items-center gap-2">
-              <TrendingDown className="w-4 h-4" /> Negative Movements
+        <div className="rounded-xl border border-rose-500/20 bg-[var(--bg-card)] overflow-hidden shadow-xs">
+          <div className="px-4 py-2.5 bg-rose-600 text-white flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <TrendingDown className="w-4 h-4 text-white" /> Negative Movements
             </h3>
+            <span className="text-[11px] font-semibold text-rose-100 font-mono">
+              -{acvM(negTotal)}
+            </span>
           </div>
           <table className="w-full text-xs">
-            <thead>
+            <thead className="bg-rose-50/50 dark:bg-rose-950/20 border-b border-rose-500/10">
               <tr className="text-[var(--text-muted)]">
-                <th className="text-left px-4 py-2.5 font-semibold">Movement</th>
-                <th className="text-right px-4 py-2.5 font-semibold">Count</th>
-                <th className="text-right px-4 py-2.5 font-semibold">ACV</th>
+                <th className="text-left px-4 py-2 font-semibold">Movement</th>
+                <th className="text-right px-4 py-2 font-semibold">Count</th>
+                <th className="text-right px-4 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-red-500/10">
-              {neg.map((row: any, i: number) => (
-                <tr
-                  key={i}
-                  className="hover:bg-red-500/10 cursor-pointer transition-colors"
-                  onClick={() =>
-                    row.deals?.length &&
-                    onSelectDeals?.(
-                      row.label ?? `${row.from_category} → ${row.to_category}`,
-                      row.deals
-                    )
-                  }
-                >
-                  <td className="px-4 py-2.5 font-medium">
-                    {row.label ? (
-                      <span className="flex items-center gap-1.5">
-                        {row.label.toLowerCase().includes('slip') && (
-                          <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                        )}
-                        <span
-                          className={
-                            row.label.toLowerCase().includes('slip')
-                              ? 'font-bold text-amber-700 dark:text-amber-400'
-                              : 'font-bold'
-                          }
-                        >
-                          {row.label}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[var(--text-muted)]">{row.from_category}</span>
-                        <ArrowRight className="w-3 h-3 text-red-500 flex-shrink-0" />
-                        <span className="font-bold">{row.to_category}</span>
-                      </span>
-                    )}
+            <tbody className="divide-y divide-rose-500/10">
+              {neg.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-4 text-center text-xs text-[var(--text-muted)] italic">
+                    No negative movements {compareDate ? `since ${formatDate(compareDate)}` : ''}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono font-bold text-red-700 dark:text-red-400">
-                    {row.count}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono">{acvM(row.acv)}</td>
                 </tr>
-              ))}
-              <tr className="bg-red-500/10 border-t-2 border-red-500/30 font-bold">
-                <td className="px-4 py-2.5 text-red-700 dark:text-red-400">Total</td>
-                <td className="px-4 py-2.5 text-right font-mono text-red-700 dark:text-red-400">
-                  {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-red-700 dark:text-red-400">
-                  {acvM(negTotal)}
-                </td>
-              </tr>
+              ) : (
+                neg.map((row: any, i: number) => (
+                  <tr
+                    key={i}
+                    className="hover:bg-rose-500/10 cursor-pointer transition-colors"
+                    onClick={() =>
+                      row.deals?.length &&
+                      onSelectDeals?.(
+                        row.label ?? `${row.from_category} → ${row.to_category}`,
+                        row.deals
+                      )
+                    }
+                  >
+                    <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
+                      {row.label ? (
+                        <span className="flex items-center gap-1.5">
+                          {row.label.toLowerCase().includes('slip') && (
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                          )}
+                          <span
+                            className={
+                              row.label.toLowerCase().includes('slip')
+                                ? 'font-bold text-amber-700 dark:text-amber-400'
+                                : 'font-bold text-[var(--text-primary)]'
+                            }
+                          >
+                            {row.label}
+                          </span>
+                        </span>
+                      ) : (
+                        <>
+                          {getCategoryChip(row.from_category)}
+                          <ArrowRight className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                          {getCategoryChip(row.to_category)}
+                        </>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-700 dark:text-rose-400">
+                      {row.count}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                      -{acvM(row.acv)}
+                    </td>
+                  </tr>
+                ))
+              )}
+              {neg.length > 0 && (
+                <tr className="bg-rose-500/10 border-t-2 border-rose-500/30 font-bold">
+                  <td className="px-4 py-2 text-rose-700 dark:text-rose-400">Total</td>
+                  <td className="px-4 py-2 text-right font-mono text-rose-700 dark:text-rose-400">
+                    {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-rose-700 dark:text-rose-400">
+                    -{acvM(negTotal)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-          <div className="px-4 py-2 bg-red-500/5 border-t border-red-500/10 min-h-[34px] flex items-center justify-center text-center text-[11px] text-[var(--text-muted)] italic">
-            {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0) === 0 ? (
-              <span>No downgrades since {compareDate ? formatDate(compareDate) : 'previous snapshot'}</span>
-            ) : (
-              <span>&nbsp;</span>
-            )}
-          </div>
         </div>
       </div>
 
