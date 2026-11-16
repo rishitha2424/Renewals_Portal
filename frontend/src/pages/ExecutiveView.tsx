@@ -153,7 +153,7 @@ export default function ExecutiveView() {
     list.push({ id: 'exec-movement', title: 'Baselines' })
     if (approvalsQuery.data?.statuses?.length) list.push({ id: 'exec-approvals', title: 'Approval Status' })
     if (expiryQuery.data?.grids) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
-    if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: 'Top Regions' })
+    if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: regionsQuery.data.regions.length > 10 ? 'Top 10 Regions' : 'Regions by ACV' })
     if (buQuery.data?.rows?.length) list.push({ id: 'exec-bu', title: 'Business Units' })
     if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
     return list
@@ -221,6 +221,16 @@ export default function ExecutiveView() {
     { name: 'Delayed', date: delayed.snapshot_date },
     { name: 'Reconcile', date: reconcile.snapshot_date },
   ].filter(x => !!x.date)
+
+  useEffect(() => {
+    const prevTitle = document.title
+    if (snapshotDate) {
+      document.title = `Renewals Executive Summary - ${formatDate(snapshotDate)}`
+    }
+    return () => {
+      document.title = prevTitle
+    }
+  }, [snapshotDate])
 
   const distinctDates = Array.from(new Set(responseDates.map(x => x.date)))
   const hasSnapshotDateMismatch = distinctDates.length > 1
@@ -302,6 +312,7 @@ export default function ExecutiveView() {
   // Top 10 Regions
   const allRegions = regions.regions || []
   const top10Regions = allRegions.slice(0, 10)
+  const regionsTitle = allRegions.length > 10 ? '5. Top 10 Regions by ACV' : '5. Regions by ACV'
 
   // Business Units
   const buRows = bu.rows || []
@@ -358,31 +369,34 @@ export default function ExecutiveView() {
   })
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[960px] mx-auto" id="executive-report-view">
+    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[1000px] mx-auto space-y-7" id="executive-report-view">
       {/* Print CSS styles */}
       <style>{`
         @media print {
           @page {
-            size: A4;
-            margin: 12mm 15mm;
+            size: A4 portrait;
+            margin: 12mm;
           }
           body {
             background: #ffffff !important;
             color: #0f172a !important;
-            font-size: 11pt !important;
+            font-size: 10pt !important;
             line-height: 1.4 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print {
+          .no-print, nav, aside, header.app-header, #app-sidebar, [role="navigation"] {
             display: none !important;
           }
-          .page-break-avoid {
+          .page-break-avoid, .card {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
           table {
             page-break-inside: auto;
+          }
+          thead {
+            display: table-header-group !important;
           }
           tr {
             page-break-inside: avoid !important;
@@ -671,8 +685,8 @@ export default function ExecutiveView() {
       {/* Approval Status Summary table */}
       <section id="exec-approvals" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-emerald-50/60 border-b border-slate-200 border-l-4 border-l-emerald-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-emerald-900">
               3. Approval Status Summary
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
@@ -717,8 +731,8 @@ export default function ExecutiveView() {
       {/* Expiry Quarter × Forecast Category table */}
       <section id="exec-expiry" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-indigo-50/60 border-b border-slate-200 border-l-4 border-l-indigo-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-indigo-900">
               4. Expiry Quarter × Forecast Category
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
@@ -767,9 +781,9 @@ export default function ExecutiveView() {
       {/* Top 10 Regions by ACV table */}
       <section id="exec-regions" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 border-l-4 border-l-[#12284C] flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-              5. Top 10 Regions by ACV
+              {regionsTitle}
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
@@ -777,7 +791,6 @@ export default function ExecutiveView() {
             <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="px-3 py-2 w-8 text-center">#</th>
                   <th className="px-3 py-2">Region</th>
                   <th className="px-3 py-2 text-right">Deals</th>
                   <th className="px-3 py-2 text-right">ACV (USD)</th>
@@ -788,8 +801,10 @@ export default function ExecutiveView() {
               <tbody className="divide-y divide-slate-100">
                 {top10Regions.map((reg: any, i: number) => (
                   <tr key={reg.region} className="hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-center text-slate-400 tabular-nums">{i + 1}</td>
-                    <td className="px-3 py-2 font-medium text-slate-800">{reg.region}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 mr-2 tabular-nums">{i + 1}</span>
+                      {reg.region}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatNumber(reg.count)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(reg.acv)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">
@@ -915,9 +930,9 @@ export default function ExecutiveView() {
 
         {/* 7b. Slippage */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-4 py-2.5 bg-amber-50/60 border-b border-slate-200 border-l-4 border-l-amber-500 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+              <h2 className="font-bold text-xs uppercase tracking-wider text-amber-900">
                 7b. Slippage
               </h2>
               {slippage.type_filter_note && (
