@@ -1582,12 +1582,14 @@ function RegionsContent() {
             <ChartCard
               type="vertical-bars"
               title="Regional ACV share"
-              subtitle="ACV contribution by territory"
+              subtitle="ACV contribution and deal volume by territory"
               data={(summary.regions || []).map((r: any) => ({
                 label: r.region,
                 value: r.acv || 0,
                 formattedValue: formatACV(r.acv),
                 percentage: r.pct_acv || (summary.total?.acv ? Number(((r.acv / summary.total.acv) * 100).toFixed(1)) : 0),
+                sublabel: `${formatCount(r.count || 0)} ${r.count === 1 ? 'deal' : 'deals'}`,
+                dealsCount: r.count || 0,
                 color: getRegionColor(r.region),
                 onClick: () => handleDrill(`${r.region} Deals`, { region: r.region }),
               }))}

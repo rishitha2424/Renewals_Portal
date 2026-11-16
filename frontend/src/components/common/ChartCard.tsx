@@ -10,6 +10,7 @@ export interface ChartDatum {
   percentage?: number
   color?: string
   sublabel?: string
+  dealsCount?: number
   onClick?: () => void
   series?: { name: string; value: number; color?: string; formattedValue?: string }[]
 }
@@ -114,30 +115,87 @@ export default function ChartCard({
               })}
             </div>
           ) : type === 'vertical-bars' ? (
-            <div className="flex-1 flex items-end justify-between gap-2 pt-4 pb-1 border-b border-[var(--border-subtle)] min-h-[160px]">
+            <div className="flex-1 flex flex-col h-full min-h-0 pt-1 pb-0.5 overflow-hidden">
               {(() => {
                 const maxVal = Math.max(...data.map((d) => d.value), 1)
-                return data.map((d) => {
-                  const heightPct = Math.max(8, (d.value / maxVal) * 100)
-                  return (
-                    <div
-                      key={d.label}
-                      onClick={d.onClick}
-                      className={clsx('flex-1 flex flex-col items-center justify-end h-full gap-1 group', d.onClick && 'cursor-pointer')}
-                    >
-                      <span className="text-[10px] font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                        {d.formattedValue ?? d.value}
-                      </span>
-                      <div
-                        className="w-full max-w-[48px] rounded-t-md transition-all group-hover:opacity-85 shadow-xs"
-                        style={{ height: `${heightPct}%`, backgroundColor: d.color || toneDef.hex }}
-                      />
-                      <span className="text-[11px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
-                        {d.label}
-                      </span>
+                return (
+                  <>
+                    {/* Upper section: values, percentage badge & bars rising from baseline */}
+                    <div className="flex-1 flex items-end justify-between gap-2 px-1 min-h-0">
+                      {data.map((d) => {
+                        const heightPct = Math.max(8, (d.value / maxVal) * 100)
+                        const barColor = d.color || toneDef.hex
+                        const isPctInValue = d.formattedValue?.includes('%')
+                        return (
+                          <div
+                            key={d.label}
+                            onClick={d.onClick}
+                            className={clsx(
+                              'flex-1 flex flex-col items-center justify-end h-full group min-w-0',
+                              d.onClick ? 'cursor-pointer' : 'cursor-default'
+                            )}
+                          >
+                            {/* Value & percentage badge above the bar */}
+                            <div className="flex flex-col items-center gap-0.5 mb-1.5 transition-transform duration-200 group-hover:-translate-y-0.5">
+                              <span className="text-[11px] sm:text-xs font-bold text-[var(--text-primary)] tabular-nums whitespace-nowrap">
+                                {d.formattedValue ?? d.value}
+                              </span>
+                              {d.percentage != null && !isPctInValue && (
+                                <span className="text-[10px] font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums">
+                                  {d.percentage.toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Bar pillar with subtle background track */}
+                            <div className="w-full max-w-[50px] h-full flex items-end justify-center rounded-t-lg bg-slate-100/90 dark:bg-slate-800/60 p-0.5 transition-colors group-hover:bg-slate-200/90 dark:group-hover:bg-slate-700/60">
+                              <div
+                                className="w-full rounded-t-md transition-all duration-300 shadow-xs relative overflow-hidden group-hover:brightness-105"
+                                style={{
+                                  height: `${heightPct}%`,
+                                  backgroundColor: barColor,
+                                  backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.08), rgba(255,255,255,0.18))',
+                                }}
+                              >
+                                {/* Subtle top gleam highlight */}
+                                <div className="absolute top-0 inset-x-0 h-[2px] bg-white/50" />
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })
+
+                    {/* Baseline separator */}
+                    <div className="h-px w-full bg-[var(--border)] my-1 shrink-0" />
+
+                    {/* Lower section: Category label + Deal count badge */}
+                    <div className="flex items-start justify-between gap-2 px-1 pt-0.5 shrink-0">
+                      {data.map((d) => (
+                        <div
+                          key={d.label}
+                          onClick={d.onClick}
+                          className={clsx(
+                            'flex-1 flex flex-col items-center text-center group min-w-0',
+                            d.onClick ? 'cursor-pointer' : 'cursor-default'
+                          )}
+                        >
+                          <span
+                            className="text-[11px] font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate w-full"
+                            title={d.label}
+                          >
+                            {d.label}
+                          </span>
+                          {(d.sublabel || d.dealsCount != null) && (
+                            <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] group-hover:border-[var(--brand-teal)] group-hover:text-[var(--brand-teal)] transition-colors tabular-nums whitespace-nowrap">
+                              {d.sublabel ?? `${d.dealsCount} ${d.dealsCount === 1 ? 'deal' : 'deals'}`}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
               })()}
             </div>
           ) : type === 'grouped-columns' ? (

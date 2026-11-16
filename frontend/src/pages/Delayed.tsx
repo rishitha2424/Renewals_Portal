@@ -1071,8 +1071,10 @@ function DelayedContent() {
               data={lostByBu.map((bu) => ({
                 label: bu.name,
                 value: bu.acv,
-                formattedValue: `${formatACV(bu.acv)} (${bu.count} deals)`,
+                formattedValue: formatACV(bu.acv),
                 percentage: bu.pct,
+                sublabel: `${bu.count} ${bu.count === 1 ? 'deal' : 'deals'}`,
+                dealsCount: bu.count,
                 color: '#64748B',
                 onClick: () => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', business_unit: bu.name }),
               }))}
@@ -1181,7 +1183,9 @@ function DelayedContent() {
               data={reviewList.map((t: any) => ({
                 label: t.title,
                 value: t.acv || 0,
-                formattedValue: `${formatACV(t.acv || 0)} (${t.count} deals)`,
+                formattedValue: formatACV(t.acv || 0),
+                sublabel: `${t.count} ${t.count === 1 ? 'deal' : 'deals'}`,
+                dealsCount: t.count,
                 color: '#F59E0B',
                 onClick: () => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id }),
               }))}

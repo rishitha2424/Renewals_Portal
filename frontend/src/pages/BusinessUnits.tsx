@@ -546,6 +546,8 @@ function BusinessUnitsContent() {
               value: cAcv + clAcv,
               formattedValue: `${cov.toFixed(1)}%`,
               percentage: cov,
+              sublabel: r.count ? `${formatCount(r.count)} ${r.count === 1 ? 'deal' : 'deals'}` : undefined,
+              dealsCount: r.count,
               color: '#2563EB',
               onClick: () => handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`),
             }
