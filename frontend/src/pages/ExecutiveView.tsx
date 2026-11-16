@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar } from 'lucide-react'
+import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar, ArrowLeft, ArrowUp } from 'lucide-react'
 import {
   getV2OverviewSummary,
   getApprovalsDistribution,
@@ -27,6 +28,22 @@ import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 export default function ExecutiveView() {
   const { activeSnapshotId, setActiveSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
   const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
+  const navigate = useNavigate()
+  const [scrollProgress, setScrollProgress] = useState(0)
+  const [showScrollTop, setShowScrollTop] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight
+      if (totalHeight > 0) {
+        setScrollProgress(Math.min(100, Math.max(0, (window.scrollY / totalHeight) * 100)))
+      }
+      setShowScrollTop(window.scrollY > 300)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const { data: fetchedSnapshots = [] } = useQuery({
     queryKey: ['snapshots'],
@@ -374,13 +391,51 @@ export default function ExecutiveView() {
         }
       `}</style>
 
+      {/* Scroll Progress Bar (Screen only) */}
+      <div className="fixed top-0 left-0 right-0 h-[3px] bg-slate-200 z-50 no-print">
+        <div
+          className="h-full bg-[#00A3AD] transition-all duration-75"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
+      {/* Floating Quick Scroll to Top (Screen only) */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 p-2.5 rounded-full bg-[#12284C] text-white shadow-lg hover:bg-[#00A3AD] transition-all duration-200 z-40 no-print flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+          title="Scroll to top"
+          id="exec-floating-top-btn"
+        >
+          <ArrowUp size={16} />
+          <span className="hidden sm:inline">Top</span>
+        </button>
+      )}
+
       {/* Action Bar (hidden in print) */}
       <div className="no-print flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-200">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              try {
+                if (window.history.length > 1) {
+                  navigate(-1)
+                } else {
+                  navigate('/')
+                }
+              } catch {
+                navigate('/')
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition cursor-pointer"
+            id="exec-back-btn"
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
           <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 size={13} className="mr-1 text-emerald-600" /> Standalone Print Report
           </span>
-          <span className="text-xs text-slate-500">Opens in new tab · Optimized for A4 / PDF export</span>
+          <span className="text-xs text-slate-500 hidden sm:inline">Opens in new tab · Optimized for A4 / PDF export</span>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -507,8 +562,8 @@ export default function ExecutiveView() {
       {/* Forecast Category Summary table */}
       <section id="exec-forecast" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-blue-50/60 border-b border-slate-200 border-l-4 border-l-blue-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-blue-900">
               1. Forecast Category Summary
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
@@ -552,8 +607,8 @@ export default function ExecutiveView() {
       {/* Movement vs yesterday and vs last week */}
       <section id="exec-movement" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-teal-50/60 border-b border-slate-200 border-l-4 border-l-[#00A3AD] flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-teal-900">
               2. Movement vs. Historical Baselines
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
@@ -754,8 +809,8 @@ export default function ExecutiveView() {
       {/* Business Unit table */}
       <section id="exec-bu" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-blue-50/60 border-b border-slate-200 border-l-4 border-l-blue-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-blue-900">
               6. Business Unit Breakdown
             </h2>
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
@@ -808,8 +863,8 @@ export default function ExecutiveView() {
       <section id="exec-delayed" className="scroll-mt-24 mb-6 space-y-6 page-break-avoid">
         {/* 7a. Delayed Renewals Summary */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-rose-50/60 border-b border-slate-200 border-l-4 border-l-rose-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-rose-900">
               7a. Delayed Renewals Summary
             </h2>
             <div className="flex items-center gap-2">
@@ -931,8 +986,8 @@ export default function ExecutiveView() {
 
         {/* 7c. Lost since start of quarter (Outside both totals) */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 border-l-4 border-l-slate-500">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-slate-800">
               7c. Lost since start of quarter
             </h2>
           </div>
