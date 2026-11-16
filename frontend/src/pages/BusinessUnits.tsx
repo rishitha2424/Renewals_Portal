@@ -452,7 +452,7 @@ function BusinessUnitsContent() {
 
       {/* 3. Equal-Height Grid: Heatmap (max-content) + BU Signals & Commit Coverage (1fr) + BU Share Donut (340px) */}
       <div id="bu-heatmap-share" className="scroll-mt-24">
-        <CardRow cols="max-content minmax(320px, 1fr) 340px" gap="gap-6">
+        <CardRow cols="max-content minmax(0, 1fr) minmax(300px, 340px)" gap="gap-6">
           {/* Heatmap Card (max-content) */}
           <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full w-full max-w-full">
             <div className="flex-1 min-h-0 flex flex-col">
@@ -474,6 +474,7 @@ function BusinessUnitsContent() {
                   lastweekDate={summary.lastweek_date}
                   heatMode={heatMode}
                   hideCardWrapper={true}
+                  fillMode={true}
                 />
               </div>
             </div>
@@ -500,12 +501,11 @@ function BusinessUnitsContent() {
           </div>
 
           {/* Middle: BU Signals + Commit Coverage Vertical Column Chart */}
-          <div className="flex flex-col gap-5 h-full">
+          <div className="flex flex-col gap-4 h-full min-w-0">
             <InsightCard
               title="Business unit signals"
               subtitle="Key signals and commitment trajectory"
               insights={getBusinessUnitsInsights(summary, (title, p) => handleCellClick(p?.bu, p?.category, title))}
-              className="flex-1"
             />
 
             <ChartCard
@@ -525,7 +525,7 @@ function BusinessUnitsContent() {
                   onClick: () => handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`),
                 }
               })}
-              className="flex-1"
+              className="flex-1 min-h-[180px]"
             />
           </div>
 
@@ -547,7 +547,7 @@ function BusinessUnitsContent() {
                 onClick: () => handleBuShareClick(r.bu),
               }
             })}
-            className="w-full max-w-[340px]"
+            className="w-full max-w-[340px] min-w-0"
           />
         </CardRow>
       </div>
@@ -774,13 +774,40 @@ function BusinessUnitsContent() {
             </div>
           </div>
 
-          {/* Right: Highlights Card */}
-          <InsightCard
-            title="BU opportunity signals"
-            subtitle="Deal concentration and key upside signals"
-            insights={getBuTopDealsInsights(topOppsData?.deals || [], total.acv, (id) => setSelectedOppId(id))}
-            className="h-full"
-          />
+          {/* Right: Highlights Card + Top deals by category chart (D) */}
+          {(() => {
+            const deals = filteredTopDeals || []
+            const catMap: Record<string, number> = {}
+            deals.forEach((d: any) => {
+              const c = d.forecast_category || 'Other'
+              catMap[c] = (catMap[c] || 0) + (d.forecast_acv_amount || 0)
+            })
+            const catData = Object.entries(catMap).map(([c, val]) => ({
+              label: c,
+              value: val,
+              formattedValue: formatACV(val),
+              color: c === 'Commit' ? '#10B981' : c === 'Best Case' ? '#F59E0B' : '#64748B',
+            }))
+
+            return (
+              <div className="h-full flex flex-col gap-3 min-w-0">
+                <InsightCard
+                  title="BU opportunity signals"
+                  subtitle="Deal concentration and key upside signals"
+                  insights={getBuTopDealsInsights(topOppsData?.deals || [], total.acv, (id) => setSelectedOppId(id))}
+                />
+                {catData.length > 0 && (
+                  <ChartCard
+                    title="Top deals by category"
+                    subtitle="ACV distribution among listed opportunities"
+                    type="horizontal-bars"
+                    data={catData}
+                    className="flex-1 min-h-[140px]"
+                  />
+                )}
+              </div>
+            )
+          })()}
         </CardRow>
       </div>
 
