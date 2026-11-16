@@ -426,7 +426,7 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
   const appMap = approvalsData.statuses || []
 
   // Commit unapproved
-  const commitUnapproved = approvalsData.commit_unapproved || approvalsData.unapproved_commit
+  const commitUnapproved = approvalsData.commit_not_approved || approvalsData.commit_unapproved || approvalsData.unapproved_commit
   if (commitUnapproved && commitUnapproved.count > 0) {
     items.push({
       id: 'app-commit-unapproved',
@@ -437,7 +437,7 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
         </span>
       ),
       linkText: 'Inspect',
-      onLinkClick: onDrill ? () => onDrill('Unapproved Commit Deals', { forecast_category: 'Commit', approval_status: 'Blank' }) : undefined,
+      onLinkClick: onDrill ? () => onDrill('Unapproved Commit Deals', { forecast_category: 'Commit', approval_status: 'not_approved' }) : undefined,
     })
   }
 
@@ -468,6 +468,19 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
       text: (
         <span>
           Portfolio readiness: <strong>{aShare}%</strong> ({acvM(approvedStatus.acv)}) of contract value has achieved complete approval.
+        </span>
+      ),
+    })
+  }
+
+  // Approval coverage benchmark
+  if (approvalsData.approval_coverage?.portfolio_average_pct != null) {
+    items.push({
+      id: 'app-cov-benchmark',
+      icon: CheckCircle2,
+      text: (
+        <span>
+          Approval coverage benchmark: portfolio average stands at <strong>{approvalsData.approval_coverage.portfolio_average_pct}%</strong> approved ACV.
         </span>
       ),
     })

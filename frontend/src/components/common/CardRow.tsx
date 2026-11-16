@@ -2,6 +2,7 @@ import React from 'react'
 import { clsx } from 'clsx'
 
 export interface CardRowProps {
+  id?: string
   cols?: string
   template?: string
   gap?: string
@@ -18,6 +19,7 @@ export interface CardRowProps {
  * Responsive: Stacks to 1 column below 1100px.
  */
 export default function CardRow({
+  id,
   cols,
   template,
   gap = 'gap-4',
@@ -29,6 +31,7 @@ export default function CardRow({
 
   return (
     <div
+      id={id}
       className={clsx('card-row-grid', gap, className)}
       style={{
         ['--card-row-cols' as any]: colDef,
