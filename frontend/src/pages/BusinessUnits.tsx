@@ -29,6 +29,7 @@ import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import Tile from '@/components/common/Tile'
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
@@ -378,124 +379,42 @@ function BusinessUnitsContent() {
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
       <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         {/* Card 1: Total Portfolio ACV */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Total Portfolio ACV">
-                Total Portfolio ACV
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {formatCount(total.count)} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {formatACV(total.acv)}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              {data_slice}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
+        <Tile
+          title="Total Portfolio ACV"
+          amount={formatACV(total.acv)}
+          count={total.count}
+          subtitle={data_slice}
+          deltaYesterday={{ count: totals?.grand?.delta_yesterday?.count, acv: totals?.grand?.delta_yesterday?.acv }}
+          deltaLastWeek={{ count: totals?.grand?.delta_lastweek?.count, acv: totals?.grand?.delta_lastweek?.acv }}
+        />
 
         {/* Card 2: Active Business Units */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Active Business Units">
-                Active Business Units
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {numBUs} units
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {numBUs}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              Tracked individually
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs text-[var(--text-muted)]">—</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs text-[var(--text-muted)]">—</span>
-            </div>
-          </div>
-        </div>
+        <Tile
+          title="Active Business Units"
+          amount={numBUs}
+          badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{numBUs} units</span>}
+          subtitle="Tracked individually"
+        />
 
         {/* Card 3: Largest Business Unit */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Largest Business Unit">
-                Largest Business Unit
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {largestBuPct}% of total
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight truncate" title={largestBu?.bu || '—'}>
-              {largestBu?.bu || '—'}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              {formatACV(largestBu?.acv || 0)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
+        <Tile
+          title="Largest Business Unit"
+          amount={largestBu?.bu || '—'}
+          badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{largestBuPct}% of total</span>}
+          subtitle={formatACV(largestBu?.acv || 0)}
+          deltaYesterday={{ count: largestBu?.delta_yesterday?.count, acv: largestBu?.delta_yesterday?.acv }}
+          deltaLastWeek={{ count: largestBu?.delta_lastweek?.count, acv: largestBu?.delta_lastweek?.acv }}
+        />
 
         {/* Card 4: Commit Coverage */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Commit Coverage">
-                Commit Coverage
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {formatACV(totalCommit)} Commit
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {commitCov}%
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              Commit / Total ACV
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
+        <Tile
+          title="Commit Coverage"
+          amount={`${commitCov}%`}
+          badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{formatACV(totalCommit)} Commit</span>}
+          subtitle="Commit / Total ACV"
+          deltaYesterday={{ count: totals?.categories?.['Commit']?.delta_yesterday?.count, acv: totals?.categories?.['Commit']?.delta_yesterday?.acv }}
+          deltaLastWeek={{ count: totals?.categories?.['Commit']?.delta_lastweek?.count, acv: totals?.categories?.['Commit']?.delta_lastweek?.acv }}
+        />
       </div>
 
       {/* 3. Equal-Height 12-Column Grid: Heatmap (8 cols) + BU Share (4 cols) */}

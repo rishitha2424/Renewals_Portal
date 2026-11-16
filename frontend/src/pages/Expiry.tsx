@@ -20,6 +20,7 @@ import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import Tile from '@/components/common/Tile'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -258,61 +259,27 @@ export default function Expiry() {
       {/* Grand Total & Slippage KPI Strip */}
       <ErrorBoundary compact sectionTitle="Expiry Totals">
       <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
-        <Card
-          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
+        <Tile
+          accentColor="#6366f1"
           onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
-        >
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={`FY${fy1} All-Years Total Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}>
-                FY{fy1} All-Years Total Expiry ({periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {grandTotal.count} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {formatCurrency(grandTotal.acv)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className={`text-xs tabular-nums text-right ${yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : yestGrand?.acv && yestGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className={`text-xs tabular-nums text-right ${lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : lastGrand?.acv && lastGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
-              </span>
-            </div>
-          </div>
-        </Card>
+          title={`FY${fy1} All-Years Total Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
+          amount={formatCurrency(grandTotal.acv)}
+          count={grandTotal.count}
+          deltaYesterday={yestGrand ? { count: yestGrand.count, acv: yestGrand.acv } : null}
+          deltaLastWeek={lastGrand ? { count: lastGrand.count, acv: lastGrand.acv } : null}
+        />
 
-        <Card
-          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-amber-500"
+        <Tile
+          accentColor="#f59e0b"
+          polarity="bad_when_higher"
           onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
-        >
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-amber-600 dark:text-amber-400 truncate" title={`Slippage to FY${fy2}`}>
-                Slippage to FY{fy2}
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {sum.slippage?.count ?? 0} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400 tracking-tight">
-              {formatCurrency(sum.slippage?.acv ?? 0)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">{sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}</span>
-            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:underline">View slippage deals →</span>
-          </div>
-        </Card>
+          title={`Slippage to FY${fy2}`}
+          amount={formatCurrency(sum.slippage?.acv ?? 0)}
+          count={sum.slippage?.count ?? 0}
+          subtitle={sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}
+          onDealsClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
+          viewDealsText="View slippage deals →"
+        />
       </div>
       </ErrorBoundary>
 

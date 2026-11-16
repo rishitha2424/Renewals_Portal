@@ -28,6 +28,7 @@ import { formatCurrency, formatNumber, acvM, formatDate, getApprovalStatusLabel,
 import { DEFINITIONS } from '@/config/definitions'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
+import Tile from '@/components/common/Tile'
 import { PageErrorState } from '@/components/ui/PageErrorState'
 import MetricToggle from '@/components/common/MetricToggle'
 import CompactGrid from '@/components/common/CompactGrid'
@@ -88,40 +89,21 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSet
   }
 
   return (
-    <div className="card p-4 flex flex-col justify-between gap-2.5 transition-colors hover:border-[var(--brand-teal)]">
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-[var(--text-muted)] truncate flex items-center gap-1" title={tooltip || label}>
-            <span>{label}</span>
-            {tooltip && (
-              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={tooltip}>i</span>
-            )}
-          </span>
-          <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatNumber(data.count)} deals</span>
-        </div>
-        {pctOfPeriod != null && (
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            {pctOfPeriod.toFixed(1)}% of period ACV
+    <Tile
+      title={label}
+      amount={isBoth || isAmount ? acvM(data.acv) : `${formatNumber(data.count)} deals`}
+      count={data.count}
+      badge={
+        tooltip ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{formatNumber(data.count)} deals</span>
+            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={tooltip}>i</span>
           </div>
-        )}
-        {isBoth ? (
-          <div className="flex flex-col">
-            <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight" title={formatCurrency(data.acv)}>
-              {acvM(data.acv)}
-            </span>
-          </div>
-        ) : isAmount ? (
-          <div className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight" title={formatCurrency(data.acv)}>
-            {acvM(data.acv)}
-          </div>
-        ) : (
-          <div className="text-2xl font-bold text-[var(--text-primary)] tabular-nums tracking-tight">
-            {formatNumber(data.count)} deals
-          </div>
-        )}
-      </div>
-      <div>{renderDeltas()}</div>
-    </div>
+        ) : undefined
+      }
+      subtitle={pctOfPeriod != null ? `${pctOfPeriod.toFixed(1)}% of period ACV` : undefined}
+      footer={renderDeltas()}
+    />
   )
 }
 
