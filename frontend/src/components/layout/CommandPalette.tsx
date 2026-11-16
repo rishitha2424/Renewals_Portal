@@ -39,15 +39,14 @@ export default function CommandPalette() {
 
   const COMMANDS: CommandItem[] = [
     { id: 'overview', label: 'Overview', category: 'Navigation', icon: LayoutDashboard, to: '/' },
-    { id: 'expiry', label: 'Expiry Quarters', category: 'Navigation', icon: Calendar, to: '/expiry' },
-    { id: 'approvals', label: 'Approvals Status', category: 'Navigation', icon: CheckCircle2, to: '/approvals' },
+    { id: 'executive', label: 'Executive Summary', category: 'Navigation', icon: Printer, to: '/executive' },
+    { id: 'regions', label: 'Regions', category: 'Navigation', icon: Globe2, to: '/regions' },
     { id: 'bu', label: 'Business Units', category: 'Navigation', icon: Building2, to: '/business-units' },
-    { id: 'regions', label: 'Top Regions', category: 'Navigation', icon: Globe2, to: '/regions' },
+    { id: 'approvals', label: 'Approvals', category: 'Navigation', icon: CheckCircle2, to: '/approvals' },
     { id: 'delayed', label: 'Delayed Renewals', category: 'Navigation', icon: Clock, to: '/delayed' },
-
+    { id: 'expiry', label: 'Expiry', category: 'Navigation', icon: Calendar, to: '/expiry' },
     { id: 'explore', label: 'Data Explorer', category: 'Navigation', icon: Table2, to: '/opportunities' },
-    { id: 'data-uploads', label: 'Data Uploads & History', category: 'Navigation', icon: Upload, to: '/data-uploads' },
-    { id: 'executive', label: 'Executive View (Print)', category: 'Navigation', icon: Printer, to: '/executive' },
+    { id: 'data-uploads', label: 'Data Uploads', category: 'Navigation', icon: Upload, to: '/data-uploads' },
     {
       id: 'theme',
       label: darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme',
