@@ -36,6 +36,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import Tile from '@/components/common/Tile'
+import { getRegionColor } from '@/design/conceptColors'
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 
@@ -50,7 +51,7 @@ function RegionsContent() {
 
   const [compare] = useState<'yesterday' | 'last_week'>('yesterday')
   const [heatMode, setHeatMode] = useState<'Value' | 'Yesterday' | 'LastWeek'>('Value')
-  const [selectedRegion, setSelectedRegion] = useState<string>('All')
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   
   // Drill-through state
   const [modalOpen, setModalOpen] = useState(false)
@@ -76,40 +77,43 @@ function RegionsContent() {
     },
   })
 
-  // Fetch Selected Region details if not "All"
+  // Fetch Selected Region details if a region is selected
   const { data: regionDetail, isLoading: isDetailLoading } = useQuery({
     queryKey: ['v2-regions-detail', activeSnapshotId, selectedRegion],
     queryFn: async () => {
+      if (!selectedRegion) return null
       const res = await api.get(`/v2/regions/${selectedRegion}/summary`, {
         params: { as_of: activeSnapshotId ?? undefined }
       })
       return res.data
     },
-    enabled: selectedRegion !== 'All'
+    enabled: Boolean(selectedRegion)
   })
 
   // Fetch Movements for selected region
   const { data: movementsData } = useQuery({
     queryKey: ['v2-regions-movements', activeSnapshotId, selectedRegion, moveCompare],
     queryFn: async () => {
+      if (!selectedRegion) return null
       const res = await api.get(`/v2/regions/${selectedRegion}/movements`, {
         params: { as_of: activeSnapshotId ?? undefined, compare: moveCompare }
       })
       return res.data
     },
-    enabled: selectedRegion !== 'All'
+    enabled: Boolean(selectedRegion)
   })
 
   // Fetch Top Opps for selected region
   const { data: topOppsData } = useQuery({
     queryKey: ['v2-regions-top', activeSnapshotId, selectedRegion],
     queryFn: async () => {
+      if (!selectedRegion) return null
       const res = await api.get(`/v2/regions/${selectedRegion}/top-opportunities`, {
         params: { as_of: activeSnapshotId ?? undefined }
       })
       return res.data
     },
-    enabled: selectedRegion !== 'All'
+    enabled: Boolean(selectedRegion)
   })
 
   // Fetch Deals for Modal
@@ -162,7 +166,7 @@ function RegionsContent() {
     if (summary?.regions && summary.regions.length > 0) {
       list.push({ id: 'regions-tiles', title: 'Regional Overview' })
     }
-    if (selectedRegion !== 'All') {
+    if (selectedRegion) {
       list.push({ id: 'regions-deep-dive', title: `${selectedRegion} Deep Dive` })
     }
     if (summary?.regions && summary.regions.length > 0) {
@@ -339,64 +343,74 @@ function RegionsContent() {
         </div>
       )}
 
-      {/* Hint & Tiles */}
-      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-medium">
-        <MousePointerClick className="w-3.5 h-3.5 text-[var(--brand-teal)]" />
-        <span>Click a region to see its details below</span>
+      {/* Slim Summary Strip */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-xs font-medium text-[var(--text-secondary)]">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-[var(--text-primary)]">Total {data_slice}:</span>
+          <span className="font-extrabold text-[var(--text-primary)] tabular-nums">{formatACV(summary?.total?.acv ?? 0)}</span>
+          <span>·</span>
+          <span className="tabular-nums font-semibold">{formatCount(summary?.total?.count ?? 0)} deals</span>
+        </div>
+        <button
+          onClick={() => handleDrill(`All Regions (${data_slice})`, {})}
+          className="text-[var(--brand-teal)] hover:underline font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
+        >
+          View all deals →
+        </button>
       </div>
 
-      <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
-        <Tile
-          title="All Regions"
-          amount={
-            metricMode === 'Count' ? formatCount(summary.total?.count ?? 0) : 
-            metricMode === 'Amount' ? formatACV(summary.total?.acv ?? 0) : 
-            `${formatCount(summary.total?.count ?? 0)} · ${formatACV(summary.total?.acv ?? 0)}`
-          }
-          count={summary.total?.count ?? 0}
-          isSelected={selectedRegion === 'All'}
-          badge={selectedRegion === 'All' ? (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--brand-teal)]/10 text-[var(--brand-teal)] border border-[var(--brand-teal)]/30 text-[10px] font-bold">
-              <Check className="w-3 h-3" /> Selected
-            </span>
-          ) : undefined}
-          onClick={() => setSelectedRegion('All')}
-          onDealsClick={() => handleDrill(`All Regions (${data_slice})`, {})}
-          viewDealsText="View deals →"
-          deltaYesterday={{ count: summary.total?.delta_yesterday?.count, acv: summary.total?.delta_yesterday?.acv }}
-          deltaLastWeek={{ count: summary.total?.delta_lastweek?.count, acv: summary.total?.delta_lastweek?.acv }}
-        />
-
+      {/* 3 Region Tiles per row */}
+      <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 scroll-mt-24">
         {tileOrder.map(rname => {
           const reg = regions.find((r: any) => r.region === rname)
           if (!reg) return null
           const isSelected = selectedRegion === rname
+          const regColor = getRegionColor(rname)
           
           return (
             <Tile
               key={rname}
               title={rname}
+              accentColor={regColor}
               amount={
                 metricMode === 'Count' ? formatCount(reg.count) : 
                 metricMode === 'Amount' ? formatACV(reg.acv) : 
                 `${formatCount(reg.count)} · ${formatACV(reg.acv)}`
               }
-              count={metricMode === 'Count' ? reg.count : `${reg.pct_acv}%`}
-              dealsLabel={metricMode === 'Count' ? 'deals' : ''}
+              count={`${reg.pct_acv}%`}
+              dealsLabel="share"
               isSelected={isSelected}
+              className="hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer"
               badge={isSelected ? (
-                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--brand-teal)]/10 text-[var(--brand-teal)] border border-[var(--brand-teal)]/30 text-[10px] font-bold">
+                <span
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border"
+                  style={{ backgroundColor: `${regColor}20`, color: regColor, borderColor: `${regColor}40` }}
+                >
                   <Check className="w-3 h-3" /> Selected
                 </span>
               ) : undefined}
               onClick={() => {
-                setSelectedRegion(rname)
-                setTimeout(() => {
-                  document.getElementById('regions-deep-dive')?.scrollIntoView({ behavior: 'smooth' })
-                }, 50)
+                if (isSelected) {
+                  setSelectedRegion(null)
+                } else {
+                  setSelectedRegion(rname)
+                  setTimeout(() => {
+                    document.getElementById('regions-deep-dive')?.scrollIntoView({ behavior: 'smooth' })
+                  }, 60)
+                }
               }}
-              onDealsClick={() => handleDrill(`${rname} Deals`, { region: rname })}
+              onDealsClick={(e) => {
+                e.stopPropagation()
+                handleDrill(`${rname} Deals`, { region: rname })
+              }}
               viewDealsText="View deals →"
+              footer={
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <span className="font-semibold text-xs flex items-center gap-1 text-[var(--brand-teal)]">
+                    Details ↓
+                  </span>
+                </div>
+              }
               deltaYesterday={{ count: reg.delta_yesterday?.count, acv: reg.delta_yesterday?.acv }}
               deltaLastWeek={{ count: reg.delta_lastweek?.count, acv: reg.delta_lastweek?.acv }}
             />
@@ -404,8 +418,17 @@ function RegionsContent() {
         })}
       </div>
 
+      {/* Callout chip with down arrow directly under the tiles row */}
+      <div className="flex justify-center my-2">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-medium shadow-xs">
+          <MousePointerClick className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span>Click a region to see its details below</span>
+          <span className="text-blue-500 font-bold">↓</span>
+        </div>
+      </div>
+
       {/* SELECTED REGION DEEP DIVE */}
-      {selectedRegion !== 'All' && (
+      {selectedRegion && (
         <div id="regions-deep-dive" className="space-y-6 scroll-mt-24">
           <Card className="p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-6">
             {/* Header with Title and Quick Exit */}
@@ -423,7 +446,7 @@ function RegionsContent() {
               </div>
               <button
                 onClick={() => {
-                  setSelectedRegion('All')
+                  setSelectedRegion(null)
                   document.getElementById('regions-tiles')?.scrollIntoView({ behavior: 'smooth' })
                 }}
                 className="text-xs font-semibold px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] transition-colors flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
@@ -436,124 +459,82 @@ function RegionsContent() {
 
             {/* Top Stat Cards */}
             {regionDetail && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {/* 1. Region ACV & Deals */}
-                <div 
+                <Tile
+                  title="Total ACV"
+                  tone="total"
+                  amount={formatACV(regionDetail.acv)}
+                  count={regionDetail.count}
+                  dealsLabel="deals"
+                  subtitle={`${regionDetail.pct_acv}% of portfolio`}
                   onClick={() => handleDrill(`${selectedRegion} Deals`, { region: selectedRegion })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
-                >
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span className="font-medium">Total ACV & Deals</span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-500" />
-                  </div>
-                  <div className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">
-                    {formatACV(regionDetail.acv)}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {formatCount(regionDetail.count)} deals ({regionDetail.pct_acv}% of portfolio)
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-gray-200/60 dark:border-gray-800">
-                    {renderDelta(regionDetail.delta_yesterday?.count, regionDetail.delta_yesterday?.acv, false)}
-                  </div>
-                </div>
+                  viewDealsText="View deals →"
+                  deltaYesterday={{ count: regionDetail.delta_yesterday?.count, acv: regionDetail.delta_yesterday?.acv }}
+                  deltaLastWeek={{ count: regionDetail.delta_lastweek?.count, acv: regionDetail.delta_lastweek?.acv }}
+                />
 
                 {/* 2. Commit Coverage & Portfolio Gap */}
-                <div 
-                  onClick={() => handleDrill(`${selectedRegion} Commit Coverage Deals`, { region: selectedRegion, categories: 'Commit,Closed' })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
-                >
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span className="font-medium flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-blue-500" /> Commit Coverage
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-500" />
-                  </div>
-                  <div className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">
-                    {regionDetail.commit_pct}%
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-                    <span>Portfolio: {regionDetail.commit_coverage?.portfolio_pct}%</span>
+                <Tile
+                  title="Commit Coverage"
+                  tone="commit"
+                  amount={`${regionDetail.commit_pct}%`}
+                  subtitle={`Portfolio: ${regionDetail.commit_coverage?.portfolio_pct}%`}
+                  badge={
                     <span className={cn(
-                      "font-semibold",
-                      (regionDetail.commit_coverage?.gap || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                      (regionDetail.commit_coverage?.gap || 0) >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                     )}>
-                      ({(regionDetail.commit_coverage?.gap || 0) >= 0 ? '+' : ''}{regionDetail.commit_coverage?.gap} pts)
+                      {(regionDetail.commit_coverage?.gap || 0) >= 0 ? '+' : ''}{regionDetail.commit_coverage?.gap} pts
                     </span>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">Closed + Commit ACV</div>
-                </div>
+                  }
+                  onClick={() => handleDrill(`${selectedRegion} Commit Coverage Deals`, { region: selectedRegion, categories: 'Commit,Closed' })}
+                  viewDealsText="View deals →"
+                  footer={<div className="text-[11px] text-[var(--text-muted)]">Closed + Commit ACV</div>}
+                />
 
                 {/* 3. Approved % & Portfolio Gap */}
-                <div 
-                  onClick={() => handleDrill(`${selectedRegion} Approved Deals`, { region: selectedRegion, status: 'Approved' })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-blue-300 dark:hover:border-blue-700 transition-all group"
-                >
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span className="font-medium flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Approved Status
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-emerald-500" />
-                  </div>
-                  <div className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-emerald-600 transition-colors">
-                    {regionDetail.approved_pct}%
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-                    <span>Portfolio: {regionDetail.approved_pct_detail?.portfolio_pct}%</span>
+                <Tile
+                  title="Approved Status"
+                  tone="approved"
+                  amount={`${regionDetail.approved_pct}%`}
+                  subtitle={`Portfolio: ${regionDetail.approved_pct_detail?.portfolio_pct}%`}
+                  badge={
                     <span className={cn(
-                      "font-semibold",
-                      (regionDetail.approved_pct_detail?.gap || 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+                      "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                      (regionDetail.approved_pct_detail?.gap || 0) >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                     )}>
-                      ({(regionDetail.approved_pct_detail?.gap || 0) >= 0 ? '+' : ''}{regionDetail.approved_pct_detail?.gap} pts)
+                      {(regionDetail.approved_pct_detail?.gap || 0) >= 0 ? '+' : ''}{regionDetail.approved_pct_detail?.gap} pts
                     </span>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">Formal opportunity approvals</div>
-                </div>
+                  }
+                  onClick={() => handleDrill(`${selectedRegion} Approved Deals`, { region: selectedRegion, status: 'Approved' })}
+                  viewDealsText="View deals →"
+                  footer={<div className="text-[11px] text-[var(--text-muted)]">Formal opportunity approvals</div>}
+                />
 
                 {/* 4. Delayed Renewals Tile */}
-                <div 
+                <Tile
+                  title="Delayed"
+                  tone="delayed"
+                  amount={formatACV(regionDetail.delayed_acv || 0)}
+                  count={regionDetail.delayed_count || 0}
+                  dealsLabel="deals"
+                  subtitle="Service start in past"
                   onClick={() => handleDrill(`${selectedRegion} Delayed Renewals`, { region: selectedRegion, kind: 'delayed' })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-all group"
-                >
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span className="font-medium flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-amber-500" /> Delayed Renewals
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-amber-500" />
-                  </div>
-                  <div className={cn(
-                    "text-xl font-bold transition-colors",
-                    (regionDetail.delayed_count || 0) > 0 ? "text-amber-600 dark:text-amber-400 group-hover:text-amber-500" : "text-gray-900 dark:text-white"
-                  )}>
-                    {formatACV(regionDetail.delayed_acv || 0)}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {formatCount(regionDetail.delayed_count || 0)} deals
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">Service start in past</div>
-                </div>
+                  viewDealsText="View deals →"
+                />
 
                 {/* 5. Slippage Tile */}
-                <div 
+                <Tile
+                  title="Slippage"
+                  tone="slippage"
+                  amount={formatACV(regionDetail.slippage_acv || 0)}
+                  count={regionDetail.slippage_count || 0}
+                  dealsLabel="deals"
+                  subtitle="Close slipped to next year"
                   onClick={() => handleDrill(`${selectedRegion} Slippage Deals`, { region: selectedRegion, kind: 'slippage' })}
-                  className="p-4 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-100 dark:border-gray-800 cursor-pointer hover:border-purple-300 dark:hover:border-purple-700 transition-all group"
-                >
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span className="font-medium flex items-center gap-1">
-                      <CalendarX2 className="w-3.5 h-3.5 text-purple-500" /> Slippage
-                    </span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-purple-500" />
-                  </div>
-                  <div className={cn(
-                    "text-xl font-bold transition-colors",
-                    (regionDetail.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400 group-hover:text-purple-500" : "text-gray-900 dark:text-white"
-                  )}>
-                    {formatACV(regionDetail.slippage_acv || 0)}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {formatCount(regionDetail.slippage_count || 0)} deals
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">Close slipped to next year</div>
-                </div>
+                  viewDealsText="View deals →"
+                />
               </div>
             )}
 
@@ -825,58 +806,7 @@ function RegionsContent() {
                   )}
                 </div>
 
-                {/* 5. Top Opportunities Search */}
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Top Deals Search</h3>
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Search deals..."
-                        value={topSearch}
-                        onChange={(e) => setTopSearch(e.target.value)}
-                        className="pl-8 pr-3 py-1 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
-                      />
-                    </div>
-                  </div>
 
-                  {!topOppsData ? (
-                    <div className="h-28 flex items-center justify-center">
-                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {topOppsData
-                        .filter((o: any) => o.opportunity_name.toLowerCase().includes(topSearch.toLowerCase()) || o.account_name.toLowerCase().includes(topSearch.toLowerCase()))
-                        .map((opp: any, idx: number) => (
-                          <div 
-                            key={opp.id}
-                            onClick={() => setSelectedOppId(opp.id)}
-                            className="p-2.5 bg-gray-50 dark:bg-gray-900/40 rounded-lg hover:bg-blue-50/50 dark:hover:bg-blue-900/20 cursor-pointer border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-all flex items-center gap-2.5 text-xs"
-                          >
-                            <span className="w-5 text-center text-gray-400 font-bold">{idx + 1}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-gray-900 dark:text-white truncate">
-                                {opp.opportunity_name}
-                              </div>
-                              <div className="text-gray-500 truncate flex items-center gap-1.5 mt-0.5">
-                                <span>{opp.account_name}</span>
-                                <span>•</span>
-                                <span className="text-blue-600 dark:text-blue-400 font-medium">{opp.forecast_category}</span>
-                              </div>
-                            </div>
-                            <span className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                              {formatACV(opp.forecast_acv_amount)}
-                            </span>
-                          </div>
-                        ))}
-                      {topOppsData.length === 0 && (
-                        <div className="text-center py-6 text-gray-500 text-xs">No opportunities found</div>
-                      )}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* RIGHT COLUMN: Top Accounts, Top BUs, Delayed Deals */}
@@ -965,6 +895,59 @@ function RegionsContent() {
                     </div>
                   </div>
                 )}
+
+                {/* 3. Top Deals Search (Placed under BU Mix & Share for equal column height) */}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Top Deals Search</h3>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search deals..."
+                        value={topSearch}
+                        onChange={(e) => setTopSearch(e.target.value)}
+                        className="pl-8 pr-3 py-1 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
+                      />
+                    </div>
+                  </div>
+
+                  {!topOppsData ? (
+                    <div className="h-28 flex items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {topOppsData
+                        .filter((o: any) => o.opportunity_name.toLowerCase().includes(topSearch.toLowerCase()) || o.account_name.toLowerCase().includes(topSearch.toLowerCase()))
+                        .map((opp: any, idx: number) => (
+                          <div 
+                            key={opp.id}
+                            onClick={() => setSelectedOppId(opp.id)}
+                            className="p-2.5 bg-gray-50 dark:bg-gray-900/40 rounded-lg hover:bg-blue-50/50 dark:hover:bg-blue-900/20 cursor-pointer border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-all flex items-center gap-2.5 text-xs"
+                          >
+                            <span className="w-5 text-center text-gray-400 font-bold">{idx + 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-gray-900 dark:text-white truncate">
+                                {opp.opportunity_name}
+                              </div>
+                              <div className="text-gray-500 truncate flex items-center gap-1.5 mt-0.5">
+                                <span>{opp.account_name}</span>
+                                <span>•</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-medium">{opp.forecast_category}</span>
+                              </div>
+                            </div>
+                            <span className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                              {formatACV(opp.forecast_acv_amount)}
+                            </span>
+                          </div>
+                        ))}
+                      {topOppsData.length === 0 && (
+                        <div className="text-center py-6 text-gray-500 text-xs">No opportunities found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* 3. Delayed/Overdue Deals Table */}
                 {regionDetail?.delayed_deals?.deals && regionDetail.delayed_deals.deals.length > 0 && (
