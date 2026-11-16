@@ -663,15 +663,15 @@ function BusinessUnitsContent() {
         </div>
 
         {/* Opportunities Table */}
-        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="data-table w-full text-left text-xs whitespace-nowrap">
+        <div className="overflow-x-auto rounded-lg border border-[var(--border)] max-w-[1150px]">
+          <table className="data-table table-wide-fixed text-left text-xs whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0">
               <tr>
-                <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-3 font-semibold border-r border-[var(--border)] shadow-xs">Opportunity</th>
-                <th className="py-2.5 px-3 font-semibold">Account</th>
-                <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
-                <th className="py-2.5 px-3 font-semibold text-center">Forecast</th>
-                <th className="py-2.5 px-3 font-semibold">Close Date</th>
+                <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2 px-3 font-semibold border-r border-[var(--border)] shadow-xs col-opp">Opportunity</th>
+                <th className="py-2 px-3 font-semibold col-account">Account</th>
+                <th className="py-2 px-3 font-semibold text-right col-stat">ACV</th>
+                <th className="py-2 px-3 font-semibold text-center col-meta">Forecast</th>
+                <th className="py-2 px-3 font-semibold text-right col-date">Close Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -688,19 +688,19 @@ function BusinessUnitsContent() {
                     onClick={() => setSelectedOppId(d.opportunity_id_18)}
                     className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
                   >
-                    <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2.5 px-3 font-medium text-[var(--text-primary)] truncate max-w-[260px] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs" title={d.opportunity_name}>
+                    <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2 px-3 font-medium text-[var(--text-primary)] col-opp group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs" title={d.opportunity_name}>
                       {d.opportunity_name}
                     </td>
-                    <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[180px]">{d.account_name}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
+                    <td className="py-2 px-3 text-[var(--text-secondary)] col-account" title={d.account_name}>{d.account_name}</td>
+                    <td className="py-2 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)] col-stat">
                       {formatCurrency(d.forecast_acv_amount)}
                     </td>
-                    <td className="py-2.5 px-3 text-center">
+                    <td className="py-2 px-3 text-center col-meta">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${getCategoryBadgeStyle(d.forecast_category)}`}>
                         {d.forecast_category}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-[var(--text-muted)] font-mono">
+                    <td className="py-2 px-3 text-[var(--text-muted)] font-mono text-right col-date">
                       {d.close_date ? new Date(d.close_date).toLocaleDateString() : '—'}
                     </td>
                   </tr>

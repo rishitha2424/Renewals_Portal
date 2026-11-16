@@ -156,9 +156,12 @@
     border-bottom: 1px solid var(--border);
   }
 
+  /* Shared Data Table System (Item 1) */
   .data-table,
   .table-enterprise {
-    width: 100%;
+    table-layout: auto;
+    width: max-content;
+    max-width: 100%;
     border-collapse: collapse;
     font-size: 12px;
     line-height: 1.35;
@@ -195,7 +198,34 @@
     border-bottom: none;
   }
 
-  /* Text & Number alignments */
+  /* First (label) column: sized to content, min 140px, max 260px, ellipsis */
+  .data-table th:first-child,
+  .data-table td:first-child,
+  .table-enterprise th:first-child,
+  .table-enterprise td:first-child,
+  .col-label,
+  .col-main {
+    min-width: 140px;
+    max-width: 260px;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Number, money, percent and date columns: 90-130px, right-aligned, tabular-nums, 8px 12px padding */
+  .col-num,
+  .col-money,
+  .col-pct,
+  .col-date {
+    width: auto;
+    min-width: 90px;
+    max-width: 130px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    padding: 8px 12px;
+  }
   .data-table th.text-right,
   .data-table td.text-right,
   .table-enterprise th.text-right,
@@ -205,32 +235,103 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    padding: 8px 12px;
   }
   .data-table th.text-left,
   .data-table td.text-left,
   .table-enterprise th.text-left,
   .table-enterprise td.text-left {
     text-align: left;
+    padding: 8px 12px;
   }
   .data-table th.text-center,
   .data-table td.text-center,
   .table-enterprise th.text-center,
   .table-enterprise td.text-center {
     text-align: center;
+    padding: 8px 12px;
   }
 
-  /* Fixed narrow widths for number columns so columns stay close together */
-  .col-num {
-    width: 100px;
-    min-width: 80px;
-    max-width: 130px;
+  /* Card wrappers holding a table */
+  .table-card {
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  /* Wide text tables (deals lists, Top Opportunities, Top 10 Delayed, Needs review) */
+  .table-wide-fixed {
+    max-width: 1150px;
+    width: 100% !important;
+    table-layout: auto;
+    text-align: left;
+  }
+  .col-opp {
+    max-width: 420px;
+    min-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+  .col-account {
+    max-width: 260px;
+    min-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+  .col-meta {
+    width: auto;
+    min-width: 140px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+  .col-stat {
+    width: auto;
+    min-width: 100px;
+    max-width: 120px;
     text-align: right;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .col-main {
+
+  /* Executive Summary: all stacked tables use the SAME fixed column widths */
+  .exec-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .exec-table th,
+  .exec-table td {
+    padding: 8px 12px;
+    height: 36px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .exec-table th:first-child,
+  .exec-table td:first-child {
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
     text-align: left;
-    width: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .exec-table th.col-exec-num,
+  .exec-table td.col-exec-num {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    padding: 8px 12px;
+    white-space: nowrap;
   }
 
   /* Truncation with tooltip */
@@ -244,8 +345,10 @@
   /* Total rows */
   .data-table tr.total-row td,
   .table-enterprise tr.total-row td,
+  .exec-table tr.total-row td,
   .data-table tfoot tr td,
-  .table-enterprise tfoot tr td {
+  .table-enterprise tfoot tr td,
+  .exec-table tfoot tr td {
     font-weight: 700;
     background: var(--bg-secondary);
     border-top: 2px solid var(--border);

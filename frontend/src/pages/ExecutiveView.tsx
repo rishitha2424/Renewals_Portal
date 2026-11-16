@@ -341,7 +341,7 @@ export default function ExecutiveView() {
   })
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-6xl mx-auto" id="executive-report-view">
+    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[960px] mx-auto" id="executive-report-view">
       {/* Print CSS styles */}
       <style>{`
         @media print {
@@ -514,7 +514,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Forecast Category</th>
@@ -559,7 +559,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Baseline Comparison</th>
@@ -623,7 +623,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Approval Status</th>
@@ -669,7 +669,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2">Quarter</th>
@@ -719,7 +719,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2 w-8 text-center">#</th>
@@ -761,7 +761,7 @@ export default function ExecutiveView() {
             <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Business Unit</th>
@@ -823,7 +823,7 @@ export default function ExecutiveView() {
             Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
           </p>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>
@@ -898,7 +898,7 @@ export default function ExecutiveView() {
 
           {/* Slipped from table */}
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Service start year</th>
@@ -940,7 +940,7 @@ export default function ExecutiveView() {
             Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
           </p>
           <div className="overflow-x-auto">
-            <table className="data-table w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>

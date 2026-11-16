@@ -123,46 +123,36 @@ export default function CompactGrid({
   }
 
   return (
-    <div className="card overflow-hidden border border-[var(--border)]">
+    <div className="card overflow-hidden border border-[var(--border)] table-card">
       <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
         <h3 className="font-semibold text-sm">{title}</h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="data-table w-full text-xs whitespace-nowrap">
+        <table className="data-table text-xs whitespace-nowrap">
           <thead>
             <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs">{rowLabelName}</th>
+              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs col-label">{rowLabelName}</th>
               {activeColumns.map(c => {
                 const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                 return (
-                  <th key={c} className="px-3 py-2 text-center font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] col-num">{label}</th>
+                  <th key={c} className="px-3 py-2 text-right font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] col-num">{label}</th>
                 )
               })}
-              <th className="px-3 py-2 text-center font-bold text-[11px] uppercase tracking-wider text-[var(--text-primary)] border-l border-[var(--border)] col-num">Total</th>
+              <th className="px-3 py-2 text-right font-bold text-[11px] uppercase tracking-wider text-[var(--text-primary)] border-l border-[var(--border)] col-num">Total</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(r => {
               const rowLabel = rowLabelName === 'Status' ? getApprovalStatusLabel(r.label) : r.label
-              const grandTotalAcv = totals?.grand?.acv || 1
-              const rowAcv = r.total?.acv || 0
-              const rowSharePct = Math.min(100, Math.max(0, (rowAcv / grandTotalAcv) * 100))
 
               return (
                 <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group hover:bg-[var(--bg-secondary)]/40 transition-colors">
                   <td 
-                    className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs"
+                    className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs col-label"
                     onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
-                    title={`${rowLabel}: Click to view deals (${rowSharePct.toFixed(1)}% of total)`}
+                    title={`${rowLabel}: Click to view deals`}
                   >
-                    <div className="flex items-center justify-between gap-2.5">
-                      <span className="truncate">{rowLabel}</span>
-                      {rowSharePct > 0 && (
-                        <div className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex-shrink-0" title={`${rowSharePct.toFixed(1)}% of total`}>
-                          <div className="h-full bg-sky-500/60 dark:bg-sky-400/60 rounded-full" style={{ width: `${rowSharePct}%` }} />
-                        </div>
-                      )}
-                    </div>
+                    <span className="truncate block" title={rowLabel}>{rowLabel}</span>
                   </td>
                   {activeColumns.map(c => {
                     const colLabel = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))

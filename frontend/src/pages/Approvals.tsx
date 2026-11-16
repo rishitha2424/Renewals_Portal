@@ -882,21 +882,13 @@ export default function Approvals() {
                           {formatCurrency(item.total_acv)}
                         </td>
                         <td
-                          className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          className="py-2 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                         >
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
-                              <div
-                                className="h-full bg-emerald-500 rounded-full"
-                                style={{ width: `${Math.min(100, item.coverage_pct)}%` }}
-                              />
-                            </div>
-                            <span className="font-bold text-[var(--text-primary)]">{item.coverage_pct}%</span>
-                          </div>
+                          <span className="font-bold text-[var(--text-primary)] tabular-nums">{item.coverage_pct}%</span>
                         </td>
                         <td
-                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          className="py-2 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                         >
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${gapBadge}`}>
@@ -914,39 +906,31 @@ export default function Approvals() {
                         className="hover:bg-[var(--bg-secondary)]/70 transition-colors"
                       >
                         <td
-                          className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)]"
+                          className="py-2 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)] col-label"
                           onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
                         >
                           {displayName}
                         </td>
                         <td
-                          className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                          className="py-2 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                         >
                           {formatCurrency(item.approved_acv)}
                         </td>
                         <td
-                          className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                          className="py-2 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
                         >
                           {formatCurrency(item.total_acv)}
                         </td>
                         <td
-                          className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          className="py-2 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                         >
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
-                              <div
-                                className="h-full bg-emerald-500 rounded-full"
-                                style={{ width: `${Math.min(100, item.coverage_pct)}%` }}
-                              />
-                            </div>
-                            <span className="font-bold text-[var(--text-primary)]">{item.coverage_pct}%</span>
-                          </div>
+                          <span className="font-bold text-[var(--text-primary)] tabular-nums">{item.coverage_pct}%</span>
                         </td>
                         <td
-                          className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"
+                          className="py-2 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors col-num"
                           onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                         >
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${gapBadge}`}>
@@ -963,36 +947,28 @@ export default function Approvals() {
                       className="hover:bg-[var(--bg-secondary)]/70 transition-colors"
                     >
                       <td
-                        className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)]"
+                        className="py-2 px-3 font-sans font-semibold text-[var(--text-primary)] cursor-pointer hover:text-[var(--primary)] col-label"
                         onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
                       >
                         {displayName}
                       </td>
                       <td
-                        className="py-2.5 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors"
+                        className="py-2 px-3 text-right font-bold cursor-pointer hover:text-[var(--primary)] text-emerald-600 dark:text-emerald-400 transition-colors col-num"
                         onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                       >
                         {formatNumber(item.approved_count)}
                       </td>
                       <td
-                        className="py-2.5 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors"
+                        className="py-2 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] text-[var(--text-secondary)] transition-colors col-num"
                         onClick={() => handleCellClick({ ...filterParam }, `${displayName} All Deals`)}
                       >
                         {formatNumber(item.total_count)}
                       </td>
                       <td
-                        className="py-2.5 px-3 text-center border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors"
+                        className="py-2 px-3 text-right border-l border-[var(--border)] cursor-pointer hover:text-[var(--primary)] transition-colors col-num"
                         onClick={() => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`)}
                       >
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-16 bg-[var(--bg-primary)] h-1.5 rounded-full overflow-hidden border border-[var(--border)]">
-                            <div
-                              className="h-full bg-emerald-500 rounded-full"
-                              style={{ width: `${Math.min(100, dealApprovalPct)}%` }}
-                            />
-                          </div>
-                          <span className="font-bold text-[var(--text-primary)]">{dealApprovalPct}%</span>
-                        </div>
+                        <span className="font-bold text-[var(--text-primary)] tabular-nums">{dealApprovalPct}%</span>
                       </td>
                       <td
                         className="py-2.5 px-3 text-right cursor-pointer hover:text-[var(--primary)] transition-colors"

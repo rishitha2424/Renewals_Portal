@@ -1035,16 +1035,16 @@ function DelayedContent() {
             View All ({formatCount(summary.total?.count || 0)})
           </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="data-table table-enterprise w-full text-xs">
+        <div className="overflow-x-auto max-w-[1150px]">
+          <table className="data-table table-enterprise table-wide-fixed text-xs">
             <thead>
               <tr>
-                <th className="text-left">Opportunity & Account</th>
-                <th className="text-left">Region</th>
-                <th className="text-left">Owner</th>
-                <th className="text-left">Reason</th>
-                <th className="text-right">Days Overdue / to Close</th>
-                <th className="text-right">ACV</th>
+                <th className="text-left col-opp">Opportunity & Account</th>
+                <th className="text-left col-meta">Region</th>
+                <th className="text-left col-meta">Owner</th>
+                <th className="text-left col-meta">Reason</th>
+                <th className="text-right col-stat">Days Overdue / to Close</th>
+                <th className="text-right col-stat">ACV</th>
               </tr>
             </thead>
             <tbody>
@@ -1054,17 +1054,17 @@ function DelayedContent() {
                   className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
                   onClick={() => setSelectedOppId(deal.opportunity_id_18)}
                 >
-                  <td className="max-w-xs">
-                    <div className="font-medium text-[var(--brand-teal)] truncate">
+                  <td className="col-opp">
+                    <div className="font-medium text-[var(--brand-teal)] truncate" title={deal.opportunity_name}>
                       {deal.opportunity_name}
                     </div>
-                    <div className="text-[10px] text-[var(--text-muted)] truncate">
+                    <div className="text-[10px] text-[var(--text-muted)] truncate" title={deal.account_name}>
                       {deal.account_name}
                     </div>
                   </td>
-                  <td className="text-[var(--text-secondary)]">{deal.region}</td>
-                  <td className="text-[var(--text-secondary)]">{deal.owner || deal.opportunity_owner || '—'}</td>
-                  <td>
+                  <td className="text-[var(--text-secondary)] col-meta truncate">{deal.region}</td>
+                  <td className="text-[var(--text-secondary)] col-meta truncate">{deal.owner || deal.opportunity_owner || '—'}</td>
+                  <td className="col-meta">
                     <span
                       className={cn(
                         'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
@@ -1076,7 +1076,7 @@ function DelayedContent() {
                       {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
                     </span>
                   </td>
-                  <td className="text-right tabular-nums">
+                  <td className="text-right tabular-nums col-stat">
                     {deal.days_overdue > 0 ? (
                       <span className="font-semibold text-rose-600 dark:text-rose-400">
                         {deal.days_overdue}d overdue
@@ -1089,7 +1089,7 @@ function DelayedContent() {
                       <span className="text-[var(--text-muted)]">—</span>
                     )}
                   </td>
-                  <td className="text-right font-medium text-[var(--text-primary)] tabular-nums">
+                  <td className="text-right font-medium text-[var(--text-primary)] tabular-nums col-stat">
                     {formatACV(deal.forecast_acv_amount)}
                   </td>
                 </tr>
