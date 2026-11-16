@@ -1,5 +1,6 @@
 import React from 'react'
 import { formatCount, formatACV, getMetricPolarity, getDeltaTextColor, MetricPolarity } from '@/utils/format'
+import { ConceptTone, CONCEPT_COLORS, resolveConceptTone } from '@/design/conceptColors'
 
 export interface DeltaValue {
   count?: number | null
@@ -19,6 +20,7 @@ export interface TileProps {
   deltaLastWeek?: DeltaValue | null | React.ReactNode
   polarity?: MetricPolarity
   accentColor?: string
+  tone?: ConceptTone
   isSelected?: boolean
   isNA?: boolean
   onClick?: () => void
@@ -40,6 +42,7 @@ export const Tile: React.FC<TileProps> = ({
   deltaLastWeek,
   polarity,
   accentColor,
+  tone,
   isSelected,
   isNA,
   onClick,
@@ -49,6 +52,9 @@ export const Tile: React.FC<TileProps> = ({
   className = '',
 }) => {
   const resolvedPolarity: MetricPolarity = polarity || getMetricPolarity(title)
+  const resolvedTone: ConceptTone = tone || (accentColor ? 'neutral' : resolveConceptTone(title))
+  const conceptDef = CONCEPT_COLORS[resolvedTone] || CONCEPT_COLORS.neutral
+  const borderCol = accentColor || conceptDef.hex
 
   const renderDeltaItem = (
     label: string,
@@ -108,7 +114,7 @@ export const Tile: React.FC<TileProps> = ({
       id={id}
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      style={accentColor ? { borderLeftColor: accentColor, borderLeftWidth: 3 } : undefined}
+      style={{ borderLeft: `4px solid ${borderCol}` }}
       className={`card p-3.5 text-left flex flex-col justify-between gap-2.5 transition-all rounded-xl border border-[var(--border)] bg-[var(--bg-card)] ${
         onClick ? 'cursor-pointer hover:border-[var(--brand-teal)]' : ''
       } ${
@@ -120,20 +126,31 @@ export const Tile: React.FC<TileProps> = ({
       <div className="space-y-1.5 w-full">
         {/* Title and Deals Badge Row */}
         <div className="flex justify-between items-center gap-2">
-          <span className="text-xs font-semibold text-[var(--text-muted)] truncate" title={title}>
+          <span
+            className={`text-xs font-bold uppercase tracking-wider truncate ${accentColor ? '' : conceptDef.titleClass}`}
+            style={accentColor ? { color: accentColor } : undefined}
+            title={title}
+          >
             {title}
           </span>
           {badge ? (
             <div className="flex-shrink-0">{badge}</div>
           ) : count != null ? (
-            <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">
+            <span
+              className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded border tabular-nums ${
+                accentColor
+                  ? 'border-[var(--border-subtle)]'
+                  : `${conceptDef.badgeBgClass} ${conceptDef.badgeTextClass} ${conceptDef.badgeBorderClass}`
+              }`}
+              style={accentColor ? { backgroundColor: `${accentColor}18`, color: accentColor, borderColor: `${accentColor}35` } : undefined}
+            >
               {typeof count === 'number' ? `${formatCount(count)} ${dealsLabel}` : count}
             </span>
           ) : null}
         </div>
 
         {/* Big Bold Amount */}
-        <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
+        <div className="text-2xl sm:text-3xl font-extrabold tabular-nums text-[var(--text-primary)] tracking-tight">
           {isNA ? <span className="text-slate-400 font-normal text-xl">n/a</span> : amount}
         </div>
 
