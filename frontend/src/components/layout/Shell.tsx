@@ -7,13 +7,16 @@ import Topbar from './Topbar'
 import CommandPalette from './CommandPalette'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import FloatingPageControls from '@/components/common/FloatingPageControls'
 import { useAppStore } from '@/store/appStore'
 import { formatDate } from '@/utils/format'
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 export default function Shell() {
   const storeSnapshots = useAppStore(s => s.snapshots)
   const activeSnapshotId = useAppStore(s => s.activeSnapshotId)
+  const [scrollProgress, setScrollProgress] = useState(0)
+  const mainRef = useRef<HTMLElement>(null)
 
   const { data: fetchedSnapshots = [] } = useQuery({
     queryKey: ['snapshots'],
@@ -71,8 +74,27 @@ export default function Shell() {
         )}
         <header className="relative z-30 flex-shrink-0">
           <Topbar />
+          {/* Thin scroll progress bar under top bar */}
+          <div className="h-[2px] bg-transparent w-full relative z-30 overflow-hidden">
+            <div
+              className="h-full bg-[#00A3AD] transition-all duration-75"
+              style={{ width: `${scrollProgress}%` }}
+            />
+          </div>
         </header>
-        <main className="flex-1 overflow-y-auto relative z-10">
+        <main
+          ref={mainRef}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const max = el.scrollHeight - el.clientHeight
+            if (max > 0) {
+              setScrollProgress(Math.min(100, Math.max(0, (el.scrollTop / max) * 100)))
+            } else {
+              setScrollProgress(0)
+            }
+          }}
+          className="flex-1 overflow-y-auto relative z-10"
+        >
           <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <ErrorBoundary>
               <Outlet />
@@ -83,6 +105,7 @@ export default function Shell() {
           </div>
         </main>
       </div>
+      <FloatingPageControls scrollContainerRef={mainRef} />
       <CommandPalette />
       <OpportunityDrawer oppId={selectedOppId} onClose={() => setSelectedOppId(null)} />
     </div>

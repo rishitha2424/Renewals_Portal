@@ -78,7 +78,11 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Scrollbars */
+  /* Visible, styled thin custom scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+  }
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -87,11 +91,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(100, 116, 139, 0.25);
+    background: rgba(100, 116, 139, 0.38);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(100, 116, 139, 0.45);
+    background: rgba(100, 116, 139, 0.65);
   }
 }
 
