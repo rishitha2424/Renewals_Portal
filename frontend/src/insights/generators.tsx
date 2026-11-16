@@ -413,7 +413,7 @@ export function getRegionDeepDiveInsights(regionName: string, regData: any, port
   return items
 }
 
-/** 4. Business Units Insights Generator */
+/** 4. Business Units Insights Generator (at least 6 points) */
 export function getBusinessUnitsInsights(buSummary: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
   if (!buSummary) return items
@@ -424,14 +424,15 @@ export function getBusinessUnitsInsights(buSummary: any, onDrill?: (title: strin
   if (rows.length > 0) {
     const sorted = [...rows].sort((a: any, b: any) => (b.acv || 0) - (a.acv || 0))
     const topBu = sorted[0]
+
+    // 1. Top BU share
     if (topBu) {
       const share = ((topBu.acv / totalAcv) * 100).toFixed(1)
       items.push({
         id: 'bu-top',
-        icon: Award,
         text: (
           <span>
-            <strong>{topBu.bu || topBu.name}</strong> is the primary business unit with <strong>{share}%</strong> ({acvM(topBu.acv)}) of portfolio ACV.
+            <strong>{topBu.bu || topBu.name}</strong> leads with <strong>{share}%</strong> ({acvM(topBu.acv)}) of portfolio renewals.
           </span>
         ),
         linkText: 'View BU',
@@ -439,35 +440,90 @@ export function getBusinessUnitsInsights(buSummary: any, onDrill?: (title: strin
       })
     }
 
+    // 2. Top 3 BU concentration
     if (sorted.length >= 3) {
       const top3Acv = (sorted[0]?.acv || 0) + (sorted[1]?.acv || 0) + (sorted[2]?.acv || 0)
       const top3Share = ((top3Acv / totalAcv) * 100).toFixed(1)
       items.push({
         id: 'bu-top-3-share',
-        icon: PieChart,
         text: (
           <span>
-            Top 3 business units account for <strong>{top3Share}%</strong> of overall renewal opportunities.
+            Territory concentration: Top 3 business units hold <strong>{top3Share}%</strong> ({acvM(top3Acv)}) of overall renewals.
           </span>
         ),
       })
     }
 
-    // BU with highest commit coverage
+    // 3. Highest commit coverage
     const withCov = rows.map((r: any) => {
       const cAcv = r.cells?.['Commit']?.acv || r.categories?.['Commit']?.acv || r.commit_acv || 0
+      const clAcv = r.cells?.['Closed']?.acv || r.categories?.['Closed']?.acv || r.closed_acv || 0
       const bAcv = r.acv || 1
-      return { name: r.bu || r.name, cov: (cAcv / bAcv) * 100, commitAcv: cAcv }
+      return { name: r.bu || r.name, cov: ((cAcv + clAcv) / bAcv) * 100, commitAcv: cAcv + clAcv, bu: r.bu || r.name }
     }).filter((r: any) => r.commitAcv > 0).sort((a: any, b: any) => b.cov - a.cov)
 
     if (withCov.length > 0) {
       const highestCov = withCov[0]
       items.push({
         id: 'bu-highest-cov',
-        icon: CheckCircle2,
         text: (
           <span>
-            <strong>{highestCov.name}</strong> has the strongest commitment rate at <strong>{highestCov.cov.toFixed(1)}%</strong> Commit coverage.
+            Strongest commitment: <strong>{highestCov.name}</strong> has a <strong>{highestCov.cov.toFixed(1)}%</strong> coverage rate (Closed + Commit).
+          </span>
+        ),
+        linkText: 'Review',
+        onLinkClick: onDrill ? () => onDrill(`${highestCov.bu} Commit`, { bu: highestCov.bu, category: 'Commit' }) : undefined,
+      })
+    }
+
+    // 4. Lowest commit coverage
+    if (withCov.length > 1) {
+      const lowestCov = withCov[withCov.length - 1]
+      items.push({
+        id: 'bu-lowest-cov',
+        text: (
+          <span>
+            Upside opportunity: <strong>{lowestCov.name}</strong> has lowest coverage at <strong>{lowestCov.cov.toFixed(1)}%</strong> with higher Best Case/Pipeline reserves.
+          </span>
+        ),
+        linkText: 'Inspect',
+        onLinkClick: onDrill ? () => onDrill(`${lowestCov.bu} Pipeline`, { bu: lowestCov.bu }) : undefined,
+      })
+    }
+
+    // 5. Largest delta gain vs baseline
+    const getDeltaY = (r: any) => r.delta_yesterday?.acv ?? r.delta_lastweek?.acv ?? 0
+    const gains = rows.filter((r: any) => getDeltaY(r) > 0)
+    if (gains.length > 0) {
+      const topGain = gains.sort((a: any, b: any) => getDeltaY(b) - getDeltaY(a))[0]
+      items.push({
+        id: 'bu-top-gain',
+        text: (
+          <span>
+            Largest expansion: <strong>{topGain.bu || topGain.name}</strong> expanded by <strong>+{acvM(getDeltaY(topGain))}</strong> vs baseline.
+          </span>
+        ),
+      })
+    }
+
+    // 6. Largest delta contraction vs baseline
+    const drops = rows.filter((r: any) => getDeltaY(r) < 0)
+    if (drops.length > 0) {
+      const topDrop = drops.sort((a: any, b: any) => getDeltaY(a) - getDeltaY(b))[0]
+      items.push({
+        id: 'bu-top-drop',
+        text: (
+          <span>
+            Largest contraction: <strong>{topDrop.bu || topDrop.name}</strong> contracted by <strong>-{acvM(Math.abs(getDeltaY(topDrop)))}</strong> vs baseline.
+          </span>
+        ),
+      })
+    } else {
+      items.push({
+        id: 'bu-stable-trajectory',
+        text: (
+          <span>
+            Portfolio stability: <strong>Zero business units</strong> experienced net ACV contraction vs comparison baseline.
           </span>
         ),
       })

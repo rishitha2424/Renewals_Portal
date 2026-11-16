@@ -450,41 +450,69 @@ function BusinessUnitsContent() {
         )
       })()}
 
-      {/* 3. Equal-Height Grid: Heatmap (max-content) + BU Insights (1fr) + BU Share (340px) */}
+      {/* 3. Equal-Height Grid: Heatmap (max-content) + BU Signals & Commit Coverage (1fr) + BU Share Donut (340px) */}
       <div id="bu-heatmap-share" className="scroll-mt-24">
         <CardRow cols="max-content minmax(320px, 1fr) 340px" gap="gap-6">
           {/* Heatmap Card (max-content) */}
-          <div className="flex flex-col w-full max-w-full">
-            <CompactGrid
-              title="BU x Forecast Category Heatmap"
-              rowLabelName="Business Unit"
-              columns={displayCategories}
-              rows={gridRows}
-              totals={{ category: totals.categories, grand: totals.grand }}
-              deltas={gridDeltas}
-              metricMode={metricMode}
-              onCellClick={handleCellClick}
-              compareDate={prevDate}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-              heatMode={heatMode}
-            />
+          <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full w-full max-w-full">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 shrink-0">
+                BU x Forecast Category Heatmap
+              </h3>
+              <div className="flex-1 min-h-0 overflow-x-auto">
+                <CompactGrid
+                  title="BU x Forecast Category Heatmap"
+                  rowLabelName="Business Unit"
+                  columns={displayCategories}
+                  rows={gridRows}
+                  totals={{ category: totals.categories, grand: totals.grand }}
+                  deltas={gridDeltas}
+                  metricMode={metricMode}
+                  onCellClick={handleCellClick}
+                  compareDate={prevDate}
+                  yesterdayDate={summary.yesterday_date}
+                  lastweekDate={summary.lastweek_date}
+                  heatMode={heatMode}
+                  hideCardWrapper={true}
+                />
+              </div>
+            </div>
+
+            {/* Stat strip below the table (F2) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-3 border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                <span className="text-[var(--text-muted)] block text-[10px]">Business Units</span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{numBUs} units</span>
+              </div>
+              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                <span className="text-[var(--text-muted)] block text-[10px]">Total Deals</span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{formatCount(total.count)} deals</span>
+              </div>
+              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                <span className="text-[var(--text-muted)] block text-[10px]">Top BU Share</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{largestBuPct}% ({largestBu?.bu || '—'})</span>
+              </div>
+              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                <span className="text-[var(--text-muted)] block text-[10px]">Commit Coverage</span>
+                <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">{commitCov}%</span>
+              </div>
+            </div>
           </div>
 
-          {/* Middle: BU Insights + Commit Coverage ChartCard */}
+          {/* Middle: BU Signals + Commit Coverage Vertical Column Chart */}
           <div className="flex flex-col gap-5 h-full">
             <InsightCard
-              title="Business Unit Insights"
+              title="Business unit signals"
               subtitle="Key signals and commitment trajectory"
               insights={getBusinessUnitsInsights(summary, (title, p) => handleCellClick(p?.bu, p?.category, title))}
               className="flex-1"
             />
 
             <ChartCard
-              type="horizontal-bars"
-              title="Commit Coverage by BU"
+              type="vertical-bars"
+              title="Commit coverage by BU"
               subtitle="Percentage of renewals in Closed + Commit"
-              data={sortedRowsByAcv.slice(0, 5).map((r: any) => {
+              data={sortedRowsByAcv.slice(0, 6).map((r: any) => {
                 const cAcv = r.cells?.['Commit']?.acv || 0
                 const clAcv = r.cells?.['Closed']?.acv || 0
                 const cov = r.acv > 0 ? ((cAcv + clAcv) / r.acv) * 100 : 0
@@ -501,59 +529,26 @@ function BusinessUnitsContent() {
             />
           </div>
 
-          {/* Right: Ranked BU Share Card (fixed ~340px) */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 flex flex-col justify-between h-full w-full max-w-[340px]">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border)] shrink-0">
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  BU Share of Total ACV
-                </h3>
-                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                  Ranked portfolio weight
-                </p>
-              </div>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                {formatACV(total.acv)}
-              </span>
-            </div>
-
-            <ScrollList maxHeight="380px" className="space-y-2.5 flex-1 pr-1">
-              {sortedRowsByAcv.map((r: any) => {
-                const pct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
-                return (
-                  <div
-                    key={r.bu}
-                    onClick={() => handleBuShareClick(r.bu)}
-                    className="group cursor-pointer hover:bg-[var(--bg-secondary)] p-2 rounded-lg transition-colors border border-transparent hover:border-[var(--border)]"
-                    title={`${r.bu}: ${formatCurrency(r.acv)} (${pct.toFixed(1)}% of total ACV) · Click to view deals`}
-                  >
-                    <div className="flex justify-between items-baseline text-xs mb-1.5">
-                      <span className="font-medium text-[var(--text-primary)] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate max-w-[170px]">
-                        {r.bu}
-                      </span>
-                      <div className="flex items-center gap-1.5 font-mono tabular-nums shrink-0">
-                        <span className="font-bold text-[var(--text-primary)]">{pct.toFixed(1)}%</span>
-                        <span className="text-[11px] text-[var(--text-muted)]">({formatACV(r.acv)})</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden border border-[var(--border)]/50">
-                      <div
-                        className="h-full bg-indigo-500 group-hover:bg-indigo-600 transition-all rounded-full"
-                        style={{ width: `${Math.max(pct, 1)}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </ScrollList>
-
-            <div className="mt-4 pt-3 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between shrink-0">
-              <span>{rows.length} units · Multi-value distinct</span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1">
-                View deals <ArrowRight className="w-3 h-3" />
-              </span>
-            </div>
-          </div>
+          {/* Right: Ranked BU Share Donut Chart with scrollable legend */}
+          <ChartCard
+            type="donut"
+            title="BU Share of Total ACV"
+            subtitle="Ranked portfolio weight"
+            total={total.acv}
+            data={sortedRowsByAcv.map((r: any, idx: number) => {
+              const pct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
+              const colors = ['#00A3AD', '#1B365D', '#4B6B94', '#2563EB', '#6366F1', '#8B5CF6', '#EC4899', '#F58220', '#10B981', '#64748B']
+              return {
+                label: r.bu,
+                value: r.acv || 0,
+                formattedValue: formatACV(r.acv),
+                percentage: pct,
+                color: colors[idx % colors.length],
+                onClick: () => handleBuShareClick(r.bu),
+              }
+            })}
+            className="w-full max-w-[340px]"
+          />
         </CardRow>
       </div>
 
@@ -781,7 +776,7 @@ function BusinessUnitsContent() {
 
           {/* Right: Highlights Card */}
           <InsightCard
-            title="Top Opportunities Highlights"
+            title="BU opportunity signals"
             subtitle="Deal concentration and key upside signals"
             insights={getBuTopDealsInsights(topOppsData?.deals || [], total.acv, (id) => setSelectedOppId(id))}
             className="h-full"
