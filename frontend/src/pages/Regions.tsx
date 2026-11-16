@@ -440,9 +440,6 @@ function RegionsContent() {
             {/* Header with Title and Quick Exit */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-800 gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg">
-                  <Globe2 className="w-5 h-5" />
-                </div>
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                     {selectedRegion} Deep Dive
@@ -548,7 +545,6 @@ function RegionsContent() {
             {regionDetail && regionDetail.insights && regionDetail.insights.length > 0 && (
               <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/20 dark:to-indigo-950/10 border border-blue-200/60 dark:border-blue-900/40 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Lightbulb className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-900 dark:text-blue-300">
                     Regional Insights & Signals
                   </span>
@@ -1464,8 +1460,8 @@ function RegionsContent() {
           </div>
         </div>
 
-        <CardRow cols="max-content minmax(320px, 1fr)" gap="gap-6">
-          {/* Stacked left column with SAME width */}
+        <CardRow cols="max-content minmax(0, 1fr)" gap="gap-6">
+          {/* Stacked left column with identical numeric column widths */}
           <div className="space-y-6 w-full max-w-full">
             <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Forecast category by region</h3>
@@ -1542,8 +1538,8 @@ function RegionsContent() {
             </div>
           </div>
 
-          {/* Right column: TOP is Regional ACV share (vertical-bars), BOTTOM is Regional signals (InsightCard) */}
-          <div className="flex flex-col gap-6 h-full">
+          {/* Right column: TOP is Regional ACV share (vertical-bars), BOTTOM is Regional signals (InsightCard) + StatStrip */}
+          <div className="flex flex-col gap-6 h-full min-w-0">
             <ChartCard
               type="vertical-bars"
               title="Regional ACV share"
@@ -1556,15 +1552,30 @@ function RegionsContent() {
                 color: getRegionColor(r.region),
                 onClick: () => handleDrill(`${r.region} Deals`, { region: r.region }),
               }))}
-              className="flex-1"
+              className="flex-1 min-h-[220px]"
             />
 
-            <InsightCard
-              title="Regional signals"
-              subtitle="Key movements and territory signals"
-              insights={getRegionsMatrixInsights(summary, summary, (title, p) => handleDrill(title, p))}
-              className="flex-1"
-            />
+            <div className="flex-1 flex flex-col gap-3 min-w-0">
+              <InsightCard
+                title="Regional signals"
+                subtitle="Key movements and territory signals"
+                insights={getRegionsMatrixInsights(summary, summary, (title, p) => handleDrill(title, p))}
+              />
+              <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/30 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Region</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {summary.regions?.[0]?.region || '—'} ({formatACV(summary.regions?.[0]?.acv || 0)})
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Active Territories</span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">
+                    {summary.regions?.length || 0} regions
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </CardRow>
       </div>
