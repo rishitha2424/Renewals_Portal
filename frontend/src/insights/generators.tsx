@@ -547,6 +547,59 @@ export function getDelayedInsights(summary: any, onDrill?: (title: string, param
   return items
 }
 
+/** 6b. Lost Deals Insights Generator */
+export function getLostInsights(lostSummary: any, lostByRegion: any[] = [], lostByBu: any[] = [], onDrill?: (title: string, params: any) => void): InsightItem[] {
+  const items: InsightItem[] = []
+  if (!lostSummary) return items
+
+  const count = lostSummary.count || 0
+  const acv = lostSummary.acv || 0
+
+  items.push({
+    id: 'lost-overview',
+    icon: TrendingDown,
+    text: (
+      <span>
+        A total of <strong>{count} deals ({acvM(acv)})</strong> have been removed or lost since the baseline period start.
+      </span>
+    ),
+    linkText: 'View all lost',
+    onLinkClick: onDrill ? () => onDrill('Lost Deals', { kind: 'lost' }) : undefined,
+  })
+
+  if (lostByRegion.length > 0) {
+    const topReg = lostByRegion[0]
+    items.push({
+      id: 'lost-top-region',
+      icon: Award,
+      text: (
+        <span>
+          Highest regional loss: <strong>{topReg.name}</strong> accounts for <strong>{acvM(topReg.acv)}</strong> ({topReg.pct?.toFixed(1)}% of total lost ACV).
+        </span>
+      ),
+      linkText: 'View region',
+      onLinkClick: onDrill ? () => onDrill(`Lost Deals · ${topReg.name}`, { kind: 'lost', region: topReg.name }) : undefined,
+    })
+  }
+
+  if (lostByBu.length > 0) {
+    const topBu = lostByBu[0]
+    items.push({
+      id: 'lost-top-bu',
+      icon: PieChart,
+      text: (
+        <span>
+          Leading BU loss: <strong>{topBu.name}</strong> accounts for <strong>{acvM(topBu.acv)}</strong> across {topBu.count} deals.
+        </span>
+      ),
+      linkText: 'View BU',
+      onLinkClick: onDrill ? () => onDrill(`Lost Deals · ${topBu.name}`, { kind: 'lost', business_unit: topBu.name }) : undefined,
+    })
+  }
+
+  return items
+}
+
 /** 7. Expiry Schedule Insights Generator */
 export function getExpiryInsights(sum: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []

@@ -31,6 +31,11 @@ import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import SectionHeading from '@/components/common/SectionHeading'
 import Tile from '@/components/common/Tile'
+import CardRow from '@/components/common/CardRow'
+import InsightCard from '@/components/common/InsightCard'
+import ChartCard from '@/components/common/ChartCard'
+import ScrollList from '@/components/common/ScrollList'
+import { getDelayedInsights, getLostInsights } from '@/insights/generators'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import { useRuleDeals } from '@/hooks/useRuleDeals'
@@ -655,48 +660,52 @@ function DelayedContent() {
           )
         })()}
 
-        {/* Grid Breakdowns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="flex flex-col h-[400px]" padding="none">
-            <div className="overflow-x-auto h-full p-4">
-              <CompactGrid
-                title="By Region"
-                rowLabelName="Region"
-                columns={regionGrid.categories}
-                columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-                rows={regionGrid.rows}
-                totals={regionGrid.totals}
-                deltas={regionGrid.gridDeltas}
-                metricMode={metricMode}
-                onCellClick={regionGrid.handleCellClick}
-                compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-                yesterdayDate={summary.yesterday_date}
-                lastweekDate={summary.lastweek_date}
-                heatMode={heatMode}
-              />
-            </div>
-          </Card>
+        {/* Grid Breakdowns & Insights (no outer wrapper cards) */}
+        <CardRow template="max-content max-content minmax(280px, 1fr)">
+          <div className="h-full flex flex-col justify-between">
+            <CompactGrid
+              title="By Region"
+              rowLabelName="Region"
+              columns={regionGrid.categories}
+              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+              rows={regionGrid.rows}
+              totals={regionGrid.totals}
+              deltas={regionGrid.gridDeltas}
+              metricMode={metricMode}
+              onCellClick={regionGrid.handleCellClick}
+              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+              yesterdayDate={summary.yesterday_date}
+              lastweekDate={summary.lastweek_date}
+              heatMode={heatMode}
+            />
+          </div>
 
-          <Card className="flex flex-col h-[400px]" padding="none">
-            <div className="overflow-x-auto h-full p-4">
-              <CompactGrid
-                title="By Business Unit"
-                rowLabelName="Business Unit"
-                columns={buGrid.categories}
-                columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-                rows={buGrid.rows}
-                totals={buGrid.totals}
-                deltas={buGrid.gridDeltas}
-                metricMode={metricMode}
-                onCellClick={buGrid.handleCellClick}
-                compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-                yesterdayDate={summary.yesterday_date}
-                lastweekDate={summary.lastweek_date}
-                heatMode={heatMode}
-              />
-            </div>
-          </Card>
-        </div>
+          <div className="h-full flex flex-col justify-between">
+            <CompactGrid
+              title="By Business Unit"
+              rowLabelName="Business Unit"
+              columns={buGrid.categories}
+              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+              rows={buGrid.rows}
+              totals={buGrid.totals}
+              deltas={buGrid.gridDeltas}
+              metricMode={metricMode}
+              onCellClick={buGrid.handleCellClick}
+              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+              yesterdayDate={summary.yesterday_date}
+              lastweekDate={summary.lastweek_date}
+              heatMode={heatMode}
+            />
+          </div>
+
+          <div className="h-full">
+            <InsightCard
+              title="Delayed Insights"
+              subtitle="Portfolio delay observations"
+              insights={getDelayedInsights(summary, (title, p) => handleDrill(title, p))}
+            />
+          </div>
+        </CardRow>
       </div>
 
       {/* Overdue Ageing Breakdown */}
@@ -780,90 +789,169 @@ function DelayedContent() {
         />
       </div>
 
-      {/* ────────────────── SECTION 3: TOP 10 DELAYED DEALS ────────────────── */}
-      <Card id="delayed-top-deals" padding="none" className="scroll-mt-24">
-        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>
-            <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
-          </div>
-          <button
-            onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
-            className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
-          >
-            View All ({formatCount(summary.total?.count || 0)})
-          </button>
-        </div>
-        <div className="overflow-x-auto max-w-[1150px]">
-          <table className="data-table table-enterprise table-wide-fixed text-xs">
-            <thead>
-              <tr>
-                <th className="text-left col-opp">Opportunity & Account</th>
-                <th className="text-left col-meta">Region</th>
-                <th className="text-left col-meta">Owner</th>
-                <th className="text-left col-meta">Reason</th>
-                <th className="text-right col-stat">Days Overdue / to Close</th>
-                <th className="text-right col-stat">ACV</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.top_deals?.map((deal: any) => (
-                <tr
-                  key={deal.opportunity_id_18}
-                  className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
-                  onClick={() => setSelectedOppId(deal.opportunity_id_18)}
-                >
-                  <td className="col-opp">
-                    <div className="font-medium text-[var(--brand-teal)] truncate" title={deal.opportunity_name}>
-                      {deal.opportunity_name}
-                    </div>
-                    <div className="text-[10px] text-[var(--text-muted)] truncate" title={deal.account_name}>
-                      {deal.account_name}
-                    </div>
-                  </td>
-                  <td className="text-[var(--text-secondary)] col-meta truncate">{deal.region}</td>
-                  <td className="text-[var(--text-secondary)] col-meta truncate">{deal.owner || deal.opportunity_owner || '—'}</td>
-                  <td className="col-meta">
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
-                        deal.reason === 'Overdue'
-                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
-                          : 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-900/30'
+      {/* ────────────────── SECTION 3: TOP 10 DELAYED DEALS & HIGHLIGHTS ────────────────── */}
+      {(() => {
+        const topDeals = summary.top_deals || []
+        const totalDelayedAcv = delTot?.acv || 1
+
+        const ownerMap: Record<string, { count: number; acv: number }> = {}
+        topDeals.forEach((d: any) => {
+          const o = d.owner || d.opportunity_owner || 'Unassigned'
+          if (!ownerMap[o]) ownerMap[o] = { count: 0, acv: 0 }
+          ownerMap[o].count += 1
+          ownerMap[o].acv += d.forecast_acv_amount || 0
+        })
+        const sortedOwners = Object.entries(ownerMap).sort((a, b) => b[1].acv - a[1].acv)
+        const topOwner = sortedOwners[0]
+
+        const soonestDeal = [...topDeals]
+          .filter((d: any) => d.days_to_close > 0)
+          .sort((a: any, b: any) => a.days_to_close - b.days_to_close)[0]
+
+        const longestOverdueDeal = [...topDeals]
+          .filter((d: any) => d.days_overdue > 0)
+          .sort((a: any, b: any) => b.days_overdue - a.days_overdue)[0]
+
+        const top10Acv = topDeals.reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
+        const top10Pct = ((top10Acv / totalDelayedAcv) * 100).toFixed(1)
+
+        const delayedHighlights = [
+          {
+            id: 'dh-concentration',
+            icon: AlertCircle,
+            text: (
+              <span>
+                Top 10 delayed contracts hold <strong>{formatACV(top10Acv)}</strong>, representing <strong>{top10Pct}%</strong> of total delayed volume.
+              </span>
+            ),
+          },
+          ...(topOwner ? [{
+            id: 'dh-top-owner',
+            icon: Clock,
+            text: (
+              <span>
+                Primary owner exposure: <strong>{topOwner[0]}</strong> manages <strong>{formatACV(topOwner[1].acv)}</strong> across {topOwner[1].count} delayed opportunities.
+              </span>
+            ),
+          }] : []),
+          ...(longestOverdueDeal ? [{
+            id: 'dh-longest-overdue',
+            icon: AlertTriangle,
+            text: (
+              <span>
+                Longest past due: <strong>{longestOverdueDeal.opportunity_name}</strong> ({formatACV(longestOverdueDeal.forecast_acv_amount)}) is <strong>{longestOverdueDeal.days_overdue} days overdue</strong>.
+              </span>
+            ),
+            linkText: 'Inspect deal',
+            onLinkClick: () => setSelectedOppId(longestOverdueDeal.opportunity_id_18),
+          }] : []),
+          ...(soonestDeal ? [{
+            id: 'dh-soonest',
+            icon: Clock,
+            text: (
+              <span>
+                Imminent close: <strong>{soonestDeal.opportunity_name}</strong> ({formatACV(soonestDeal.forecast_acv_amount)}) target close in <strong>{soonestDeal.days_to_close} days</strong>.
+              </span>
+            ),
+            linkText: 'Inspect deal',
+            onLinkClick: () => setSelectedOppId(soonestDeal.opportunity_id_18),
+          }] : []),
+        ]
+
+        return (
+          <CardRow template="max-content minmax(320px, 1fr)" id="delayed-top-deals">
+            <Card padding="none" className="h-full flex flex-col justify-between">
+              <div>
+                <div className="p-3.5 border-b border-[var(--border)] flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>
+                    <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
+                  </div>
+                  <button
+                    onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
+                    className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
+                  >
+                    View All ({formatCount(summary.total?.count || 0)})
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th className="text-left col-label">Opportunity & Account</th>
+                        <th className="text-left col-label">Region</th>
+                        <th className="text-left col-label">Owner</th>
+                        <th className="text-left col-label">Status</th>
+                        <th className="text-right col-num">Timing</th>
+                        <th className="text-right col-num">ACV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.top_deals?.map((deal: any) => (
+                        <tr
+                          key={deal.opportunity_id_18}
+                          className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
+                          onClick={() => setSelectedOppId(deal.opportunity_id_18)}
+                        >
+                          <td className="col-label font-medium text-[var(--brand-teal)] truncate" title={deal.opportunity_name}>
+                            <div className="truncate max-w-[200px]">{deal.opportunity_name}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate max-w-[180px]">{deal.account_name}</div>
+                          </td>
+                          <td className="text-[var(--text-secondary)] col-label truncate max-w-[90px]">{deal.region}</td>
+                          <td className="text-[var(--text-secondary)] col-label truncate max-w-[90px]">{deal.owner || deal.opportunity_owner || '—'}</td>
+                          <td className="col-label">
+                            <span
+                              className={cn(
+                                'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
+                                deal.reason === 'Overdue'
+                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
+                                  : 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-900/30'
+                              )}
+                            >
+                              {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
+                            </span>
+                          </td>
+                          <td className="text-right tabular-nums col-num">
+                            {deal.days_overdue > 0 ? (
+                              <span className="font-semibold text-rose-600 dark:text-rose-400">
+                                {deal.days_overdue}d overdue
+                              </span>
+                            ) : deal.days_to_close > 0 ? (
+                              <span className="font-medium text-teal-600 dark:text-teal-400">
+                                {deal.days_to_close}d to close
+                              </span>
+                            ) : (
+                              <span className="text-[var(--text-muted)]">—</span>
+                            )}
+                          </td>
+                          <td className="text-right font-medium text-[var(--text-primary)] tabular-nums col-num">
+                            {formatACV(deal.forecast_acv_amount)}
+                          </td>
+                        </tr>
+                      ))}
+                      {(!summary.top_deals || summary.top_deals.length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-[var(--text-muted)]">
+                            No delayed deals found.
+                          </td>
+                        </tr>
                       )}
-                    >
-                      {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
-                    </span>
-                  </td>
-                  <td className="text-right tabular-nums col-stat">
-                    {deal.days_overdue > 0 ? (
-                      <span className="font-semibold text-rose-600 dark:text-rose-400">
-                        {deal.days_overdue}d overdue
-                      </span>
-                    ) : deal.days_to_close > 0 ? (
-                      <span className="font-medium text-teal-600 dark:text-teal-400">
-                        {deal.days_to_close}d to close
-                      </span>
-                    ) : (
-                      <span className="text-[var(--text-muted)]">—</span>
-                    )}
-                  </td>
-                  <td className="text-right font-medium text-[var(--text-primary)] tabular-nums col-stat">
-                    {formatACV(deal.forecast_acv_amount)}
-                  </td>
-                </tr>
-              ))}
-              {(!summary.top_deals || summary.top_deals.length === 0) && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-[var(--text-muted)]">
-                    No delayed deals found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Card>
+
+            <div className="h-full">
+              <InsightCard
+                title="Delayed Highlights"
+                subtitle="Exposure concentration & critical dates"
+                insights={delayedHighlights}
+              />
+            </div>
+          </CardRow>
+        )
+      })()}
 
       {/* ────────────────── SECTION 4: LOST SINCE START OF QUARTER ────────────────── */}
       {summary.lost && (
@@ -911,83 +999,95 @@ function DelayedContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card padding="none" className="overflow-hidden">
-              <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Lost deals by region</h3>
-                <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByRegion.length} regions</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="data-table table-enterprise w-full text-xs">
-                  <thead>
-                    <tr>
-                      <th className="text-left col-label">Region</th>
-                      <th className="text-right col-num">Deals</th>
-                      <th className="text-right col-money">ACV</th>
-                      <th className="text-right col-pct">Share</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lostByRegion.map((r) => (
-                      <tr
-                        key={r.name}
-                        className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
-                        onClick={() => handleDrill(`Lost Deals · ${r.name}`, { kind: 'lost', region: r.name })}
-                      >
-                        <td className="col-label font-medium text-[var(--text-primary)] truncate" title={r.name}>{r.name}</td>
-                        <td className="text-right tabular-nums col-num">{r.count}</td>
-                        <td className="text-right tabular-nums font-semibold col-money">{formatACV(r.acv)}</td>
-                        <td className="text-right tabular-nums text-[var(--text-muted)] col-pct">{r.pct.toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                    {lostByRegion.length === 0 && (
+          <CardRow template="max-content max-content minmax(280px, 1fr)">
+            <Card padding="none" className="overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Lost deals by region</h3>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByRegion.length} regions</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                    <thead>
                       <tr>
-                        <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">No lost deals</td>
+                        <th className="text-left col-label">Region</th>
+                        <th className="text-right col-num">Deals</th>
+                        <th className="text-right col-money">ACV</th>
+                        <th className="text-right col-pct">Share</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {lostByRegion.map((r) => (
+                        <tr
+                          key={r.name}
+                          className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
+                          onClick={() => handleDrill(`Lost Deals · ${r.name}`, { kind: 'lost', region: r.name })}
+                        >
+                          <td className="col-label font-medium text-[var(--text-primary)] truncate" title={r.name}>{r.name}</td>
+                          <td className="text-right tabular-nums col-num">{r.count}</td>
+                          <td className="text-right tabular-nums font-semibold col-money">{formatACV(r.acv)}</td>
+                          <td className="text-right tabular-nums text-[var(--text-muted)] col-pct">{r.pct.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                      {lostByRegion.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">No lost deals</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </Card>
 
-            <Card padding="none" className="overflow-hidden">
-              <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Lost deals by business unit</h3>
-                <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByBu.length} BUs</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="data-table table-enterprise w-full text-xs">
-                  <thead>
-                    <tr>
-                      <th className="text-left col-label">Business Unit</th>
-                      <th className="text-right col-num">Deals</th>
-                      <th className="text-right col-money">ACV</th>
-                      <th className="text-right col-pct">Share</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lostByBu.map((bu) => (
-                      <tr
-                        key={bu.name}
-                        className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
-                        onClick={() => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', business_unit: bu.name })}
-                      >
-                        <td className="col-label font-medium text-[var(--text-primary)] truncate" title={bu.name}>{bu.name}</td>
-                        <td className="text-right tabular-nums col-num">{bu.count}</td>
-                        <td className="text-right tabular-nums font-semibold col-money">{formatACV(bu.acv)}</td>
-                        <td className="text-right tabular-nums text-[var(--text-muted)] col-pct">{bu.pct.toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                    {lostByBu.length === 0 && (
+            <Card padding="none" className="overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Lost deals by business unit</h3>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByBu.length} BUs</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                    <thead>
                       <tr>
-                        <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">No lost deals</td>
+                        <th className="text-left col-label">Business Unit</th>
+                        <th className="text-right col-num">Deals</th>
+                        <th className="text-right col-money">ACV</th>
+                        <th className="text-right col-pct">Share</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {lostByBu.map((bu) => (
+                        <tr
+                          key={bu.name}
+                          className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
+                          onClick={() => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', business_unit: bu.name })}
+                        >
+                          <td className="col-label font-medium text-[var(--text-primary)] truncate" title={bu.name}>{bu.name}</td>
+                          <td className="text-right tabular-nums col-num">{bu.count}</td>
+                          <td className="text-right tabular-nums font-semibold col-money">{formatACV(bu.acv)}</td>
+                          <td className="text-right tabular-nums text-[var(--text-muted)] col-pct">{bu.pct.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                      {lostByBu.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">No lost deals</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </Card>
-          </div>
+
+            <div className="h-full">
+              <InsightCard
+                title="Lost Renewal Insights"
+                subtitle="Deals lost since baseline start"
+                insights={getLostInsights(summary.lost, lostByRegion, lostByBu, (title, p) => handleDrill(title, p))}
+              />
+            </div>
+          </CardRow>
         </div>
       )}
 
@@ -1000,59 +1100,82 @@ function DelayedContent() {
         const totalCount = summary.needs_review?.total_count || reviewList.reduce((acc: number, x: any) => acc + (x.count || 0), 0)
 
         return (
-          <div id="delayed-needs-review" className="rounded-xl border border-[var(--border)] border-l-4 border-l-amber-500 bg-[var(--bg-card)] p-5 scroll-mt-24 space-y-4 shadow-[var(--card-shadow)]">
-            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-3">
+          <CardRow template="max-content minmax(320px, 1fr)" id="delayed-needs-review">
+            <Card padding="none" className="h-full flex flex-col justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                  <h2 className="text-base font-bold text-[var(--text-primary)]">
-                    Needs review
-                  </h2>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                    {totalCount} deals
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] p-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      <h2 className="text-base font-bold text-[var(--text-primary)]">
+                        Needs review
+                      </h2>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                        {totalCount} deals
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Deals requiring inspection. Exceptions and data-quality checks tracked alongside renewals.
+                    </p>
+                  </div>
+                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    Total Exception ACV: {formatACV(totalAcv)}
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                  Deals requiring inspection. Exceptions and data-quality checks tracked alongside renewals.
-                </p>
-              </div>
-              <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                Total Exception ACV: {formatACV(totalAcv)}
-              </div>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="data-table table-enterprise w-full text-xs">
-                <thead>
-                  <tr className="bg-[var(--bg-secondary)]/50 text-[var(--text-secondary)]">
-                    <th className="text-left font-semibold">Review Type</th>
-                    <th className="text-right font-semibold">Deals</th>
-                    <th className="text-right font-semibold">ACV</th>
-                    <th className="text-left font-semibold">Explanation</th>
-                    <th className="text-right font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {reviewList.map((t: any) => (
-                    <tr key={t.type || t.type_id || t.title} className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
-                      <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
-                      <td className="text-right font-semibold tabular-nums">{t.count}</td>
-                      <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
-                      <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.description || t.explanation}</td>
-                      <td className="text-right">
-                        <button
-                          onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id })}
-                          className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
-                        >
-                          View deals →
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                <div className="overflow-x-auto p-4">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                    <thead>
+                      <tr className="bg-[var(--bg-secondary)]/50 text-[var(--text-secondary)]">
+                        <th className="text-left font-semibold">Review Type</th>
+                        <th className="text-right font-semibold">Deals</th>
+                        <th className="text-right font-semibold">ACV</th>
+                        <th className="text-left font-semibold">Explanation</th>
+                        <th className="text-right font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border)]">
+                      {reviewList.map((t: any) => (
+                        <tr key={t.type || t.type_id || t.title} className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                          <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
+                          <td className="text-right font-semibold tabular-nums">{t.count}</td>
+                          <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
+                          <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.description || t.explanation}</td>
+                          <td className="text-right">
+                            <button
+                              onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id })}
+                              className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
+                            >
+                              View deals →
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Card>
+
+            <ChartCard
+              title="Why Deals Need Review"
+              subtitle="Exception distribution by type"
+              type="horizontal-bars"
+              data={reviewList.map((t: any) => ({
+                label: t.title,
+                value: t.acv || 0,
+                formattedValue: `${formatACV(t.acv || 0)} (${t.count} deals)`,
+                color: '#F59E0B',
+                onClick: () => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id }),
+              }))}
+              footer={
+                <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                  <span>{totalCount} total exceptions</span>
+                  <span>Click bars or buttons to inspect</span>
+                </div>
+              }
+            />
+          </CardRow>
         )
       })()}
 
