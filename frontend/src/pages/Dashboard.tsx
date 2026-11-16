@@ -387,161 +387,252 @@ export default function Dashboard() {
       {/* ── BLOCK 1: Portfolio ─────────────────────────────────────────── */}
       <section id="overview-portfolio" className="space-y-4 scroll-mt-24">
         {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
-        <div id="overview-hero" className="card p-6 scroll-mt-24">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                TOTAL {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} ACV VALUE
-              </p>
-              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-3">
-              {sumLoading ? (
-                <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
-              ) : (
-                <span
-                  className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
-                  onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} deals · ${formatCurrency(total.acv ?? 0)})`, {})}
-                  title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
-                >
-                  {acvM(total.acv ?? 0)}
-                </span>
-              )}
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
-                {total.count ?? 0} deals
-              </span>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1.5">
-              Fiscal Period = {summary?.data_slice || 'Selected Period'}
-            </p>
-
-          {/* Trend rows BELOW the total ACV and contract count */}
-          <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row gap-4 sm:gap-8">
-            {[
-              { label: 'vs yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
-              { label: 'vs last week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
-            ].map(({ label, delta, kind, date }) => {
-              const acvVal = delta?.acv ?? 0
-              const countVal = delta?.count ?? 0
-              const isAcvNeutral = acvVal === 0
-              const isCountNeutral = countVal === 0
-
-              const acvColor = isAcvNeutral
-                ? 'text-[var(--text-muted)]'
-                : acvVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                : 'text-rose-600 dark:text-rose-400 font-medium'
-
-              const countColor = isCountNeutral
-                ? 'text-[var(--text-muted)]'
-                : countVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                : 'text-rose-600 dark:text-rose-400 font-medium'
-
-              const acvSign = acvVal > 0 ? '+' : ''
-              const countSign = countVal > 0 ? '+' : ''
-
-              return (
-                <div
-                  key={label}
-                  className="flex items-center gap-2 text-xs cursor-pointer group hover:opacity-80 transition-opacity"
-                  onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
-                  title={`Click to view deals with changes ${label}`}
-                >
-                  <span className="text-[var(--text-muted)] font-normal text-xs">
-                    {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}:
-                  </span>
-                  {delta ? (
-                    <span className="text-xs tabular-nums flex items-center gap-1.5">
-                      <span className={`inline-flex items-center gap-0.5 ${acvColor}`}>
-                        {acvVal > 0 && <TrendingUp className="w-3 h-3 inline" />}
-                        {acvVal < 0 && <TrendingDown className="w-3 h-3 inline" />}
-                        {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
-                      </span>
-                      <span className="text-[var(--text-muted)]">·</span>
-                      <span className={countColor}>
-                        {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
-                  )}
+        <div id="overview-hero" className="card p-5 sm:p-6 scroll-mt-24">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+            {/* Left side: 7 columns */}
+            <div className="lg:col-span-7 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                    TOTAL {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} ACV VALUE
+                  </p>
+                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
                 </div>
-              )
-            })}
+                <div className="flex flex-wrap items-baseline gap-3">
+                  {sumLoading ? (
+                    <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
+                  ) : (
+                    <span
+                      className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
+                      onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} deals · ${formatCurrency(total.acv ?? 0)})`, {})}
+                      title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
+                    >
+                      {acvM(total.acv ?? 0)}
+                    </span>
+                  )}
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
+                    {total.count ?? 0} deals
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">
+                  Fiscal Period = {summary?.data_slice || 'Selected Period'}
+                </p>
+
+                {/* Trend rows BELOW the total ACV and contract count */}
+                <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row gap-4 sm:gap-8">
+                  {[
+                    { label: 'vs yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
+                    { label: 'vs last week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
+                  ].map(({ label, delta, kind, date }) => {
+                    const acvVal = delta?.acv ?? 0
+                    const countVal = delta?.count ?? 0
+                    const isAcvNeutral = acvVal === 0
+                    const isCountNeutral = countVal === 0
+
+                    const acvColor = isAcvNeutral
+                      ? 'text-[var(--text-muted)]'
+                      : acvVal > 0
+                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                      : 'text-rose-600 dark:text-rose-400 font-medium'
+
+                    const countColor = isCountNeutral
+                      ? 'text-[var(--text-muted)]'
+                      : countVal > 0
+                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                      : 'text-rose-600 dark:text-rose-400 font-medium'
+
+                    const acvSign = acvVal > 0 ? '+' : ''
+                    const countSign = countVal > 0 ? '+' : ''
+
+                    return (
+                      <div
+                        key={label}
+                        className="flex items-center gap-2 text-xs cursor-pointer group hover:opacity-80 transition-opacity"
+                        onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
+                        title={`Click to view deals with changes ${label}`}
+                      >
+                        <span className="text-[var(--text-muted)] font-normal text-xs">
+                          {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}:
+                        </span>
+                        {delta ? (
+                          <span className="text-xs tabular-nums flex items-center gap-1.5">
+                            <span className={`inline-flex items-center gap-0.5 ${acvColor}`}>
+                              {acvVal > 0 && <TrendingUp className="w-3 h-3 inline" />}
+                              {acvVal < 0 && <TrendingDown className="w-3 h-3 inline" />}
+                              {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
+                            </span>
+                            <span className="text-[var(--text-muted)]">·</span>
+                            <span className={countColor}>
+                              {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* B8 Coverage Line: Commit + Best Case % of Total ACV */}
+              {summary?.coverage && (
+                <div
+                  className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer group hover:bg-[var(--bg-secondary)]/50 p-2 rounded-lg transition-colors"
+                  onClick={() => {
+                    const cov = summary.coverage
+                    openDealsQuery(
+                      `Coverage Deals (Commit + Best Case) · ${formatNumber(cov.count)} deals · ${formatCurrency(cov.acv)}`,
+                      { kind: 'coverage' }
+                    )
+                  }}
+                  title="Click to view Commit + Best Case deals"
+                >
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-tight group-hover:text-[var(--brand-teal)] transition-colors">
+                      Coverage (Commit + Best Case):
+                    </span>
+                    <span className="text-sm font-bold tabular-nums text-[var(--text-primary)] group-hover:underline">
+                      {summary.coverage.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5" title="Percentage-point change vs yesterday">
+                      <span className="text-[var(--text-muted)]">vs yesterday:</span>
+                      {summary.coverage.delta_yesterday_pp != null ? (
+                        <span className={`tabular-nums font-medium ${summary.coverage.delta_yesterday_pp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {summary.coverage.delta_yesterday_pp >= 0 ? '+' : ''}{Number(summary.coverage.delta_yesterday_pp).toFixed(1)} pts
+                        </span>
+                      ) : <span className="text-[var(--text-muted)]">—</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5" title="Percentage-point change vs last week">
+                      <span className="text-[var(--text-muted)]">vs last week:</span>
+                      {summary.coverage.delta_lastweek_pp != null ? (
+                        <span className={`tabular-nums font-medium ${summary.coverage.delta_lastweek_pp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {summary.coverage.delta_lastweek_pp >= 0 ? '+' : ''}{Number(summary.coverage.delta_lastweek_pp).toFixed(1)} pts
+                        </span>
+                      ) : <span className="text-[var(--text-muted)]">—</span>}
+                    </div>
+                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 group-hover:underline">View deals →</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right side: 5 columns - Portfolio at a glance panel */}
+            <div className="lg:col-span-5 bg-[var(--bg-secondary)]/50 border border-[var(--border)] rounded-xl p-4 flex flex-col justify-between gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                    Portfolio at a glance
+                  </span>
+                  <span className="text-[11px] text-[var(--text-muted)] font-medium">
+                    ACV Share by Forecast
+                  </span>
+                </div>
+
+                {/* Stacked Horizontal Bar */}
+                {(() => {
+                  const totAcv = total.acv || 1
+                  const catsList = ['Closed', 'Commit', 'Best Case', 'Pipeline']
+                  return (
+                    <div className="space-y-2">
+                      <div className="h-3 w-full rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700">
+                        {catsList.map((catKey) => {
+                          const cAcv = cats[catKey]?.acv || 0
+                          const pct = Math.max(0, (cAcv / totAcv) * 100)
+                          if (pct <= 0) return null
+                          return (
+                            <div
+                              key={catKey}
+                              style={{ width: `${pct}%`, backgroundColor: FORECAST_COLORS[catKey] || '#64748b' }}
+                              className="h-full transition-all hover:opacity-85 cursor-pointer"
+                              title={`${getForecastCategoryLabel(catKey)}: ${pct.toFixed(1)}% (${acvM(cAcv)})`}
+                              onClick={() => openDealsQuery(`${getForecastCategoryLabel(catKey)} Deals (${cats[catKey]?.count || 0} deals · ${acvM(cAcv)})`, { category: catKey }, { forecast_category: catKey })}
+                            />
+                          )
+                        })}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        {catsList.map((catKey) => {
+                          const cAcv = cats[catKey]?.acv || 0
+                          const pct = total.acv > 0 ? (cAcv / total.acv) * 100 : 0
+                          return (
+                            <div
+                              key={catKey}
+                              onClick={() => openDealsQuery(`${getForecastCategoryLabel(catKey)} Deals (${cats[catKey]?.count || 0} deals · ${acvM(cAcv)})`, { category: catKey }, { forecast_category: catKey })}
+                              className="flex items-center gap-1.5 cursor-pointer hover:underline"
+                            >
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: FORECAST_COLORS[catKey] || '#64748b' }} />
+                              <span className="text-[var(--text-secondary)] font-medium">{catKey}:</span>
+                              <span className="font-bold tabular-nums text-[var(--text-primary)]">{pct.toFixed(1)}%</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* 4 Mini Stats in a 2x2 grid */}
+              {(() => {
+                const approvedDeals = (regional?.approval_status || []).reduce((acc: number, r: any) => acc + (r.approved_count || 0), 0)
+                const totalApprovals = (regional?.approval_status || []).reduce((acc: number, r: any) => acc + (r.approved_count || 0) + (r.pending_count || 0) + (r.blank_count || 0), 0)
+                const approvedSharePct = totalApprovals > 0 ? ((approvedDeals / totalApprovals) * 100).toFixed(1) + '%' : '—'
+
+                const topRegion = (regional?.trends || []).slice().sort((a: any, b: any) => (b.total_acv || 0) - (a.total_acv || 0))[0]
+                const largestDeal = summary?.needs_attention?.items?.find((i: any) => i.opportunity_name && i.acv)
+
+                return (
+                  <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-[var(--border)] text-xs">
+                    <div className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                      <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase tracking-wider truncate">Coverage</div>
+                      <div className="text-base font-bold text-emerald-700 dark:text-emerald-400 tabular-nums mt-0.5">
+                        {summary?.coverage?.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-[var(--brand-teal)] transition-colors"
+                      onClick={() => openDealsQuery('Approved Deals', { approval_status: 'Approved' })}
+                      title="Click to view Approved deals"
+                    >
+                      <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase tracking-wider truncate">Approved Share</div>
+                      <div className="text-base font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
+                        {approvedSharePct}
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-[var(--brand-teal)] transition-colors"
+                      onClick={() => topRegion && openDealsQuery(`${topRegion.region} Deals`, { region: topRegion.region })}
+                      title={topRegion ? `Click to view ${topRegion.region} deals` : undefined}
+                    >
+                      <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase tracking-wider truncate">Largest Region</div>
+                      <div className="text-xs font-bold text-[var(--text-primary)] truncate mt-0.5" title={topRegion?.region}>
+                        {topRegion ? `${topRegion.region} (${acvM(topRegion.total_acv)})` : '—'}
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-[var(--brand-teal)] transition-colors"
+                      onClick={() => largestDeal && openDealsQuery(`Largest Deal: ${largestDeal.opportunity_name}`, { deal_ids: largestDeal.opportunity_id_18 })}
+                      title={largestDeal ? `${largestDeal.opportunity_name} · ${acvM(largestDeal.acv)}` : undefined}
+                    >
+                      <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase tracking-wider truncate">Largest Deal</div>
+                      <div className="text-xs font-bold text-[var(--brand-teal)] truncate mt-0.5" title={largestDeal?.opportunity_name}>
+                        {largestDeal ? `${largestDeal.opportunity_name} (${acvM(largestDeal.acv)})` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         </div>
-
-        {/* ── B8 Coverage Line: Commit + Best Case % of Total ACV ── */}
-        {summary?.coverage && (
-          <div
-            className="mt-5 pt-4 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer group hover:bg-[var(--bg-secondary)]/50 p-2.5 rounded-lg transition-colors"
-            onClick={() => {
-              const cov = summary.coverage
-              openDealsQuery(
-                `Coverage Deals (Commit + Best Case) · ${formatNumber(cov.count)} deals · ${formatCurrency(cov.acv)}`,
-                { kind: 'coverage' }
-              )
-            }}
-            title="Click to view Commit + Best Case deals"
-          >
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-tight group-hover:text-[var(--brand-teal)] transition-colors">
-                  Coverage (Commit + Best Case):
-                </span>
-              </div>
-              <span className="text-sm sm:text-base font-bold tabular-nums text-[var(--text-primary)] group-hover:underline">
-                {summary.coverage.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
-              </span>
-              <span className="text-xs text-[var(--text-muted)]">
-                of total ACV
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <div className="flex items-center gap-1.5" title="Percentage-point change vs yesterday">
-                <span className="text-xs text-[var(--text-muted)]">vs yesterday:</span>
-                {summary.coverage.delta_yesterday_pp != null ? (
-                  <span
-                    className={`tabular-nums font-medium text-xs ${
-                      summary.coverage.delta_yesterday_pp >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {summary.coverage.delta_yesterday_pp >= 0 ? '+' : ''}
-                    {Number(summary.coverage.delta_yesterday_pp).toFixed(1)} pts
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-muted)]">—</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5" title="Percentage-point change vs last week">
-                <span className="text-xs text-[var(--text-muted)]">vs last week:</span>
-                {summary.coverage.delta_lastweek_pp != null ? (
-                  <span
-                    className={`tabular-nums font-medium text-xs ${
-                      summary.coverage.delta_lastweek_pp >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {summary.coverage.delta_lastweek_pp >= 0 ? '+' : ''}
-                    {Number(summary.coverage.delta_lastweek_pp).toFixed(1)} pts
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-muted)]">—</span>
-                )}
-              </div>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
-                View deals →
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── SECTION 2 – Forecast Category Group (Data-driven) ──────────────── */}
       {(() => {
