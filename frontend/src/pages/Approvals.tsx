@@ -294,14 +294,14 @@ export default function Approvals() {
         </div>
 
         {/* Under tiles: one row */}
-        <CardRow template="minmax(280px, 320px) max-content minmax(280px, 1fr)" id="approvals-matrix">
+        <CardRow template="minmax(280px, 320px) max-content minmax(0, 1fr)" id="approvals-matrix">
           {/* Left: Donut Chart */}
           <Card className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
             <div className="flex-1 flex flex-col min-h-0">
               <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0 cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>
                 Approval status mix
               </h2>
-              <div className="flex-1 min-h-0 flex flex-col items-center justify-between gap-3 my-auto">
+              <div className="flex-1 min-h-0 flex flex-col items-center gap-3 pt-1">
                 <div className="relative w-36 h-36 flex-shrink-0 flex items-center justify-center cursor-pointer" onClick={() => handleCellClick({}, 'All Approvals')}>
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="40" fill="transparent" stroke="var(--bg-secondary)" strokeWidth="14" />
@@ -384,7 +384,7 @@ export default function Approvals() {
                     <CompactGrid
                       title=""
                       hideCardWrapper={true}
-                      tableLayoutFixed={true}
+                      fillMode={true}
                       columns={displayCategories}
                       columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
                       rows={rowsForGrid}
@@ -401,13 +401,42 @@ export default function Approvals() {
             </div>
           </Card>
 
-          {/* Right: Approval watchlist */}
-          <div className="h-full">
+          {/* Right: Approval watchlist + summary strip */}
+          <div className="h-full flex flex-col gap-4 min-h-0">
             <InsightCard
               title="Approval watchlist"
               subtitle="Pipeline risks and governance pace"
               insights={getApprovalsInsights(data, (title, p) => handleCellClick(p, title))}
             />
+            <Card className="p-3.5 flex-1 min-h-[90px] flex flex-col justify-center border border-[var(--border)] bg-[var(--bg-secondary)]/30">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Governance Summary</div>
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div
+                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500 transition-colors"
+                  onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}
+                >
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Approved Rate</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                    {total.acv ? ((getStatus('Approved').acv / total.acv) * 100).toFixed(1) : '0'}%
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                    {acvM(getStatus('Approved').acv)} · {getStatus('Approved').count} deals
+                  </span>
+                </div>
+                <div
+                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-amber-500 transition-colors"
+                  onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}
+                >
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Pending Review</span>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
+                    {acvM(getStatus('Pending Approval').acv)}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                    {getStatus('Pending Approval').count} deals
+                  </span>
+                </div>
+              </div>
+            </Card>
           </div>
         </CardRow>
       </div>
@@ -419,7 +448,7 @@ export default function Approvals() {
             title="Approval by deal size"
             subtitle={deal_size_split.threshold_label ? `Deals ≥ ${deal_size_split.threshold_label} vs < ${deal_size_split.threshold_label}` : undefined}
           />
-          <CardRow template="max-content minmax(320px, 1fr)">
+          <CardRow template="max-content minmax(0, 1fr)">
             <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors h-full flex flex-col justify-between">
               <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
@@ -696,7 +725,7 @@ export default function Approvals() {
             </div>
           }
         />
-        <CardRow template="max-content minmax(320px, 1fr)">
+        <CardRow template="max-content minmax(0, 1fr)">
           <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors h-full flex flex-col justify-between">
             <div className="flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
@@ -978,7 +1007,7 @@ export default function Approvals() {
               title="Commit deals awaiting approval & ageing"
               subtitle="Unapproved commit contracts and review duration SLA"
             />
-            <CardRow template="minmax(420px, 1.3fr) minmax(320px, 1fr)">
+            <CardRow template="minmax(0, 1fr) minmax(0, 1fr)">
               {/* Commit But Not Approved Table */}
               <Card className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
                 <div className="flex-1 flex flex-col min-h-0">
@@ -1347,9 +1376,9 @@ export default function Approvals() {
                   ) : undefined
                 }
               />
-              <CardRow template="minmax(420px, 1.2fr) minmax(320px, 1fr)">
+              <CardRow template="max-content minmax(0, 1fr)">
                 {/* Table of changes */}
-                <Card className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
+                <Card className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full min-w-[420px]">
                   <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
                       <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">Status transition log</h3>
