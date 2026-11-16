@@ -1463,7 +1463,7 @@ function RegionsContent() {
         <CardRow cols="max-content minmax(0, 1fr)" gap="gap-6">
           {/* Stacked left column with identical numeric column widths */}
           <div className="space-y-6 w-full max-w-full">
-            <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full">
+            <div className="card p-5 border border-[var(--border)] shadow-xs">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Forecast category by region</h3>
               {(() => {
                 const rawFc = summary.categories && summary.categories.length > 0 ? summary.categories : Object.keys(summary.totals?.categories || {})
@@ -1504,7 +1504,7 @@ function RegionsContent() {
               })()}
             </div>
 
-            <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full">
+            <div className="card p-5 border border-[var(--border)] shadow-xs">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Approval status by region</h3>
               <CompactGrid
                 title="Approval status by region"
@@ -1537,7 +1537,7 @@ function RegionsContent() {
           </div>
 
           {/* Right column: TOP is Regional ACV share (vertical-bars), BOTTOM is Regional signals (InsightCard) + StatStrip */}
-          <div className="flex flex-col gap-6 h-full min-w-0">
+          <div className="flex flex-col gap-6 min-w-0">
             <ChartCard
               type="vertical-bars"
               title="Regional ACV share"
@@ -1550,10 +1550,10 @@ function RegionsContent() {
                 color: getRegionColor(r.region),
                 onClick: () => handleDrill(`${r.region} Deals`, { region: r.region }),
               }))}
-              className="flex-1 min-h-[220px]"
+              className="min-h-[220px]"
             />
 
-            <div className="flex-1 flex flex-col gap-3 min-w-0">
+            <div className="flex flex-col gap-3 min-w-0">
               <InsightCard
                 title="Regional signals"
                 subtitle="Key movements and territory signals"

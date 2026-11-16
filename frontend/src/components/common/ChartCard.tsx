@@ -73,11 +73,11 @@ export default function ChartCard({
 
         {/* Content - Scales inside absolute container (B) */}
         <div className="relative flex-1 min-h-[200px] w-full min-w-0 my-1">
-          <div className="absolute inset-0 w-full h-full flex flex-col justify-between overflow-hidden">
+          <div className="absolute inset-0 w-full h-full flex flex-col justify-start overflow-hidden">
             {data.length === 0 ? (
               <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">{emptyText}</p>
             ) : type === 'horizontal-bars' ? (
-            <div className="flex-1 flex flex-col justify-between gap-2">
+            <div className="flex-1 flex flex-col justify-start gap-2.5 overflow-y-auto">
               {data.map((d) => {
                 const pct = d.percentage ?? (calculatedTotal > 0 ? (d.value / calculatedTotal) * 100 : 0)
                 const barColor = d.color || toneDef.hex

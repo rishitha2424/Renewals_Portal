@@ -691,21 +691,50 @@ function DelayedContent() {
 
         {/* Grid Breakdowns & Insights (no outer wrapper cards) */}
         <CardRow template="max-content minmax(0, 1fr) minmax(0, 1fr)">
-          <CompactGrid
-            title="Delayed ACV by region"
-            rowLabelName="Region"
-            columns={regionGrid.categories}
-            columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-            rows={regionGrid.rows}
-            totals={regionGrid.totals}
-            deltas={regionGrid.gridDeltas}
-            metricMode={metricMode}
-            onCellClick={regionGrid.handleCellClick}
-            compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-            yesterdayDate={summary.yesterday_date}
-            lastweekDate={summary.lastweek_date}
-            heatMode={heatMode}
-          />
+          <Card className="p-4 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)] shrink-0">
+                <h3 className="font-semibold text-sm text-[var(--text-primary)]">Delayed ACV by region</h3>
+                <span className="text-xs text-[var(--text-muted)] font-mono">
+                  {metricMode === 'Amount' ? 'ACV' : metricMode === 'Count' ? 'Deals' : 'ACV & Deals'}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <CompactGrid
+                  title=""
+                  hideCardWrapper={true}
+                  rowLabelName="Region"
+                  columns={regionGrid.categories}
+                  columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+                  rows={regionGrid.rows}
+                  totals={regionGrid.totals}
+                  deltas={regionGrid.gridDeltas}
+                  metricMode={metricMode}
+                  onCellClick={regionGrid.handleCellClick}
+                  compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+                  yesterdayDate={summary.yesterday_date}
+                  lastweekDate={summary.lastweek_date}
+                  heatMode={heatMode}
+                />
+              </div>
+
+              {/* StatStrip pinned to bottom to match middle chart and right insights */}
+              <div className="grid grid-cols-2 gap-2 mt-auto pt-3 border-t border-[var(--border-subtle)] text-xs shrink-0">
+                <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Delayed Region</span>
+                  <span className="font-bold text-[var(--text-primary)] truncate block" title={regionGrid.rows[0]?.label}>
+                    {regionGrid.rows[0]?.label || '—'} ({formatACV(regionGrid.rows[0]?.total?.acv || 0)})
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-[var(--bg-secondary)]/50 text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Overdue Volume</span>
+                  <span className="font-bold text-rose-600 dark:text-rose-400 font-mono">
+                    {summary.overdue?.count ?? 0} ({formatACV(summary.overdue?.acv ?? 0)})
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
 
           <div className="h-full flex flex-col min-w-0">
             <ChartCard
@@ -925,7 +954,7 @@ function DelayedContent() {
                   subtitle="Owner concentration among top delayed contracts"
                   type="horizontal-bars"
                   data={topOwnersChartData}
-                  className="flex-1 min-h-[140px]"
+                  className="min-h-[140px]"
                 />
               )}
             </div>

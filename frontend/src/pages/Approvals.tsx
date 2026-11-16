@@ -373,7 +373,7 @@ export default function Approvals() {
               <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
                 Approval status by forecast category
               </h2>
-              <div className="flex-1 min-h-0 overflow-auto">
+              <div className="overflow-x-auto">
                 {(() => {
                   const rawCategories = categories && categories.length > 0 ? categories : Object.keys(colSums || {})
                   const displayCategories = rawCategories.filter((c: string) => {
@@ -397,21 +397,11 @@ export default function Approvals() {
                   )
                 })()}
               </div>
-            </div>
-          </Card>
 
-          {/* Right: Approval watchlist + summary strip */}
-          <div className="h-full flex flex-col gap-4 min-h-0">
-            <InsightCard
-              title="Approval watchlist"
-              subtitle="Pipeline risks and governance pace"
-              insights={getApprovalsInsights(data, (title, p) => handleCellClick(p, title))}
-            />
-            <Card className="p-3.5 flex-1 min-h-[90px] flex flex-col justify-center border border-[var(--border)] bg-[var(--bg-secondary)]/30">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Governance Summary</div>
-              <div className="grid grid-cols-2 gap-2 text-center">
+              {/* Governance Summary Strip pinned to bottom */}
+              <div className="grid grid-cols-2 gap-2 mt-auto pt-3 border-t border-[var(--border-subtle)] text-center text-xs">
                 <div
-                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500 transition-colors"
+                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500 transition-colors"
                   onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}
                 >
                   <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Approved Rate</span>
@@ -423,7 +413,7 @@ export default function Approvals() {
                   </span>
                 </div>
                 <div
-                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-card)] border border-[var(--border-subtle)] cursor-pointer hover:border-amber-500 transition-colors"
+                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-amber-500 transition-colors"
                   onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}
                 >
                   <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Pending Review</span>
@@ -435,7 +425,16 @@ export default function Approvals() {
                   </span>
                 </div>
               </div>
-            </Card>
+            </div>
+          </Card>
+
+          {/* Right: Approval watchlist */}
+          <div className="h-full min-w-0">
+            <InsightCard
+              title="Approval watchlist"
+              subtitle="Pipeline risks and governance pace"
+              insights={getApprovalsInsights(data, (title, p) => handleCellClick(p, title))}
+            />
           </div>
         </CardRow>
       </div>

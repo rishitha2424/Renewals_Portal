@@ -499,32 +499,12 @@ function BusinessUnitsContent() {
             </div>
           </div>
 
-          {/* Middle: BU Signals + Commit Coverage Vertical Column Chart */}
-          <div className="flex flex-col gap-4 h-full min-w-0">
+          {/* Middle: BU Signals */}
+          <div className="h-full min-w-0">
             <InsightCard
               title="Business unit signals"
               subtitle="Key signals and commitment trajectory"
               insights={getBusinessUnitsInsights(summary, (title, p) => handleCellClick(p?.bu, p?.category, title))}
-            />
-
-            <ChartCard
-              type="vertical-bars"
-              title="Commit coverage by BU"
-              subtitle="Percentage of renewals in Closed + Commit"
-              data={sortedRowsByAcv.slice(0, 6).map((r: any) => {
-                const cAcv = r.cells?.['Commit']?.acv || 0
-                const clAcv = r.cells?.['Closed']?.acv || 0
-                const cov = r.acv > 0 ? ((cAcv + clAcv) / r.acv) * 100 : 0
-                return {
-                  label: r.bu,
-                  value: cAcv + clAcv,
-                  formattedValue: `${cov.toFixed(1)}%`,
-                  percentage: cov,
-                  color: '#2563EB',
-                  onClick: () => handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`),
-                }
-              })}
-              className="flex-1 min-h-[180px]"
             />
           </div>
 
@@ -551,8 +531,29 @@ function BusinessUnitsContent() {
         </CardRow>
       </div>
 
-      {/* 4. Portfolio Coverage & Movement Table (Analytical Breakdown replacing duplicate heatmap) */}
-      <div id="bu-coverage-table" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden scroll-mt-24">
+      {/* 4. Portfolio Coverage & Movement Table */}
+      <div id="bu-coverage-table" className="space-y-4 scroll-mt-24">
+        <ChartCard
+          type="vertical-bars"
+          title="Commit coverage by BU"
+          subtitle="Percentage of renewals in Closed + Commit"
+          data={sortedRowsByAcv.slice(0, 8).map((r: any) => {
+            const cAcv = r.cells?.['Commit']?.acv || 0
+            const clAcv = r.cells?.['Closed']?.acv || 0
+            const cov = r.acv > 0 ? ((cAcv + clAcv) / r.acv) * 100 : 0
+            return {
+              label: r.bu,
+              value: cAcv + clAcv,
+              formattedValue: `${cov.toFixed(1)}%`,
+              percentage: cov,
+              color: '#2563EB',
+              onClick: () => handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`),
+            }
+          })}
+          className="min-h-[180px]"
+        />
+
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden">
         <div className="p-4 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -668,6 +669,7 @@ function BusinessUnitsContent() {
           </table>
         </div>
       </div>
+    </div>
 
       {/* 5. Top Opportunities Section */}
       <div id="bu-top-opps" className="scroll-mt-24">
@@ -801,7 +803,7 @@ function BusinessUnitsContent() {
                     subtitle="ACV distribution among listed opportunities"
                     type="horizontal-bars"
                     data={catData}
-                    className="flex-1 min-h-[140px]"
+                    className="min-h-[140px]"
                   />
                 )}
               </div>
