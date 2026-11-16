@@ -141,26 +141,28 @@
     box-shadow: var(--card-shadow);
   }
 
-  /* Standard Enterprise Table Header */
+  /* ── Tight, Aligned, Crisp Enterprise Table Standards (.data-table & .table-enterprise) ── */
   .table-header {
     background: var(--bg-secondary);
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     border-bottom: 1px solid var(--border);
   }
 
-  /* Table styling standards: 44px rows, px-4 py-3 cell padding, hairline dividers */
+  .data-table,
   .table-enterprise {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-  }
-  .table-enterprise th {
-    padding: 10px 16px;
+    border-collapse: collapse;
     font-size: 12px;
+    line-height: 1.35;
+  }
+  .data-table th,
+  .table-enterprise th {
+    padding: 8px 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
     background: var(--bg-secondary);
@@ -168,15 +170,88 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    white-space: nowrap;
+    user-select: none;
+    letter-spacing: 0.03em;
   }
+  .data-table td,
   .table-enterprise td {
-    padding: 12px 16px;
-    font-size: 13px;
+    padding: 8px 12px;
+    font-size: 12px;
     border-bottom: 1px solid var(--border-subtle);
-    height: 44px;
+    height: 36px;
+    color: var(--text-primary);
   }
+  .data-table tr:hover td,
+  .table-enterprise tr:hover td {
+    background-color: var(--bg-secondary);
+  }
+  .data-table tr:last-child td,
   .table-enterprise tr:last-child td {
     border-bottom: none;
+  }
+
+  /* Text & Number alignments */
+  .data-table th.text-right,
+  .data-table td.text-right,
+  .table-enterprise th.text-right,
+  .table-enterprise td.text-right,
+  .data-table td.num,
+  .table-enterprise td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .data-table th.text-left,
+  .data-table td.text-left,
+  .table-enterprise th.text-left,
+  .table-enterprise td.text-left {
+    text-align: left;
+  }
+  .data-table th.text-center,
+  .data-table td.text-center,
+  .table-enterprise th.text-center,
+  .table-enterprise td.text-center {
+    text-align: center;
+  }
+
+  /* Fixed narrow widths for number columns so columns stay close together */
+  .col-num {
+    width: 100px;
+    min-width: 80px;
+    max-width: 130px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .col-main {
+    text-align: left;
+    width: auto;
+  }
+
+  /* Truncation with tooltip */
+  .cell-truncate {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Total rows */
+  .data-table tr.total-row td,
+  .table-enterprise tr.total-row td,
+  .data-table tfoot tr td,
+  .table-enterprise tfoot tr td {
+    font-weight: 700;
+    background: var(--bg-secondary);
+    border-top: 2px solid var(--border);
+    border-bottom: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Cap width on tables with 5 or fewer columns to prevent large empty gaps */
+  .table-compact-container {
+    max-width: 720px;
   }
 
   /* Skeleton loading */

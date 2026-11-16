@@ -384,14 +384,14 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
               const hasWhyHere = filteredDeals.some(d => Boolean(d.why_here))
 
               return (
-              <table className="w-full text-xs text-left whitespace-nowrap">
+              <table className="data-table w-full text-xs text-left whitespace-nowrap">
                 <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] z-10">
                   <tr>
-                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('opportunity_name')}>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group col-main" onClick={() => handleSort('opportunity_name')}>
                       <div className="flex items-center gap-1">Opportunity {sortField === 'opportunity_name' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Account / Group</th>
-                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-right cursor-pointer hover:text-[var(--text-primary)] group" onClick={() => handleSort('forecast_acv_amount')}>
+                    <th className="px-3 py-2 font-medium text-[var(--text-muted)] text-right cursor-pointer hover:text-[var(--text-primary)] group col-num" onClick={() => handleSort('forecast_acv_amount')}>
                       <div className="flex items-center justify-end gap-1">ACV {sortField === 'forecast_acv_amount' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
                     {hasServiceExpiry && (
@@ -458,7 +458,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
                           {d.group ? <span className="font-medium text-slate-700 dark:text-slate-300">Excel group (from file): {d.group}</span> : (d.business_unit_primary || '—')}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-[var(--text-primary)] tabular-nums">
+                      <td className="px-3 py-2 text-right col-num font-semibold text-[var(--text-primary)] tabular-nums">
                         {formatCurrency(d.forecast_acv_amount ?? (d as any).acv ?? 0)}
                       </td>
                       {hasServiceExpiry && (

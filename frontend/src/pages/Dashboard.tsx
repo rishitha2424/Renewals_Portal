@@ -1242,37 +1242,37 @@ export default function Dashboard() {
                 </div>
                 <Globe2 className="w-5 h-5 text-[var(--text-muted)]" />
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
-                <table className="w-full text-xs">
+              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1 table-compact-container">
+                <table className="data-table w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total deals</th>
-                      <th className="text-right px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">Approved</th>
-                      <th className="text-right px-4 py-3 font-semibold text-amber-600 dark:text-amber-400">Pending Approval</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Not submitted</th>
+                      <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
+                      <th className="text-right px-3 py-2 font-semibold text-[var(--text-muted)] col-num">Total deals</th>
+                      <th className="text-right px-3 py-2 font-semibold text-emerald-600 dark:text-emerald-400 col-num">Approved</th>
+                      <th className="text-right px-3 py-2 font-semibold text-amber-600 dark:text-amber-400 col-num">Pending Approval</th>
+                      <th className="text-right px-3 py-2 font-semibold text-[var(--text-muted)] col-num">Not submitted</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {propRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                        <td className="px-4 py-3 font-medium cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
+                        <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
                           {(row.approved_count ?? 0) + (row.pending_count ?? 0) + (row.blank_count ?? 0)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)] cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono text-amber-700 dark:text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono text-[var(--text-secondary)] cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
                       </tr>
                     ))}
-                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
-                      <td className="px-4 py-3">Total</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
+                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
+                      <td className="px-3 py-2 col-main">Total</td>
+                      <td className="px-3 py-2 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
                         {(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
-                      <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono text-amber-700 dark:text-amber-400 cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1287,14 +1287,14 @@ export default function Dashboard() {
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">Closed, Commit and Best Case value per region for the selected period.</p>
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
-                <table className="w-full text-xs">
+              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1 table-compact-container">
+                <table className="data-table w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total ACV Value</th>
+                      <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
+                      <th className="text-right px-3 py-2 font-semibold text-[var(--text-muted)] col-num">Total ACV Value</th>
                       {trendFcCols.map(fc => (
-                        <th key={fc} className="text-right px-4 py-3 font-semibold" style={{ color: FORECAST_COLORS[fc] }}>
+                        <th key={fc} className="text-right px-3 py-2 font-semibold col-num" style={{ color: FORECAST_COLORS[fc] }}>
                           {fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)}
                         </th>
                       ))}
@@ -1303,15 +1303,15 @@ export default function Dashboard() {
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {trendRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                        <td className="px-4 py-3 font-medium cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} Deals (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`${row.region} Total (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{acvM(row.total_acv)}</td>
+                        <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)] col-num" onClick={() => openDealsQuery(`${row.region} Total (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{acvM(row.total_acv)}</td>
                         {trendFcCols.map(fc => {
                           const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                           const val = row[k] ?? 0
                           return (
                             <td
                               key={fc}
-                              className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
+                              className="px-3 py-2 text-right font-mono cursor-pointer hover:underline col-num"
                               style={{ color: FORECAST_COLORS[fc] }}
                               onClick={() => openDealsQuery(`${row.region} · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { region: row.region, category: fc }, { sub_region: row.region, forecast_category: fc })}
                             >
@@ -1321,16 +1321,16 @@ export default function Dashboard() {
                         })}
                       </tr>
                     ))}
-                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
-                      <td className="px-4 py-3">Total</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`Total Renewal ACV (${acvM(regTotals.total_acv)})`, {})}>{acvM(regTotals.total_acv)}</td>
+                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
+                      <td className="px-3 py-2 col-main">Total</td>
+                      <td className="px-3 py-2 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)] col-num" onClick={() => openDealsQuery(`Total Renewal ACV (${acvM(regTotals.total_acv)})`, {})}>{acvM(regTotals.total_acv)}</td>
                       {trendFcCols.map(fc => {
                         const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                         const val = regTotals[k] ?? 0
                         return (
                           <td
                             key={fc}
-                            className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
+                            className="px-3 py-2 text-right font-mono cursor-pointer hover:underline col-num"
                             style={{ color: FORECAST_COLORS[fc] }}
                             onClick={() => openDealsQuery(`Total · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { category: fc }, { forecast_category: fc })}
                           >

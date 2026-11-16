@@ -128,17 +128,17 @@ export default function CompactGrid({
         <h3 className="font-semibold text-sm">{title}</h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-[13px] whitespace-nowrap">
+        <table className="data-table w-full text-xs whitespace-nowrap">
           <thead>
             <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-medium text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs">{rowLabelName}</th>
+              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs">{rowLabelName}</th>
               {activeColumns.map(c => {
                 const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
                 return (
-                  <th key={c} className="px-3 py-2 text-center font-medium text-[var(--text-muted)]">{label}</th>
+                  <th key={c} className="px-3 py-2 text-center font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] col-num">{label}</th>
                 )
               })}
-              <th className="px-3 py-2 text-center font-semibold text-[var(--text-primary)] border-l border-[var(--border)]">Total</th>
+              <th className="px-3 py-2 text-center font-bold text-[11px] uppercase tracking-wider text-[var(--text-primary)] border-l border-[var(--border)] col-num">Total</th>
             </tr>
           </thead>
           <tbody>

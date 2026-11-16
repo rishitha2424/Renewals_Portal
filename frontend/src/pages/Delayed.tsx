@@ -930,7 +930,7 @@ function DelayedContent() {
           </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="table-enterprise text-xs">
+          <table className="data-table table-enterprise w-full text-xs">
             <thead>
               <tr>
                 <th className="text-left">Opportunity & Account</th>
@@ -1014,7 +1014,7 @@ function DelayedContent() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="table-enterprise text-xs">
+            <table className="data-table table-enterprise w-full text-xs">
               <thead>
                 <tr>
                   <th className="text-left">Manual Sheet</th>
@@ -1073,7 +1073,7 @@ function DelayedContent() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="table-enterprise text-xs">
+              <table className="data-table table-enterprise w-full text-xs">
                 <thead>
                   <tr>
                     <th className="text-left font-semibold">Review Type</th>

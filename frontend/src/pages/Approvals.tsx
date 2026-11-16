@@ -525,7 +525,7 @@ export default function Approvals() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="data-table w-full text-xs text-left">
               <thead>
                 {metricMode === 'Both' ? (
                   <>
@@ -792,7 +792,7 @@ export default function Approvals() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+          <table className="data-table w-full text-xs text-left">
             <thead>
               {metricMode === 'Both' ? (
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
@@ -1091,7 +1091,7 @@ export default function Approvals() {
               </div>
 
               <div className="flex-1 overflow-x-auto max-h-[320px]">
-                <table className="w-full text-xs text-left">
+                <table className="data-table w-full text-xs text-left">
                   <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     <tr>
                       <th className="py-2 px-2.5">Opportunity</th>
@@ -1181,7 +1181,7 @@ export default function Approvals() {
               </div>
 
               <div className="flex-1 overflow-x-auto max-h-[320px]">
-                <table className="w-full text-xs text-left">
+                <table className="data-table w-full text-xs text-left">
                   <thead className="sticky top-0 bg-[var(--bg-card)] border-b border-[var(--border)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     <tr>
                       <th className="py-2 px-2.5">Deal</th>

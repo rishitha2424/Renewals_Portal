@@ -593,7 +593,7 @@ function BusinessUnitsContent() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left whitespace-nowrap">
+          <table className="data-table w-full text-xs text-left whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0 z-10">
               <tr>
                 <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-4 font-semibold border-r border-[var(--border)] shadow-xs">Business Unit</th>
@@ -745,7 +745,7 @@ function BusinessUnitsContent() {
 
         {/* Opportunities Table */}
         <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="w-full text-left text-xs whitespace-nowrap">
+          <table className="data-table w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0">
               <tr>
                 <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-3 font-semibold border-r border-[var(--border)] shadow-xs">Opportunity</th>

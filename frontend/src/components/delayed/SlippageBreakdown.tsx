@@ -92,7 +92,7 @@ export default function SlippageBreakdown({
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
                   <th className="px-4 py-2">Service start year</th>

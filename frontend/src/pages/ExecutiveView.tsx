@@ -513,7 +513,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Forecast Category</th>
@@ -557,7 +557,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Baseline Comparison</th>
@@ -620,7 +620,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Approval Status</th>
@@ -665,7 +665,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2">Quarter</th>
@@ -714,7 +714,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2 w-8 text-center">#</th>
@@ -755,7 +755,7 @@ export default function ExecutiveView() {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Business Unit</th>
@@ -814,7 +814,7 @@ export default function ExecutiveView() {
             Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>
@@ -889,7 +889,7 @@ export default function ExecutiveView() {
 
           {/* Slipped from table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Service start year</th>
@@ -931,7 +931,7 @@ export default function ExecutiveView() {
             Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>

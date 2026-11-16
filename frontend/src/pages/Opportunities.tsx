@@ -1476,7 +1476,7 @@ export default function Opportunities() {
       {/* ── Virtualised / Sticky Header Table ────────────────────────────── */}
       <Card id="explorer-table" padding="none" className="overflow-hidden border-[var(--border)] shadow-sm scroll-mt-24">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative" id="explorer-table-container">
-          <table className="w-full text-xs text-left border-collapse">
+          <table className="data-table w-full text-xs text-left border-collapse">
             {/* Sticky Header */}
             <thead className="sticky top-0 bg-[var(--bg-secondary)] z-20 shadow-sm border-b border-[var(--border)]">
               <tr>
