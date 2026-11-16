@@ -349,20 +349,29 @@ function RegionsContent() {
         </div>
       )}
 
-      {/* Slim Summary Strip */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-xs font-medium text-[var(--text-secondary)]">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-[var(--text-primary)]">Total {data_slice}:</span>
-          <span className="font-extrabold text-[var(--text-primary)] tabular-nums">{formatACV(summary?.total?.acv ?? 0)}</span>
-          <span>·</span>
-          <span className="tabular-nums font-semibold">{formatCount(summary?.total?.count ?? 0)} deals</span>
+      {/* Top Territory Overview Bar */}
+      <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div>
+          <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Region</span>
+          <span className="font-bold text-[var(--text-primary)]">
+            {summary.regions?.[0]?.region || '—'} ({formatACV(summary.regions?.[0]?.acv || 0)})
+          </span>
         </div>
-        <button
-          onClick={() => handleDrill(`All Regions (${data_slice})`, {})}
-          className="text-[var(--brand-teal)] hover:underline font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
-        >
-          View all deals →
-        </button>
+        <div className="flex items-center gap-4 text-right">
+          <div>
+            <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Active Territories</span>
+            <span className="font-bold text-[var(--text-primary)] tabular-nums">
+              {summary.regions?.length || 0} regions
+            </span>
+          </div>
+          <div className="h-5 w-px bg-[var(--border)] hidden sm:block" />
+          <button
+            onClick={() => handleDrill(`All Regions (${data_slice})`, {})}
+            className="text-[var(--brand-teal)] hover:underline font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
+          >
+            View all deals ({formatCount(summary?.total?.count ?? 0)}) →
+          </button>
+        </div>
       </div>
 
       {/* 3 Region Tiles per row */}
@@ -1467,6 +1476,31 @@ function RegionsContent() {
           </div>
         </div>
 
+        {/* Territory Overview Strip at top of Region Matrix */}
+        <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div>
+            <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Region</span>
+            <span className="font-bold text-[var(--text-primary)]">
+              {summary.regions?.[0]?.region || '—'} ({formatACV(summary.regions?.[0]?.acv || 0)})
+            </span>
+          </div>
+          <div className="flex items-center gap-4 text-right">
+            <div>
+              <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Active Territories</span>
+              <span className="font-bold text-[var(--text-primary)] tabular-nums">
+                {summary.regions?.length || 0} regions
+              </span>
+            </div>
+            <div className="h-5 w-px bg-[var(--border)] hidden sm:block" />
+            <button
+              onClick={() => handleDrill(`All Regions (${data_slice})`, {})}
+              className="text-[var(--brand-teal)] hover:underline font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
+            >
+              View all deals ({formatCount(summary?.total?.count ?? 0)}) →
+            </button>
+          </div>
+        </div>
+
         <CardRow cols="max-content minmax(0, 1fr)" gap="gap-6">
           {/* Stacked left column with identical numeric column widths */}
           <div className="space-y-6 w-full max-w-full">
@@ -1560,26 +1594,12 @@ function RegionsContent() {
               className="min-h-[220px]"
             />
 
-            <div className="flex flex-col gap-3 min-w-0">
+            <div className="min-w-0">
               <InsightCard
                 title="Regional signals"
                 subtitle="Key movements and territory signals"
                 insights={getRegionsMatrixInsights(summary, summary, (title, p) => handleDrill(title, p))}
               />
-              <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/30 grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Region</span>
-                  <span className="font-bold text-[var(--text-primary)]">
-                    {summary.regions?.[0]?.region || '—'} ({formatACV(summary.regions?.[0]?.acv || 0)})
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Active Territories</span>
-                  <span className="font-bold text-[var(--text-primary)] tabular-nums">
-                    {summary.regions?.length || 0} regions
-                  </span>
-                </div>
-              </div>
             </div>
           </div>
         </CardRow>
