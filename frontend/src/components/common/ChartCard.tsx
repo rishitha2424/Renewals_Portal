@@ -121,7 +121,15 @@ export default function ChartCard({
                 return (
                   <>
                     {/* Upper section: values, percentage badge & bars rising from baseline */}
-                    <div className="flex-1 flex items-end justify-between gap-2 px-1 min-h-0">
+                    <div className="relative flex-1 flex items-end justify-between gap-2 px-1 min-h-0">
+                      {/* Subtle background horizontal reference lines */}
+                      <div className="absolute inset-x-1 inset-y-1 flex flex-col justify-between pointer-events-none z-0 opacity-70">
+                        <div className="w-full border-b border-dashed border-slate-200/90 dark:border-slate-700/60" />
+                        <div className="w-full border-b border-dashed border-slate-200/90 dark:border-slate-700/60" />
+                        <div className="w-full border-b border-dashed border-slate-200/90 dark:border-slate-700/60" />
+                        <div className="w-full border-b border-slate-200/90 dark:border-slate-700/60" />
+                      </div>
+
                       {data.map((d) => {
                         const heightPct = Math.max(8, (d.value / maxVal) * 100)
                         const barColor = d.color || toneDef.hex
@@ -131,7 +139,7 @@ export default function ChartCard({
                             key={d.label}
                             onClick={d.onClick}
                             className={clsx(
-                              'flex-1 flex flex-col items-center justify-end h-full group min-w-0',
+                              'relative z-10 flex-1 flex flex-col items-center justify-end h-full group min-w-0',
                               d.onClick ? 'cursor-pointer' : 'cursor-default'
                             )}
                           >
