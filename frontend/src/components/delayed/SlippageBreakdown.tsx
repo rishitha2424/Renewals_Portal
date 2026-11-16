@@ -1,5 +1,6 @@
 import React from 'react'
 import { acvM, formatDate } from '@/utils/format'
+import Tile from '@/components/common/Tile'
 
 export interface SlippageBreakdownProps {
   slippageSec: any
@@ -60,21 +61,14 @@ export default function SlippageBreakdown({
             const drawerTitle = `Slippage · ${label} (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acv)})`
 
             return (
-              <div
+              <Tile
                 key={cat}
-                onClick={() => hasC && onDealsClick(drawerTitle, { kind: 'slippage', category: cat })}
-                className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] transition-colors ${
-                  hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'
-                }`}
-              >
-                <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{label}</div>
-                <div className="text-lg font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
-                  {acvM(acv)}
-                </div>
-                <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
-                  {cnt} {cnt === 1 ? 'deal' : 'deals'}
-                </div>
-              </div>
+                title={label}
+                amount={acvM(acv)}
+                count={cnt}
+                polarity="bad_when_higher"
+                onClick={hasC ? () => onDealsClick(drawerTitle, { kind: 'slippage', category: cat }) : undefined}
+              />
             )
           })}
         </div>

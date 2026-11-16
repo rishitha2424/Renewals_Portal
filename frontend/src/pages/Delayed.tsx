@@ -29,6 +29,8 @@ import MetricToggle from '@/components/common/MetricToggle'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import SectionHeading from '@/components/common/SectionHeading'
+import Tile from '@/components/common/Tile'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import { useRuleDeals } from '@/hooks/useRuleDeals'
@@ -512,30 +514,127 @@ function DelayedContent() {
         </div>
       )}
 
+      {/* ── TOP KPI ROW ── */}
+      {(() => {
+        const isFuture = summary?.is_future || summary?.slippage?.is_future
+        const delRenewals = summary?.delayed_renewals
+        const delTot = summary?.delayed_renewals_total || delRenewals?.total
+        const overdue = delRenewals?.overdue || summary?.overdue
+        const delayedAhead = delRenewals?.ahead || summary?.ahead || delRenewals?.later_close || summary?.later_close
+        const slipTot = summary?.slippage_total || summary?.slippage?.total || summary?.slippage?.overall
+        const isOverdueZero = (overdue?.count || 0) === 0
+
+        return (
+          <div id="delayed-top-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 scroll-mt-24 mb-6">
+            {/* 1. Delayed Total */}
+            <Tile
+              accentColor="#e11d48"
+              title="Delayed Total"
+              amount={formatACV(delTot?.acv || 0)}
+              count={delTot?.count || 0}
+              subtitle="Open, service ended"
+              polarity="bad_when_higher"
+              onClick={() => handleDrill(`Delayed Renewals Total (${formatCount(delTot?.count || 0)} deals · ${formatACV(delTot?.acv || 0)})`, { kind: 'delayed_total' })}
+              deltaYesterday={delTot?.delayed_vs_yesterday}
+              deltaLastWeek={delTot?.delayed_vs_lastweek}
+            />
+
+            {/* 2. Overdue */}
+            {!isOverdueZero ? (
+              <Tile
+                accentColor="#e11d48"
+                title="Overdue"
+                amount={formatACV(overdue?.acv || 0)}
+                count={overdue?.count || 0}
+                subtitle="Close date passed"
+                polarity="bad_when_higher"
+                onClick={() => handleDrill(`Overdue Deals (${formatCount(overdue?.count || 0)} deals · ${formatACV(overdue?.acv || 0)})`, { kind: 'overdue' })}
+                deltaYesterday={overdue?.delta_yesterday}
+                deltaLastWeek={overdue?.delta_lastweek}
+              />
+            ) : (
+              <div className="card p-3.5 flex flex-col justify-center items-center text-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+                <span className="text-xs font-semibold text-[var(--text-muted)]">Overdue</span>
+                <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>No overdue deals</span>
+                </div>
+                <span className="text-[10px] text-[var(--text-muted)]">All close dates ahead</span>
+              </div>
+            )}
+
+            {/* 3. Delayed close date ahead */}
+            <Tile
+              accentColor="#f59e0b"
+              title="Delayed, close date ahead"
+              amount={formatACV(delayedAhead?.acv || 0)}
+              count={delayedAhead?.count || 0}
+              subtitle="Close date still ahead"
+              polarity="bad_when_higher"
+              onClick={() => handleDrill(`Delayed (Close date ahead) · ${formatCount(delayedAhead?.count || 0)} deals · ${formatACV(delayedAhead?.acv || 0)}`, { kind: 'delayed_ahead' })}
+              deltaYesterday={delayedAhead?.delta_yesterday}
+              deltaLastWeek={delayedAhead?.delta_lastweek}
+            />
+
+            {/* 4. Slippage Total */}
+            <Tile
+              accentColor="#f59e0b"
+              title="Slippage Total"
+              amount={formatACV(slipTot?.acv || 0)}
+              count={slipTot?.count || 0}
+              subtitle="Slipped to next year"
+              polarity="bad_when_higher"
+              onClick={() => handleDrill(`Slippage Total · ${formatCount(slipTot?.count || 0)} deals · ${formatACV(slipTot?.acv || 0)}`, { kind: 'slippage' })}
+              deltaYesterday={slipTot?.delta_yesterday}
+              deltaLastWeek={slipTot?.delta_lastweek}
+            />
+
+            {/* 5. Lost since start of quarter (outside totals) */}
+            <Tile
+              accentColor="#64748b"
+              title={`Lost since start`}
+              amount={formatACV(summary?.lost?.acv || 0)}
+              count={summary?.lost?.count || 0}
+              badge={<span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">Outside Totals</span>}
+              subtitle="Excluded from delayed totals"
+              polarity="bad_when_higher"
+              onClick={() => summary?.lost && handleDrill(`Lost Deals · ${formatCount(summary.lost.count || 0)} deals · ${formatACV(summary.lost.acv || 0)}`, { kind: 'lost' })}
+            />
+
+            {/* 6. Needs Review */}
+            <Tile
+              accentColor="#0ea5e9"
+              title="Needs Review"
+              amount={formatACV(summary?.needs_review?.acv || 0)}
+              count={summary?.needs_review?.total_count ?? summary?.needs_review?.items?.length ?? 0}
+              subtitle="Missing service start date / exceptions"
+              polarity="neutral"
+              onClick={() => handleDrill(`Needs Review Deals`, { kind: 'needs_review' })}
+            />
+          </div>
+        )
+      })()}
+
       {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
       <div id="delayed-renewals-group" className="space-y-4 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                Delayed Renewals
-              </h2>
-              {delTot?.count != null && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
-                  {delTot.count} deals · {formatACV(delTot.acv)}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              Service has ended, renewal not closed yet (depends on snapshot as-of date, not selected period).
-            </p>
-          </div>
-          {summary.delayed_pct_of_quarter != null && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
-              {summary.delayed_pct_of_quarter}% of Quarter Total ({formatACV(delTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
-            </span>
-          )}
-        </div>
+        <SectionHeading
+          title="Delayed Renewals"
+          subtitle="Service has ended, renewal not closed yet (depends on snapshot as-of date, not selected period)."
+          badge={
+            delTot?.count != null ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                {delTot.count} deals · {formatACV(delTot.acv)}
+              </span>
+            ) : undefined
+          }
+          action={
+            summary.delayed_pct_of_quarter != null ? (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
+                {summary.delayed_pct_of_quarter}% of Quarter Total ({formatACV(delTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+              </span>
+            ) : undefined
+          }
+        />
 
         {/* Fallback Notice */}
         {Boolean(summary.fallback_used || summary.delayed_renewals?.fallback_used) && (
@@ -680,28 +779,24 @@ function DelayedContent() {
 
       {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
       <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                Slippage
-              </h2>
-              {summary.slippage?.total?.count != null && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
-                  {summary.slippage.total.count} deals · {formatACV(summary.slippage.total.acv)}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              {summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to next year.'}
-            </p>
-          </div>
-          {summary.slippage_pct_of_quarter != null && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
-              {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(summary.slippage?.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
-            </span>
-          )}
-        </div>
+        <SectionHeading
+          title="Slippage"
+          subtitle={summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to next year.'}
+          badge={
+            summary.slippage?.total?.count != null ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                {summary.slippage.total.count} deals · {formatACV(summary.slippage.total.acv)}
+              </span>
+            ) : undefined
+          }
+          action={
+            summary.slippage_pct_of_quarter != null ? (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(summary.slippage?.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+              </span>
+            ) : undefined
+          }
+        />
 
         {/* Slippage Total Box with Deltas */}
         {(() => {
@@ -785,7 +880,18 @@ function DelayedContent() {
 
       {/* ────────────────── SECTION 3: LOST SINCE START OF PERIOD ────────────────── */}
       {summary.lost && (
-        <div id="delayed-lost-group" className="scroll-mt-24">
+        <div id="delayed-lost-group" className="scroll-mt-24 space-y-3">
+          <SectionHeading
+            title={`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`}
+            subtitle="Deals deleted or lost since start of baseline (excluded from delayed totals)."
+            badge={
+              summary.lost.count != null ? (
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/20">
+                  {summary.lost.count} deals · {formatACV(summary.lost.acv)}
+                </span>
+              ) : undefined
+            }
+          />
           <div className="rounded-xl bg-slate-500/5 dark:bg-slate-950/20 border border-slate-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
             <div
               className={cn((summary.lost.count || 0) > 0 ? 'cursor-pointer group' : 'cursor-default')}

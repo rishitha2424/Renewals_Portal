@@ -144,14 +144,25 @@ export default function CompactGrid({
           <tbody>
             {rows.map(r => {
               const rowLabel = rowLabelName === 'Status' ? getApprovalStatusLabel(r.label) : r.label
+              const grandTotalAcv = totals?.grand?.acv || 1
+              const rowAcv = r.total?.acv || 0
+              const rowSharePct = Math.min(100, Math.max(0, (rowAcv / grandTotalAcv) * 100))
+
               return (
                 <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group hover:bg-[var(--bg-secondary)]/40 transition-colors">
                   <td 
                     className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs"
                     onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
-                    title={`${rowLabel}: Click to view deals`}
+                    title={`${rowLabel}: Click to view deals (${rowSharePct.toFixed(1)}% of total)`}
                   >
-                    {rowLabel}
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="truncate">{rowLabel}</span>
+                      {rowSharePct > 0 && (
+                        <div className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex-shrink-0" title={`${rowSharePct.toFixed(1)}% of total`}>
+                          <div className="h-full bg-sky-500/60 dark:bg-sky-400/60 rounded-full" style={{ width: `${rowSharePct}%` }} />
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {activeColumns.map(c => {
                     const colLabel = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
