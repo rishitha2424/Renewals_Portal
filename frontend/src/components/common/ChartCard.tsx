@@ -1,6 +1,7 @@
 import React from 'react'
 import { clsx } from 'clsx'
 import { ConceptTone, CONCEPT_COLORS } from '@/design/conceptColors'
+import { formatACV, acvM } from '@/utils/format'
 
 export interface ChartDatum {
   label: string
@@ -70,11 +71,12 @@ export default function ChartCard({
           {action && <div className="shrink-0">{action}</div>}
         </div>
 
-        {/* Content - Scales to fill card height (F3) */}
-        <div className="flex-1 min-h-0 flex flex-col justify-between my-1">
-          {data.length === 0 ? (
-            <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">{emptyText}</p>
-          ) : type === 'horizontal-bars' ? (
+        {/* Content - Scales inside absolute container (B) */}
+        <div className="relative flex-1 min-h-[160px] w-full min-w-0 my-1">
+          <div className="absolute inset-0 w-full h-full flex flex-col justify-between overflow-hidden">
+            {data.length === 0 ? (
+              <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">{emptyText}</p>
+            ) : type === 'horizontal-bars' ? (
             <div className="flex-1 flex flex-col justify-between gap-2">
               {data.map((d) => {
                 const pct = d.percentage ?? (calculatedTotal > 0 ? (d.value / calculatedTotal) * 100 : 0)
@@ -183,69 +185,44 @@ export default function ChartCard({
               })()}
             </div>
           ) : type === 'stacked-columns' ? (
-            <div className="flex-1 flex flex-col justify-between">
-              <div className="flex-1 flex items-end justify-between gap-3 pt-4 pb-1 border-b border-[var(--border-subtle)] min-h-[160px]">
-                {(() => {
-                  const maxVal = Math.max(...data.map((d) => d.value), 1)
-                  return data.map((d) => {
-                    const heightPct = Math.max(8, (d.value / maxVal) * 100)
-                    const segments = d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]
-                    return (
-                      <div
-                        key={d.label}
-                        onClick={d.onClick}
-                        className={clsx('flex-1 flex flex-col items-center justify-end h-full gap-1 group', d.onClick && 'cursor-pointer')}
-                      >
-                        <span className="text-[10px] font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                          {d.formattedValue ?? d.value}
-                        </span>
-                        <div
-                          className="w-full max-w-[44px] rounded-t-md transition-all overflow-hidden flex flex-col-reverse shadow-xs"
-                          style={{ height: `${heightPct}%` }}
-                        >
-                          {segments.map((seg) => {
-                            const segPct = d.value > 0 ? (seg.value / d.value) * 100 : 0
-                            if (segPct <= 0) return null
-                            return (
-                              <div
-                                key={seg.name}
-                                style={{ height: `${segPct}%`, backgroundColor: seg.color || toneDef.hex }}
-                                className="w-full transition-all hover:opacity-80"
-                                title={`${d.label} - ${seg.name}: ${seg.formattedValue ?? seg.value}`}
-                              />
-                            )
-                          })}
-                        </div>
-                        <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
-                          {d.label}
-                        </span>
-                      </div>
-                    )
-                  })
-                })()}
-              </div>
+            <div className="flex-1 flex items-end justify-between gap-3 pt-4 pb-1 border-b border-[var(--border-subtle)] min-h-[160px]">
               {(() => {
-                const allSeries: { name: string; color?: string }[] = []
-                const seen = new Set<string>()
-                data.forEach((d) => {
-                  d.series?.forEach((s) => {
-                    if (!seen.has(s.name)) {
-                      seen.add(s.name)
-                      allSeries.push({ name: s.name, color: s.color })
-                    }
-                  })
-                })
-                if (allSeries.length <= 1) return null
-                return (
-                  <div className="flex items-center justify-center gap-3 pt-2 text-[10px] text-[var(--text-secondary)] font-medium">
-                    {allSeries.map((s) => (
-                      <div key={s.name} className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-xs shrink-0" style={{ backgroundColor: s.color || toneDef.hex }} />
-                        <span>{s.name}</span>
+                const maxVal = Math.max(...data.map((d) => d.value), 1)
+                return data.map((d) => {
+                  const heightPct = Math.max(8, (d.value / maxVal) * 100)
+                  const segments = d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]
+                  return (
+                    <div
+                      key={d.label}
+                      onClick={d.onClick}
+                      className={clsx('flex-1 flex flex-col items-center justify-end h-full gap-1 group', d.onClick && 'cursor-pointer')}
+                    >
+                      <span className="text-[10px] font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {d.formattedValue ?? d.value}
+                      </span>
+                      <div
+                        className="w-full max-w-[44px] rounded-t-md transition-all overflow-hidden flex flex-col-reverse shadow-xs"
+                        style={{ height: `${heightPct}%` }}
+                      >
+                        {segments.map((seg) => {
+                          const segPct = d.value > 0 ? (seg.value / d.value) * 100 : 0
+                          if (segPct <= 0) return null
+                          return (
+                            <div
+                              key={seg.name}
+                              style={{ height: `${segPct}%`, backgroundColor: seg.color || toneDef.hex }}
+                              className="w-full transition-all hover:opacity-80"
+                              title={`${d.label} - ${seg.name}: ${seg.formattedValue ?? seg.value}`}
+                            />
+                          )
+                        })}
                       </div>
-                    ))}
-                  </div>
-                )
+                      <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
+                        {d.label}
+                      </span>
+                    </div>
+                  )
+                })
               })()}
             </div>
           ) : type === 'diverging-bars' ? (
@@ -284,9 +261,9 @@ export default function ChartCard({
               })()}
             </div>
           ) : type === 'donut' ? (
-            <div className="flex-1 flex flex-col sm:flex-row items-center justify-between gap-3 p-1">
-              {/* Donut SVG */}
-              <div className="relative w-32 h-32 shrink-0">
+            <div className="flex-1 flex flex-col items-center justify-start gap-2 p-1 min-h-0 overflow-hidden">
+              {/* Donut SVG - Fixed size ~140px centered at top (B) */}
+              <div className="relative w-[140px] h-[140px] shrink-0 mx-auto my-1">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {(() => {
                     let cumulative = 0
@@ -313,16 +290,16 @@ export default function ChartCard({
                     })
                   })()}
                 </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Total</span>
-                  <span className="text-xs font-black text-[var(--text-primary)] tabular-nums">
-                    {total != null ? total : data.length}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+                  <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">Total</span>
+                  <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]" title={String(total != null ? total : calculatedTotal)}>
+                    {acvM(total != null ? total : calculatedTotal)}
                   </span>
                 </div>
               </div>
 
-              {/* Legend */}
-              <div className="flex-1 w-full space-y-1.5 overflow-y-auto max-h-36 pr-1">
+              {/* Legend directly below donut */}
+              <div className="w-full space-y-1 overflow-y-auto flex-1 min-h-0 pr-1">
                 {data.map((d) => {
                   const pct = d.percentage ?? (calculatedTotal > 0 ? (d.value / calculatedTotal) * 100 : 0)
                   return (
@@ -330,16 +307,16 @@ export default function ChartCard({
                       key={d.label}
                       onClick={d.onClick}
                       className={clsx(
-                        'flex items-center justify-between p-1 rounded text-xs hover:bg-[var(--bg-secondary)] transition-colors',
+                        'flex items-center justify-between p-1.5 rounded text-xs hover:bg-[var(--bg-secondary)] transition-colors border border-[var(--border-subtle)]',
                         d.onClick && 'cursor-pointer'
                       )}
                     >
-                      <div className="flex items-center gap-1.5 truncate pr-2">
+                      <div className="flex items-center gap-1.5 truncate pr-2 min-w-0">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color || toneDef.hex }} />
-                        <span className="font-medium text-[var(--text-secondary)] truncate">{d.label}</span>
+                        <span className="font-medium text-[var(--text-secondary)] truncate max-w-[180px]" title={d.label}>{d.label}</span>
                       </div>
                       <div className="flex items-center gap-2 tabular-nums shrink-0">
-                        <span className="font-bold text-[var(--text-primary)]">{d.formattedValue ?? d.value}</span>
+                        <span className="font-bold text-[var(--text-primary)]">{d.formattedValue ?? acvM(d.value)}</span>
                         <span className="text-[10px] text-[var(--text-muted)] w-9 text-right font-semibold">{pct.toFixed(1)}%</span>
                       </div>
                     </div>
@@ -387,8 +364,9 @@ export default function ChartCard({
               </div>
             </div>
           ) : (
-            <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">Chart rendered</p>
+            <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">{emptyText}</p>
           )}
+          </div>
         </div>
       </div>
 

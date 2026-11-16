@@ -45,10 +45,11 @@ export interface CompactGridProps {
   heatMode?: 'Value' | 'Yesterday' | 'LastWeek'
   hideCardWrapper?: boolean
   tableLayoutFixed?: boolean
+  fillMode?: boolean
 }
 
 export default function CompactGrid({
-  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value', hideCardWrapper = false, tableLayoutFixed = false
+  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value', hideCardWrapper = false, tableLayoutFixed = false, fillMode = false
 }: CompactGridProps) {
   
   // 1. Keep all columns passed (Pipeline and 0-value columns always shown)
@@ -126,9 +127,9 @@ export default function CompactGrid({
   }
 
   const tableElement = (
-    <div className="overflow-x-auto w-full">
+    <div className={clsx("overflow-x-auto w-full", fillMode && "table-fill-container flex-1 min-h-0")}>
       <table
-        className={clsx("data-table text-xs whitespace-nowrap w-full", tableLayoutFixed && "table-fixed")}
+        className={clsx("data-table text-xs whitespace-nowrap w-full", tableLayoutFixed && "table-fixed", fillMode && "table-fill")}
         style={tableLayoutFixed ? { tableLayout: 'fixed', width: '100%', minWidth: '560px' } : undefined}
       >
         <thead>
@@ -291,7 +292,7 @@ export default function CompactGrid({
   }
 
   return (
-    <div className="card overflow-hidden border border-[var(--border)] table-card">
+    <div className={clsx("card overflow-hidden border border-[var(--border)] table-card", fillMode && "h-full flex flex-col justify-between")}>
       <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
         <h3 className="font-semibold text-sm">{title}</h3>
       </div>
