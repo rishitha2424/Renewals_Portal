@@ -941,17 +941,6 @@ function RegionsContent() {
                   const appMovesCount = movementsData?.approval_moves?.length || 0
                   const totalMovements = catMovesCount + appMovesCount + (newDealsCount > 0 ? 1 : 0) + (leftDealsCount > 0 ? 1 : 0)
 
-                  const catMovesByCat = (movementsData?.category_moves || []).reduce((acc: any, m: any) => {
-                    if (m.to_category) acc[m.to_category] = (acc[m.to_category] || 0) + (m.acv || 0)
-                    if (m.from_category) acc[m.from_category] = (acc[m.from_category] || 0) - (m.acv || 0)
-                    return acc
-                  }, {})
-                  const divergingData = Object.entries(catMovesByCat).map(([cat, val]: [string, any]) => ({
-                    label: cat,
-                    value: val,
-                  })).filter(d => d.value !== 0)
-                  const maxDivergingAbs = Math.max(...divergingData.map(d => Math.abs(d.value)), 1)
-
                   return (
                     <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                       <div className="flex-1 flex flex-col min-h-0">
@@ -1101,37 +1090,6 @@ function RegionsContent() {
                             <span className="font-bold text-[var(--text-primary)] font-mono text-xs">{appMovesCount}</span>
                           </div>
                         </div>
-
-                        {/* Diverging bar chart of change by category (F3, F7) */}
-                        {divergingData.length > 0 && (
-                          <div className="pt-2 shrink-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">Category Movement Profile</div>
-                            <div className="space-y-1">
-                              {divergingData.map((d: any) => {
-                                const isPos = d.value >= 0
-                                const widthPct = Math.min(50, (Math.abs(d.value) / maxDivergingAbs) * 50)
-                                return (
-                                  <div key={d.label} className="text-xs space-y-0.5">
-                                    <div className="flex justify-between text-[10px]">
-                                      <span className="font-medium text-[var(--text-secondary)]">{d.label}</span>
-                                      <span className={clsx("font-bold tabular-nums", isPos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-                                        {isPos ? `+${formatACV(d.value)}` : `-${formatACV(Math.abs(d.value))}`}
-                                      </span>
-                                    </div>
-                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-sm relative overflow-hidden">
-                                      <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-400 dark:bg-slate-500 z-10" />
-                                      {isPos ? (
-                                        <div className="h-full bg-emerald-500 absolute left-1/2 rounded-r-sm" style={{ width: `${widthPct}%` }} />
-                                      ) : (
-                                        <div className="h-full bg-rose-500 absolute right-1/2 rounded-l-sm" style={{ width: `${widthPct}%` }} />
-                                      )}
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )
