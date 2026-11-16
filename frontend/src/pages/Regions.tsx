@@ -15,7 +15,10 @@ import {
   CalendarX2,
   PieChart,
   Lightbulb,
-  ExternalLink
+  ExternalLink,
+  MousePointerClick,
+  Check,
+  ArrowUp
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import api from '@/api/client'
@@ -32,6 +35,7 @@ import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import Tile from '@/components/common/Tile'
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ')
 
@@ -335,99 +339,67 @@ function RegionsContent() {
         </div>
       )}
 
-      {/* Tiles */}
+      {/* Hint & Tiles */}
+      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-medium">
+        <MousePointerClick className="w-3.5 h-3.5 text-[var(--brand-teal)]" />
+        <span>Click a region to see its details below</span>
+      </div>
+
       <div id="regions-tiles" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
-        <button
+        <Tile
+          title="All Regions"
+          amount={
+            metricMode === 'Count' ? formatCount(summary.total?.count ?? 0) : 
+            metricMode === 'Amount' ? formatACV(summary.total?.acv ?? 0) : 
+            `${formatCount(summary.total?.count ?? 0)} · ${formatACV(summary.total?.acv ?? 0)}`
+          }
+          count={summary.total?.count ?? 0}
+          isSelected={selectedRegion === 'All'}
+          badge={selectedRegion === 'All' ? (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--brand-teal)]/10 text-[var(--brand-teal)] border border-[var(--brand-teal)]/30 text-[10px] font-bold">
+              <Check className="w-3 h-3" /> Selected
+            </span>
+          ) : undefined}
           onClick={() => setSelectedRegion('All')}
-          className={cn(
-            "card p-4 text-left flex flex-col justify-between gap-2.5 transition-colors cursor-pointer",
-            selectedRegion === 'All'
-              ? "border-[var(--brand-teal)] ring-1 ring-[var(--brand-teal)]"
-              : "hover:border-[var(--brand-teal)]"
-          )}
-        >
-          <div className="space-y-1.5 w-full">
-            <div className="flex justify-between items-center gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="All Regions">All Regions</span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">{formatCount(summary.total?.count ?? 0)} deals</span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {metricMode === 'Count' ? formatCount(summary.total?.count ?? 0) : 
-               metricMode === 'Amount' ? formatACV(summary.total?.acv ?? 0) : 
-               `${formatCount(summary.total?.count ?? 0)} · ${formatACV(summary.total?.acv ?? 0)}`}
-            </div>
-            <div className="flex items-center justify-between pt-0.5">
-              <span
-                role="button"
-                tabIndex={0}
-                className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDrill(`All Regions (${data_slice})`, {})
-                }}
-              >
-                View deals →
-              </span>
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-            {renderDelta(summary.total?.delta_yesterday?.count, summary.total?.delta_yesterday?.acv, false)}
-            {renderDelta(summary.total?.delta_lastweek?.count, summary.total?.delta_lastweek?.acv, true)}
-          </div>
-        </button>
+          onDealsClick={() => handleDrill(`All Regions (${data_slice})`, {})}
+          viewDealsText="View deals →"
+          deltaYesterday={{ count: summary.total?.delta_yesterday?.count, acv: summary.total?.delta_yesterday?.acv }}
+          deltaLastWeek={{ count: summary.total?.delta_lastweek?.count, acv: summary.total?.delta_lastweek?.acv }}
+        />
 
         {tileOrder.map(rname => {
           const reg = regions.find((r: any) => r.region === rname)
           if (!reg) return null
+          const isSelected = selectedRegion === rname
           
           return (
-            <button
+            <Tile
               key={rname}
-              onClick={() => setSelectedRegion(rname)}
-              className={cn(
-                "card p-4 text-left flex flex-col justify-between gap-2.5 transition-colors cursor-pointer",
-                selectedRegion === rname
-                  ? "border-[var(--brand-teal)] ring-1 ring-[var(--brand-teal)]"
-                  : "hover:border-[var(--brand-teal)]"
-              )}
-            >
-              <div className="space-y-1.5 w-full">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={rname}>{rname}</span>
-                  {metricMode !== 'Count' ? (
-                    <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                      {reg.pct_acv}%
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                      {formatCount(reg.count)} deals
-                    </span>
-                  )}
-                </div>
-                <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-                  {metricMode === 'Count' ? formatCount(reg.count) : 
-                   metricMode === 'Amount' ? formatACV(reg.acv) : 
-                   `${formatCount(reg.count)} · ${formatACV(reg.acv)}`}
-                </div>
-                <div className="flex items-center justify-between pt-0.5">
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDrill(`${rname} Deals`, { region: rname })
-                    }}
-                  >
-                    View deals →
-                  </span>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
-                {renderDelta(reg.delta_yesterday?.count, reg.delta_yesterday?.acv, false)}
-                {renderDelta(reg.delta_lastweek?.count, reg.delta_lastweek?.acv, true)}
-              </div>
-            </button>
+              title={rname}
+              amount={
+                metricMode === 'Count' ? formatCount(reg.count) : 
+                metricMode === 'Amount' ? formatACV(reg.acv) : 
+                `${formatCount(reg.count)} · ${formatACV(reg.acv)}`
+              }
+              count={metricMode === 'Count' ? reg.count : `${reg.pct_acv}%`}
+              dealsLabel={metricMode === 'Count' ? 'deals' : ''}
+              isSelected={isSelected}
+              badge={isSelected ? (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--brand-teal)]/10 text-[var(--brand-teal)] border border-[var(--brand-teal)]/30 text-[10px] font-bold">
+                  <Check className="w-3 h-3" /> Selected
+                </span>
+              ) : undefined}
+              onClick={() => {
+                setSelectedRegion(rname)
+                setTimeout(() => {
+                  document.getElementById('regions-deep-dive')?.scrollIntoView({ behavior: 'smooth' })
+                }, 50)
+              }}
+              onDealsClick={() => handleDrill(`${rname} Deals`, { region: rname })}
+              viewDealsText="View deals →"
+              deltaYesterday={{ count: reg.delta_yesterday?.count, acv: reg.delta_yesterday?.acv }}
+              deltaLastWeek={{ count: reg.delta_lastweek?.count, acv: reg.delta_lastweek?.acv }}
+            />
           )
         })}
       </div>
@@ -450,10 +422,15 @@ function RegionsContent() {
                 </div>
               </div>
               <button
-                onClick={() => setSelectedRegion('All')}
-                className="text-xs font-medium text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1 self-start sm:self-auto"
+                onClick={() => {
+                  setSelectedRegion('All')
+                  document.getElementById('regions-tiles')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                className="text-xs font-semibold px-2.5 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] transition-colors flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                title="Return to regional tiles summary"
               >
-                <span>← Back to all regions</span>
+                <ArrowUp className="w-3.5 h-3.5 text-[var(--brand-teal)]" />
+                <span>↑ Back to regions</span>
               </button>
             </div>
 

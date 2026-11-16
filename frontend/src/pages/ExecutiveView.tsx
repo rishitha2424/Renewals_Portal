@@ -507,10 +507,11 @@ export default function ExecutiveView() {
       {/* Forecast Category Summary table */}
       <section id="exec-forecast" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               1. Forecast Category Summary
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -551,10 +552,11 @@ export default function ExecutiveView() {
       {/* Movement vs yesterday and vs last week */}
       <section id="exec-movement" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               2. Movement vs. Historical Baselines
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -614,10 +616,11 @@ export default function ExecutiveView() {
       {/* Approval Status Summary table */}
       <section id="exec-approvals" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               3. Approval Status Summary
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -659,10 +662,11 @@ export default function ExecutiveView() {
       {/* Expiry Quarter × Forecast Category table */}
       <section id="exec-expiry" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               4. Expiry Quarter × Forecast Category
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -708,10 +712,11 @@ export default function ExecutiveView() {
       {/* Top 10 Regions by ACV table */}
       <section id="exec-regions" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               5. Top 10 Regions by ACV
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -749,10 +754,11 @@ export default function ExecutiveView() {
       {/* Business Unit table */}
       <section id="exec-bu" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               6. Business Unit Breakdown
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
             <table className="data-table w-full text-xs text-left border-collapse">
@@ -806,9 +812,12 @@ export default function ExecutiveView() {
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
               7a. Delayed Renewals Summary
             </h2>
-            <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-              {totalAcv > 0 ? `${((delayedRenewalsTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                {totalAcv > 0 ? `${((delayedRenewalsTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
+              </span>
+              <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
+            </div>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
             Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
