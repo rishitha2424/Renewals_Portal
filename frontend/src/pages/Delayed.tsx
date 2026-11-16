@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -35,7 +35,7 @@ import CardRow from '@/components/common/CardRow'
 import InsightCard from '@/components/common/InsightCard'
 import ChartCard from '@/components/common/ChartCard'
 import ScrollList from '@/components/common/ScrollList'
-import { getDelayedInsights, getLostInsights } from '@/insights/generators'
+import { getDelayedInsights, getTopDelayedDealsSignals } from '@/insights/generators'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import { useRuleDeals } from '@/hooks/useRuleDeals'
@@ -510,6 +510,37 @@ function DelayedContent() {
   const regionGrid = buildGrid('by_region', 'region')
   const buGrid = buildGrid('by_bu', 'bu')
 
+  const buStackedData = useMemo(() => {
+    return buGrid.rows.map((r: any) => {
+      const commitVal = r.cells?.['Commit']?.acv || 0
+      const bestCaseVal = r.cells?.['Best Case']?.acv || 0
+      const pipelineVal = r.cells?.['Pipeline']?.acv || 0
+      const otherVal = Object.entries(r.cells || {}).reduce((sum: number, [cat, cell]: [string, any]) => {
+        if (!['Commit', 'Best Case', 'Pipeline'].includes(cat)) {
+          return sum + (cell?.acv || 0)
+        }
+        return sum
+      }, 0)
+
+      const series = [
+        { name: 'Commit', value: commitVal, color: '#10B981', formattedValue: formatACV(commitVal) },
+        { name: 'Best Case', value: bestCaseVal, color: '#F59E0B', formattedValue: formatACV(bestCaseVal) },
+        { name: 'Pipeline', value: pipelineVal, color: '#64748B', formattedValue: formatACV(pipelineVal) },
+      ]
+      if (otherVal > 0) {
+        series.push({ name: 'Other', value: otherVal, color: '#94A3B8', formattedValue: formatACV(otherVal) })
+      }
+
+      return {
+        label: r.label || r.id,
+        value: r.total?.acv || 0,
+        formattedValue: formatACV(r.total?.acv || 0),
+        series,
+        onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id}`, { kind: 'all', bu: r.id }),
+      }
+    })
+  }, [buGrid.rows])
+
   return (
     <div className="space-y-8">
       <SectionNav sections={delayedSections} />
@@ -661,10 +692,10 @@ function DelayedContent() {
         })()}
 
         {/* Grid Breakdowns & Insights (no outer wrapper cards) */}
-        <CardRow template="max-content max-content minmax(280px, 1fr)">
+        <CardRow template="max-content 1fr minmax(280px, 1fr)">
           <div className="h-full flex flex-col justify-between">
             <CompactGrid
-              title="By Region"
+              title="Delayed ACV by region"
               rowLabelName="Region"
               columns={regionGrid.categories}
               columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
@@ -680,27 +711,19 @@ function DelayedContent() {
             />
           </div>
 
-          <div className="h-full flex flex-col justify-between">
-            <CompactGrid
-              title="By Business Unit"
-              rowLabelName="Business Unit"
-              columns={buGrid.categories}
-              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-              rows={buGrid.rows}
-              totals={buGrid.totals}
-              deltas={buGrid.gridDeltas}
-              metricMode={metricMode}
-              onCellClick={buGrid.handleCellClick}
-              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-              heatMode={heatMode}
+          <div className="h-full flex flex-col">
+            <ChartCard
+              title="Delayed ACV by business unit"
+              subtitle="Commit, Best Case, and Pipeline delayed volume"
+              tone="delayed"
+              type="stacked-columns"
+              data={buStackedData}
             />
           </div>
 
           <div className="h-full">
             <InsightCard
-              title="Delayed Insights"
+              title="Delay summary"
               subtitle="Portfolio delay observations"
               insights={getDelayedInsights(summary, (title, p) => handleDrill(title, p))}
             />
@@ -792,71 +815,6 @@ function DelayedContent() {
       {/* ────────────────── SECTION 3: TOP 10 DELAYED DEALS & HIGHLIGHTS ────────────────── */}
       {(() => {
         const topDeals = summary.top_deals || []
-        const totalDelayedAcv = delTot?.acv || 1
-
-        const ownerMap: Record<string, { count: number; acv: number }> = {}
-        topDeals.forEach((d: any) => {
-          const o = d.owner || d.opportunity_owner || 'Unassigned'
-          if (!ownerMap[o]) ownerMap[o] = { count: 0, acv: 0 }
-          ownerMap[o].count += 1
-          ownerMap[o].acv += d.forecast_acv_amount || 0
-        })
-        const sortedOwners = Object.entries(ownerMap).sort((a, b) => b[1].acv - a[1].acv)
-        const topOwner = sortedOwners[0]
-
-        const soonestDeal = [...topDeals]
-          .filter((d: any) => d.days_to_close > 0)
-          .sort((a: any, b: any) => a.days_to_close - b.days_to_close)[0]
-
-        const longestOverdueDeal = [...topDeals]
-          .filter((d: any) => d.days_overdue > 0)
-          .sort((a: any, b: any) => b.days_overdue - a.days_overdue)[0]
-
-        const top10Acv = topDeals.reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
-        const top10Pct = ((top10Acv / totalDelayedAcv) * 100).toFixed(1)
-
-        const delayedHighlights = [
-          {
-            id: 'dh-concentration',
-            icon: AlertCircle,
-            text: (
-              <span>
-                Top 10 delayed contracts hold <strong>{formatACV(top10Acv)}</strong>, representing <strong>{top10Pct}%</strong> of total delayed volume.
-              </span>
-            ),
-          },
-          ...(topOwner ? [{
-            id: 'dh-top-owner',
-            icon: Clock,
-            text: (
-              <span>
-                Primary owner exposure: <strong>{topOwner[0]}</strong> manages <strong>{formatACV(topOwner[1].acv)}</strong> across {topOwner[1].count} delayed opportunities.
-              </span>
-            ),
-          }] : []),
-          ...(longestOverdueDeal ? [{
-            id: 'dh-longest-overdue',
-            icon: AlertTriangle,
-            text: (
-              <span>
-                Longest past due: <strong>{longestOverdueDeal.opportunity_name}</strong> ({formatACV(longestOverdueDeal.forecast_acv_amount)}) is <strong>{longestOverdueDeal.days_overdue} days overdue</strong>.
-              </span>
-            ),
-            linkText: 'Inspect deal',
-            onLinkClick: () => setSelectedOppId(longestOverdueDeal.opportunity_id_18),
-          }] : []),
-          ...(soonestDeal ? [{
-            id: 'dh-soonest',
-            icon: Clock,
-            text: (
-              <span>
-                Imminent close: <strong>{soonestDeal.opportunity_name}</strong> ({formatACV(soonestDeal.forecast_acv_amount)}) target close in <strong>{soonestDeal.days_to_close} days</strong>.
-              </span>
-            ),
-            linkText: 'Inspect deal',
-            onLinkClick: () => setSelectedOppId(soonestDeal.opportunity_id_18),
-          }] : []),
-        ]
 
         return (
           <CardRow template="max-content minmax(320px, 1fr)" id="delayed-top-deals">
@@ -944,9 +902,9 @@ function DelayedContent() {
 
             <div className="h-full">
               <InsightCard
-                title="Delayed Highlights"
+                title="Top delayed deals: signals"
                 subtitle="Exposure concentration & critical dates"
-                insights={delayedHighlights}
+                insights={getTopDelayedDealsSignals(summary, setSelectedOppId)}
               />
             </div>
           </CardRow>
@@ -999,7 +957,7 @@ function DelayedContent() {
             </div>
           </div>
 
-          <CardRow template="max-content max-content minmax(280px, 1fr)">
+          <CardRow template="1fr 1fr">
             <Card padding="none" className="overflow-hidden h-full flex flex-col justify-between">
               <div>
                 <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
@@ -1036,6 +994,20 @@ function DelayedContent() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              </div>
+              <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Lost Region</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByRegion[0]?.name || '—'} ({formatACV(lostByRegion[0]?.acv || 0)})
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Regional Concentration</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByRegion[0]?.pct ? `${lostByRegion[0].pct.toFixed(1)}%` : '—'}
+                  </span>
                 </div>
               </div>
             </Card>
@@ -1078,15 +1050,21 @@ function DelayedContent() {
                   </table>
                 </div>
               </div>
+              <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Lost Business Unit</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByBu[0]?.name || '—'} ({formatACV(lostByBu[0]?.acv || 0)})
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">BU Concentration</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByBu[0]?.pct ? `${lostByBu[0].pct.toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+              </div>
             </Card>
-
-            <div className="h-full">
-              <InsightCard
-                title="Lost Renewal Insights"
-                subtitle="Deals lost since baseline start"
-                insights={getLostInsights(summary.lost, lostByRegion, lostByBu, (title, p) => handleDrill(title, p))}
-              />
-            </div>
           </CardRow>
         </div>
       )}
@@ -1106,7 +1084,6 @@ function DelayedContent() {
                 <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] p-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                       <h2 className="text-base font-bold text-[var(--text-primary)]">
                         Needs review
                       </h2>
@@ -1155,12 +1132,30 @@ function DelayedContent() {
                   </table>
                 </div>
               </div>
+              <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Total Exceptions</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{totalCount} deals</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Exception Value</span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">{formatACV(totalAcv)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Flagged Categories</span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">{reviewList.length} categories</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Primary Flag</span>
+                  <span className="font-bold text-[var(--text-primary)] truncate block" title={reviewList[0]?.title}>{reviewList[0]?.title || '—'}</span>
+                </div>
+              </div>
             </Card>
 
             <ChartCard
               title="Why Deals Need Review"
               subtitle="Exception distribution by type"
-              type="horizontal-bars"
+              type="vertical-bars"
               data={reviewList.map((t: any) => ({
                 label: t.title,
                 value: t.acv || 0,

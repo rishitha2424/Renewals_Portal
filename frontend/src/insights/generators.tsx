@@ -704,58 +704,231 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
   return items
 }
 
-/** 6. Delayed Renewals Insights Generator */
+/** 6. Delayed Renewals Summary Generator (at least 6 points without decorative icons) */
 export function getDelayedInsights(summary: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
   const items: InsightItem[] = []
   if (!summary) return items
 
-  const delTot = summary.delayed_renewals_total || summary.delayed_renewals?.total || summary.total
+  const delRenewals = summary.delayed_renewals
+  const delTot = summary.delayed_renewals_total || delRenewals?.total || summary.total || { count: 0, acv: 0 }
   const qTotAcv = summary.quarter_total_acv || 1
+  const overdue = delRenewals?.overdue || summary.overdue || { count: 0, acv: 0 }
+  const ahead = delRenewals?.ahead || summary.ahead || delRenewals?.later_close || summary.later_close || { count: 0, acv: 0 }
 
-  if (delTot && delTot.acv > 0) {
-    const delPct = ((delTot.acv / qTotAcv) * 100).toFixed(1)
+  // 1. Total delayed
+  const delPct = ((delTot.acv / qTotAcv) * 100).toFixed(1)
+  items.push({
+    id: 'delayed-total-summary',
+    text: (
+      <span>
+        Delayed volume: <strong>{delTot.count || 0} contracts</strong> ({acvM(delTot.acv)}) represent <strong>{delPct}%</strong> of quarterly renewals.
+      </span>
+    ),
+    linkText: 'View delayed',
+    onLinkClick: onDrill ? () => onDrill('All Delayed Deals', { kind: 'delayed_total' }) : undefined,
+  })
+
+  // 2. Close date ahead
+  items.push({
+    id: 'delayed-ahead-summary',
+    text: (
+      <span>
+        Close date ahead: <strong>{ahead.count || 0} deals</strong> ({acvM(ahead.acv || 0)}) have service active while target close remains in future.
+      </span>
+    ),
+    linkText: 'View ahead',
+    onLinkClick: onDrill ? () => onDrill('Delayed Close Date Ahead Deals', { kind: 'later_close' }) : undefined,
+  })
+
+  // 3. Overdue count
+  if ((overdue.count || 0) > 0) {
     items.push({
-      id: 'delayed-pct-quarter',
-      icon: AlertTriangle,
+      id: 'delayed-overdue-summary',
       text: (
         <span>
-          Delayed contracts total <strong>{acvM(delTot.acv)}</strong> ({delTot.count || 0} deals), representing <strong>{delPct}%</strong> of quarterly volume.
+          Overdue contracts: <strong>{overdue.count} deals</strong> ({acvM(overdue.acv || 0)}) are past their scheduled close target.
         </span>
       ),
-      linkText: 'View delayed',
-      onLinkClick: onDrill ? () => onDrill('All Delayed Deals', { kind: 'delayed_total' }) : undefined,
+      linkText: 'View overdue',
+      onLinkClick: onDrill ? () => onDrill('Overdue Deals', { kind: 'overdue' }) : undefined,
+    })
+  } else {
+    items.push({
+      id: 'delayed-overdue-clean',
+      text: (
+        <span>
+          Past-due exposure: <strong>Zero deals</strong> are currently overdue past their target close date.
+        </span>
+      ),
     })
   }
 
-  // Slippage share
-  const slipTot = summary.slippage_total || summary.slippage?.total
-  if (slipTot && slipTot.acv > 0) {
+  // 4. Largest single delayed deal
+  const topDeals = summary.top_deals || []
+  if (topDeals.length > 0) {
+    const topDeal = topDeals[0]
     items.push({
-      id: 'delayed-slippage-share',
-      icon: Clock,
+      id: 'delayed-largest-deal',
       text: (
         <span>
-          <strong>{acvM(slipTot.acv)}</strong> ({slipTot.count || 0} deals) have slipped their closing target into the next fiscal period.
+          Largest delayed contract: <strong>{topDeal.opportunity_name}</strong> ({acvM(topDeal.forecast_acv_amount || 0)}) targeting close on {topDeal.close_date || 'scheduled date'}.
         </span>
       ),
-      linkText: 'View slipped',
-      onLinkClick: onDrill ? () => onDrill('Slippage Deals', { kind: 'slippage' }) : undefined,
+      linkText: 'Inspect deal',
+      onLinkClick: onDrill ? () => onDrill(`Inspect Deal: ${topDeal.opportunity_name}`, { opp_id: topDeal.opportunity_id_18 }) : undefined,
     })
   }
 
-  // Lost summary
-  const lostTot = summary.lost
-  if (lostTot && lostTot.count > 0) {
+  // 5. Top delayed BU
+  const buRows = summary.by_bu || []
+  if (buRows.length > 0) {
+    const sortedBu = [...buRows].sort((a: any, b: any) => (b.acv || 0) - (a.acv || 0))
+    const topBu = sortedBu[0]
     items.push({
-      id: 'delayed-lost-summary',
-      icon: TrendingDown,
+      id: 'delayed-top-bu',
       text: (
         <span>
-          <strong>{lostTot.count} deals</strong> ({acvM(lostTot.acv)}) were deleted or lost since period start (tracked outside active pipeline).
+          Primary BU concentration: <strong>{topBu.label || topBu.name}</strong> accounts for <strong>{acvM(topBu.acv || 0)}</strong> ({topBu.count || 0} delayed deals).
         </span>
       ),
-      linkText: 'View lost',
-      onLinkClick: onDrill ? () => onDrill('Lost Deals', { kind: 'lost' }) : undefined,
+      linkText: 'View BU',
+      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topBu.label || topBu.name}`, { bu: topBu.label || topBu.name }) : undefined,
+    })
+  }
+
+  // 6. Forecast category with the most delayed ACV
+  const catMap: Record<string, { count: number; acv: number }> = {}
+  buRows.forEach((r: any) => {
+    Object.entries(r.categories || {}).forEach(([cat, val]: [string, any]) => {
+      if (!catMap[cat]) catMap[cat] = { count: 0, acv: 0 }
+      catMap[cat].count += val.count || 0
+      catMap[cat].acv += val.acv || 0
+    })
+  })
+  const sortedCats = Object.entries(catMap).sort((a, b) => b[1].acv - a[1].acv)
+  if (sortedCats.length > 0) {
+    const topCat = sortedCats[0]
+    items.push({
+      id: 'delayed-top-category',
+      text: (
+        <span>
+          Forecast risk: <strong>{topCat[0]}</strong> holds highest delayed volume with <strong>{acvM(topCat[1].acv)}</strong> ({topCat[1].count} contracts).
+        </span>
+      ),
+      linkText: 'View category',
+      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topCat[0]}`, { category: topCat[0] }) : undefined,
+    })
+  }
+
+  return items
+}
+
+/** 6b. Top Delayed Deals Signals Generator (at least 6 points without decorative icons) */
+export function getTopDelayedDealsSignals(summary: any, onSelectOpp?: (id: string) => void): InsightItem[] {
+  const items: InsightItem[] = []
+  if (!summary) return items
+
+  const topDeals = summary.top_deals || []
+  if (topDeals.length === 0) return items
+
+  const delTot = summary.delayed_renewals_total || summary.delayed_renewals?.total || summary.total || { count: 0, acv: 0 }
+  const totalDelayedAcv = delTot.acv || 1
+  const top10Acv = topDeals.reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
+  const top10Pct = ((top10Acv / totalDelayedAcv) * 100).toFixed(1)
+
+  // 1. Largest deal ACV and close date
+  const topDeal = topDeals[0]
+  if (topDeal) {
+    items.push({
+      id: 'tds-largest-deal',
+      text: (
+        <span>
+          Largest delayed deal: <strong>{topDeal.opportunity_name}</strong> holds <strong>{acvM(topDeal.forecast_acv_amount || 0)}</strong> with close target {topDeal.close_date || 'scheduled date'}.
+        </span>
+      ),
+      linkText: 'Inspect deal',
+      onLinkClick: onSelectOpp && topDeal.opportunity_id_18 ? () => onSelectOpp(topDeal.opportunity_id_18) : undefined,
+    })
+  }
+
+  // 2. Average deal size
+  const avgSize = top10Acv / topDeals.length
+  items.push({
+    id: 'tds-avg-size',
+    text: (
+      <span>
+        Average deal size: Top delayed opportunities average <strong>{acvM(avgSize)}</strong> across {topDeals.length} high-value contracts.
+      </span>
+    ),
+  })
+
+  // 3. Account concentration
+  items.push({
+    id: 'tds-concentration',
+    text: (
+      <span>
+        Portfolio concentration: Top {topDeals.length} delayed contracts represent <strong>{top10Pct}%</strong> ({acvM(top10Acv)}) of total delayed capital.
+      </span>
+    ),
+  })
+
+  // 4. Region with most delayed deals in top 10
+  const regCounts: Record<string, { count: number; acv: number }> = {}
+  topDeals.forEach((d: any) => {
+    const r = d.region || 'Unknown'
+    if (!regCounts[r]) regCounts[r] = { count: 0, acv: 0 }
+    regCounts[r].count += 1
+    regCounts[r].acv += d.forecast_acv_amount || 0
+  })
+  const sortedRegs = Object.entries(regCounts).sort((a, b) => b[1].count - a[1].count)
+  if (sortedRegs.length > 0) {
+    const topReg = sortedRegs[0]
+    items.push({
+      id: 'tds-top-region',
+      text: (
+        <span>
+          Regional cluster: <strong>{topReg[0]}</strong> holds <strong>{topReg[1].count} of top deals</strong> ({acvM(topReg[1].acv)}).
+        </span>
+      ),
+    })
+  }
+
+  // 5. Count with missing service start date / review exceptions
+  const missingItem = summary.needs_review?.items?.find((i: any) => i.type === 'missing_service_start' || i.type === 'missing_start_date')
+  const missingCount = missingItem?.count || topDeals.filter((d: any) => !d.service_start_date).length
+  const missingAcv = missingItem?.acv || topDeals.filter((d: any) => !d.service_start_date).reduce((s: number, d: any) => s + (d.forecast_acv_amount || 0), 0)
+  items.push({
+    id: 'tds-missing-service-start',
+    text: (
+      <span>
+        Verification required: <strong>{missingCount} contracts</strong> ({acvM(missingAcv)}) in review have missing or unconfirmed service start dates.
+      </span>
+    ),
+  })
+
+  // 6. Next closing deal
+  const soonestDeal = [...topDeals]
+    .filter((d: any) => d.days_to_close > 0)
+    .sort((a: any, b: any) => a.days_to_close - b.days_to_close)[0]
+  if (soonestDeal) {
+    items.push({
+      id: 'tds-next-closing',
+      text: (
+        <span>
+          Next closing renewal: <strong>{soonestDeal.opportunity_name}</strong> ({acvM(soonestDeal.forecast_acv_amount || 0)}) target close in <strong>{soonestDeal.days_to_close} days</strong>.
+        </span>
+      ),
+      linkText: 'Inspect deal',
+      onLinkClick: onSelectOpp && soonestDeal.opportunity_id_18 ? () => onSelectOpp(soonestDeal.opportunity_id_18) : undefined,
+    })
+  } else {
+    items.push({
+      id: 'tds-closing-schedule',
+      text: (
+        <span>
+          Closing cadence: All top delayed deals have active timing buffers under review.
+        </span>
+      ),
     })
   }
 

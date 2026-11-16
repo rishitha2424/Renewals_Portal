@@ -18,7 +18,7 @@ export interface ChartCardProps {
   subtitle?: string
   icon?: React.ComponentType<{ className?: string }>
   tone?: ConceptTone
-  type?: 'horizontal-bars' | 'stacked-bar' | 'vertical-bars' | 'donut' | 'grouped-columns' | 'diverging-bars'
+  type?: 'horizontal-bars' | 'stacked-bar' | 'vertical-bars' | 'donut' | 'grouped-columns' | 'diverging-bars' | 'stacked-columns'
   data: ChartDatum[]
   total?: number
   action?: React.ReactNode
@@ -180,6 +180,72 @@ export default function ChartCard({
                     </span>
                   </div>
                 ))
+              })()}
+            </div>
+          ) : type === 'stacked-columns' ? (
+            <div className="flex-1 flex flex-col justify-between">
+              <div className="flex-1 flex items-end justify-between gap-3 pt-4 pb-1 border-b border-[var(--border-subtle)] min-h-[160px]">
+                {(() => {
+                  const maxVal = Math.max(...data.map((d) => d.value), 1)
+                  return data.map((d) => {
+                    const heightPct = Math.max(8, (d.value / maxVal) * 100)
+                    const segments = d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]
+                    return (
+                      <div
+                        key={d.label}
+                        onClick={d.onClick}
+                        className={clsx('flex-1 flex flex-col items-center justify-end h-full gap-1 group', d.onClick && 'cursor-pointer')}
+                      >
+                        <span className="text-[10px] font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {d.formattedValue ?? d.value}
+                        </span>
+                        <div
+                          className="w-full max-w-[44px] rounded-t-md transition-all overflow-hidden flex flex-col-reverse shadow-xs"
+                          style={{ height: `${heightPct}%` }}
+                        >
+                          {segments.map((seg) => {
+                            const segPct = d.value > 0 ? (seg.value / d.value) * 100 : 0
+                            if (segPct <= 0) return null
+                            return (
+                              <div
+                                key={seg.name}
+                                style={{ height: `${segPct}%`, backgroundColor: seg.color || toneDef.hex }}
+                                className="w-full transition-all hover:opacity-80"
+                                title={`${d.label} - ${seg.name}: ${seg.formattedValue ?? seg.value}`}
+                              />
+                            )
+                          })}
+                        </div>
+                        <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
+                          {d.label}
+                        </span>
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+              {(() => {
+                const allSeries: { name: string; color?: string }[] = []
+                const seen = new Set<string>()
+                data.forEach((d) => {
+                  d.series?.forEach((s) => {
+                    if (!seen.has(s.name)) {
+                      seen.add(s.name)
+                      allSeries.push({ name: s.name, color: s.color })
+                    }
+                  })
+                })
+                if (allSeries.length <= 1) return null
+                return (
+                  <div className="flex items-center justify-center gap-3 pt-2 text-[10px] text-[var(--text-secondary)] font-medium">
+                    {allSeries.map((s) => (
+                      <div key={s.name} className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-xs shrink-0" style={{ backgroundColor: s.color || toneDef.hex }} />
+                        <span>{s.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
               })()}
             </div>
           ) : type === 'diverging-bars' ? (
