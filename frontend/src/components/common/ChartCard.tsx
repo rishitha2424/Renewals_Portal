@@ -298,22 +298,24 @@ export default function ChartCard({
               })()}
             </div>
           ) : (type === 'benchmark-bars' || (type === 'diverging-bars' && (benchmark != null || data.some((d) => d.benchmark != null)))) ? (
-            <div className="flex-1 flex flex-col justify-around gap-2.5 py-1 min-h-[160px]">
-              {/* Benchmark Reference Header */}
+            <div className="flex-1 flex flex-col justify-start gap-2 py-1 min-h-0 overflow-y-auto pr-1">
+              {/* Benchmark Reference Ruler Header */}
               {benchmark != null && (
-                <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-[var(--bg-secondary)]/70 border border-[var(--border-subtle)] text-[11px] mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 ring-2 ring-indigo-500/20" />
-                    <span className="text-[var(--text-secondary)] font-medium">
-                      {benchmarkLabel || 'Portfolio Benchmark'}:
-                    </span>
-                    <strong className="text-[var(--text-primary)] font-bold tabular-nums">{benchmark}%</strong>
+                <div className="relative w-full h-3.5 mb-0.5 text-[10px] font-mono text-[var(--text-muted)] select-none shrink-0 border-b border-[var(--border-subtle)] pb-1">
+                  <span className="absolute left-0 bottom-0.5">0%</span>
+                  <div
+                    className="absolute bottom-0.5 -translate-x-1/2 flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400"
+                    style={{ left: `${Math.min(92, Math.max(8, benchmark))}%` }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                    <span>Target {benchmark}%</span>
                   </div>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">Target reference</span>
+                  <span className="absolute right-0 bottom-0.5">100%</span>
                 </div>
               )}
               {(() => {
                 const bmVal = benchmark ?? 50
+                const isCompact = data.length > 5
                 return data.map((d) => {
                   const itemBm = d.benchmark ?? bmVal
                   const gapVal = d.gap !== undefined ? d.gap : Number((d.value - itemBm).toFixed(1))
@@ -325,18 +327,18 @@ export default function ChartCard({
                     <div
                       key={d.label}
                       onClick={d.onClick}
-                      className={clsx('group space-y-1.5', d.onClick && 'cursor-pointer')}
+                      className={clsx('group', isCompact ? 'space-y-1' : 'space-y-1.5', d.onClick && 'cursor-pointer')}
                     >
                       {/* Row Label & Metrics */}
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-baseline gap-2 min-w-0">
-                          <span className="font-bold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors truncate">
+                      <div className="flex items-center justify-between text-xs leading-none">
+                        <div className="flex items-baseline gap-1.5 min-w-0">
+                          <span className="font-bold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors truncate max-w-[150px] sm:max-w-[200px]" title={d.label}>
                             {d.label}
                           </span>
                           <span className="font-extrabold text-[var(--text-primary)] tabular-nums">
                             {d.formattedValue ?? `${d.value}%`}
                           </span>
-                          {d.sublabel && (
+                          {d.sublabel && !isCompact && (
                             <span className="text-[10px] text-[var(--text-muted)] truncate hidden sm:inline font-medium">
                               ({d.sublabel})
                             </span>
@@ -346,7 +348,7 @@ export default function ChartCard({
                         {/* Gap Pill */}
                         <span
                           className={clsx(
-                            'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border tabular-nums whitespace-nowrap shadow-xs',
+                            'inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border tabular-nums whitespace-nowrap shadow-xs',
                             isAbove
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                               : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
@@ -357,7 +359,10 @@ export default function ChartCard({
                       </div>
 
                       {/* Benchmark Bar Track */}
-                      <div className="relative h-3.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-visible flex items-center shadow-inner">
+                      <div className={clsx(
+                        'relative w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-visible flex items-center shadow-inner',
+                        isCompact ? 'h-2 sm:h-2.5' : 'h-3'
+                      )}>
                         {/* Scale Reference Ticks at 25%, 50%, 75% */}
                         {[25, 50, 75].map((tick) => (
                           <div
@@ -387,8 +392,8 @@ export default function ChartCard({
                           style={{ left: `${bmPos}%` }}
                           title={`Portfolio Benchmark: ${itemBm}%`}
                         >
-                          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 ring-2 ring-white dark:ring-slate-900" />
-                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 ring-2 ring-white dark:ring-slate-900" />
+                          <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 ring-2 ring-white dark:ring-slate-900" />
+                          <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 ring-2 ring-white dark:ring-slate-900" />
                         </div>
                       </div>
                     </div>

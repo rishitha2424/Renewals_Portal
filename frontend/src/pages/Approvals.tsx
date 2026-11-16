@@ -723,7 +723,7 @@ export default function Approvals() {
             </div>
           }
         />
-        <CardRow template="max-content minmax(0, 1fr)">
+        <CardRow template="max-content minmax(0, 1fr)" minHeight="360px">
           <Card className="p-5 border border-[var(--border)] hover:border-[var(--primary)] transition-colors h-full flex flex-col justify-between">
             <div className="flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
