@@ -332,7 +332,7 @@ export function getBusinessUnitsInsights(buSummary: any, onDrill?: (title: strin
 
     // BU with highest commit coverage
     const withCov = rows.map((r: any) => {
-      const cAcv = r.categories?.['Commit']?.acv || r.commit_acv || 0
+      const cAcv = r.cells?.['Commit']?.acv || r.categories?.['Commit']?.acv || r.commit_acv || 0
       const bAcv = r.acv || 1
       return { name: r.bu || r.name, cov: (cAcv / bAcv) * 100, commitAcv: cAcv }
     }).filter((r: any) => r.commitAcv > 0).sort((a: any, b: any) => b.cov - a.cov)
@@ -349,6 +349,69 @@ export function getBusinessUnitsInsights(buSummary: any, onDrill?: (title: strin
         ),
       })
     }
+  }
+
+  return items
+}
+
+/** 4b. BU Top Deals Highlights Generator */
+export function getBuTopDealsInsights(deals: any[], totalAcv: number, onSelectOpp?: (id: string) => void): InsightItem[] {
+  const items: InsightItem[] = []
+  if (!deals || deals.length === 0) return items
+
+  const tot = totalAcv || 1
+  const sorted = [...deals].sort((a: any, b: any) => (b.forecast_acv_amount || b.acv || 0) - (a.forecast_acv_amount || a.acv || 0))
+  const topDeal = sorted[0]
+
+  if (topDeal) {
+    const dAcv = topDeal.forecast_acv_amount || topDeal.acv || 0
+    const dShare = ((dAcv / tot) * 100).toFixed(1)
+    items.push({
+      id: 'bu-deal-top',
+      icon: Award,
+      text: (
+        <span>
+          Largest opportunity: <strong>{topDeal.opportunity_name}</strong> ({topDeal.account_name}) represents <strong>{acvM(dAcv)}</strong> ({dShare}% of total).
+        </span>
+      ),
+      linkText: 'Inspect deal',
+      onLinkClick: onSelectOpp && topDeal.opportunity_id_18 ? () => onSelectOpp(topDeal.opportunity_id_18) : undefined,
+    })
+  }
+
+  // Concentration in top 5 deals
+  if (sorted.length >= 5) {
+    const top5Acv = sorted.slice(0, 5).reduce((sum: number, d: any) => sum + (d.forecast_acv_amount || d.acv || 0), 0)
+    const top5Share = ((top5Acv / tot) * 100).toFixed(1)
+    items.push({
+      id: 'bu-deal-top5-share',
+      icon: PieChart,
+      text: (
+        <span>
+          Top 5 opportunities hold <strong>{acvM(top5Acv)}</strong>, representing <strong>{top5Share}%</strong> of total portfolio ACV.
+        </span>
+      ),
+    })
+  }
+
+  // Highest uncommitted opportunity (Best Case or Pipeline)
+  const uncommitted = sorted.find((d: any) => {
+    const cat = (d.forecast_category || '').toLowerCase()
+    return cat.includes('best case') || cat.includes('bestcase') || cat.includes('pipeline')
+  })
+  if (uncommitted) {
+    const uAcv = uncommitted.forecast_acv_amount || uncommitted.acv || 0
+    items.push({
+      id: 'bu-deal-uncommitted',
+      icon: TrendingUp,
+      text: (
+        <span>
+          Key upside opportunity: <strong>{uncommitted.opportunity_name}</strong> ({acvM(uAcv)}) is currently in <strong>{uncommitted.forecast_category}</strong>.
+        </span>
+      ),
+      linkText: 'View opportunity',
+      onLinkClick: onSelectOpp && uncommitted.opportunity_id_18 ? () => onSelectOpp(uncommitted.opportunity_id_18) : undefined,
+    })
   }
 
   return items
