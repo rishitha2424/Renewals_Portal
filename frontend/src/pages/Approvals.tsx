@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/store/appStore'
@@ -58,6 +59,7 @@ export default function Approvals() {
   const [coverageTab, setCoverageTab] = useState<'category' | 'region' | 'bu'>('category')
   const [movementsMode, setMovementsMode] = useState<'yesterday' | 'lastweek'>('yesterday')
   const [commitFilter, setCommitFilter] = useState<'All' | 'Not submitted' | 'Waiting for approval'>('All')
+  const [transitionChartType, setTransitionChartType] = useState<'flow' | 'donut'>('flow')
 
   const activeSnapshot = snapshots.find(s => s.id === activeSnapshotId)
   const compareSnapshot = snapshots.find(s => s.id === compareSnapshotId)
@@ -282,7 +284,7 @@ export default function Approvals() {
           <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}>
             <StatChip
               tone="total"
-              label="Total pipeline"
+              label="Total portfolio"
               data={attachDates(total)}
               metricMode={metricMode}
               compareDate={compareSnapshot?.snapshot_date}
@@ -330,7 +332,7 @@ export default function Approvals() {
                     })}
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total Pipeline</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total Portfolio</span>
                     <span className="text-base font-black text-[var(--text-primary)] font-mono tabular-nums leading-tight" title={formatCurrency(total?.acv ?? 0)}>
                       {acvM(total?.acv ?? 0)}
                     </span>
@@ -432,7 +434,7 @@ export default function Approvals() {
           <div className="h-full min-w-0">
             <InsightCard
               title="Approval watchlist"
-              subtitle="Pipeline risks and governance pace"
+              subtitle="Approval risks and governance pace"
               insights={getApprovalsInsights(data, (title, p) => handleCellClick(p, title))}
             />
           </div>
@@ -1465,46 +1467,229 @@ export default function Approvals() {
                   </div>
                 </Card>
 
-                {/* ONE chart card: vertical columns of ACV by movement type */}
-                <ChartCard
-                  title="Movement ACV by Transition"
-                  subtitle={`Transition volume since ${compareDateStr}`}
-                  type="vertical-bars"
-                  data={[
-                    {
-                      label: 'Newly approved',
-                      value: newlyApprAcv,
-                      formattedValue: formatCurrency(newlyApprAcv),
-                      sublabel: `${newlyApprCount} ${newlyApprCount === 1 ? 'deal' : 'deals'}`,
-                      dealsCount: newlyApprCount,
-                      color: '#10B981',
-                      onClick: () => handleCellClick({ approval_status: 'Approved' }, 'Newly Approved Deals'),
-                    },
-                    {
-                      label: 'Newly pending',
-                      value: newlyPendAcv,
-                      formattedValue: formatCurrency(newlyPendAcv),
-                      sublabel: `${newlyPendCount} ${newlyPendCount === 1 ? 'deal' : 'deals'}`,
-                      dealsCount: newlyPendCount,
-                      color: '#F59E0B',
-                      onClick: () => handleCellClick({ approval_status: 'Pending Approval' }, 'Newly Pending Deals'),
-                    },
-                    {
-                      label: 'Other changes',
-                      value: otherAcv,
-                      formattedValue: formatCurrency(otherAcv),
-                      sublabel: `${otherCount} ${otherCount === 1 ? 'deal' : 'deals'}`,
-                      dealsCount: otherCount,
-                      color: '#64748B',
-                    },
-                  ]}
-                  footer={
-                    <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-                      <span>Total shifted: {formatCurrency(totalACV)}</span>
+                {/* Movement ACV by Transition: Non-bar Flow / Donut visualization */}
+                {transitionChartType === 'donut' ? (
+                  <ChartCard
+                    title="Movement ACV by Transition"
+                    subtitle={`Transition volume since ${compareDateStr}`}
+                    type="donut"
+                    total={totalACV}
+                    action={
+                      <div className="flex bg-[var(--bg-secondary)] rounded-md p-0.5 border border-[var(--border)] text-[10px] font-bold">
+                        <button
+                          type="button"
+                          className="px-2 py-0.5 rounded transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          onClick={() => setTransitionChartType('flow')}
+                        >
+                          Flow
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-0.5 rounded transition-colors bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs"
+                          onClick={() => setTransitionChartType('donut')}
+                        >
+                          Donut
+                        </button>
+                      </div>
+                    }
+                    data={[
+                      {
+                        label: 'Newly approved',
+                        value: newlyApprAcv,
+                        formattedValue: formatCurrency(newlyApprAcv),
+                        percentage: totalACV > 0 ? (newlyApprAcv / totalACV) * 100 : 0,
+                        sublabel: `${newlyApprCount} deals`,
+                        dealsCount: newlyApprCount,
+                        color: '#10B981',
+                        onClick: () => handleCellClick({ approval_status: 'Approved' }, 'Newly Approved Deals'),
+                      },
+                      {
+                        label: 'Newly pending',
+                        value: newlyPendAcv,
+                        formattedValue: formatCurrency(newlyPendAcv),
+                        percentage: totalACV > 0 ? (newlyPendAcv / totalACV) * 100 : 0,
+                        sublabel: `${newlyPendCount} deals`,
+                        dealsCount: newlyPendCount,
+                        color: '#F59E0B',
+                        onClick: () => handleCellClick({ approval_status: 'Pending Approval' }, 'Newly Pending Deals'),
+                      },
+                      {
+                        label: 'Other changes',
+                        value: otherAcv,
+                        formattedValue: formatCurrency(otherAcv),
+                        percentage: totalACV > 0 ? (otherAcv / totalACV) * 100 : 0,
+                        sublabel: `${otherCount} deals`,
+                        dealsCount: otherCount,
+                        color: '#64748B',
+                      },
+                    ]}
+                    footer={
+                      <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                        <span>Total shifted: {formatCurrency(totalACV)}</span>
+                        <span>{totalDeals} deal shifts</span>
+                      </div>
+                    }
+                  />
+                ) : (
+                  <Card className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
+                    <div className="flex-1 flex flex-col min-h-0">
+                      {/* Header */}
+                      <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
+                        <div>
+                          <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--text-primary)]">
+                            Movement ACV by Transition
+                          </h3>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                            Transition volume since {compareDateStr}
+                          </p>
+                        </div>
+                        <div className="flex bg-[var(--bg-secondary)] rounded-md p-0.5 border border-[var(--border)] text-[10px] font-bold">
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded transition-colors bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs"
+                            onClick={() => setTransitionChartType('flow')}
+                          >
+                            Flow
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 rounded transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            onClick={() => setTransitionChartType('donut')}
+                          >
+                            Donut
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Proportional Segmented Flow Strip */}
+                      {(() => {
+                        const newlyApprPct = totalACV > 0 ? (newlyApprAcv / totalACV) * 100 : 0
+                        const newlyPendPct = totalACV > 0 ? (newlyPendAcv / totalACV) * 100 : 0
+                        const otherPct = totalACV > 0 ? (otherAcv / totalACV) * 100 : 0
+
+                        return (
+                          <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                            {/* Segmented Flow Bar */}
+                            <div className="space-y-1 shrink-0">
+                              <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] font-mono">
+                                <span>Volume distribution</span>
+                                <span>100% of shifted ACV</span>
+                              </div>
+                              <div className="h-3.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner p-0.5 gap-0.5">
+                                {newlyApprPct > 0 && (
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 cursor-pointer hover:opacity-90"
+                                    style={{ width: `${newlyApprPct}%` }}
+                                    onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Newly Approved Deals')}
+                                    title={`Newly approved: ${newlyApprPct.toFixed(1)}% (${formatCurrency(newlyApprAcv)})`}
+                                  />
+                                )}
+                                {newlyPendPct > 0 && (
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-300 cursor-pointer hover:opacity-90"
+                                    style={{ width: `${newlyPendPct}%` }}
+                                    onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Newly Pending Deals')}
+                                    title={`Newly pending: ${newlyPendPct.toFixed(1)}% (${formatCurrency(newlyPendAcv)})`}
+                                  />
+                                )}
+                                {otherPct > 0 && (
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-slate-500 to-slate-400 transition-all duration-300 cursor-pointer hover:opacity-90"
+                                    style={{ width: `${otherPct}%` }}
+                                    title={`Other changes: ${otherPct.toFixed(1)}% (${formatCurrency(otherAcv)})`}
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 3 Interactive Transition Metric Cards */}
+                            <div className="grid grid-cols-1 gap-2 flex-1 min-h-0 overflow-y-auto pr-1">
+                              {/* Newly Approved Card */}
+                              <div
+                                className="p-2.5 rounded-lg border border-[var(--border)] border-l-4 border-l-emerald-500 bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer flex items-center justify-between gap-3"
+                                onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Newly Approved Deals')}
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-[var(--text-primary)] truncate">Newly Approved</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                                      {newlyApprPct.toFixed(1)}% share
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                    {newlyApprCount} {newlyApprCount === 1 ? 'deal' : 'deals'} moved into Approved
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                                    {formatCurrency(newlyApprAcv)}
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-emerald-600/80 hover:underline">
+                                    View deals →
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Newly Pending Card */}
+                              <div
+                                className="p-2.5 rounded-lg border border-[var(--border)] border-l-4 border-l-amber-500 bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer flex items-center justify-between gap-3"
+                                onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Newly Pending Deals')}
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-[var(--text-primary)] truncate">Newly Pending</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                                      {newlyPendPct.toFixed(1)}% share
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                    {newlyPendCount} {newlyPendCount === 1 ? 'deal' : 'deals'} awaiting approval
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="text-sm font-black text-amber-600 dark:text-amber-400 font-mono tabular-nums">
+                                    {formatCurrency(newlyPendAcv)}
+                                  </div>
+                                  <span className="text-[10px] font-semibold text-amber-600/80 hover:underline">
+                                    View deals →
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Other Changes Card */}
+                              <div
+                                className="p-2.5 rounded-lg border border-[var(--border)] border-l-4 border-l-slate-400 bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] transition-colors flex items-center justify-between gap-3"
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-[var(--text-primary)] truncate">Other Adjustments</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20 whitespace-nowrap">
+                                      {otherPct.toFixed(1)}% share
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                    {otherCount} {otherCount === 1 ? 'deal' : 'deals'} with other governance movements
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="text-sm font-black text-slate-700 dark:text-slate-300 font-mono tabular-nums">
+                                    {formatCurrency(otherAcv)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="mt-3 pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] flex items-center justify-between shrink-0">
+                      <span>Total shifted: <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(totalACV)}</strong></span>
                       <span>{totalDeals} deal shifts</span>
                     </div>
-                  }
-                />
+                  </Card>
+                )}
               </CardRow>
             </>
           );
