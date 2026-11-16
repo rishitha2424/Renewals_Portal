@@ -474,13 +474,12 @@ function BusinessUnitsContent() {
                   lastweekDate={summary.lastweek_date}
                   heatMode={heatMode}
                   hideCardWrapper={true}
-                  fillMode={true}
                 />
               </div>
             </div>
 
-            {/* Stat strip below the table (F2) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-3 border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+            {/* Stat strip below the table pinned to bottom */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-auto border-t border-[var(--border-subtle)] text-[11px] shrink-0">
               <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
                 <span className="text-[var(--text-muted)] block text-[10px]">Business Units</span>
                 <span className="font-bold text-[var(--text-primary)] font-mono">{numBUs} units</span>

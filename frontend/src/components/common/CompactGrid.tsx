@@ -44,12 +44,10 @@ export interface CompactGridProps {
   lastweekDate?: string | null
   heatMode?: 'Value' | 'Yesterday' | 'LastWeek'
   hideCardWrapper?: boolean
-  tableLayoutFixed?: boolean
-  fillMode?: boolean
 }
 
 export default function CompactGrid({
-  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value', hideCardWrapper = false, tableLayoutFixed = false, fillMode = false
+  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value', hideCardWrapper = false
 }: CompactGridProps) {
   
   // 1. Keep all columns passed (Pipeline and 0-value columns always shown)
@@ -127,15 +125,14 @@ export default function CompactGrid({
   }
 
   const tableElement = (
-    <div className={clsx("overflow-x-auto w-full", fillMode && "table-fill-container flex-1 min-h-0")}>
+    <div className="overflow-x-auto max-w-full">
       <table
-        className={clsx("data-table text-xs whitespace-nowrap w-full", tableLayoutFixed && "table-fixed", fillMode && "table-fill")}
-        style={tableLayoutFixed ? { tableLayout: 'fixed', width: '100%', minWidth: '560px' } : undefined}
+        className="data-table text-xs whitespace-nowrap"
+        style={{ tableLayout: 'auto', width: 'max-content', maxWidth: '100%' }}
       >
         <thead>
           <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
             <th
-              style={tableLayoutFixed ? { width: '160px' } : undefined}
               className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs col-label"
             >
               {rowLabelName}
@@ -145,7 +142,6 @@ export default function CompactGrid({
               return (
                 <th
                   key={c}
-                  style={tableLayoutFixed ? { width: '95px' } : undefined}
                   className="px-3 py-2 text-right font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] col-num"
                 >
                   {label}
@@ -153,7 +149,6 @@ export default function CompactGrid({
               )
             })}
             <th
-              style={tableLayoutFixed ? { width: '100px' } : undefined}
               className="px-3 py-2 text-right font-bold text-[11px] uppercase tracking-wider text-[var(--text-primary)] border-l border-[var(--border)] col-num"
             >
               Total
@@ -292,7 +287,7 @@ export default function CompactGrid({
   }
 
   return (
-    <div className={clsx("card overflow-hidden border border-[var(--border)] table-card", fillMode && "h-full flex flex-col justify-between")}>
+    <div className="card overflow-hidden border border-[var(--border)] table-card">
       <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
         <h3 className="font-semibold text-sm">{title}</h3>
       </div>

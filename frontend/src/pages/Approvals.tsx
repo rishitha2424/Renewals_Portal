@@ -384,7 +384,6 @@ export default function Approvals() {
                     <CompactGrid
                       title=""
                       hideCardWrapper={true}
-                      fillMode={true}
                       columns={displayCategories}
                       columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
                       rows={rowsForGrid}

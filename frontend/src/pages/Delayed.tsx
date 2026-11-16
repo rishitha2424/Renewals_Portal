@@ -691,24 +691,21 @@ function DelayedContent() {
 
         {/* Grid Breakdowns & Insights (no outer wrapper cards) */}
         <CardRow template="max-content minmax(0, 1fr) minmax(0, 1fr)">
-          <div className="h-full flex flex-col justify-between">
-            <CompactGrid
-              title="Delayed ACV by region"
-              rowLabelName="Region"
-              columns={regionGrid.categories}
-              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-              rows={regionGrid.rows}
-              totals={regionGrid.totals}
-              deltas={regionGrid.gridDeltas}
-              metricMode={metricMode}
-              onCellClick={regionGrid.handleCellClick}
-              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-              heatMode={heatMode}
-              fillMode={true}
-            />
-          </div>
+          <CompactGrid
+            title="Delayed ACV by region"
+            rowLabelName="Region"
+            columns={regionGrid.categories}
+            columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+            rows={regionGrid.rows}
+            totals={regionGrid.totals}
+            deltas={regionGrid.gridDeltas}
+            metricMode={metricMode}
+            onCellClick={regionGrid.handleCellClick}
+            compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+            yesterdayDate={summary.yesterday_date}
+            lastweekDate={summary.lastweek_date}
+            heatMode={heatMode}
+          />
 
           <div className="h-full flex flex-col min-w-0">
             <ChartCard

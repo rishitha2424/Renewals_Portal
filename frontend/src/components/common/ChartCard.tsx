@@ -72,7 +72,7 @@ export default function ChartCard({
         </div>
 
         {/* Content - Scales inside absolute container (B) */}
-        <div className="relative flex-1 min-h-[160px] w-full min-w-0 my-1">
+        <div className="relative flex-1 min-h-[200px] w-full min-w-0 my-1">
           <div className="absolute inset-0 w-full h-full flex flex-col justify-between overflow-hidden">
             {data.length === 0 ? (
               <p className="text-xs text-[var(--text-muted)] py-4 text-center my-auto">{emptyText}</p>
@@ -262,8 +262,8 @@ export default function ChartCard({
             </div>
           ) : type === 'donut' ? (
             <div className="flex-1 flex flex-col items-center justify-start gap-2 p-1 min-h-0 overflow-hidden">
-              {/* Donut SVG - Fixed size ~140px centered at top (B) */}
-              <div className="relative w-[140px] h-[140px] shrink-0 mx-auto my-1">
+              {/* Donut SVG - Fixed size ~150px centered at top (B) */}
+              <div className="relative w-[150px] h-[150px] shrink-0 mx-auto my-1">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {(() => {
                     let cumulative = 0

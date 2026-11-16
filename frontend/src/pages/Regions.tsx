@@ -1499,7 +1499,6 @@ function RegionsContent() {
                     yesterdayDate={summary.yesterday_date}
                     lastweekDate={summary.lastweek_date}
                     hideCardWrapper={true}
-                    tableLayoutFixed={true}
                   />
                 )
               })()}
@@ -1533,7 +1532,6 @@ function RegionsContent() {
                 yesterdayDate={summary.yesterday_date}
                 lastweekDate={summary.lastweek_date}
                 hideCardWrapper={true}
-                tableLayoutFixed={true}
               />
             </div>
           </div>
