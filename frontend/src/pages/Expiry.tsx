@@ -129,6 +129,24 @@ export default function Expiry() {
     return list
   }, [sum])
 
+  const catTotals = useMemo(() => {
+    const res: Record<string, { count: number; acv: number }> = {
+      'Closed': { count: 0, acv: 0 },
+      'Commit': { count: 0, acv: 0 },
+      'Best Case': { count: 0, acv: 0 },
+      'Pipeline': { count: 0, acv: 0 },
+    }
+    Object.values(sum?.grids || {}).forEach((grid: any) => {
+      const cats = grid.totals?.category || {}
+      Object.keys(res).forEach((c) => {
+        if (cats[c]) {
+          res[c].count += cats[c].count || 0
+          res[c].acv += cats[c].acv || 0
+        }
+      })
+    })
+    return res
+  }, [sum?.grids])
 
   if (!activeSnapshotId || snapshots.length === 0) {
     return <PageNoSnapshotState />
@@ -150,25 +168,6 @@ export default function Expiry() {
   if (!sum.grand_total) {
     return <PageNoSnapshotState />
   }
-
-  const catTotals = useMemo(() => {
-    const res: Record<string, { count: number; acv: number }> = {
-      'Closed': { count: 0, acv: 0 },
-      'Commit': { count: 0, acv: 0 },
-      'Best Case': { count: 0, acv: 0 },
-      'Pipeline': { count: 0, acv: 0 },
-    }
-    Object.values(sum?.grids || {}).forEach((grid: any) => {
-      const cats = grid.totals?.category || {}
-      Object.keys(res).forEach((c) => {
-        if (cats[c]) {
-          res[c].count += cats[c].count || 0
-          res[c].acv += cats[c].acv || 0
-        }
-      })
-    })
-    return res
-  }, [sum?.grids])
 
   const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false, periodType?: string) => {
     setDrillDeals(null)
