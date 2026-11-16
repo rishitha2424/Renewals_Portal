@@ -839,22 +839,29 @@ function RegionsContent() {
                           </div>
                         </div>
 
-                        {/* Category distribution column chart (F3) */}
+                        {/* Category distribution summary (Period Category Distribution) */}
                         {regionDetail?.forecast_categories && regionDetail.forecast_categories.length > 0 && (
-                          <div className="pt-2 shrink-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">Period Category Distribution</div>
-                            <div className="h-16 flex items-end justify-between gap-3 pt-1 pb-1 border-b border-[var(--border-subtle)]">
+                          <div className="pt-2.5 mt-2 border-t border-[var(--border-subtle)] shrink-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Period Category Distribution</div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                               {regionDetail.forecast_categories
                                 .filter((c: any) => ['Closed', 'Commit', 'Best Case', 'Pipeline'].includes(c.category))
                                 .map((c: any) => {
                                   const catMax = Math.max(...regionDetail.forecast_categories.map((x: any) => x.acv || 0), 1)
-                                  const hPct = Math.max(12, ((c.acv || 0) / catMax) * 100)
+                                  const pct = catMax > 0 ? ((c.acv || 0) / catMax) * 100 : 0
                                   const color = c.category === 'Closed' ? '#00A3AD' : c.category === 'Commit' ? '#1B365D' : c.category === 'Best Case' ? '#4B6B94' : '#F58220'
                                   return (
-                                    <div key={c.category} className="flex-1 flex flex-col items-center justify-end h-full gap-0.5">
-                                      <span className="text-[9px] font-bold text-[var(--text-primary)] tabular-nums">{formatACV(c.acv)}</span>
-                                      <div className="w-full max-w-[28px] rounded-t-sm" style={{ height: `${hPct}%`, backgroundColor: color }} />
-                                      <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate w-full text-center">{c.category}</span>
+                                    <div key={c.category} className="p-2 rounded bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] flex flex-col justify-between">
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                        <span className="text-[11px] font-semibold text-[var(--text-secondary)] truncate">{c.category}</span>
+                                      </div>
+                                      <div className="text-xs font-bold font-mono text-[var(--text-primary)] tabular-nums mb-1.5">
+                                        {formatACV(c.acv)}
+                                      </div>
+                                      <div className="h-1.5 w-full bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.max(c.acv > 0 ? 8 : 0, pct)}%`, backgroundColor: color }} />
+                                      </div>
                                     </div>
                                   )
                                 })}
