@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { AlertTriangle, TrendingUp, BarChart2, ListTodo, Activity } from 'lucide-react'
@@ -151,6 +151,25 @@ export default function Expiry() {
     return <PageNoSnapshotState />
   }
 
+  const catTotals = useMemo(() => {
+    const res: Record<string, { count: number; acv: number }> = {
+      'Closed': { count: 0, acv: 0 },
+      'Commit': { count: 0, acv: 0 },
+      'Best Case': { count: 0, acv: 0 },
+      'Pipeline': { count: 0, acv: 0 },
+    }
+    Object.values(sum?.grids || {}).forEach((grid: any) => {
+      const cats = grid.totals?.category || {}
+      Object.keys(res).forEach((c) => {
+        if (cats[c]) {
+          res[c].count += cats[c].count || 0
+          res[c].acv += cats[c].acv || 0
+        }
+      })
+    })
+    return res
+  }, [sum?.grids])
+
   const handleCellClick = (quarter: string | null, category: string | null, title: string, isSlippage = false, periodType?: string) => {
     setDrillDeals(null)
     setModalParams({ quarter, category, slippage: isSlippage, period_type: periodType || periodMode })
@@ -256,29 +275,53 @@ export default function Expiry() {
         </div>
       )}
 
-      {/* Grand Total & Slippage KPI Strip */}
+      {/* 5 Concept Tone Top Tiles: Closed, Commit, Best Case, Pipeline, Slippage */}
       <ErrorBoundary compact sectionTitle="Expiry Totals">
-      <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
+      <div id="expiry-totals" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 scroll-mt-24">
         <Tile
-          accentColor="#6366f1"
-          onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
-          title={`FY${fy1} All-Years Total Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
-          amount={formatCurrency(grandTotal.acv)}
-          count={grandTotal.count}
-          deltaYesterday={yestGrand ? { count: yestGrand.count, acv: yestGrand.acv } : null}
-          deltaLastWeek={lastGrand ? { count: lastGrand.count, acv: lastGrand.acv } : null}
+          tone="closed"
+          title="Closed"
+          amount={formatCurrency(catTotals['Closed']?.acv || 0)}
+          count={catTotals['Closed']?.count || 0}
+          subtitle={`Expiry ${periodMode === 'fiscal' ? 'Fiscal' : 'Service'}`}
+          onClick={() => handleCellClick(null, 'Closed', 'Closed Expiry Deals')}
         />
 
         <Tile
-          accentColor="#f59e0b"
+          tone="commit"
+          title="Commit"
+          amount={formatCurrency(catTotals['Commit']?.acv || 0)}
+          count={catTotals['Commit']?.count || 0}
+          subtitle={`Expiry ${periodMode === 'fiscal' ? 'Fiscal' : 'Service'}`}
+          onClick={() => handleCellClick(null, 'Commit', 'Commit Expiry Deals')}
+        />
+
+        <Tile
+          tone="best_case"
+          title="Best Case"
+          amount={formatCurrency(catTotals['Best Case']?.acv || 0)}
+          count={catTotals['Best Case']?.count || 0}
+          subtitle={`Expiry ${periodMode === 'fiscal' ? 'Fiscal' : 'Service'}`}
+          onClick={() => handleCellClick(null, 'Best Case', 'Best Case Expiry Deals')}
+        />
+
+        <Tile
+          tone="pipeline"
+          title="Pipeline"
+          amount={formatCurrency(catTotals['Pipeline']?.acv || 0)}
+          count={catTotals['Pipeline']?.count || 0}
+          subtitle={`Expiry ${periodMode === 'fiscal' ? 'Fiscal' : 'Service'}`}
+          onClick={() => handleCellClick(null, 'Pipeline', 'Pipeline Expiry Deals')}
+        />
+
+        <Tile
+          tone="slippage"
           polarity="bad_when_higher"
-          onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
           title={`Slippage to FY${fy2}`}
           amount={formatCurrency(sum.slippage?.acv ?? 0)}
           count={sum.slippage?.count ?? 0}
-          subtitle={sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}
-          onDealsClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
-          viewDealsText="View slippage deals →"
+          subtitle={sum.slippage?.rule_caption || `Slipped to FY${fy2}`}
+          onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
         />
       </div>
       </ErrorBoundary>

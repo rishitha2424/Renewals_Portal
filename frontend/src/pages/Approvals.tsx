@@ -46,63 +46,20 @@ function formatDelta(val: number, isCount: boolean) {
   return <span className={color}>{text}</span>
 }
 
-function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSetting, tooltip, pctOfPeriod }: any) {
+function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSetting, tooltip, pctOfPeriod, tone }: any) {
   const isCount = metricMode === 'Count'
   const isBoth = metricMode === 'Both'
   const isAmount = metricMode === 'Amount'
 
-  const dYes = data.delta_yesterday
-  const dLast = data.delta_lastweek
-  const dCust = data.delta_custom
-
-  const renderDeltas = () => {
-    if (dCust && (dCust.count || dCust.acv)) {
-      const isLastWeek = compareSetting === 'lastweek' || compareSetting === 'last_week' || (compareDate && data.lastweek_date && compareDate === data.lastweek_date)
-      const cmpLabel = isLastWeek ? 'vs last week' : 'vs yesterday'
-      const deltaPart = isCount
-        ? formatDelta(dCust.count, true)
-        : isAmount
-        ? formatDelta(dCust.acv, false)
-        : <>{formatDelta(dCust.count, true)} · {formatDelta(dCust.acv, false)}</>
-      return (
-        <span title={compareDate ? formatDate(compareDate) : undefined} className="cursor-help">
-          {cmpLabel} {deltaPart}
-        </span>
-      )
-    }
-    return (
-      <span className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--border-subtle)] text-xs font-normal">
-        <span title={data.yesterday_date ? formatDate(data.yesterday_date) : undefined} className="flex items-center justify-between">
-          <span className="text-[var(--text-muted)]">vs yesterday</span>
-          <span className="tabular-nums">
-            {isCount ? formatDelta(dYes?.count, true) : isAmount ? formatDelta(dYes?.acv, false) : <>{formatDelta(dYes?.count, true)} · {formatDelta(dYes?.acv, false)}</>}
-          </span>
-        </span>
-        <span title={data.lastweek_date ? formatDate(data.lastweek_date) : undefined} className="flex items-center justify-between">
-          <span className="text-[var(--text-muted)]">vs last week</span>
-          <span className="tabular-nums">
-            {isCount ? formatDelta(dLast?.count, true) : isAmount ? formatDelta(dLast?.acv, false) : <>{formatDelta(dLast?.count, true)} · {formatDelta(dLast?.acv, false)}</>}
-          </span>
-        </span>
-      </span>
-    )
-  }
-
   return (
     <Tile
+      tone={tone}
       title={label}
       amount={isBoth || isAmount ? acvM(data.acv) : `${formatNumber(data.count)} deals`}
       count={data.count}
-      badge={
-        tooltip ? (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{formatNumber(data.count)} deals</span>
-            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={tooltip}>i</span>
-          </div>
-        ) : undefined
-      }
+      deltaYesterday={data.delta_yesterday}
+      deltaLastWeek={data.delta_lastweek}
       subtitle={pctOfPeriod != null ? `${pctOfPeriod.toFixed(1)}% of period ACV` : undefined}
-      footer={renderDeltas()}
     />
   )
 }
@@ -286,6 +243,7 @@ export default function Approvals() {
       <div id="approvals-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}>
           <StatChip
+            tone="approved"
             label="Approved"
             data={attachDates(getStatus('Approved'))}
             icon={CheckCircle2}
@@ -298,7 +256,8 @@ export default function Approvals() {
         </div>
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}>
           <StatChip
-            label="Pending"
+            tone="pending"
+            label="Pending approval"
             data={attachDates(getStatus('Pending Approval'))}
             icon={Clock}
             metricMode={metricMode}
@@ -310,6 +269,7 @@ export default function Approvals() {
         </div>
         <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Blank' }, 'Not Submitted Deals')}>
           <StatChip
+            tone="not_submitted"
             label="Not submitted"
             data={attachDates(getStatus('Blank'))}
             icon={FileQuestion}
@@ -322,6 +282,7 @@ export default function Approvals() {
         </div>
         <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}>
           <StatChip
+            tone="total"
             label="Total"
             data={attachDates(total)}
             icon={Sigma}

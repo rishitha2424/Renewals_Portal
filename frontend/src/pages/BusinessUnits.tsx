@@ -380,6 +380,7 @@ function BusinessUnitsContent() {
       <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
         {/* Card 1: Total Portfolio ACV */}
         <Tile
+          tone="total"
           title="Total Portfolio ACV"
           amount={formatACV(total.acv)}
           count={total.count}
@@ -390,6 +391,7 @@ function BusinessUnitsContent() {
 
         {/* Card 2: Active Business Units */}
         <Tile
+          tone="active_units"
           title="Active Business Units"
           amount={numBUs}
           badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{numBUs} units</span>}
@@ -398,6 +400,7 @@ function BusinessUnitsContent() {
 
         {/* Card 3: Largest Business Unit */}
         <Tile
+          tone="largest_bu"
           title="Largest Business Unit"
           amount={largestBu?.bu || '—'}
           badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{largestBuPct}% of total</span>}
@@ -408,6 +411,7 @@ function BusinessUnitsContent() {
 
         {/* Card 4: Commit Coverage */}
         <Tile
+          tone="coverage"
           title="Commit Coverage"
           amount={`${commitCov}%`}
           badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{formatACV(totalCommit)} Commit</span>}
