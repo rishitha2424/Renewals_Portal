@@ -22,7 +22,7 @@ export const DEFINITIONS: Record<string, string> = {
   // Overview Needs Attention
   proposal_pending: 'Deals in this period with no proposal status or opportunity approval recorded.',
   delayed_renewals: 'Deals whose service start date has passed without closing, requiring immediate action.',
-  slippage: 'Deals whose expected close date shifted into the next fiscal year.',
+  slippage: 'Deals whose expected close date shifted into 2027.',
   jan_1st_renewals: 'Renewals scheduled to take effect on the upcoming January 1st cycle.',
 
   // Approvals Page Tiles

@@ -1020,11 +1020,11 @@ export function getExpiryInsights(sum: any, onDrill?: (title: string, params: an
       icon: Clock,
       text: (
         <span>
-          Slippage tracking: <strong>{sum.slippage.count} renewals</strong> ({acvM(sum.slippage.acv)}) are pushed to close in FY{fy2 || 'next year'}.
+          Slippage to 2027 tracking: <strong>{sum.slippage.count} renewals</strong> ({acvM(sum.slippage.acv)}) are pushed to close in FY{fy2 || '2027'}.
         </span>
       ),
       linkText: 'View deals',
-      onLinkClick: onDrill ? () => onDrill(`Slippage to FY${fy2}`, { slippage: true }) : undefined,
+      onLinkClick: onDrill ? () => onDrill(`Slippage to 2027`, { slippage: true }) : undefined,
     })
   }
 

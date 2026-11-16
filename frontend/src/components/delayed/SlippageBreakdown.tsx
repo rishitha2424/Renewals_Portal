@@ -26,7 +26,7 @@ export default function SlippageBreakdown({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-            Slippage Breakdown & Slipped From
+            Slippage to 2027 Breakdown & Slipped From
           </span>
           <span className="text-[11px] text-[var(--text-muted)]">
             Since start of year{baseDateStr}: {deltaPeriodStart && baseDate ? (
@@ -58,7 +58,7 @@ export default function SlippageBreakdown({
             const cnt = cData.count || 0
             const acv = cData.acv || 0
             const hasC = cnt > 0 || acv > 0
-            const drawerTitle = `Slippage · ${label} (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acv)})`
+            const drawerTitle = `Slippage to 2027 · ${label} (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acv)})`
 
             return (
               <Tile
@@ -121,7 +121,7 @@ export default function SlippageBreakdown({
                         {acvM(sf.acv)}
                       </td>
                       <td className="px-4 py-2 text-[var(--text-muted)]">
-                        Closing in {slippageSec.next_year || 'next year'}
+                        Closing in {slippageSec.next_year || '2027'}
                       </td>
                     </tr>
                   )

@@ -117,7 +117,7 @@ function DelayedContent() {
     }
     const slipCount = summary?.slippage?.total?.count ?? summary?.slippage?.count ?? summary?.slipped?.count
     if (slipCount != null) {
-      list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
+      list.push({ id: 'delayed-slippage-group', title: 'Slippage to 2027' })
     }
     if (summary?.top_deals?.length) {
       list.push({ id: 'delayed-top-deals', title: 'Top 10 Delayed Deals' })
@@ -545,8 +545,8 @@ function DelayedContent() {
 
       {/* Aligned Section Header with integrated controls (no combined banner) */}
       <SectionHeader
-        title="Delayed Renewals & Slippage"
-        subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage, and removals.`}
+        title="Delayed Renewals & Slippage to 2027"
+        subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage to 2027, and removals.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <MetricToggle />
@@ -625,12 +625,12 @@ function DelayedContent() {
             {/* 2. Slippage Tile */}
             <Tile
               tone="slippage"
-              title="Slippage Total"
+              title="Slippage to 2027 Total"
               amount={formatACV(slipTot?.acv || 0)}
               count={slipTot?.count || 0}
-              subtitle={slippageQuietLine || 'Slipped to next year'}
+              subtitle={slippageQuietLine || 'Slipped to 2027'}
               polarity="bad_when_higher"
-              onClick={() => handleDrill(`Slippage Total · ${formatCount(slipTot?.count || 0)} deals · ${formatACV(slipTot?.acv || 0)}`, { kind: 'slippage' })}
+              onClick={() => handleDrill(`Slippage to 2027 Total · ${formatCount(slipTot?.count || 0)} deals · ${formatACV(slipTot?.acv || 0)}`, { kind: 'slippage' })}
               deltaYesterday={slipTot?.delta_yesterday || slipTot?.delayed_vs_yesterday}
               deltaLastWeek={slipTot?.delta_lastweek || slipTot?.delayed_vs_lastweek}
             />
@@ -808,11 +808,11 @@ function DelayedContent() {
         </Card>
       )}
 
-      {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
+      {/* ────────────────── SECTION 2: SLIPPAGE TO 2027 ────────────────── */}
       <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
         <SectionHeading
-          title="Slippage"
-          subtitle={summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to next year.'}
+          title="Slippage to 2027"
+          subtitle={summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to 2027.'}
           badge={
             summary.slippage?.total?.count != null ? (
               <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">

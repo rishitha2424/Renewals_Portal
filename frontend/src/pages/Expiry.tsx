@@ -118,7 +118,7 @@ export default function Expiry() {
   const expirySections = React.useMemo(() => {
     const list: { id: string; title: string }[] = []
     if (sum?.grand_total) {
-      list.push({ id: 'expiry-totals', title: 'Totals & slippage' })
+      list.push({ id: 'expiry-totals', title: 'Totals & Slippage to 2027' })
     }
     if (sum?.fiscal_years) {
       sum.fiscal_years.forEach((fyObj: any) => {
@@ -340,11 +340,11 @@ export default function Expiry() {
           <Tile
             tone="slippage"
             polarity="bad_when_higher"
-            title={`Slippage to FY${fy2}`}
+            title="Slippage to 2027"
             amount={formatCurrency(sum.slippage?.acv ?? 0)}
             count={sum.slippage?.count ?? 0}
-            subtitle={sum.slippage?.rule_caption || `Slipped to FY${fy2} (${sum.slippage?.count || 0} deals)`}
-            onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
+            subtitle={sum.slippage?.rule_caption || `Slipped to 2027 (${sum.slippage?.count || 0} deals)`}
+            onClick={() => handleCellClick(null, null, `Slippage to 2027 (${sum.slippage?.count || 0} deals)`, true)}
           />
         </div>
       </ErrorBoundary>

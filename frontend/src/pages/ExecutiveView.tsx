@@ -155,7 +155,7 @@ export default function ExecutiveView() {
     if (expiryQuery.data?.grids) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
     if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: regionsQuery.data.regions.length > 10 ? 'Top 10 Regions' : 'Regions by ACV' })
     if (buQuery.data?.rows?.length) list.push({ id: 'exec-bu', title: 'Business Units' })
-    if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
+    if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage to 2027' })
     return list
   }, [overviewQuery.data, approvalsQuery.data, expiryQuery.data, regionsQuery.data, buQuery.data, delayedQuery.data])
 
@@ -360,7 +360,7 @@ export default function ExecutiveView() {
   }
 
   if (slippageRowsSumCount !== slippageTotal.count || Math.abs(slippageRowsSumAcv - slippageTotal.acv) > 0.05) {
-    mismatchErrors.push(`Slippage table rows (${slippageRowsSumCount} deals / ${formatCurrency(slippageRowsSumAcv)}) do not reconcile to Slippage total (${slippageTotal.count} deals / ${formatCurrency(slippageTotal.acv)})`)
+    mismatchErrors.push(`Slippage to 2027 table rows (${slippageRowsSumCount} deals / ${formatCurrency(slippageRowsSumAcv)}) do not reconcile to Slippage to 2027 total (${slippageTotal.count} deals / ${formatCurrency(slippageTotal.acv)})`)
   }
 
   const hasReconciliationMismatch = mismatchErrors.length > 0
@@ -876,7 +876,7 @@ export default function ExecutiveView() {
         </div>
       </section>
 
-      {/* 7. Delayed Renewals & Slippage (Separated per Item 1) */}
+      {/* 7. Delayed Renewals & Slippage to 2027 (Separated per Item 1) */}
       <section id="exec-delayed" className="scroll-mt-24 mb-6 space-y-6 page-break-avoid">
         {/* 7a. Delayed Renewals Summary */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
@@ -930,12 +930,12 @@ export default function ExecutiveView() {
           </div>
         </div>
 
-        {/* 7b. Slippage */}
+        {/* 7b. Slippage to 2027 */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
           <div className="px-4 py-2.5 bg-amber-50/60 border-b border-slate-200 border-l-4 border-l-amber-500 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h2 className="font-bold text-xs uppercase tracking-wider text-amber-900">
-                7b. Slippage
+                7b. Slippage to 2027
               </h2>
               {slippage.type_filter_note && (
                 <span className="text-[10px] text-slate-500 font-normal">
@@ -948,7 +948,7 @@ export default function ExecutiveView() {
             </span>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
-            {slippage.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close next year.'}
+            {slippage.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close in 2027.'}
           </p>
 
           {/* Category breakdown */}
@@ -985,16 +985,16 @@ export default function ExecutiveView() {
                     <td className="px-4 py-2 font-medium text-amber-900">From {sf.expiry_year}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(sf.count)}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(sf.acv)}</td>
-                    <td className="px-4 py-2 text-slate-500">Closing in {slippage.next_year || 'next year'}</td>
+                    <td className="px-4 py-2 text-slate-500">Closing in {slippage.next_year || '2027'}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                  <td className="px-4 py-2.5">Total Slippage</td>
+                  <td className="px-4 py-2.5">Total Slippage to 2027</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippageTotal.count)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
-                  <td className="px-4 py-2.5 text-slate-500">Expected to close in {slippage.next_year || 'next year'}</td>
+                  <td className="px-4 py-2.5 text-slate-500">Expected to close in {slippage.next_year || '2027'}</td>
                 </tr>
               </tfoot>
             </table>

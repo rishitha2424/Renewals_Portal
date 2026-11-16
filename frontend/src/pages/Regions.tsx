@@ -569,13 +569,13 @@ function RegionsContent() {
 
                   {/* 5. Slippage Tile */}
                   <Tile
-                    title="Slippage"
+                    title="Slippage to 2027"
                     tone="slippage"
                     amount={formatACV(slippageAcv)}
                     count={slippageCount}
                     dealsLabel="deals"
-                    subtitle="Close slipped to next year"
-                    onClick={() => handleDrill(`${selectedRegion} Slippage Deals`, { region: selectedRegion, kind: 'slippage' })}
+                    subtitle="Close slipped to 2027"
+                    onClick={() => handleDrill(`${selectedRegion} Slippage to 2027 Deals`, { region: selectedRegion, kind: 'slippage' })}
                     viewDealsText="View deals →"
                   />
                 </div>
@@ -1287,7 +1287,7 @@ function RegionsContent() {
                   className="py-3 px-3.5 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   <div className="flex items-center justify-end gap-1.5">
-                    <span>Slippage</span>
+                    <span>Slippage to 2027</span>
                     <ArrowUpDown className={cn("w-3.5 h-3.5", sortCol === 'slippage_acv' ? "text-blue-500" : "text-gray-400")} />
                   </div>
                 </th>
@@ -1392,7 +1392,7 @@ function RegionsContent() {
 
                     {/* Slippage */}
                     <td 
-                      onClick={() => handleDrill(`${r.region} Slippage Deals`, { region: r.region, kind: 'slippage' })}
+                      onClick={() => handleDrill(`${r.region} Slippage to 2027 Deals`, { region: r.region, kind: 'slippage' })}
                       className={cn(
                         "py-3 px-3.5 text-right font-medium cursor-pointer hover:underline",
                         (r.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"
@@ -1470,7 +1470,7 @@ function RegionsContent() {
                   {(summary.total.delayed_count || 0) > 0 ? `${formatACV(summary.total.delayed_acv)} (${summary.total.delayed_count})` : '-'}
                 </td>
                 <td 
-                  onClick={() => handleDrill(`Portfolio Slippage Deals`, { kind: 'slippage' })}
+                  onClick={() => handleDrill(`Portfolio Slippage to 2027 Deals`, { kind: 'slippage' })}
                   className={cn(
                     "py-3 px-3.5 text-right cursor-pointer hover:underline",
                     (summary.total.slippage_count || 0) > 0 ? "text-purple-600 dark:text-purple-400" : "text-gray-400"

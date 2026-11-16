@@ -929,12 +929,12 @@ export default function Dashboard() {
         const slipAcv = slipTot?.acv ?? 0
         const slipIsNA = isFuture || slipTot?.count === null
         const slipHasDeals = slipCnt > 0 || slipAcv > 0
-        const slipMainTitle = `Slippage (${slipCnt} ${slipCnt === 1 ? 'deal' : 'deals'} · ${acvM(slipAcv)})`
+        const slipMainTitle = `Slippage to 2027 (${slipCnt} ${slipCnt === 1 ? 'deal' : 'deals'} · ${acvM(slipAcv)})`
         const slipYDelta = slipTot?.delayed_vs_yesterday
         const slipLWDelta = slipTot?.delayed_vs_lastweek
-        const slipYTitle = `Slippage · vs yesterday (${Math.abs(slipYDelta?.count || 0)} deals · ${acvM(Math.abs(slipYDelta?.acv || 0))})`
-        const slipLWTitle = `Slippage · vs last week (${Math.abs(slipLWDelta?.count || 0)} deals · ${acvM(Math.abs(slipLWDelta?.acv || 0))})`
-        const slipSubtitle = summary?.slippage?.rule_caption || summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date next year.'
+        const slipYTitle = `Slippage to 2027 · vs yesterday (${Math.abs(slipYDelta?.count || 0)} deals · ${acvM(Math.abs(slipYDelta?.acv || 0))})`
+        const slipLWTitle = `Slippage to 2027 · vs last week (${Math.abs(slipLWDelta?.count || 0)} deals · ${acvM(Math.abs(slipLWDelta?.acv || 0))})`
+        const slipSubtitle = summary?.slippage?.rule_caption || summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date in 2027.'
 
         const j1Data = summary?.jan1_renewals
         const j1Cnt = j1Data?.count ?? 0
@@ -1047,7 +1047,7 @@ export default function Dashboard() {
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                      Slippage
+                      Slippage to 2027
                     </span>
                     <Pill color="amber">{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
                   </div>
@@ -1057,15 +1057,15 @@ export default function Dashboard() {
                   <div
                     className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${slipHasDeals && !slipIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => slipHasDeals && !slipIsNA && openDealsQuery(slipMainTitle, { kind: 'slippage_total' })}
-                    title={slipHasDeals ? 'Click to view slippage deals' : '0 deals'}
+                    title={slipHasDeals ? 'Click to view slippage to 2027 deals' : '0 deals'}
                   >
                     {slipIsNA ? 'n/a' : acvM(slipAcv)}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage')}
-                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage')}
+                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage to 2027')}
+                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage to 2027')}
                 </div>
 
                 {(() => {
@@ -1315,7 +1315,7 @@ export default function Dashboard() {
                     </h3>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] max-w-xl">
-                    Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage totals).
+                    Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage to 2027 totals).
                   </p>
                 </div>
 
