@@ -949,8 +949,10 @@ export default function Approvals() {
 
         <ChartCard
           title="Coverage Benchmark Variance"
-          subtitle={`Variance vs ${metricMode === 'Count' ? approval_coverage.portfolio_average_count_pct : approval_coverage.portfolio_average_pct}% portfolio benchmark`}
-          type="diverging-bars"
+          subtitle={`Portfolio benchmark: ${metricMode === 'Count' ? approval_coverage.portfolio_average_count_pct : approval_coverage.portfolio_average_pct}% approved`}
+          type="benchmark-bars"
+          benchmark={metricMode === 'Count' ? approval_coverage.portfolio_average_count_pct : approval_coverage.portfolio_average_pct}
+          benchmarkLabel="Portfolio Benchmark"
           data={(() => {
             const list =
               coverageTab === 'category'
@@ -959,22 +961,53 @@ export default function Approvals() {
                 ? approval_coverage.by_region
                 : approval_coverage.by_bu
 
+            const benchmarkVal = metricMode === 'Count'
+              ? (approval_coverage.portfolio_average_count_pct || 0)
+              : (approval_coverage.portfolio_average_pct || 0)
+
             return (list || []).map((item: any) => {
               const displayName = coverageTab === 'category' ? getForecastCategoryLabel(item.name) : item.name
               const dealApprovalPct = item.total_count > 0 ? Number(((item.approved_count / item.total_count) * 100).toFixed(1)) : 0
               const countGap = Number((dealApprovalPct - (approval_coverage.portfolio_average_count_pct || 0)).toFixed(1))
+              const actualRate = metricMode === 'Count' ? dealApprovalPct : (item.coverage_pct || 0)
               const gapVal = metricMode === 'Count' ? countGap : (item.gap || 0)
+
+              const sub = metricMode === 'Count'
+                ? `${item.approved_count}/${item.total_count} deals`
+                : `${formatCurrency(item.approved_acv)} of ${formatCurrency(item.total_acv)}`
+
+              const filterParam =
+                coverageTab === 'category'
+                  ? { forecast_category: item.name }
+                  : coverageTab === 'region'
+                  ? { sub_region: item.name }
+                  : { business_unit_primary: item.name }
+
               return {
                 label: displayName,
-                value: gapVal,
-                formattedValue: `${gapVal >= 0 ? '+' : ''}${gapVal}%`,
+                value: actualRate,
+                benchmark: benchmarkVal,
+                gap: gapVal,
+                formattedValue: `${actualRate}%`,
+                sublabel: sub,
+                onClick: () => handleCellClick({ ...filterParam, approval_status: 'Approved' }, `${displayName} Approved Deals`),
               }
             })
           })()}
           footer={
-            <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-              <span>Green: Above portfolio average</span>
-              <span>Rose: Below portfolio average</span>
+            <div className="text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" /> Above benchmark
+                </span>
+                <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" /> Below benchmark
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                <span>Target line: {metricMode === 'Count' ? approval_coverage.portfolio_average_count_pct : approval_coverage.portfolio_average_pct}%</span>
+              </div>
             </div>
           }
         />
