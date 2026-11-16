@@ -236,3 +236,4 @@ export function getRegionColor(regionName: string): string {
   const idx = Math.abs(hash) % REGION_PALETTE.length
   return REGION_PALETTE[idx]
 }
+
