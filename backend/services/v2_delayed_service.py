@@ -399,6 +399,7 @@ class V2DelayedService:
             delayed_nonpos_df = delayed_totals_df[delayed_totals_df["forecast_acv_amount"] <= 0].copy()
             fallback_used = False
         else:
+            delay_mask = pd.Series(False, index=open_df.index) if not open_df.empty else pd.Series(dtype=bool)
             delayed_totals_df = pd.DataFrame()
             delayed_other_type_df = pd.DataFrame()
             delayed_nonpos_df = pd.DataFrame()
