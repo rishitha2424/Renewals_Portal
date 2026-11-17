@@ -105,14 +105,14 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
           </div>
           <table className="w-full text-xs table-fixed">
             <colgroup>
-              <col className="w-[60%]" />
-              <col className="w-[18%]" />
-              <col className="w-[22%]" />
+              <col className="w-[44%]" />
+              <col className="w-[24%]" />
+              <col className="w-[32%]" />
             </colgroup>
             <thead className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-emerald-500/10">
               <tr className="text-[var(--text-muted)]">
                 <th className="text-left px-3.5 py-2 font-semibold">Movement</th>
-                <th className="text-right px-3 py-2 font-semibold">Count</th>
+                <th className="text-center px-3 py-2 font-semibold">Count</th>
                 <th className="text-right px-3.5 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
@@ -136,7 +136,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                       )
                     }
                   >
-                    <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
+                    <td className="px-3.5 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
                       {row.label ? (
                         <span className="font-bold text-[var(--text-primary)]">{row.label}</span>
                       ) : (
@@ -147,10 +147,10 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                         </>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                    <td className="px-3 py-2.5 text-center font-mono font-bold text-emerald-700 dark:text-emerald-400">
                       {row.count}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                       +{acvM(row.acv)}
                     </td>
                   </tr>
@@ -158,11 +158,11 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               )}
               {pos.length > 0 && (
                 <tr className="bg-emerald-500/10 border-t-2 border-emerald-500/30 font-bold">
-                  <td className="px-4 py-2 text-emerald-700 dark:text-emerald-400">Total</td>
-                  <td className="px-4 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                  <td className="px-3.5 py-2 text-emerald-700 dark:text-emerald-400">Total</td>
+                  <td className="px-3 py-2 text-center font-mono text-emerald-700 dark:text-emerald-400">
                     {pos.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
+                  <td className="px-3.5 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">
                     +{acvM(posTotal)}
                   </td>
                 </tr>
@@ -183,14 +183,14 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
           </div>
           <table className="w-full text-xs table-fixed">
             <colgroup>
-              <col className="w-[60%]" />
-              <col className="w-[18%]" />
-              <col className="w-[22%]" />
+              <col className="w-[44%]" />
+              <col className="w-[24%]" />
+              <col className="w-[32%]" />
             </colgroup>
             <thead className="bg-rose-50/50 dark:bg-rose-950/20 border-b border-rose-500/10">
               <tr className="text-[var(--text-muted)]">
                 <th className="text-left px-3.5 py-2 font-semibold">Movement</th>
-                <th className="text-right px-3 py-2 font-semibold">Count</th>
+                <th className="text-center px-3 py-2 font-semibold">Count</th>
                 <th className="text-right px-3.5 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
@@ -214,7 +214,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                       )
                     }
                   >
-                    <td className="px-4 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
+                    <td className="px-3.5 py-2.5 font-medium flex items-center gap-1.5 flex-wrap">
                       {row.label ? (
                         <span className="flex items-center gap-1.5">
                           {row.label.toLowerCase().includes('slip') && (
@@ -238,10 +238,10 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                         </>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-700 dark:text-rose-400">
+                    <td className="px-3.5 py-2.5 text-center font-mono font-bold text-rose-700 dark:text-rose-400">
                       {row.count}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                    <td className="px-3.5 py-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
                       -{acvM(row.acv)}
                     </td>
                   </tr>
@@ -249,11 +249,11 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               )}
               {neg.length > 0 && (
                 <tr className="bg-rose-500/10 border-t-2 border-rose-500/30 font-bold">
-                  <td className="px-4 py-2 text-rose-700 dark:text-rose-400">Total</td>
-                  <td className="px-4 py-2 text-right font-mono text-rose-700 dark:text-rose-400">
+                  <td className="px-3.5 py-2 text-rose-700 dark:text-rose-400">Total</td>
+                  <td className="px-3.5 py-2 text-center font-mono text-rose-700 dark:text-rose-400">
                     {neg.reduce((s: number, r: any) => s + (r.count ?? 0), 0)}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-rose-700 dark:text-rose-400">
+                  <td className="px-3.5 py-2 text-right font-mono text-rose-700 dark:text-rose-400">
                     -{acvM(negTotal)}
                   </td>
                 </tr>

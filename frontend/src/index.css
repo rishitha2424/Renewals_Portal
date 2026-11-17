@@ -165,13 +165,17 @@
     border-collapse: collapse;
     font-size: 12px;
     line-height: 1.35;
+    color: var(--text-primary);
+  }
+  .data-table thead,
+  .table-enterprise thead {
+    color: var(--text-muted);
   }
   .data-table th,
   .table-enterprise th {
     padding: 8px 12px;
     font-size: 11px;
     font-weight: 600;
-    color: var(--text-muted);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     position: sticky;
@@ -187,7 +191,6 @@
     font-size: 12px;
     border-bottom: 1px solid var(--border-subtle);
     height: 36px;
-    color: var(--text-primary);
   }
   .data-table tr:hover td,
   .table-enterprise tr:hover td {

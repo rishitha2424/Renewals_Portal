@@ -1397,32 +1397,32 @@ export default function Dashboard() {
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
                       <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
-                      <th className="text-right px-3 py-2 font-bold text-[#12284C] dark:text-[#38bdf8] col-num">Total deals</th>
-                      <th className="text-right px-3 py-2 font-bold text-emerald-600 dark:text-emerald-400 col-num">Approved</th>
-                      <th className="text-right px-3 py-2 font-bold text-amber-600 dark:text-amber-400 col-num">Pending</th>
-                      <th className="text-right px-3 py-2 font-bold text-slate-500 dark:text-slate-400 col-num">Not submitted</th>
+                      <th className="text-right px-3 py-2 font-bold !text-[#12284C] dark:!text-[#38bdf8] col-num">Total deals</th>
+                      <th className="text-right px-3 py-2 font-bold !text-emerald-600 dark:!text-emerald-400 col-num">Approved</th>
+                      <th className="text-right px-3 py-2 font-bold !text-amber-600 dark:!text-amber-400 col-num">Pending</th>
+                      <th className="text-right px-3 py-2 font-bold !text-slate-600 dark:!text-slate-400 col-num">Not submitted</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {propRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
                         <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[#12284C] dark:text-[#38bdf8] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline !text-[#12284C] dark:!text-[#38bdf8] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
                           {(row.approved_count ?? 0) + (row.pending_count ?? 0) + (row.blank_count ?? 0)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-mono text-amber-600 dark:text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-emerald-600 dark:!text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-amber-600 dark:!text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-slate-600 dark:!text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
                       </tr>
                     ))}
                     <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
                       <td className="px-3 py-2 col-main">Total</td>
-                      <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-[#12284C] dark:text-[#38bdf8] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
+                      <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline !text-[#12284C] dark:!text-[#38bdf8] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
                         {(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
-                      <td className="px-3 py-2 text-right font-mono text-amber-600 dark:text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-500 dark:text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-emerald-600 dark:!text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-amber-600 dark:!text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-slate-600 dark:!text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
                     </tr>
                   </tbody>
                 </table>
