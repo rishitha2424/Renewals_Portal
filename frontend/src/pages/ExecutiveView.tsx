@@ -387,8 +387,40 @@ export default function ExecutiveView() {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print, nav, aside, header.app-header, #app-sidebar, [role="navigation"] {
+          .no-print, nav, aside, header.app-header, header.topbar, #app-sidebar, [role="navigation"] {
             display: none !important;
+          }
+          #executive-report-header,
+          .print-header {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            margin-bottom: 1.5rem !important;
+            padding-bottom: 1rem !important;
+            border-bottom: 2px solid #1e293b !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #executive-report-header img {
+            display: inline-block !important;
+            visibility: visible !important;
+            width: 40px !important;
+            height: 40px !important;
+            object-fit: contain !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #exec-headline {
+            display: flex !important;
+            visibility: visible !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            background-color: #f8fafc !important;
+            border: 1px solid #cbd5e1 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .page-break-avoid, .card {
             break-inside: avoid !important;
@@ -536,11 +568,16 @@ export default function ExecutiveView() {
         </div>
       )}
 
-      {/* Report Header */}
-      <header className="mb-6 pb-4 border-b-2 border-slate-800">
+      {/* Report Header (Print & Screen) */}
+      <div id="executive-report-header" className="print-header mb-6 pb-4 border-b-2 border-slate-800 block">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/assets/logo.png" alt="Mobileum" className="w-10 h-10 object-contain" />
+            <img
+              src="/assets/logo.png"
+              alt="Mobileum"
+              className="w-10 h-10 object-contain flex-shrink-0"
+              style={{ display: 'inline-block', printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
+            />
             <div>
               <h1 className="font-extrabold text-2xl tracking-tight text-[#12284C]">
                 Mobileum Renewals Intelligence · Executive Summary
@@ -551,11 +588,11 @@ export default function ExecutiveView() {
             </div>
           </div>
           <div className="text-right text-[11px] text-slate-400">
-            <p>Confidential & Proprietary</p>
+            <p className="font-semibold text-slate-600">Confidential &amp; Proprietary</p>
             <p>{formatDate(snapshotDate)}</p>
           </div>
         </div>
-      </header>
+      </div>
 
       <div className="mb-6">
         <ExcludedTypesNote excluded={overview?.other_types_excluded} />

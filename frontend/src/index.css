@@ -458,11 +458,18 @@
   }
   .no-print,
   aside,
-  header {
+  header.app-header,
+  header.topbar,
+  #app-sidebar,
+  nav,
+  [role="navigation"] {
     display: none !important;
   }
-  .print-only {
+  .print-only,
+  .print-header,
+  #executive-report-header {
     display: block !important;
+    visibility: visible !important;
   }
   body, main {
     background: white !important;
@@ -477,7 +484,7 @@
   }
 
   @page {
-    size: A4 landscape;
+    size: A4 portrait;
     margin: 12mm;
   }
 }
