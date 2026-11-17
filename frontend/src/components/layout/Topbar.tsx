@@ -423,9 +423,9 @@ export default function Topbar() {
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
       <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
-        <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 lg:gap-2 min-w-0 flex-1">
+          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar py-0.5">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -437,7 +437,7 @@ export default function Topbar() {
             </button>
 
             {/* 1. Search (Always shows full prompt like 67% view) */}
-            <div className="min-w-[160px] sm:min-w-[200px] max-w-[260px] sm:max-w-xs flex-1 sm:flex-initial">
+            <div className="min-w-[130px] sm:min-w-[160px] max-w-[200px] xl:max-w-[240px] 2xl:max-w-xs flex-1 sm:flex-initial flex-shrink">
               <button
                 type="button"
                 onClick={() => setCommandPaletteOpen(true)}
@@ -464,7 +464,7 @@ export default function Topbar() {
               <select
                 value={activeSnap?.id ?? ''}
                 onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[120px] sm:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
                 id="topbar-view-as-of-select"
               >
                 {snapshotsLoading && <option>Loading dates...</option>}
@@ -488,7 +488,7 @@ export default function Topbar() {
               <select
                 value={compareSnapshotId ?? ''}
                 onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[120px] sm:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
                 id="topbar-compare-with-select"
               >
                 {vsOptions.map((opt: any) => (
@@ -508,7 +508,7 @@ export default function Topbar() {
               <select
                 value={globalFilters.period}
                 onChange={(e) => setGlobalFilters({ period: e.target.value })}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[130px] sm:max-w-[150px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] sm:max-w-[120px] md:max-w-[140px] truncate"
                 id="filter-period-select"
               >
                 <option value="current_quarter">Current Quarter (Default)</option>
@@ -539,7 +539,7 @@ export default function Topbar() {
               >
                 <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
                 <span className="font-medium text-[var(--text-muted)] inline">Type:</span>
-                <span className="font-medium truncate max-w-[70px] xl:max-w-[100px]">
+                <span className="font-medium truncate max-w-[50px] sm:max-w-[65px] xl:max-w-[90px]">
                   {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
@@ -611,7 +611,7 @@ export default function Topbar() {
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
-                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
                 id="filter-more-btn"
               >
                 <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
@@ -767,7 +767,7 @@ export default function Topbar() {
               <button
                 type="button"
                 onClick={() => setSavedViewsOpen(!savedViewsOpen)}
-                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
                 id="filter-saved-views-btn"
               >
                 <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
@@ -841,7 +841,7 @@ export default function Topbar() {
           </div>
 
           {/* ── Right Utility Controls (Always visible, never pushed off-screen) ── */}
-          <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-2 flex-shrink-0 ml-auto">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
             {/* Download report Menu */}
             <div className="relative flex-shrink-0" ref={downloadRef}>
               <button
