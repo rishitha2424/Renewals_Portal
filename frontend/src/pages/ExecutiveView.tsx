@@ -173,7 +173,7 @@ export default function ExecutiveView() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-loading">
+      <div className="min-h-full bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-loading">
         <Loader2 className="w-9 h-9 text-[#12284C] animate-spin mb-3" />
         <h2 className="text-lg font-bold text-slate-800">Loading report…</h2>
         <p className="text-xs text-slate-500 mt-1">Retrieving Mobileum Renewals Intelligence executive data</p>
@@ -183,7 +183,7 @@ export default function ExecutiveView() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-error">
+      <div className="min-h-full bg-white flex flex-col items-center justify-center p-8 text-center" id="executive-error">
         <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
           <AlertCircle className="w-10 h-10 text-red-600 mx-auto mb-3" />
           <h2 className="text-base font-bold text-red-900 mb-1">Failed to load report</h2>
@@ -371,7 +371,7 @@ export default function ExecutiveView() {
   })
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[1000px] mx-auto space-y-7" id="executive-report-view">
+    <div className="min-h-full bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[1000px] mx-auto space-y-7" id="executive-report-view">
       {/* Print CSS styles */}
       <style>{`
         @media print {

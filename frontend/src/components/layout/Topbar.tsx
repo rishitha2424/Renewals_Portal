@@ -22,6 +22,7 @@ import {
   Info,
   AlertTriangle,
   Tag,
+  Monitor,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
@@ -29,6 +30,12 @@ import { getSnapshots, getFilterOptions, downloadReport } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import AdminAuthModal from '@/components/common/AdminAuthModal'
+import {
+  DisplaySizeOption,
+  DISPLAY_SIZE_OPTIONS,
+  getSavedDisplaySize,
+  saveDisplaySize,
+} from '@/config/layoutScale'
 
 export default function Topbar() {
   const {
@@ -61,6 +68,9 @@ export default function Topbar() {
   const viewsRef = useRef<HTMLDivElement>(null)
   const typeFilterRef = useRef<HTMLDivElement>(null)
   const [typeFilterOpen, setTypeFilterOpen] = useState(false)
+  const displaySizeRef = useRef<HTMLDivElement>(null)
+  const [displaySizeOpen, setDisplaySizeOpen] = useState(false)
+  const [currentDisplaySize, setCurrentDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
 
   const location = useLocation()
   const isExplorer = location.pathname.startsWith('/opportunities') || location.pathname.startsWith('/explore')
@@ -105,9 +115,20 @@ export default function Topbar() {
       if (typeFilterRef.current && !typeFilterRef.current.contains(target)) {
         setTypeFilterOpen(false)
       }
+      if (displaySizeRef.current && !displaySizeRef.current.contains(target)) {
+        setDisplaySizeOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
+
+  useEffect(() => {
+    const handleSizeChange = () => {
+      setCurrentDisplaySize(getSavedDisplaySize())
+    }
+    window.addEventListener('display-size-change', handleSizeChange)
+    return () => window.removeEventListener('display-size-change', handleSizeChange)
   }, [])
 
   // Helper to parse date string YYYY-MM-DD into UTC date for exact difference
@@ -935,6 +956,53 @@ export default function Topbar() {
             {/* Admin sign in (Always visible!) */}
             <div className="flex-shrink-0">
               <AdminAuthModal />
+            </div>
+
+            {/* Display Size selector */}
+            <div className="relative flex-shrink-0" ref={displaySizeRef} id="topbar-display-size">
+              <button
+                type="button"
+                onClick={() => setDisplaySizeOpen((prev) => !prev)}
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0 text-xs font-medium"
+                id="topbar-display-size-btn"
+                title="Display size (fit to screen / zoom)"
+              >
+                <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
+                <span className="hidden xl:inline">
+                  {DISPLAY_SIZE_OPTIONS.find((o) => o.value === currentDisplaySize)?.label.replace(' (fit to screen)', '') || 'Auto'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+              </button>
+
+              {displaySizeOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1.5 w-44 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 py-1"
+                  id="topbar-display-size-menu"
+                >
+                  <div className="px-3 py-1.5 border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                    Display Size
+                  </div>
+                  {DISPLAY_SIZE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        saveDisplaySize(opt.value)
+                        setCurrentDisplaySize(opt.value)
+                        setDisplaySizeOpen(false)
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+                        currentDisplaySize === opt.value
+                          ? 'bg-[#00A3AD]/10 text-[#00A3AD] font-semibold'
+                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Theme toggle */}

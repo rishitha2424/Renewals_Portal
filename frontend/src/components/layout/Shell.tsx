@@ -55,7 +55,7 @@ export default function Shell() {
   }, [setOpen])
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-full w-full overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {dbHealth?.status === 'error' && (
