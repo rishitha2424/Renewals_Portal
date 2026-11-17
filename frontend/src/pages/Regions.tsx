@@ -934,7 +934,11 @@ function RegionsContent() {
 
                 {/* 6. What Changed vs Prior Snapshot */}
                 {(() => {
-                  const netChange = movementsData?.net_acv_change ?? ((movementsData?.positive_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0) - (movementsData?.negative_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0))
+                  const newAcv = movementsData?.new_to_slice?.acv || 0
+                  const leftAcv = movementsData?.slipped_out?.acv || movementsData?.left_slice?.acv || 0
+                  const posMoves = movementsData?.positive_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0
+                  const negMoves = movementsData?.negative_moves?.reduce((s: number, m: any) => s + (m.acv || 0), 0) || 0
+                  const netChange = movementsData?.net_acv_change ?? ((newAcv - leftAcv) + (posMoves - negMoves))
                   const newDealsCount = movementsData?.new_to_slice?.count || 0
                   const leftDealsCount = movementsData?.left_slice?.count || movementsData?.slipped_out?.count || 0
                   const catMovesCount = movementsData?.category_moves?.length || 0
