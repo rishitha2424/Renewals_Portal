@@ -679,13 +679,14 @@ export default function Approvals() {
                     .map((st: any) => {
                       const totalAcv = (st.large?.acv || 0) + (st.small?.acv || 0)
                       const totalDeals = (st.large?.count || 0) + (st.small?.count || 0)
+                      const statusLabel = getApprovalStatusLabel(st.status)
                       return {
-                        label: getApprovalStatusLabel(st.status),
+                        label: statusLabel,
                         value: totalAcv,
                         formattedValue: formatACV(totalAcv),
                         dealsCount: totalDeals,
                         sublabel: `${totalDeals} ${totalDeals === 1 ? 'deal' : 'deals'}`,
-                        onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${getApprovalStatusLabel(st.status)} All Deals`),
+                        onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${statusLabel} All Deals`),
                         series: [
                           {
                             name: `Large (≥ ${deal_size_split.threshold_label})`,
@@ -693,6 +694,10 @@ export default function Approvals() {
                             formattedValue: formatACV(st.large?.acv || 0),
                             dealsCount: st.large?.count || 0,
                             color: '#2563EB',
+                            onClick: () => handleCellClick({
+                              approval_status: st.status_key || undefined,
+                              min_acv: deal_size_split.threshold,
+                            }, `${statusLabel} Large Deals (≥ ${deal_size_split.threshold_label})`),
                           },
                           {
                             name: `Small (< ${deal_size_split.threshold_label})`,
@@ -700,6 +705,10 @@ export default function Approvals() {
                             formattedValue: formatACV(st.small?.acv || 0),
                             dealsCount: st.small?.count || 0,
                             color: '#93C5FD',
+                            onClick: () => handleCellClick({
+                              approval_status: st.status_key || undefined,
+                              max_acv: deal_size_split.threshold,
+                            }, `${statusLabel} Small Deals (< ${deal_size_split.threshold_label})`),
                           },
                         ],
                       }

@@ -498,7 +498,7 @@ function DelayedContent() {
     gridDeltas['grand-total'] = { count: dTotalCount, acv: dTotalAcv }
 
     const handleCellClick = (rowId: string | null, colId: string | null, title: string) => {
-      const filters: any = { kind: 'all' }
+      const filters: any = { kind: 'delayed_total' }
       if (rowId && rowId !== 'Total') filters[clickKey] = rowId
       if (colId && colId !== 'Total') filters.category = colId
       handleDrill(title || `Delayed Deals`, filters)
@@ -522,12 +522,36 @@ function DelayedContent() {
     }, 0)
 
     const series = [
-      { name: 'Commit', value: commitVal, color: '#10B981', formattedValue: formatACV(commitVal) },
-      { name: 'Best Case', value: bestCaseVal, color: '#F59E0B', formattedValue: formatACV(bestCaseVal) },
-      { name: 'Pipeline', value: pipelineVal, color: '#64748B', formattedValue: formatACV(pipelineVal) },
+      {
+        name: 'Commit',
+        value: commitVal,
+        color: '#10B981',
+        formattedValue: formatACV(commitVal),
+        onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id} · Commit`, { kind: 'delayed_total', bu: r.id, category: 'Commit' }),
+      },
+      {
+        name: 'Best Case',
+        value: bestCaseVal,
+        color: '#F59E0B',
+        formattedValue: formatACV(bestCaseVal),
+        onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id} · Best Case`, { kind: 'delayed_total', bu: r.id, category: 'Best Case' }),
+      },
+      {
+        name: 'Pipeline',
+        value: pipelineVal,
+        color: '#64748B',
+        formattedValue: formatACV(pipelineVal),
+        onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id} · Pipeline`, { kind: 'delayed_total', bu: r.id, category: 'Pipeline' }),
+      },
     ]
     if (otherVal > 0) {
-      series.push({ name: 'Other', value: otherVal, color: '#94A3B8', formattedValue: formatACV(otherVal) })
+      series.push({
+        name: 'Other',
+        value: otherVal,
+        color: '#94A3B8',
+        formattedValue: formatACV(otherVal),
+        onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id} · Other`, { kind: 'delayed_total', bu: r.id, category: 'Other' }),
+      })
     }
 
     return {
@@ -535,7 +559,7 @@ function DelayedContent() {
       value: r.total?.acv || 0,
       formattedValue: formatACV(r.total?.acv || 0),
       series,
-      onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id}`, { kind: 'all', bu: r.id }),
+      onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id}`, { kind: 'delayed_total', bu: r.id }),
     }
   })
 
@@ -775,7 +799,7 @@ function DelayedContent() {
             <InsightCard
               title="Delay summary"
               subtitle="Portfolio delay observations"
-              insights={getDelayedInsights(summary, (title, p) => handleDrill(title, p))}
+              insights={getDelayedInsights(summary, (title, p) => handleDrill(title, p), setSelectedOppId)}
             />
           </div>
         </CardRow>
@@ -876,13 +900,21 @@ function DelayedContent() {
         const topOwnersChartData = Object.entries(ownerMap)
           .sort((a, b) => b[1].acv - a[1].acv)
           .slice(0, 4)
-          .map(([owner, val]) => ({
-            label: owner,
-            value: val.acv,
-            formattedValue: `${formatACV(val.acv)} (${val.count})`,
-            color: '#00A3AD',
-            onClick: () => handleDrill(`Delayed Deals · ${owner}`, { kind: 'all', owner }),
-          }))
+          .map(([owner, val]) => {
+            const ownerDeals = topDeals.filter((d: any) => (d.owner || d.opportunity_owner) === owner)
+            return {
+              label: owner,
+              value: val.acv,
+              formattedValue: `${formatACV(val.acv)} (${val.count})`,
+              color: '#00A3AD',
+              onClick: () => handleDrill(`Delayed Deals · ${owner}`, {
+                kind: 'delayed_total',
+                owner,
+                deals: ownerDeals,
+                expectedCount: val.count,
+              }),
+            }
+          })
 
         return (
           <CardRow template="max-content minmax(0, 1fr)" id="delayed-top-deals">
@@ -894,7 +926,7 @@ function DelayedContent() {
                     <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
                   </div>
                   <button
-                    onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
+                    onClick={() => handleDrill('All Delayed Deals', { kind: 'delayed_total' })}
                     className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
                   >
                     View All ({formatCount(summary.total?.count || 0)})
@@ -1056,7 +1088,7 @@ function DelayedContent() {
                         <tr
                           key={r.name}
                           className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
-                          onClick={() => handleDrill(`Lost Deals · ${r.name}`, { kind: 'lost', region: r.name })}
+                          onClick={() => handleDrill(`Lost Deals · ${r.name}`, { kind: 'lost', compare: 'period_start', region: r.name })}
                         >
                           <td className="col-label font-medium text-[var(--text-primary)] truncate" title={r.name}>{r.name}</td>
                           <td className="text-right tabular-nums col-num">{r.count}</td>
@@ -1102,7 +1134,7 @@ function DelayedContent() {
                 sublabel: `${bu.count} ${bu.count === 1 ? 'deal' : 'deals'}`,
                 dealsCount: bu.count,
                 color: '#64748B',
-                onClick: () => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', business_unit: bu.name }),
+                onClick: () => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', compare: 'period_start', bu: bu.name, business_unit: bu.name }),
               }))}
               footer={
                 <div className="flex items-center justify-between text-xs">

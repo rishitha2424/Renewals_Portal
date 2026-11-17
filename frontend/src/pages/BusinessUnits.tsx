@@ -909,7 +909,11 @@ function BusinessUnitsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={customDeals || dealsData?.deals || []}
+          deals={(customDeals || dealsData?.deals || []).map((d: any) => ({
+            ...d,
+            owner: d.opportunity_owner || d.owner,
+            stage: d.stage_number || d.stage,
+          }))}
           initialFilters={customDeals ? undefined : {
             business_unit_primary: modalFilters?.kind ? undefined : (modalFilters?.bu || undefined),
             forecast_category: modalFilters?.category || undefined,

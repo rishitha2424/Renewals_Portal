@@ -249,8 +249,18 @@ export default function ChartCard({
                         return (
                           <div
                             key={s.name}
-                            onClick={d.onClick}
-                            className="flex-1 max-w-[48px] flex flex-col items-center justify-end h-full group cursor-pointer"
+                            onClick={(e) => {
+                              if (s.onClick) {
+                                e.stopPropagation()
+                                s.onClick()
+                              } else if (d.onClick) {
+                                d.onClick()
+                              }
+                            }}
+                            className={clsx(
+                              "flex-1 max-w-[48px] flex flex-col items-center justify-end h-full group",
+                              (s.onClick || d.onClick) && "cursor-pointer"
+                            )}
                             title={`${d.label} - ${s.name}: ${s.formattedValue ?? s.value}${s.dealsCount !== undefined ? ` (${s.dealsCount} deals)` : ''}`}
                           >
                             <span className="text-[10px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums mb-1 whitespace-nowrap">
@@ -300,14 +310,23 @@ export default function ChartCard({
                         className="w-full max-w-[44px] rounded-t-md transition-all overflow-hidden flex flex-col-reverse shadow-xs"
                         style={{ height: `${heightPct}%` }}
                       >
-                        {segments.map((seg) => {
+                        {segments.map((seg: any) => {
                           const segPct = d.value > 0 ? (seg.value / d.value) * 100 : 0
                           if (segPct <= 0) return null
                           return (
                             <div
                               key={seg.name}
+                              onClick={(e) => {
+                                if (seg.onClick) {
+                                  e.stopPropagation()
+                                  seg.onClick()
+                                }
+                              }}
                               style={{ height: `${segPct}%`, backgroundColor: seg.color || toneDef.hex }}
-                              className="w-full transition-all hover:opacity-80"
+                              className={clsx(
+                                "w-full transition-all hover:opacity-80",
+                                seg.onClick && "cursor-pointer"
+                              )}
                               title={`${d.label} - ${seg.name}: ${seg.formattedValue ?? seg.value}`}
                             />
                           )

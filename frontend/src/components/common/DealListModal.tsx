@@ -7,27 +7,37 @@ import { useAppStore } from '@/store/appStore'
 
 export const getDealStage = (d: any): string => {
   if (!d) return ''
-  return String(
+  const val = (
     d.stage ||
     d.stage_number ||
     d.stage_name ||
+    d.Stage ||
+    d['Stage Number'] ||
+    d['Stage Name'] ||
     d.extra_attributes?.['Stage Number'] ||
     d.extra_attributes?.['Stage'] ||
     d.extra_attributes?.stage ||
+    d.extra_attributes?.stage_number ||
+    d.extra_attributes?.stage_name ||
     ''
-  ).trim()
+  )
+  return String(val === null || val === undefined ? '' : val).trim()
 }
 
 export const getDealOwner = (d: any): string => {
   if (!d) return ''
-  return String(
+  const val = (
     d.owner ||
     d.opportunity_owner ||
+    d.Owner ||
+    d['Opportunity Owner'] ||
     d.extra_attributes?.['Opportunity Owner'] ||
     d.extra_attributes?.['Owner'] ||
     d.extra_attributes?.opportunity_owner ||
+    d.extra_attributes?.owner ||
     ''
-  ).trim()
+  )
+  return String(val === null || val === undefined ? '' : val).trim()
 }
 
 interface Deal {
@@ -114,12 +124,42 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   }, [onClose])
 
   
-  const [filterFC, setFilterFC] = useState<string>(initialFilters?.forecast_category || 'All')
-  const [filterStatus, setFilterStatus] = useState<string>(initialFilters?.approval_status || 'All')
-  const [filterStage, setFilterStage] = useState<string>(initialFilters?.stage || 'All')
-  const [filterRegion, setFilterRegion] = useState<string>(initialFilters?.sub_region || 'All')
-  const [filterBU, setFilterBU] = useState<string>(initialFilters?.business_unit_primary || 'All')
-  const [filterOwner, setFilterOwner] = useState<string>(initialFilters?.owner || 'All')
+  const initFC = initialFilters?.forecast_category || (initialFilters as any)?.category || 'All'
+  const initStatus = initialFilters?.approval_status || (initialFilters as any)?.status || 'All'
+  const initStage = initialFilters?.stage || (initialFilters as any)?.stage_number || 'All'
+  const initRegion = initialFilters?.sub_region || (initialFilters as any)?.region || 'All'
+  const initBU = initialFilters?.business_unit_primary || (initialFilters as any)?.bu || (initialFilters as any)?.business_unit || 'All'
+  const initOwner = initialFilters?.owner || (initialFilters as any)?.opportunity_owner || 'All'
+
+  const [filterFC, setFilterFC] = useState<string>(initFC)
+  const [filterStatus, setFilterStatus] = useState<string>(initStatus)
+  const [filterStage, setFilterStage] = useState<string>(initStage)
+  const [filterRegion, setFilterRegion] = useState<string>(initRegion)
+  const [filterBU, setFilterBU] = useState<string>(initBU)
+  const [filterOwner, setFilterOwner] = useState<string>(initOwner)
+
+  React.useEffect(() => {
+    if (initialFilters) {
+      if (initialFilters.forecast_category || (initialFilters as any).category) {
+        setFilterFC(initialFilters.forecast_category || (initialFilters as any).category)
+      }
+      if (initialFilters.approval_status || (initialFilters as any).status) {
+        setFilterStatus(initialFilters.approval_status || (initialFilters as any).status)
+      }
+      if (initialFilters.stage || (initialFilters as any).stage_number) {
+        setFilterStage(initialFilters.stage || (initialFilters as any).stage_number)
+      }
+      if (initialFilters.sub_region || (initialFilters as any).region) {
+        setFilterRegion(initialFilters.sub_region || (initialFilters as any).region)
+      }
+      if (initialFilters.business_unit_primary || (initialFilters as any).bu || (initialFilters as any).business_unit) {
+        setFilterBU(initialFilters.business_unit_primary || (initialFilters as any).bu || (initialFilters as any).business_unit)
+      }
+      if (initialFilters.owner || (initialFilters as any).opportunity_owner) {
+        setFilterOwner(initialFilters.owner || (initialFilters as any).opportunity_owner)
+      }
+    }
+  }, [initialFilters])
 
   const uniqueValues = (primaryField: keyof Deal, fallbackField?: keyof Deal) => {
     const vals = new Set(
@@ -188,6 +228,30 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
         if (!match) return false
       }
       if (filterOwner !== 'All' && getDealOwner(d) !== filterOwner) return false
+
+      // min_acv / max_acv
+      const acvVal = d.forecast_acv_amount ?? (d as any).acv ?? 0
+      if ((initialFilters as any)?.min_acv !== undefined && (initialFilters as any)?.min_acv !== null) {
+        if (acvVal < (initialFilters as any).min_acv) return false
+      }
+      if ((initialFilters as any)?.max_acv !== undefined && (initialFilters as any)?.max_acv !== null) {
+        if (acvVal >= (initialFilters as any).max_acv) return false
+      }
+
+      // opp_id / deal_ids
+      if ((initialFilters as any)?.opp_id) {
+        const targetId = String((initialFilters as any).opp_id).trim()
+        if (String(d.opportunity_id_18).trim() !== targetId && String(d.id).trim() !== targetId) return false
+      }
+      if ((initialFilters as any)?.deal_ids) {
+        const rawIds = (initialFilters as any).deal_ids
+        const idList = (Array.isArray(rawIds) ? rawIds : String(rawIds).split(',')).map((s: any) => String(s).trim()).filter(Boolean)
+        if (idList.length > 0) {
+          const dId18 = String(d.opportunity_id_18 || '').trim()
+          const dId = String(d.id || '').trim()
+          if (!idList.includes(dId18) && !idList.includes(dId)) return false
+        }
+      }
       
       if (search) {
         const q = search.toLowerCase()
@@ -252,23 +316,23 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   }
 
   const clearFilters = () => {
-    setFilterFC(initialFilters?.forecast_category || 'All')
-    setFilterStatus(initialFilters?.approval_status || 'All')
-    setFilterStage(initialFilters?.stage || 'All')
-    setFilterRegion(initialFilters?.sub_region || 'All')
-    setFilterBU(initialFilters?.business_unit_primary || 'All')
-    setFilterOwner(initialFilters?.owner || 'All')
+    setFilterFC(initFC)
+    setFilterStatus(initStatus)
+    setFilterStage(initStage)
+    setFilterRegion(initRegion)
+    setFilterBU(initBU)
+    setFilterOwner(initOwner)
     setSelectedGroup('All')
     setSearch('')
   }
 
   const hasActiveFilters = 
-    filterFC !== (initialFilters?.forecast_category || 'All') ||
-    filterStatus !== (initialFilters?.approval_status || 'All') ||
-    filterStage !== (initialFilters?.stage || 'All') ||
-    filterRegion !== (initialFilters?.sub_region || 'All') ||
-    filterBU !== (initialFilters?.business_unit_primary || 'All') ||
-    filterOwner !== (initialFilters?.owner || 'All') ||
+    filterFC !== initFC ||
+    filterStatus !== initStatus ||
+    filterStage !== initStage ||
+    filterRegion !== initRegion ||
+    filterBU !== initBU ||
+    filterOwner !== initOwner ||
     selectedGroup !== 'All' ||
     search !== ''
 
@@ -296,6 +360,12 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   if (filterRegion !== 'All') activeChips.push({ label: 'Region', value: filterRegion, onRemove: () => setFilterRegion('All') })
   if (filterBU !== 'All') activeChips.push({ label: 'BU', value: filterBU, onRemove: () => setFilterBU('All') })
   if (filterOwner !== 'All') activeChips.push({ label: 'Owner', value: filterOwner, onRemove: () => setFilterOwner('All') })
+  if ((initialFilters as any)?.min_acv !== undefined && (initialFilters as any)?.min_acv !== null) {
+    activeChips.push({ label: 'Deal Size', value: `≥ ${formatCurrency((initialFilters as any).min_acv)}` })
+  }
+  if ((initialFilters as any)?.max_acv !== undefined && (initialFilters as any)?.max_acv !== null) {
+    activeChips.push({ label: 'Deal Size', value: `< ${formatCurrency((initialFilters as any).max_acv)}` })
+  }
 
   return (
     <AnimatePresence>

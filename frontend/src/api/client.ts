@@ -463,6 +463,31 @@ export const getV2DelayedSummary = async (params: { as_of?: string | null; compa
   return res.data
 }
 
+export const getV2DelayedDeals = async (params: {
+  as_of?: string | null
+  compare?: string
+  kind?: string
+  region?: string
+  category?: string
+  status?: string
+  bu?: string
+  ageing?: string
+  owner?: string
+  expiry_year?: number
+  start_year?: number
+  close_year?: number
+  split_key?: string
+  review_type?: string
+  deal_ids?: string
+  filterSpec?: Partial<FilterSpec>
+} = {}) => {
+  const state = useAppStore.getState()
+  const { filterSpec, ...rest } = params
+  const p: any = buildFilterParams({ ...state.globalFilters, ...filterSpec, ...rest })
+  const res = await api.get('/v2/delayed/deals', { params: p })
+  return res.data
+}
+
 // ── V2 Filters Options ───────────────────────────────────────────────────
 export const getFilterOptions = async (asOf?: string | null) => {
   const params: any = {}
