@@ -1570,6 +1570,31 @@ function RegionsContent() {
                   const s = summary.totals?.categories?.[fc]
                   return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
                 })
+                const gridDeltasFc = {
+                  yesterday: {
+                    rows: regions.reduce((acc: any, r: any) => ({ ...acc, [r.region]: r.delta_yesterday }), {}),
+                    category: summary.totals?.categories,
+                    grand: summary.total?.delta_yesterday,
+                    matrix: regions.reduce((acc: any, r: any) => ({
+                      ...acc,
+                      [r.region]: Object.fromEntries(
+                        Object.entries(r.cells || {}).map(([c, v]: [string, any]) => [c, v?.delta_yesterday || { count: 0, acv: 0 }])
+                      )
+                    }), {})
+                  },
+                  lastweek: {
+                    rows: regions.reduce((acc: any, r: any) => ({ ...acc, [r.region]: r.delta_lastweek }), {}),
+                    category: summary.totals?.categories,
+                    grand: summary.total?.delta_lastweek,
+                    matrix: regions.reduce((acc: any, r: any) => ({
+                      ...acc,
+                      [r.region]: Object.fromEntries(
+                        Object.entries(r.cells || {}).map(([c, v]: [string, any]) => [c, v?.delta_lastweek || { count: 0, acv: 0 }])
+                      )
+                    }), {})
+                  }
+                }
+
                 return (
                   <CompactGrid
                     title="Forecast category by region"
@@ -1577,17 +1602,15 @@ function RegionsContent() {
                     columns={displayFc}
                     columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
                     rows={regions.map((r: any) => ({
+                      id: r.region,
                       label: r.region,
                       cells: r.cells,
                       total: { count: r.count, acv: r.acv }
                     }))}
                     totals={{ category: summary.totals.categories, grand: summary.total }}
-                    deltas={heatMode === 'Yesterday' ? 
-                      regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_yesterday}), {}) :
-                      heatMode === 'LastWeek' ? 
-                      regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_lastweek}), {}) : {}
-                    }
+                    deltas={gridDeltasFc}
                     metricMode={metricMode}
+                    heatMode={heatMode}
                     onCellClick={(rowLabel, col) => {
                       if (!col && !rowLabel) handleDrill(`All Regions`, {})
                       else if (!col) handleDrill(`${rowLabel} Deals`, { region: rowLabel })
@@ -1605,33 +1628,60 @@ function RegionsContent() {
 
             <div className="card p-5 border border-[var(--border)] shadow-xs">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Approval status by region</h3>
-              <CompactGrid
-                title="Approval status by region"
-                rowLabelName="Region"
-                columns={FUNNEL_STAGES}
-                rows={regions.map((r: any) => ({
-                  label: r.region,
-                  cells: r.approval,
-                  total: { count: r.count, acv: r.acv }
-                }))}
-                totals={{ category: summary.totals.approval, grand: summary.total }}
-                deltas={heatMode === 'Yesterday' ? 
-                  regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_yesterday}), {}) :
-                  heatMode === 'LastWeek' ? 
-                  regions.reduce((acc: any, r: any) => ({...acc, [r.region]: r.delta_lastweek}), {}) : {}
+              {(() => {
+                const gridDeltasAppr = {
+                  yesterday: {
+                    rows: regions.reduce((acc: any, r: any) => ({ ...acc, [r.region]: r.delta_yesterday }), {}),
+                    category: summary.totals?.approval,
+                    grand: summary.total?.delta_yesterday,
+                    matrix: regions.reduce((acc: any, r: any) => ({
+                      ...acc,
+                      [r.region]: Object.fromEntries(
+                        Object.entries(r.approval || {}).map(([c, v]: [string, any]) => [c, v?.delta_yesterday || { count: 0, acv: 0 }])
+                      )
+                    }), {})
+                  },
+                  lastweek: {
+                    rows: regions.reduce((acc: any, r: any) => ({ ...acc, [r.region]: r.delta_lastweek }), {}),
+                    category: summary.totals?.approval,
+                    grand: summary.total?.delta_lastweek,
+                    matrix: regions.reduce((acc: any, r: any) => ({
+                      ...acc,
+                      [r.region]: Object.fromEntries(
+                        Object.entries(r.approval || {}).map(([c, v]: [string, any]) => [c, v?.delta_lastweek || { count: 0, acv: 0 }])
+                      )
+                    }), {})
+                  }
                 }
-                metricMode={metricMode}
-                onCellClick={(rowLabel, col) => {
-                  if (!col && !rowLabel) handleDrill(`All Regions`, {})
-                  else if (!col) handleDrill(`${rowLabel} Deals`, { region: rowLabel })
-                  else if (!rowLabel) handleDrill(`All Regions - ${col}`, { status: col })
-                  else handleDrill(`${rowLabel} - ${col}`, { region: rowLabel, status: col })
-                }}
-                compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-                yesterdayDate={summary.yesterday_date}
-                lastweekDate={summary.lastweek_date}
-                hideCardWrapper={true}
-              />
+
+                return (
+                  <CompactGrid
+                    title="Approval status by region"
+                    rowLabelName="Region"
+                    columns={FUNNEL_STAGES}
+                    rows={regions.map((r: any) => ({
+                      id: r.region,
+                      label: r.region,
+                      cells: r.approval,
+                      total: { count: r.count, acv: r.acv }
+                    }))}
+                    totals={{ category: summary.totals.approval, grand: summary.total }}
+                    deltas={gridDeltasAppr}
+                    metricMode={metricMode}
+                    heatMode={heatMode}
+                    onCellClick={(rowLabel, col) => {
+                      if (!col && !rowLabel) handleDrill(`All Regions`, {})
+                      else if (!col) handleDrill(`${rowLabel} Deals`, { region: rowLabel })
+                      else if (!rowLabel) handleDrill(`All Regions - ${col}`, { status: col })
+                      else handleDrill(`${rowLabel} - ${col}`, { region: rowLabel, status: col })
+                    }}
+                    compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+                    yesterdayDate={summary.yesterday_date}
+                    lastweekDate={summary.lastweek_date}
+                    hideCardWrapper={true}
+                  />
+                )
+              })()}
             </div>
           </div>
 

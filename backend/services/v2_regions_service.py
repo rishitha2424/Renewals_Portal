@@ -245,14 +245,14 @@ class V2RegionsService:
             elif reg_name in ("Other / Unmapped", "Other") and "Other" in y_reg:
                 d_y = y_reg["Other"]
             else:
-                d_y = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}
+                d_y = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}
 
             if reg_name in lw_reg:
                 d_lw = lw_reg[reg_name]
             elif reg_name in ("Other / Unmapped", "Other") and "Other" in lw_reg:
                 d_lw = lw_reg["Other"]
             else:
-                d_lw = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}}
+                d_lw = {"count": 0, "acv": 0.0, "cells": {fc: {"count": 0, "acv": 0.0} for fc in ALL_FC}, "approval": {st: {"count": 0, "acv": 0.0} for st in FUNNEL_STAGES}}
 
             pct_acv = round((d_today["acv"] / grand_acv * 100) if grand_acv else 0, 1)
             commit_acv = d_today["cells"]["Commit"]["acv"] + d_today["cells"]["Closed"]["acv"]
@@ -273,6 +273,11 @@ class V2RegionsService:
             slip_cnt = len(reg_slipped)
             slip_acv = round(float(reg_slipped["forecast_acv_amount"].sum()) if not reg_slipped.empty else 0.0, 2)
 
+            d_y_cells = d_y.get("cells", {})
+            d_lw_cells = d_lw.get("cells", {})
+            d_y_appr = d_y.get("approval", {})
+            d_lw_appr = d_lw.get("approval", {})
+
             regions_out.append({
                 "region": reg_name,
                 "count": d_today["count"],
@@ -284,8 +289,24 @@ class V2RegionsService:
                 "delayed_acv": del_acv,
                 "slippage_count": slip_cnt,
                 "slippage_acv": slip_acv,
-                "cells": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["cells"].items()},
-                "approval": {k: {"count": v["count"], "acv": round(v["acv"], 2)} for k, v in d_today["approval"].items()},
+                "cells": {
+                    k: {
+                        "count": v["count"],
+                        "acv": round(v["acv"], 2),
+                        "delta_yesterday": {"count": v["count"] - d_y_cells.get(k, {}).get("count", 0), "acv": round(v["acv"] - d_y_cells.get(k, {}).get("acv", 0.0), 2)} if (y_snap and not y_df.empty) else None,
+                        "delta_lastweek": {"count": v["count"] - d_lw_cells.get(k, {}).get("count", 0), "acv": round(v["acv"] - d_lw_cells.get(k, {}).get("acv", 0.0), 2)} if (lw_snap and not lw_df.empty) else None,
+                    }
+                    for k, v in d_today["cells"].items()
+                },
+                "approval": {
+                    k: {
+                        "count": v["count"],
+                        "acv": round(v["acv"], 2),
+                        "delta_yesterday": {"count": v["count"] - d_y_appr.get(k, {}).get("count", 0), "acv": round(v["acv"] - d_y_appr.get(k, {}).get("acv", 0.0), 2)} if (y_snap and not y_df.empty) else None,
+                        "delta_lastweek": {"count": v["count"] - d_lw_appr.get(k, {}).get("count", 0), "acv": round(v["acv"] - d_lw_appr.get(k, {}).get("acv", 0.0), 2)} if (lw_snap and not lw_df.empty) else None,
+                    }
+                    for k, v in d_today["approval"].items()
+                },
                 "delta_yesterday": {"count": d_today["count"] - d_y["count"], "acv": round(d_today["acv"] - d_y["acv"], 2)} if (y_snap and not y_df.empty) else None,
                 "delta_lastweek": {"count": d_today["count"] - d_lw["count"], "acv": round(d_today["acv"] - d_lw["acv"], 2)} if (lw_snap and not lw_df.empty) else None
             })
