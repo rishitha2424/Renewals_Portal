@@ -228,28 +228,43 @@ export default function ChartCard({
 
                 return data.map((d) => (
                   <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                    <div className="text-center mb-1">
+                      <span className="text-[11px] font-bold text-[var(--text-primary)] font-mono tabular-nums block">
+                        {d.formattedValue}
+                      </span>
+                      {d.dealsCount !== undefined && (
+                        <span className="text-[10px] text-[var(--text-muted)] font-medium block">
+                          {d.dealsCount} {d.dealsCount === 1 ? 'deal' : 'deals'}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-end justify-center gap-1.5 w-full h-full">
-                      {(d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]).map((s) => {
+                      {(d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]).map((s: any) => {
                         const hPct = Math.max(6, (s.value / maxVal) * 100)
                         return (
                           <div
                             key={s.name}
                             onClick={d.onClick}
-                            className="flex-1 max-w-[28px] flex flex-col items-center justify-end h-full group"
-                            title={`${d.label} - ${s.name}: ${s.formattedValue ?? s.value}`}
+                            className="flex-1 max-w-[32px] flex flex-col items-center justify-end h-full group cursor-pointer"
+                            title={`${d.label} - ${s.name}: ${s.formattedValue ?? s.value}${s.dealsCount !== undefined ? ` (${s.dealsCount} deals)` : ''}`}
                           >
-                            <span className="text-[9px] font-bold text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity tabular-nums">
+                            <span className="text-[9px] font-bold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums">
                               {s.formattedValue ?? s.value}
                             </span>
                             <div
                               className="w-full rounded-t-sm transition-all group-hover:opacity-85"
                               style={{ height: `${hPct}%`, backgroundColor: s.color || toneDef.hex }}
                             />
+                            {s.dealsCount !== undefined && (
+                              <span className="text-[8px] text-[var(--text-muted)] mt-0.5 tabular-nums">
+                                {s.dealsCount}d
+                              </span>
+                            )}
                           </div>
                         )
                       })}
                     </div>
-                    <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
+                    <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full mt-1" title={d.label}>
                       {d.label}
                     </span>
                   </div>

@@ -668,28 +668,47 @@ export default function Approvals() {
               type="grouped-columns"
               data={deal_size_split.statuses
                 .filter((s: any) => s.status !== 'Total')
-                .map((st: any) => ({
-                  label: getApprovalStatusLabel(st.status),
-                  value: (st.large?.acv || 0) + (st.small?.acv || 0),
-                  series: [
-                    {
-                      name: `Large (≥ ${deal_size_split.threshold_label})`,
-                      value: st.large?.acv || 0,
-                      formattedValue: formatCurrency(st.large?.acv || 0),
-                      color: '#2563EB',
-                    },
-                    {
-                      name: `Small (< ${deal_size_split.threshold_label})`,
-                      value: st.small?.acv || 0,
-                      formattedValue: formatCurrency(st.small?.acv || 0),
-                      color: '#93C5FD',
-                    },
-                  ],
-                }))}
+                .map((st: any) => {
+                  const totalAcv = (st.large?.acv || 0) + (st.small?.acv || 0)
+                  const totalDeals = (st.large?.count || 0) + (st.small?.count || 0)
+                  return {
+                    label: getApprovalStatusLabel(st.status),
+                    value: totalAcv,
+                    formattedValue: formatCurrency(totalAcv),
+                    dealsCount: totalDeals,
+                    sublabel: `${totalDeals} ${totalDeals === 1 ? 'deal' : 'deals'}`,
+                    onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${getApprovalStatusLabel(st.status)} All Deals`),
+                    series: [
+                      {
+                        name: `Large (≥ ${deal_size_split.threshold_label})`,
+                        value: st.large?.acv || 0,
+                        formattedValue: formatCurrency(st.large?.acv || 0),
+                        dealsCount: st.large?.count || 0,
+                        color: '#2563EB',
+                      },
+                      {
+                        name: `Small (< ${deal_size_split.threshold_label})`,
+                        value: st.small?.acv || 0,
+                        formattedValue: formatCurrency(st.small?.acv || 0),
+                        dealsCount: st.small?.count || 0,
+                        color: '#93C5FD',
+                      },
+                    ],
+                  }
+                })}
               footer={
-                <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-                  <span>Dark: Large (≥ {deal_size_split.threshold_label})</span>
-                  <span>Light: Small (&lt; {deal_size_split.threshold_label})</span>
+                <div className="text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-[#2563EB]" />
+                      <span>Large (≥ {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(deal_size_split.total?.large?.acv || 0)} ({deal_size_split.total?.large?.count || 0} deals)</strong></span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-[#93C5FD]" />
+                      <span>Small (&lt; {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(deal_size_split.total?.small?.acv || 0)} ({deal_size_split.total?.small?.count || 0} deals)</strong></span>
+                    </div>
+                  </div>
+                  <span>Total: <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(total?.acv || 0)} ({total?.count || 0} deals)</strong></span>
                 </div>
               }
             />

@@ -400,6 +400,8 @@ function BusinessUnitsContent() {
               subtitle={data_slice}
               deltaYesterday={{ count: totals?.grand?.delta_yesterday?.count, acv: totals?.grand?.delta_yesterday?.acv }}
               deltaLastWeek={{ count: totals?.grand?.delta_lastweek?.count, acv: totals?.grand?.delta_lastweek?.acv }}
+              onClick={() => handleCellClick(null, null, 'All Business Units · All Categories')}
+              onDealsClick={() => handleCellClick(null, null, 'All Business Units · All Categories')}
             />
 
             {/* Card 2: Active Business Units */}
@@ -423,6 +425,8 @@ function BusinessUnitsContent() {
                   </div>
                 </div>
               }
+              onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+              onDealsClick={() => handleCellClick(null, null, 'All Business Units Deals')}
             />
 
             {/* Card 3: Largest Business Unit */}
@@ -434,6 +438,8 @@ function BusinessUnitsContent() {
               subtitle={formatACV(largestBu?.acv || 0)}
               deltaYesterday={{ count: largestBu?.delta_yesterday?.count, acv: largestBu?.delta_yesterday?.acv }}
               deltaLastWeek={{ count: largestBu?.delta_lastweek?.count, acv: largestBu?.delta_lastweek?.acv }}
+              onClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
+              onDealsClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
             />
 
             {/* Card 4: Commit Coverage */}
@@ -445,6 +451,8 @@ function BusinessUnitsContent() {
               subtitle="Commit / Total ACV"
               deltaYesterday={{ count: totals?.categories?.['Commit']?.delta_yesterday?.count, acv: totals?.categories?.['Commit']?.delta_yesterday?.acv }}
               deltaLastWeek={{ count: totals?.categories?.['Commit']?.delta_lastweek?.count, acv: totals?.categories?.['Commit']?.delta_lastweek?.acv }}
+              onClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
+              onDealsClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
             />
           </div>
         )
@@ -480,19 +488,35 @@ function BusinessUnitsContent() {
 
             {/* Stat strip below the table pinned to bottom */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-auto border-t border-[var(--border-subtle)] text-[11px] shrink-0">
-              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+              <div
+                onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view all deals"
+              >
                 <span className="text-[var(--text-muted)] block text-[10px]">Business Units</span>
                 <span className="font-bold text-[var(--text-primary)] font-mono">{numBUs} units</span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+              <div
+                onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view all deals"
+              >
                 <span className="text-[var(--text-muted)] block text-[10px]">Total Deals</span>
                 <span className="font-bold text-[var(--text-primary)] font-mono">{formatCount(total.count)} deals</span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+              <div
+                onClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title={`Click to view ${largestBu?.bu} deals`}
+              >
                 <span className="text-[var(--text-muted)] block text-[10px]">Top BU Share</span>
                 <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{largestBuPct}% ({largestBu?.bu || '—'})</span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+              <div
+                onClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view Commit deals"
+              >
                 <span className="text-[var(--text-muted)] block text-[10px]">Commit Coverage</span>
                 <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">{commitCov}%</span>
               </div>
@@ -610,7 +634,14 @@ function BusinessUnitsContent() {
                     <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
                       {sharePct.toFixed(1)}%
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400 font-semibold">
+                    <td
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`)
+                      }}
+                      className="py-2.5 px-3 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400 font-semibold hover:underline cursor-pointer"
+                      title={`View ${r.bu} Commit deals`}
+                    >
                       {formatCurrency(commitAcv)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
@@ -623,7 +654,15 @@ function BusinessUnitsContent() {
                       </span>
                     </td>
                     {nonCommitCategories.map((c: string) => (
-                      <td key={c} className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
+                      <td
+                        key={c}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCellClick(r.bu, c, `${r.bu} · ${c} Deals`)
+                        }}
+                        className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline cursor-pointer"
+                        title={`View ${r.bu} ${c} deals`}
+                      >
                         {formatCurrency(r.cells?.[c]?.acv || 0)}
                       </td>
                     ))}
@@ -649,14 +688,29 @@ function BusinessUnitsContent() {
                 <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-primary)]">
                   100.0%
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-sky-600 dark:text-sky-400">
+                <td
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')
+                  }}
+                  className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                  title="View All Commit deals"
+                >
                   {formatCurrency(totalCommit)}
                 </td>
                 <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
                   {commitCov}%
                 </td>
                 {nonCommitCategories.map((c: string) => (
-                  <td key={c} className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
+                  <td
+                    key={c}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCellClick(null, c, `All Business Units · ${c} Deals`)
+                    }}
+                    className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)] hover:underline cursor-pointer"
+                    title={`View All ${c} deals`}
+                  >
                     {formatCurrency(totals.categories[c]?.acv || 0)}
                   </td>
                 ))}

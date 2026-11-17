@@ -103,12 +103,17 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               +{acvM(posTotal)}
             </span>
           </div>
-          <table className="w-full text-xs">
+          <table className="w-full text-xs table-fixed">
+            <colgroup>
+              <col className="w-[60%]" />
+              <col className="w-[18%]" />
+              <col className="w-[22%]" />
+            </colgroup>
             <thead className="bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-emerald-500/10">
               <tr className="text-[var(--text-muted)]">
-                <th className="text-left px-4 py-2 font-semibold">Movement</th>
-                <th className="text-right px-4 py-2 font-semibold">Count</th>
-                <th className="text-right px-4 py-2 font-semibold">ACV</th>
+                <th className="text-left px-3.5 py-2 font-semibold">Movement</th>
+                <th className="text-right px-3 py-2 font-semibold">Count</th>
+                <th className="text-right px-3.5 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emerald-500/10">
@@ -176,12 +181,17 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               -{acvM(negTotal)}
             </span>
           </div>
-          <table className="w-full text-xs">
+          <table className="w-full text-xs table-fixed">
+            <colgroup>
+              <col className="w-[60%]" />
+              <col className="w-[18%]" />
+              <col className="w-[22%]" />
+            </colgroup>
             <thead className="bg-rose-50/50 dark:bg-rose-950/20 border-b border-rose-500/10">
               <tr className="text-[var(--text-muted)]">
-                <th className="text-left px-4 py-2 font-semibold">Movement</th>
-                <th className="text-right px-4 py-2 font-semibold">Count</th>
-                <th className="text-right px-4 py-2 font-semibold">ACV</th>
+                <th className="text-left px-3.5 py-2 font-semibold">Movement</th>
+                <th className="text-right px-3 py-2 font-semibold">Count</th>
+                <th className="text-right px-3.5 py-2 font-semibold">ACV</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-rose-500/10">
@@ -265,7 +275,14 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
             </span>
           </div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs table-fixed">
+              <colgroup>
+                <col className="w-[28%]" />
+                <col className="w-[28%]" />
+                <col className="w-[16%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <thead className="bg-[var(--bg-secondary)]">
                 <tr>
                   <th className="text-left px-4 py-2.5 font-semibold text-[var(--text-muted)]">
@@ -280,17 +297,25 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                   <th className="text-right px-4 py-2.5 font-semibold text-[var(--text-muted)]">
                     ACV Value ($M)
                   </th>
-                  <th className="px-4 py-2.5 font-semibold text-[var(--text-muted)]">Action</th>
+                  <th className="text-center px-4 py-2.5 font-semibold text-[var(--text-muted)]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-subtle)]">
                 {apv.map((row: any, i: number) => (
                   <tr key={i} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                    <td className="px-4 py-2.5 text-[var(--text-secondary)]">{getApprovalStatusLabel(row.from_status)}</td>
-                    <td className="px-4 py-2.5 font-semibold">{getApprovalStatusLabel(row.to_status)}</td>
+                    <td className="px-4 py-2.5 text-[var(--text-secondary)] font-medium">
+                      <span className="px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-primary)]">
+                        {getApprovalStatusLabel(row.from_status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                        {getApprovalStatusLabel(row.to_status)}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono font-bold">{row.count}</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{acvM(row.acv)}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 text-right font-mono font-semibold">{acvM(row.acv)}</td>
+                    <td className="px-4 py-2.5 text-center">
                       <button
                         type="button"
                         onClick={() =>
@@ -300,9 +325,9 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
                             row.deals
                           )
                         }
-                        className="text-[10px] font-bold text-[var(--brand-teal)] hover:underline"
+                        className="text-[10px] font-bold text-[var(--brand-teal)] hover:underline inline-flex items-center gap-1"
                       >
-                        View Deals
+                        View Deals →
                       </button>
                     </td>
                   </tr>

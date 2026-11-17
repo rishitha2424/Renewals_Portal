@@ -51,6 +51,7 @@ function DelayedContent() {
 
   const [compare, setCompare] = useState<'yesterday' | 'last_week'>('yesterday')
   const [heatMode, setHeatMode] = useState<'Value' | 'Yesterday' | 'LastWeek'>('Value')
+  const [reviewGraphView, setReviewGraphView] = useState<'donut' | 'flow'>('donut')
   const { modalState, openRuleDeals, closeRuleDeals } = useRuleDeals()
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
 
@@ -743,6 +744,31 @@ function DelayedContent() {
               tone="delayed"
               type="stacked-columns"
               data={buStackedData}
+              footer={
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Commit</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Commit']?.acv || 0)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Best Case</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Best Case']?.acv || 0)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#64748B] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Pipeline</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Pipeline']?.acv || 0)})
+                    </span>
+                  </div>
+                </div>
+              }
             />
           </div>
 
@@ -1179,20 +1205,54 @@ function DelayedContent() {
             <ChartCard
               title="Why Deals Need Review"
               subtitle="Exception distribution by type"
-              type="vertical-bars"
-              data={reviewList.map((t: any) => ({
-                label: t.title,
-                value: t.acv || 0,
-                formattedValue: formatACV(t.acv || 0),
-                sublabel: `${t.count} ${t.count === 1 ? 'deal' : 'deals'}`,
-                dealsCount: t.count,
-                color: '#F59E0B',
-                onClick: () => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id }),
-              }))}
+              type={reviewGraphView === 'donut' ? 'donut' : 'stacked-bar'}
+              total={totalAcv}
+              action={
+                <div className="flex items-center gap-1 bg-[var(--bg-secondary)] p-0.5 rounded-lg border border-[var(--border)] text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setReviewGraphView('donut')}
+                    className={clsx(
+                      'px-2 py-0.5 rounded font-semibold transition-colors',
+                      reviewGraphView === 'donut'
+                        ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    Donut
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReviewGraphView('flow')}
+                    className={clsx(
+                      'px-2 py-0.5 rounded font-semibold transition-colors',
+                      reviewGraphView === 'flow'
+                        ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    Flow
+                  </button>
+                </div>
+              }
+              data={reviewList.map((t: any, idx: number) => {
+                const colors = ['#F59E0B', '#F43F5E', '#8B5CF6', '#3B82F6', '#10B981', '#64748B']
+                const pct = totalAcv > 0 ? ((t.acv || 0) / totalAcv) * 100 : 0
+                return {
+                  label: t.title,
+                  value: t.acv || 0,
+                  formattedValue: formatACV(t.acv || 0),
+                  percentage: pct,
+                  sublabel: `${t.count} ${t.count === 1 ? 'deal' : 'deals'}`,
+                  dealsCount: t.count,
+                  color: colors[idx % colors.length],
+                  onClick: () => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id }),
+                }
+              })}
               footer={
                 <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
-                  <span>{totalCount} total exceptions</span>
-                  <span>Click bars or buttons to inspect</span>
+                  <span>{totalCount} total exceptions ({formatACV(totalAcv)})</span>
+                  <span>Click slices or cards to inspect</span>
                 </div>
               }
             />

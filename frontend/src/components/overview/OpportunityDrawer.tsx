@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,14 +17,27 @@ import {
   TrendingUp,
   AlertCircle,
   ExternalLink,
+  MessageSquare,
+  Send,
+  Trash2,
 } from 'lucide-react'
 import { getOpportunity, getOpportunityHistory, getOpportunityChangelog } from '@/api/client'
 import { formatACV, formatDate } from '@/utils/format'
 import Badge, { ForecastBadge, ApprovalBadge } from '@/components/ui/Badge'
 import Drawer from '@/components/ui/Drawer'
 import { Skeleton } from '@/components/ui/Skeleton'
+import showToast from '@/components/ui/Toast'
 import { useAppStore } from '@/store/appStore'
 import clsx from 'clsx'
+
+export interface DealComment {
+  id: string
+  oppId: string
+  oppName?: string
+  author: string
+  text: string
+  createdAt: string
+}
 
 interface OpportunityDrawerProps {
   oppId: string | null
@@ -32,8 +45,86 @@ interface OpportunityDrawerProps {
 }
 
 export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'timeline' | 'changelog' | 'details'>('timeline')
+  const [activeTab, setActiveTab] = useState<'timeline' | 'changelog' | 'details' | 'comments'>('timeline')
   const activeSnapshotId = useAppStore((s) => s.activeSnapshotId)
+  const adminName = useAppStore((s) => s.adminName)
+
+  // Comments & Audit logging state
+  const [comments, setComments] = useState<DealComment[]>([])
+  const [commentAuthor, setCommentAuthor] = useState<string>(() => {
+    return localStorage.getItem('deal_commenter_name') || 'Reviewer'
+  })
+  const [commentText, setCommentText] = useState('')
+
+  useEffect(() => {
+    if (!oppId) {
+      setComments([])
+      return
+    }
+    try {
+      const raw = localStorage.getItem(`deal_comments_${oppId}`)
+      if (raw) {
+        setComments(JSON.parse(raw))
+      } else {
+        setComments([])
+      }
+    } catch {
+      setComments([])
+    }
+  }, [oppId])
+
+  const handleAddComment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const trimmed = commentText.trim()
+    if (!trimmed || !oppId) return
+
+    const author = commentAuthor.trim() || adminName || 'Reviewer'
+    localStorage.setItem('deal_commenter_name', author)
+
+    const newComment: DealComment = {
+      id: `comm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      oppId,
+      oppName: opp?.opportunity_name || 'Opportunity',
+      author,
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+    }
+
+    const updated = [newComment, ...comments]
+    setComments(updated)
+    try {
+      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
+
+      // Also append to global deal comments audit log for Data Explorer
+      const globalRaw = localStorage.getItem('global_deal_comments_log')
+      const globalList = globalRaw ? JSON.parse(globalRaw) : []
+      globalList.unshift(newComment)
+      localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
+    } catch {
+      // ignore
+    }
+
+    setCommentText('')
+    showToast.success('Comment saved and logged')
+  }
+
+  const handleDeleteComment = (commentId: string) => {
+    if (!oppId) return
+    const updated = comments.filter((c) => c.id !== commentId)
+    setComments(updated)
+    try {
+      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
+
+      const globalRaw = localStorage.getItem('global_deal_comments_log')
+      if (globalRaw) {
+        const globalList = JSON.parse(globalRaw).filter((c: any) => c.id !== commentId)
+        localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
+      }
+    } catch {
+      // ignore
+    }
+    showToast.info('Comment removed')
+  }
 
   const { data: opp, isLoading: oppLoading } = useQuery({
     queryKey: ['opportunity', oppId, activeSnapshotId],
@@ -247,6 +338,24 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                 />
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('comments')}
+              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 ${
+                activeTab === 'comments'
+                  ? 'text-teal-600 dark:text-teal-400 font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Comments & Notes ({comments.length})
+              {activeTab === 'comments' && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500 rounded-full"
+                />
+              )}
+            </button>
           </div>
 
           {/* TAB 1: Snapshot Timeline */}
@@ -452,6 +561,121 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                 <span className="font-medium text-[var(--text-primary)]">
                   {opp.months_delayed != null ? `${opp.months_delayed} mo` : 'N/A'}
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Comments & Deal Notes */}
+          {activeTab === 'comments' && (
+            <div className="space-y-4">
+              {/* Add Comment Card */}
+              <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                    Add Deal Comment & Log
+                  </h4>
+                  <span className="text-[11px] text-[var(--text-muted)]">Logged with timestamp</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 flex items-center gap-1">
+                      <User className="w-3 h-3" /> Commenter:
+                    </span>
+                    <input
+                      type="text"
+                      value={commentAuthor}
+                      onChange={(e) => setCommentAuthor(e.target.value)}
+                      placeholder="Your name or role (e.g. Sales Lead, Finance, Exec)"
+                      className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddComment()
+                      }
+                    }}
+                    placeholder="Enter deal notes, next actions, discount approval details, risk mitigation..."
+                    className="w-full p-2.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
+                  />
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      Tip: Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[9px] font-mono">Ctrl+Enter</kbd> to save
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddComment()}
+                      disabled={!commentText.trim()}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      <Send className="w-3 h-3" />
+                      Save Comment
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comment Thread */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="font-semibold text-[var(--text-secondary)]">
+                    Comment Activity Log ({comments.length})
+                  </span>
+                </div>
+
+                {comments.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border)] rounded-xl p-6 bg-[var(--bg-card)]">
+                    <MessageSquare className="w-6 h-6 mx-auto mb-2 text-[var(--text-muted)] opacity-50" />
+                    <p className="font-medium">No comments recorded yet for this deal.</p>
+                    <p className="text-[11px] mt-1 text-[var(--text-muted)]">
+                      Use the box above to add notes, status updates, or approval rationale.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {comments.map((c) => (
+                      <div
+                        key={c.id}
+                        className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-xs flex flex-col gap-2 hover:border-teal-500/30 transition-all shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold flex items-center justify-center text-[10px]">
+                              {c.author.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="font-bold text-[var(--text-primary)] text-xs">
+                                {c.author}
+                              </span>
+                              <span className="text-[10px] text-[var(--text-muted)] ml-2">
+                                {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(c.id)}
+                            className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            title="Delete comment"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed pl-8">
+                          {c.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
