@@ -29,6 +29,13 @@ import SummaryLine from '@/components/common/SummaryLine'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import Tile from '@/components/common/Tile'
+import CardRow from '@/components/common/CardRow'
+import ScrollList from '@/components/common/ScrollList'
+import InsightCard from '@/components/common/InsightCard'
+import ChartCard from '@/components/common/ChartCard'
+import { getBusinessUnitsInsights, getBuTopDealsInsights } from '@/insights/generators'
+import { CONCEPT_COLORS } from '@/design/conceptColors'
 
 type MetricMode = 'Amount' | 'Count' | 'Both'
 
@@ -172,7 +179,7 @@ function BusinessUnitsContent() {
     return (
       <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Skeleton className="h-14 w-full rounded-xl" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
@@ -376,207 +383,203 @@ function BusinessUnitsContent() {
       )}
 
       {/* 2. KPI Strip: 4 equal cards on 12-col grid */}
-      <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
-        {/* Card 1: Total Portfolio ACV */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Total Portfolio ACV">
-                Total Portfolio ACV
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {formatCount(total.count)} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {formatACV(total.acv)}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              {data_slice}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.grand?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
+      {(() => {
+        const top3BUs = sortedRowsByAcv.slice(0, 3)
+        const top3SumAcv = top3BUs.reduce((sum: number, r: any) => sum + (r.acv || 0), 0)
+        const top3Share = total.acv > 0 ? ((top3SumAcv / total.acv) * 100).toFixed(1) : '0.0'
+        const top3Summary = top3BUs.map((r: any) => `${r.bu} ${total.acv > 0 ? ((r.acv / total.acv) * 100).toFixed(0) : 0}%`).join(' · ')
 
-        {/* Card 2: Active Business Units */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Active Business Units">
-                Active Business Units
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {numBUs} units
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {numBUs}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              Tracked individually
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs text-[var(--text-muted)]">—</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs text-[var(--text-muted)]">—</span>
-            </div>
-          </div>
-        </div>
+        return (
+          <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 scroll-mt-24">
+            {/* Card 1: Total Portfolio ACV */}
+            <Tile
+              tone="total"
+              title="Total Portfolio ACV"
+              amount={formatACV(total.acv)}
+              count={total.count}
+              subtitle={data_slice}
+              deltaYesterday={{ count: totals?.grand?.delta_yesterday?.count, acv: totals?.grand?.delta_yesterday?.acv }}
+              deltaLastWeek={{ count: totals?.grand?.delta_lastweek?.count, acv: totals?.grand?.delta_lastweek?.acv }}
+              onClick={() => handleCellClick(null, null, 'All Business Units · All Categories')}
+              onDealsClick={() => handleCellClick(null, null, 'All Business Units · All Categories')}
+            />
 
-        {/* Card 3: Largest Business Unit */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Largest Business Unit">
-                Largest Business Unit
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {largestBuPct}% of total
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight truncate" title={largestBu?.bu || '—'}>
-              {largestBu?.bu || '—'}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              {formatACV(largestBu?.acv || 0)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(largestBu?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Commit Coverage */}
-        <div className="card p-4 flex flex-col justify-between gap-2.5">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title="Commit Coverage">
-                Commit Coverage
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {formatACV(totalCommit)} Commit
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {commitCov}%
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">
-              Commit / Total ACV
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_yesterday, false)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className="text-xs tabular-nums text-right">{deltaSpan(totals?.categories?.['Commit']?.delta_lastweek, false)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Equal-Height 12-Column Grid: Heatmap (8 cols) + BU Share (4 cols) */}
-      <div id="bu-heatmap-share" className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch scroll-mt-24">
-        {/* Heatmap Card (8 cols) - ONLY element that decides the row height */}
-        <div className="xl:col-span-8 flex flex-col">
-          <CompactGrid
-            title="BU x Forecast Category Heatmap"
-            rowLabelName="Business Unit"
-            columns={displayCategories}
-            rows={gridRows}
-            totals={{ category: totals.categories, grand: totals.grand }}
-            deltas={gridDeltas}
-            metricMode={metricMode}
-            onCellClick={handleCellClick}
-            compareDate={prevDate}
-            yesterdayDate={summary.yesterday_date}
-            lastweekDate={summary.lastweek_date}
-            heatMode={heatMode}
-          />
-        </div>
-
-        {/* Ranked Bar: BU Share Card (4 cols) - Strictly equals Heatmap Height */}
-        <div className="xl:col-span-4 relative">
-          <div className="xl:absolute xl:inset-0 bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 flex flex-col justify-between max-h-96 xl:max-h-none">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border)] shrink-0">
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  BU Share of Total ACV
-                </h3>
-                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                  Ranked portfolio weight
-                </p>
-              </div>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                {formatACV(total.acv)}
-              </span>
-            </div>
-
-            <div className="space-y-2.5 overflow-y-auto flex-1 min-h-0 pr-1">
-              {sortedRowsByAcv.map((r: any) => {
-                const pct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
-                return (
-                  <div
-                    key={r.bu}
-                    onClick={() => handleBuShareClick(r.bu)}
-                    className="group cursor-pointer hover:bg-[var(--bg-muted)]/70 p-2 rounded-lg transition-colors border border-transparent hover:border-[var(--border)]"
-                    title={`${r.bu}: ${formatCurrency(r.acv)} (${pct.toFixed(1)}% of total ACV) · Click to view deals`}
-                  >
-                    <div className="flex justify-between items-baseline text-xs mb-1.5">
-                      <span className="font-medium text-[var(--text-primary)] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate max-w-[170px]">
-                        {r.bu}
-                      </span>
-                      <div className="flex items-center gap-1.5 font-mono tabular-nums shrink-0">
-                        <span className="font-bold text-[var(--text-primary)]">{pct.toFixed(1)}%</span>
-                        <span className="text-[11px] text-[var(--text-muted)]">({formatACV(r.acv)})</span>
-                      </div>
-                    </div>
-                    <div className="w-full h-2 bg-[var(--bg-muted)] rounded-full overflow-hidden border border-[var(--border)]/50">
-                      <div
-                        className="h-full bg-indigo-500 group-hover:bg-indigo-600 transition-all rounded-full"
-                        style={{ width: `${Math.max(pct, 1)}%` }}
-                      />
-                    </div>
+            {/* Card 2: Active Business Units */}
+            <Tile
+              tone="active_units"
+              title="Active Business Units"
+              amount={numBUs}
+              badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{numBUs} unit groups</span>}
+              subtitle={
+                <span title="Deals with several business units are counted as their own group" className="cursor-help">
+                  Tracked individually ℹ
+                </span>
+              }
+              footer={
+                <div className="space-y-1 text-[11px] text-[var(--text-muted)] pt-1 border-t border-[var(--border)]">
+                  <div className="truncate" title={`Top: ${top3Summary}`}>
+                    <span className="font-semibold text-[var(--text-secondary)]">Top:</span> {top3Summary}
                   </div>
-                )
-              })}
+                  <div className="font-semibold text-[var(--text-primary)] font-mono">
+                    Share of top 3: {top3Share}%
+                  </div>
+                </div>
+              }
+              onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+              onDealsClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+            />
+
+            {/* Card 3: Largest Business Unit */}
+            <Tile
+              tone="largest_bu"
+              title="Largest Business Unit"
+              amount={largestBu?.bu || '—'}
+              badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{largestBuPct}% of total</span>}
+              subtitle={formatACV(largestBu?.acv || 0)}
+              deltaYesterday={{ count: largestBu?.delta_yesterday?.count, acv: largestBu?.delta_yesterday?.acv }}
+              deltaLastWeek={{ count: largestBu?.delta_lastweek?.count, acv: largestBu?.delta_lastweek?.acv }}
+              onClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
+              onDealsClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
+            />
+
+            {/* Card 4: Commit Coverage */}
+            <Tile
+              tone="coverage"
+              title="Commit Coverage"
+              amount={`${commitCov}%`}
+              badge={<span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0 px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border-subtle)]">{formatACV(totalCommit)} Commit</span>}
+              subtitle="Commit / Total ACV"
+              deltaYesterday={{ count: totals?.categories?.['Commit']?.delta_yesterday?.count, acv: totals?.categories?.['Commit']?.delta_yesterday?.acv }}
+              deltaLastWeek={{ count: totals?.categories?.['Commit']?.delta_lastweek?.count, acv: totals?.categories?.['Commit']?.delta_lastweek?.acv }}
+              onClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
+              onDealsClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
+            />
+          </div>
+        )
+      })()}
+
+      {/* 3. Equal-Height Grid: Heatmap (max-content) + BU Signals & Commit Coverage (1fr) + BU Share Donut (340px) */}
+      <div id="bu-heatmap-share" className="scroll-mt-24">
+        <CardRow cols="max-content minmax(0, 1fr) minmax(300px, 340px)" gap="gap-6">
+          {/* Heatmap Card (max-content) */}
+          <div className="card p-5 border border-[var(--border)] shadow-xs flex flex-col justify-between h-full w-full max-w-full">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 shrink-0">
+                BU x Forecast Category Heatmap
+              </h3>
+              <div className="flex-1 min-h-0 overflow-x-auto">
+                <CompactGrid
+                  title="BU x Forecast Category Heatmap"
+                  rowLabelName="Business Unit"
+                  columns={displayCategories}
+                  rows={gridRows}
+                  totals={{ category: totals.categories, grand: totals.grand }}
+                  deltas={gridDeltas}
+                  metricMode={metricMode}
+                  onCellClick={handleCellClick}
+                  compareDate={prevDate}
+                  yesterdayDate={summary.yesterday_date}
+                  lastweekDate={summary.lastweek_date}
+                  heatMode={heatMode}
+                  hideCardWrapper={true}
+                />
+              </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center justify-between shrink-0">
-              <span>{rows.length} units · Multi-value distinct</span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1">
-                Click row to view deals <ArrowRight className="w-3 h-3" />
-              </span>
+            {/* Stat strip below the table pinned to bottom */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-auto border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+              <div
+                onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view all deals"
+              >
+                <span className="text-[var(--text-muted)] block text-[10px]">Business Units</span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{numBUs} units</span>
+              </div>
+              <div
+                onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view all deals"
+              >
+                <span className="text-[var(--text-muted)] block text-[10px]">Total Deals</span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{formatCount(total.count)} deals</span>
+              </div>
+              <div
+                onClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title={`Click to view ${largestBu?.bu} deals`}
+              >
+                <span className="text-[var(--text-muted)] block text-[10px]">Top BU Share</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{largestBuPct}% ({largestBu?.bu || '—'})</span>
+              </div>
+              <div
+                onClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
+                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                title="Click to view Commit deals"
+              >
+                <span className="text-[var(--text-muted)] block text-[10px]">Commit Coverage</span>
+                <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">{commitCov}%</span>
+              </div>
             </div>
           </div>
-        </div>
+
+          {/* Middle: BU Signals */}
+          <div className="h-full min-w-0">
+            <InsightCard
+              title="Business unit signals"
+              subtitle="Key signals and commitment trajectory"
+              insights={getBusinessUnitsInsights(summary, (title, p) => handleCellClick(p?.bu, p?.category, title))}
+            />
+          </div>
+
+          {/* Right: Ranked BU Share Donut Chart with scrollable legend */}
+          <ChartCard
+            type="donut"
+            title="BU Share of Total ACV"
+            subtitle="Ranked portfolio weight"
+            total={total.acv}
+            data={sortedRowsByAcv.map((r: any, idx: number) => {
+              const pct = total.acv > 0 ? (r.acv / total.acv) * 100 : 0
+              const colors = ['#00A3AD', '#1B365D', '#4B6B94', '#2563EB', '#6366F1', '#8B5CF6', '#EC4899', '#F58220', '#10B981', '#64748B']
+              return {
+                label: r.bu,
+                value: r.acv || 0,
+                formattedValue: formatACV(r.acv),
+                percentage: pct,
+                color: colors[idx % colors.length],
+                onClick: () => handleBuShareClick(r.bu),
+              }
+            })}
+            className="w-full max-w-[340px] min-w-0"
+          />
+        </CardRow>
       </div>
 
-      {/* 4. Portfolio Coverage & Movement Table (Analytical Breakdown replacing duplicate heatmap) */}
-      <div id="bu-coverage-table" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden scroll-mt-24">
+      {/* 4. Portfolio Coverage & Movement Table */}
+      <div id="bu-coverage-table" className="space-y-4 scroll-mt-24">
+        <ChartCard
+          type="vertical-bars"
+          title="Commit coverage by BU"
+          subtitle="Percentage of renewals in Closed + Commit"
+          data={sortedRowsByAcv.slice(0, 8).map((r: any) => {
+            const cAcv = r.cells?.['Commit']?.acv || 0
+            const clAcv = r.cells?.['Closed']?.acv || 0
+            const cov = r.acv > 0 ? ((cAcv + clAcv) / r.acv) * 100 : 0
+            return {
+              label: r.bu,
+              value: cAcv + clAcv,
+              formattedValue: `${cov.toFixed(1)}%`,
+              percentage: cov,
+              sublabel: r.count ? `${formatCount(r.count)} ${r.count === 1 ? 'deal' : 'deals'}` : undefined,
+              dealsCount: r.count,
+              color: '#2563EB',
+              onClick: () => handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`),
+            }
+          })}
+          className="min-h-[180px]"
+        />
+
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs overflow-hidden">
         <div className="p-4 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -593,7 +596,7 @@ function BusinessUnitsContent() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left whitespace-nowrap">
+          <table className="data-table w-full text-xs text-left whitespace-nowrap">
             <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0 z-10">
               <tr>
                 <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-4 font-semibold border-r border-[var(--border)] shadow-xs">Business Unit</th>
@@ -631,7 +634,14 @@ function BusinessUnitsContent() {
                     <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
                       {sharePct.toFixed(1)}%
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400 font-semibold">
+                    <td
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCellClick(r.bu, 'Commit', `${r.bu} · Commit Deals`)
+                      }}
+                      className="py-2.5 px-3 text-right font-mono tabular-nums text-sky-600 dark:text-sky-400 font-semibold hover:underline cursor-pointer"
+                      title={`View ${r.bu} Commit deals`}
+                    >
                       {formatCurrency(commitAcv)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
@@ -644,7 +654,15 @@ function BusinessUnitsContent() {
                       </span>
                     </td>
                     {nonCommitCategories.map((c: string) => (
-                      <td key={c} className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)]">
+                      <td
+                        key={c}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCellClick(r.bu, c, `${r.bu} · ${c} Deals`)
+                        }}
+                        className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline cursor-pointer"
+                        title={`View ${r.bu} ${c} deals`}
+                      >
                         {formatCurrency(r.cells?.[c]?.acv || 0)}
                       </td>
                     ))}
@@ -670,14 +688,29 @@ function BusinessUnitsContent() {
                 <td className="py-2.5 px-3 text-right font-mono tabular-nums text-[var(--text-primary)]">
                   100.0%
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-sky-600 dark:text-sky-400">
+                <td
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')
+                  }}
+                  className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                  title="View All Commit deals"
+                >
                   {formatCurrency(totalCommit)}
                 </td>
                 <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
                   {commitCov}%
                 </td>
                 {nonCommitCategories.map((c: string) => (
-                  <td key={c} className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
+                  <td
+                    key={c}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCellClick(null, c, `All Business Units · ${c} Deals`)
+                    }}
+                    className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)] hover:underline cursor-pointer"
+                    title={`View All ${c} deals`}
+                  >
                     {formatCurrency(totals.categories[c]?.acv || 0)}
                   </td>
                 ))}
@@ -692,104 +725,147 @@ function BusinessUnitsContent() {
           </table>
         </div>
       </div>
+    </div>
 
       {/* 5. Top Opportunities Section */}
-      <div id="bu-top-opps" className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Top Opportunities by Business Unit
-            </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              High-value renewals sorted by ACV
-            </p>
-          </div>
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by deal or account..."
-              value={topSearch}
-              onChange={e => setTopSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64"
-            />
-          </div>
-        </div>
+      <div id="bu-top-opps" className="scroll-mt-24">
+        <CardRow cols="max-content minmax(320px, 1fr)" gap="gap-6">
+          {/* Opportunities Table Card (max-content) */}
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xs p-5 flex flex-col justify-between h-full w-full max-w-full">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Top Opportunities by Business Unit
+                  </h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    High-value renewals sorted by ACV
+                  </p>
+                </div>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by deal or account..."
+                    value={topSearch}
+                    onChange={e => setTopSearch(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500 w-64"
+                  />
+                </div>
+              </div>
 
-        {/* BU Filter Chips */}
-        <div className="flex gap-1.5 overflow-x-auto pb-3 mb-3 scrollbar-thin">
-          <button
-            onClick={() => setTopBuFilter('All')}
-            className={`px-3 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors border ${
-              topBuFilter === 'All'
-                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
-                : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-muted)]'
-            }`}
-          >
-            All Units
-          </button>
-          {rows.map((r: any) => (
-            <button
-              key={r.bu}
-              onClick={() => setTopBuFilter(r.bu)}
-              className={`px-3 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors border ${
-                topBuFilter === r.bu
-                  ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-muted)]'
-              }`}
-            >
-              {r.bu}
-            </button>
-          ))}
-        </div>
-
-        {/* Opportunities Table */}
-        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0">
-              <tr>
-                <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2.5 px-3 font-semibold border-r border-[var(--border)] shadow-xs">Opportunity</th>
-                <th className="py-2.5 px-3 font-semibold">Account</th>
-                <th className="py-2.5 px-3 font-semibold text-right">ACV</th>
-                <th className="py-2.5 px-3 font-semibold text-center">Forecast</th>
-                <th className="py-2.5 px-3 font-semibold">Close Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {filteredTopDeals.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-[var(--text-muted)]">
-                    No opportunities found
-                  </td>
-                </tr>
-              ) : (
-                filteredTopDeals.map((d: any) => (
-                  <tr
-                    key={d.opportunity_id_18}
-                    onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                    className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
+              {/* BU Filter Chips */}
+              <div className="flex gap-1.5 overflow-x-auto pb-3 mb-3 scrollbar-thin">
+                <button
+                  onClick={() => setTopBuFilter('All')}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors border ${
+                    topBuFilter === 'All'
+                      ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-muted)]'
+                  }`}
+                >
+                  All Units
+                </button>
+                {rows.map((r: any) => (
+                  <button
+                    key={r.bu}
+                    onClick={() => setTopBuFilter(r.bu)}
+                    className={`px-3 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors border ${
+                      topBuFilter === r.bu
+                        ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-muted)]'
+                    }`}
                   >
-                    <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2.5 px-3 font-medium text-[var(--text-primary)] truncate max-w-[260px] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs" title={d.opportunity_name}>
-                      {d.opportunity_name}
-                    </td>
-                    <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[180px]">{d.account_name}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)]">
-                      {formatCurrency(d.forecast_acv_amount)}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${getCategoryBadgeStyle(d.forecast_category)}`}>
-                        {d.forecast_category}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-[var(--text-muted)] font-mono">
-                      {d.close_date ? new Date(d.close_date).toLocaleDateString() : '—'}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    {r.bu}
+                  </button>
+                ))}
+              </div>
+
+              {/* Opportunities Table */}
+              <div className="overflow-x-auto rounded-lg border border-[var(--border)] table-compact-container">
+                <table className="data-table text-left text-xs whitespace-nowrap">
+                  <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] border-b border-[var(--border)] sticky top-0">
+                    <tr>
+                      <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 py-2 px-3 font-semibold border-r border-[var(--border)] shadow-xs col-opp">Opportunity</th>
+                      <th className="py-2 px-3 font-semibold col-account">Account</th>
+                      <th className="py-2 px-3 font-semibold text-right col-stat">ACV</th>
+                      <th className="py-2 px-3 font-semibold text-center col-meta">Forecast</th>
+                      <th className="py-2 px-3 font-semibold text-right col-date">Close Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {filteredTopDeals.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-[var(--text-muted)]">
+                          No opportunities found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTopDeals.map((d: any) => (
+                        <tr
+                          key={d.opportunity_id_18}
+                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                          className="hover:bg-[var(--bg-muted)]/60 cursor-pointer transition-colors group"
+                        >
+                          <td className="sticky left-0 bg-[var(--bg-card)] group-hover:bg-[var(--bg-hover)] z-10 py-2 px-3 font-medium text-[var(--text-primary)] col-opp group-hover:text-indigo-600 dark:group-hover:text-indigo-400 border-r border-[var(--border)] shadow-xs" title={d.opportunity_name}>
+                            {d.opportunity_name}
+                          </td>
+                          <td className="py-2 px-3 text-[var(--text-secondary)] col-account" title={d.account_name}>{d.account_name}</td>
+                          <td className="py-2 px-3 text-right font-mono font-bold tabular-nums text-[var(--text-primary)] col-stat">
+                            {formatCurrency(d.forecast_acv_amount)}
+                          </td>
+                          <td className="py-2 px-3 text-center col-meta">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${getCategoryBadgeStyle(d.forecast_category)}`}>
+                              {d.forecast_category}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-[var(--text-muted)] font-mono text-right col-date">
+                            {d.close_date ? new Date(d.close_date).toLocaleDateString() : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Highlights Card + Top deals by category chart (D) */}
+          {(() => {
+            const deals = filteredTopDeals || []
+            const catMap: Record<string, number> = {}
+            deals.forEach((d: any) => {
+              const c = d.forecast_category || 'Other'
+              catMap[c] = (catMap[c] || 0) + (d.forecast_acv_amount || 0)
+            })
+            const catData = Object.entries(catMap).map(([c, val]) => ({
+              label: c,
+              value: val,
+              formattedValue: formatACV(val),
+              color: c === 'Commit' ? '#10B981' : c === 'Best Case' ? '#F59E0B' : '#64748B',
+            }))
+
+            return (
+              <div className="h-full flex flex-col gap-3 min-w-0">
+                <InsightCard
+                  title="BU opportunity signals"
+                  subtitle="Deal concentration and key upside signals"
+                  insights={getBuTopDealsInsights(topOppsData?.deals || [], total.acv, (id) => setSelectedOppId(id))}
+                />
+                {catData.length > 0 && (
+                  <ChartCard
+                    title="Top deals by category"
+                    subtitle="ACV distribution among listed opportunities"
+                    type="horizontal-bars"
+                    data={catData}
+                    className="min-h-[140px]"
+                  />
+                )}
+              </div>
+            )
+          })()}
+        </CardRow>
       </div>
 
       {/* 6. Click-Through Deals Slide-Out Drawer */}

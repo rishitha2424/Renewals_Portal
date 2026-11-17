@@ -32,6 +32,7 @@ export const ChangeLogModal: React.FC<ChangeLogModalProps> = ({ isOpen, onClose 
 
   const fetchLog = useCallback(async () => {
     setLoading(true)
+    let serverEntries: AnnotationAuditItem[] = []
     try {
       const res = await getGlobalAuditLog({
         user: filterUser.trim() || undefined,
@@ -41,12 +42,54 @@ export const ChangeLogModal: React.FC<ChangeLogModalProps> = ({ isOpen, onClose 
         date_to: filterDateTo || undefined,
         limit: 500,
       })
-      setEntries(res.audit || [])
+      serverEntries = res.audit || []
     } catch {
-      showToast.error('Failed to load change log')
-    } finally {
-      setLoading(false)
+      // Server audit may require admin context or be empty
     }
+
+    // Load logged deal comments from localStorage
+    let commentEntries: AnnotationAuditItem[] = []
+    try {
+      const raw = localStorage.getItem('global_deal_comments_log')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        commentEntries = parsed
+          .filter((c: any) => {
+            if (filterUser && !c.author?.toLowerCase().includes(filterUser.toLowerCase())) return false
+            if (
+              filterDeal &&
+              !c.oppId?.toLowerCase().includes(filterDeal.toLowerCase()) &&
+              !(c.oppName || '').toLowerCase().includes(filterDeal.toLowerCase())
+            )
+              return false
+            if (filterColumn && !'comment'.includes(filterColumn.toLowerCase())) return false
+            if (filterDateFrom && c.createdAt < filterDateFrom) return false
+            if (filterDateTo && c.createdAt > filterDateTo) return false
+            return true
+          })
+          .map((c: any) => ({
+            id: c.id,
+            entity_type: 'deal',
+            entity_id: c.oppId,
+            column_key: 'comment',
+            action: 'comment added',
+            old_value: null,
+            new_value: `${c.text}${c.oppName ? ` [Deal: ${c.oppName}]` : ''}`,
+            user_id: c.author,
+            timestamp: c.createdAt,
+          }))
+      }
+    } catch {
+      // ignore
+    }
+
+    const combined = [...commentEntries, ...serverEntries].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return timeB - timeA
+    })
+    setEntries(combined)
+    setLoading(false)
   }, [filterUser, filterColumn, filterDeal, filterDateFrom, filterDateTo])
 
   useEffect(() => {
@@ -56,28 +99,32 @@ export const ChangeLogModal: React.FC<ChangeLogModalProps> = ({ isOpen, onClose 
   }, [isOpen, fetchLog])
 
   const handleDownload = async () => {
-    if (downloading) return
+    if (downloading || entries.length === 0) return
     setDownloading(true)
     try {
-      const { data, filename } = await downloadGlobalAuditLog({
-        user: filterUser.trim() || undefined,
-        column: filterColumn.trim() || undefined,
-        deal: filterDeal.trim() || undefined,
-        date_from: filterDateFrom || undefined,
-        date_to: filterDateTo || undefined,
-      })
-      const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' })
+      const headers = ['Timestamp', 'User', 'Action', 'Entity ID', 'Column / Field', 'Old Value', 'New Value']
+      const rows = entries.map((e) => [
+        `"${formatTimestamp(e.timestamp)}"`,
+        `"${(e.user_id || '').replace(/"/g, '""')}"`,
+        `"${(e.action || '').replace(/"/g, '""')}"`,
+        `"${(e.entity_id || '').replace(/"/g, '""')}"`,
+        `"${(e.column_key || '').replace(/"/g, '""')}"`,
+        `"${(e.old_value || '').replace(/"/g, '""')}"`,
+        `"${(e.new_value || '').replace(/"/g, '""')}"`,
+      ])
+      const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', filename || 'change_log.csv')
+      link.setAttribute('download', `audit_log_${new Date().toISOString().slice(0, 10)}.csv`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
-      showToast.success('Downloaded change log CSV')
-    } catch (err: any) {
-      showToast.error(err?.response?.data?.detail || 'Download failed')
+      showToast.success('Downloaded audit log CSV')
+    } catch {
+      showToast.error('Download failed')
     } finally {
       setDownloading(false)
     }
@@ -140,10 +187,10 @@ export const ChangeLogModal: React.FC<ChangeLogModalProps> = ({ isOpen, onClose 
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Admin Change Log
+                Audit Log & Change History
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Audited history of custom columns and deal value edits. Times shown in your browser's local timezone.
+                Audited history of deal comments, additions, and field edits. Times shown in your browser's local timezone.
               </p>
             </div>
           </div>

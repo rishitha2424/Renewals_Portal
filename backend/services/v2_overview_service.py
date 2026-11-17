@@ -1399,6 +1399,7 @@ class V2OverviewService:
         compare: str | None = None,
         bu: str | None = None,
         ageing: str | None = None,
+        owner: str | None = None,
         exclude_deleted: bool = False,
         as_of: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
@@ -1439,14 +1440,16 @@ class V2OverviewService:
 
         # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
         delayed_kinds = (
-            "delayed", "delayed_total", "delayed_overdue", "overdue", "delayed_ahead",
+            "all", "delayed", "delayed_total", "delayed_all", "delayed_overdue", "overdue", "delayed_ahead",
             "later_close", "ahead", "slippage", "slippage_total", "slipped", "slipped_total",
             "slipped_from_year", "slipped_from_start_year", "newly_delayed", "lost",
             "needs_review", "review", "delayed_ahead_split", "delayed_other_type", "slipped_other_type"
         )
         if kind in delayed_kinds or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_"))):
             target_kind = kind
-            if kind.startswith("delayed_") and kind not in ("delayed_overdue", "delayed_ahead", "delayed_ahead_split", "delayed_other_type", "delayed_total"):
+            if kind in ("all", "delayed_all"):
+                target_kind = "total"
+            elif kind.startswith("delayed_") and kind not in ("delayed_overdue", "delayed_ahead", "delayed_ahead_split", "delayed_other_type", "delayed_total"):
                 target_kind = kind.replace("delayed_", "")
             from backend.services.v2_delayed_service import V2DelayedService
             del_svc = V2DelayedService(self.db)
@@ -1459,6 +1462,7 @@ class V2OverviewService:
                 status=approval_status,
                 bu=bu,
                 ageing=ageing,
+                owner=owner,
                 expiry_year=expiry_year,
                 start_year=start_year,
                 split_key=split_key,
@@ -1763,6 +1767,13 @@ class V2OverviewService:
             else:
                 df = df[df["approval_status"] == approval_status]
 
+        if owner and owner != "All" and not df.empty:
+            owner_clean = owner.strip().lower()
+            if "opportunity_owner" in df.columns:
+                df = df[df["opportunity_owner"].fillna("").astype(str).str.strip().str.lower() == owner_clean]
+            elif "owner" in df.columns:
+                df = df[df["owner"].fillna("").astype(str).str.strip().str.lower() == owner_clean]
+
         if not df.empty:
             df = df.sort_values(by=["forecast_acv_amount", "opportunity_id_18"], ascending=[False, True])
 
@@ -1778,6 +1789,7 @@ class V2OverviewService:
                 "approval_status": str(r["approval_status"]),
                 "sub_region": str(r["canonical_region"]),
                 "business_unit_primary": str(r["business_unit_primary"]),
+                "opportunity_owner": str(r.get("opportunity_owner") or r.get("owner") or ""),
                 "close_date": r["close_date"].isoformat() if hasattr(r["close_date"], "isoformat") else str(r["close_date"]) if r["close_date"] else None,
             })
         return {

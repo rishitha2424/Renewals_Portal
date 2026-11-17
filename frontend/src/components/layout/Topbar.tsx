@@ -401,7 +401,7 @@ export default function Topbar() {
   return (
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
-      <div className="w-full max-w-[1920px] mx-auto px-2.5 sm:px-4 lg:px-6 py-1.5 sm:py-2">
+      <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
         <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
           {/* ── Left & Center Filters Group ── */}
           <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 lg:gap-2 min-w-0 flex-1">

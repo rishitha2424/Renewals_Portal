@@ -89,13 +89,13 @@ def list_custom_columns(
     return {"columns": result}
 
 
-@router.post("", dependencies=[Depends(require_admin_context)])
+@router.post("")
 def create_custom_column(
     body: CreateColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    """Create a new custom column (Admin only)."""
+    """Create a new custom column."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         col = svc.create_column(
@@ -220,7 +220,7 @@ def delete_custom_column(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/audit", dependencies=[Depends(require_admin_context)])
+@router.get("/audit")
 def get_global_audit_log(
     user: Optional[str] = Query(None),
     column: Optional[str] = Query(None),
@@ -229,9 +229,9 @@ def get_global_audit_log(
     date_to: Optional[str] = Query(None),
     limit: int = Query(500),
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    """Global change log table with filters for user, column, deal, date range (Admin only)."""
+    """Global change log table with filters for user, column, deal, date range."""
     entries = svc.get_audit_log(
         user=user,
         column=column,
@@ -243,7 +243,7 @@ def get_global_audit_log(
     return {"audit": entries, "count": len(entries)}
 
 
-@router.get("/audit/export", dependencies=[Depends(require_admin_context)])
+@router.get("/audit/export")
 def export_global_audit_log(
     user: Optional[str] = Query(None),
     column: Optional[str] = Query(None),
@@ -251,9 +251,9 @@ def export_global_audit_log(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    """Download the change log as CSV (Admin only)."""
+    """Download the change log as CSV."""
     import csv
     import io
     entries = svc.get_audit_log(
@@ -310,15 +310,15 @@ def get_deal_annotations(
     return {"opportunity_id_18": opportunity_id, "annotations": annots}
 
 
-@router.put("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_admin_context)])
+@router.put("/deals/{opportunity_id}/annotations/{column_key}")
 def set_deal_annotation(
     opportunity_id: str,
     column_key: str,
     body: SetDealAnnotationRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    """Set or update a deal annotation (Admin only)."""
+    """Set or update a deal annotation."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         res = svc.set_deal_value(
@@ -336,14 +336,14 @@ def set_deal_annotation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.delete("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_admin_context)])
+@router.delete("/deals/{opportunity_id}/annotations/{column_key}")
 def delete_deal_annotation(
     opportunity_id: str,
     column_key: str,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    """Clear a deal annotation (Admin only)."""
+    """Clear a deal annotation."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         cleared = svc.delete_deal_value(opportunity_id, column_key, user_id=user_id)

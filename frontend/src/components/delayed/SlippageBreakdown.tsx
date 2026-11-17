@@ -1,5 +1,6 @@
 import React from 'react'
 import { acvM, formatDate } from '@/utils/format'
+import Tile from '@/components/common/Tile'
 
 export interface SlippageBreakdownProps {
   slippageSec: any
@@ -25,7 +26,7 @@ export default function SlippageBreakdown({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-            Slippage Breakdown & Slipped From
+            Slippage to 2027 Breakdown & Slipped From
           </span>
           <span className="text-[11px] text-[var(--text-muted)]">
             Since start of year{baseDateStr}: {deltaPeriodStart && baseDate ? (
@@ -57,24 +58,17 @@ export default function SlippageBreakdown({
             const cnt = cData.count || 0
             const acv = cData.acv || 0
             const hasC = cnt > 0 || acv > 0
-            const drawerTitle = `Slippage · ${label} (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acv)})`
+            const drawerTitle = `Slippage to 2027 · ${label} (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${acvM(acv)})`
 
             return (
-              <div
+              <Tile
                 key={cat}
-                onClick={() => hasC && onDealsClick(drawerTitle, { kind: 'slippage', category: cat })}
-                className={`p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] transition-colors ${
-                  hasC ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'opacity-60 cursor-default'
-                }`}
-              >
-                <div className="text-[11px] font-semibold text-[var(--text-secondary)]">{label}</div>
-                <div className="text-lg font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
-                  {acvM(acv)}
-                </div>
-                <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
-                  {cnt} {cnt === 1 ? 'deal' : 'deals'}
-                </div>
-              </div>
+                title={label}
+                amount={acvM(acv)}
+                count={cnt}
+                polarity="bad_when_higher"
+                onClick={hasC ? () => onDealsClick(drawerTitle, { kind: 'slippage', category: cat }) : undefined}
+              />
             )
           })}
         </div>
@@ -92,7 +86,7 @@ export default function SlippageBreakdown({
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="data-table w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-[var(--bg-secondary)]/30 text-[var(--text-secondary)] font-semibold border-b border-[var(--border)]">
                   <th className="px-4 py-2">Service start year</th>
@@ -127,7 +121,7 @@ export default function SlippageBreakdown({
                         {acvM(sf.acv)}
                       </td>
                       <td className="px-4 py-2 text-[var(--text-muted)]">
-                        Closing in {slippageSec.next_year || 'next year'}
+                        Closing in {slippageSec.next_year || '2027'}
                       </td>
                     </tr>
                   )

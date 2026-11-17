@@ -1249,7 +1249,7 @@ export default function DataUploads() {
 
         <div className="card p-0 border border-[var(--border)] bg-[var(--bg-card)] rounded-md overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left" id="snapshot-history-table">
+            <table className="data-table w-full text-xs text-left" id="snapshot-history-table">
               <thead className="bg-[var(--bg-secondary)] text-[var(--text-muted)] font-bold border-b border-[var(--border)] uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="py-3 px-3.5">Snapshot Date</th>

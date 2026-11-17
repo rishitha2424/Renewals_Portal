@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,14 +17,44 @@ import {
   TrendingUp,
   AlertCircle,
   ExternalLink,
+  MessageSquare,
+  Send,
+  Trash2,
+  Edit2,
+  Check,
+  Plus,
+  Sliders,
+  RotateCcw,
+  Save,
 } from 'lucide-react'
-import { getOpportunity, getOpportunityHistory, getOpportunityChangelog } from '@/api/client'
+import {
+  getOpportunity,
+  getOpportunityHistory,
+  getOpportunityChangelog,
+  getCustomColumns,
+  createCustomColumn,
+  getDealAnnotations,
+  setDealAnnotation,
+  deleteDealAnnotation,
+  CustomColumnItem,
+  DealAnnotationItem,
+} from '@/api/client'
 import { formatACV, formatDate } from '@/utils/format'
 import Badge, { ForecastBadge, ApprovalBadge } from '@/components/ui/Badge'
 import Drawer from '@/components/ui/Drawer'
 import { Skeleton } from '@/components/ui/Skeleton'
+import showToast from '@/components/ui/Toast'
 import { useAppStore } from '@/store/appStore'
 import clsx from 'clsx'
+
+export interface DealComment {
+  id: string
+  oppId: string
+  oppName?: string
+  author: string
+  text: string
+  createdAt: string
+}
 
 interface OpportunityDrawerProps {
   oppId: string | null
@@ -32,8 +62,142 @@ interface OpportunityDrawerProps {
 }
 
 export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'timeline' | 'changelog' | 'details'>('timeline')
+  // Comments & Cols is the first, default active tab so it opens immediately
+  const [activeTab, setActiveTab] = useState<'comments' | 'timeline' | 'changelog' | 'details'>('comments')
+  const [commentsColsSection, setCommentsColsSection] = useState<'all' | 'comments' | 'cols'>('all')
   const activeSnapshotId = useAppStore((s) => s.activeSnapshotId)
+  const adminName = useAppStore((s) => s.adminName)
+
+  // ── Comments State ────────────────────────────────────────────────────────
+  const [comments, setComments] = useState<DealComment[]>([])
+  const [commentAuthor, setCommentAuthor] = useState<string>(() => {
+    return localStorage.getItem('deal_commenter_name') || 'Reviewer'
+  })
+  const [commentText, setCommentText] = useState('')
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentText, setEditingCommentText] = useState('')
+
+  // ── Custom Columns & Deal Annotations Queries ────────────────────────────
+  const { data: customCols = [], refetch: refetchCols } = useQuery<CustomColumnItem[]>({
+    queryKey: ['custom-columns'],
+    queryFn: () => getCustomColumns(),
+  })
+
+  const { data: annotationsMap = {}, refetch: refetchAnnots } = useQuery<Record<string, DealAnnotationItem>>({
+    queryKey: ['deal-annotations', oppId],
+    queryFn: () => (oppId ? getDealAnnotations(oppId) : Promise.resolve({})),
+    enabled: !!oppId,
+  })
+
+  // Draft values for Custom Columns (Cols)
+  const [draftCols, setDraftCols] = useState<Record<string, string>>({})
+  const [savingColKey, setSavingColKey] = useState<string | null>(null)
+
+  // Inline form to add new column directly from drawer
+  const [showAddCol, setShowAddCol] = useState(false)
+  const [newColLabel, setNewColLabel] = useState('')
+  const [newColType, setNewColType] = useState('text')
+  const [isCreatingCol, setIsCreatingCol] = useState(false)
+
+  // Load comments from localStorage on oppId change
+  useEffect(() => {
+    if (!oppId) {
+      setComments([])
+      return
+    }
+    try {
+      const raw = localStorage.getItem(`deal_comments_${oppId}`)
+      if (raw) {
+        setComments(JSON.parse(raw))
+      } else {
+        setComments([])
+      }
+    } catch {
+      setComments([])
+    }
+  }, [oppId])
+
+  const handleAddComment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const trimmed = commentText.trim()
+    if (!trimmed || !oppId) return
+
+    const author = commentAuthor.trim() || adminName || 'Reviewer'
+    localStorage.setItem('deal_commenter_name', author)
+
+    const newComment: DealComment = {
+      id: `comm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      oppId,
+      oppName: opp?.opportunity_name || 'Opportunity',
+      author,
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+    }
+
+    const updated = [newComment, ...comments]
+    setComments(updated)
+    try {
+      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
+
+      // Also append to global deal comments audit log for Data Explorer
+      const globalRaw = localStorage.getItem('global_deal_comments_log')
+      const globalList = globalRaw ? JSON.parse(globalRaw) : []
+      globalList.unshift(newComment)
+      localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
+    } catch {
+      // ignore
+    }
+
+    setCommentText('')
+    showToast.success('Comment saved and logged')
+  }
+
+  const handleStartEditComment = (c: DealComment) => {
+    setEditingCommentId(c.id)
+    setEditingCommentText(c.text)
+  }
+
+  const handleSaveEditComment = () => {
+    if (!editingCommentId || !editingCommentText.trim() || !oppId) return
+    const trimmed = editingCommentText.trim()
+    const updated = comments.map((c) =>
+      c.id === editingCommentId ? { ...c, text: trimmed } : c
+    )
+    setComments(updated)
+    try {
+      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
+      const globalRaw = localStorage.getItem('global_deal_comments_log')
+      if (globalRaw) {
+        const globalList = JSON.parse(globalRaw).map((c: any) =>
+          c.id === editingCommentId ? { ...c, text: trimmed } : c
+        )
+        localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
+      }
+    } catch {
+      // ignore
+    }
+    setEditingCommentId(null)
+    setEditingCommentText('')
+    showToast.success('Comment updated')
+  }
+
+  const handleDeleteComment = (commentId: string) => {
+    if (!oppId) return
+    const updated = comments.filter((c) => c.id !== commentId)
+    setComments(updated)
+    try {
+      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
+
+      const globalRaw = localStorage.getItem('global_deal_comments_log')
+      if (globalRaw) {
+        const globalList = JSON.parse(globalRaw).filter((c: any) => c.id !== commentId)
+        localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
+      }
+    } catch {
+      // ignore
+    }
+    showToast.info('Comment removed')
+  }
 
   const { data: opp, isLoading: oppLoading } = useQuery({
     queryKey: ['opportunity', oppId, activeSnapshotId],
@@ -52,6 +216,88 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     queryFn: () => (oppId ? getOpportunityChangelog(oppId) : []),
     enabled: !!oppId,
   })
+
+  // Sync draft values for custom columns
+  useEffect(() => {
+    if (opp && customCols.length > 0) {
+      const initial: Record<string, string> = {}
+      customCols.forEach((col) => {
+        const directAnnot = annotationsMap[col.key]?.value
+        const oppVal = (opp as any)[col.key] ?? (opp as any)[col.label]
+        initial[col.key] = directAnnot !== undefined ? String(directAnnot ?? '') : (oppVal !== undefined ? String(oppVal ?? '') : '')
+      })
+      setDraftCols(initial)
+    }
+  }, [opp, customCols, annotationsMap])
+
+  const handleSaveCol = async (col: CustomColumnItem) => {
+    if (!oppId || col.type.startsWith('auto:')) return
+    const rawVal = draftCols[col.key] ?? ''
+    const currentAnnot = annotationsMap[col.key]
+    const trimmed = rawVal.trim()
+
+    setSavingColKey(col.key)
+    try {
+      if (trimmed === '') {
+        await deleteDealAnnotation(oppId, col.key)
+        showToast.success(`Cleared ${col.label}`)
+      } else {
+        await setDealAnnotation(oppId, col.key, trimmed, currentAnnot?.version)
+        showToast.success(`Saved ${col.label}`)
+      }
+      refetchAnnots()
+    } catch {
+      try {
+        const localKey = `deal_col_${oppId}_${col.key}`
+        if (trimmed === '') {
+          localStorage.removeItem(localKey)
+        } else {
+          localStorage.setItem(localKey, trimmed)
+        }
+        showToast.success(`Saved ${col.label} locally`)
+      } catch {
+        showToast.error(`Failed to save ${col.label}`)
+      }
+    } finally {
+      setSavingColKey(null)
+    }
+  }
+
+  const handleClearCol = async (col: CustomColumnItem) => {
+    if (!oppId || col.type.startsWith('auto:')) return
+    setSavingColKey(col.key)
+    try {
+      await deleteDealAnnotation(oppId, col.key)
+      setDraftCols((prev) => ({ ...prev, [col.key]: '' }))
+      refetchAnnots()
+      showToast.success(`Cleared ${col.label}`)
+    } catch {
+      localStorage.removeItem(`deal_col_${oppId}_${col.key}`)
+      setDraftCols((prev) => ({ ...prev, [col.key]: '' }))
+      showToast.success(`Cleared ${col.label}`)
+    } finally {
+      setSavingColKey(null)
+    }
+  }
+
+  const handleCreateColumn = async (labelToCreate?: string, typeToCreate?: string) => {
+    const label = (labelToCreate || newColLabel).trim()
+    const colType = typeToCreate || newColType
+    if (!label) return
+
+    setIsCreatingCol(true)
+    try {
+      await createCustomColumn({ label, type: colType })
+      await refetchCols()
+      setNewColLabel('')
+      setShowAddCol(false)
+      showToast.success(`Added custom column "${label}"`)
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to create column')
+    } finally {
+      setIsCreatingCol(false)
+    }
+  }
 
   return (
     <Drawer
@@ -192,11 +438,29 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
           )}
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-[var(--border)]">
+          <div className="flex border-b border-[var(--border)] overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setActiveTab('comments')}
+              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'comments'
+                  ? 'text-teal-600 dark:text-teal-400 font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Comments & Cols ({comments.length + customCols.length})
+              {activeTab === 'comments' && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500 rounded-full"
+                />
+              )}
+            </button>
             <button
               type="button"
               onClick={() => setActiveTab('timeline')}
-              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 ${
+              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'timeline'
                   ? 'text-teal-600 dark:text-teal-400 font-bold'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -214,7 +478,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
             <button
               type="button"
               onClick={() => setActiveTab('changelog')}
-              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 ${
+              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'changelog'
                   ? 'text-teal-600 dark:text-teal-400 font-bold'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -232,7 +496,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
             <button
               type="button"
               onClick={() => setActiveTab('details')}
-              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 ${
+              className={`pb-2.5 px-3 font-semibold text-xs transition-colors relative flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'details'
                   ? 'text-teal-600 dark:text-teal-400 font-bold'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -453,6 +717,415 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                   {opp.months_delayed != null ? `${opp.months_delayed} mo` : 'N/A'}
                 </span>
               </div>
+            </div>
+          )}
+
+          {/* TAB 1: Comments & Custom Cols */}
+          {activeTab === 'comments' && (
+            <div className="space-y-4">
+              {/* Segmented Sub-Navbar */}
+              <div className="flex items-center justify-between p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)]">
+                <div className="flex items-center gap-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setCommentsColsSection('all')}
+                    className={clsx(
+                      'px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer',
+                      commentsColsSection === 'all'
+                        ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    All Activity
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCommentsColsSection('comments')}
+                    className={clsx(
+                      'px-3 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer',
+                      commentsColsSection === 'comments'
+                        ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    Comments ({comments.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCommentsColsSection('cols')}
+                    className={clsx(
+                      'px-3 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 cursor-pointer',
+                      commentsColsSection === 'cols'
+                        ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    )}
+                  >
+                    <Sliders className="w-3 h-3" />
+                    Custom Cols ({customCols.length})
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCol(!showAddCol)}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 hover:bg-teal-500/20 border border-teal-500/20 flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add Col
+                </button>
+              </div>
+
+              {/* Inline "+ Add Col" Card */}
+              {showAddCol && (
+                <div className="p-3.5 rounded-xl border border-teal-500/30 bg-teal-500/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                      Create New Custom Column (Col)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCol(false)}
+                      className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">
+                        Column Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newColLabel}
+                        onChange={(e) => setNewColLabel(e.target.value)}
+                        placeholder="e.g. Action Item, Notes, Follow-up"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">
+                        Column Type
+                      </label>
+                      <select
+                        value={newColType}
+                        onChange={(e) => setNewColType(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      >
+                        <option value="text">Text (short)</option>
+                        <option value="long text">Long text (notes)</option>
+                        <option value="date">Date</option>
+                        <option value="number">Number</option>
+                        <option value="checkbox">Checkbox</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCol(false)}
+                      className="px-3 py-1 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateColumn()}
+                      disabled={isCreatingCol || !newColLabel.trim()}
+                      className="px-3.5 py-1 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50 cursor-pointer"
+                    >
+                      {isCreatingCol ? 'Creating...' : 'Create Column'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── CUSTOM COLUMNS (COLS) SECTION ── */}
+              {(commentsColsSection === 'all' || commentsColsSection === 'cols') && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs px-1">
+                    <span className="font-bold text-[var(--text-primary)] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                      Custom Columns (Cols) & Deal Attributes ({customCols.length})
+                    </span>
+                    <span className="text-[10px] text-[var(--text-muted)]">Type and save values directly</span>
+                  </div>
+
+                  {customCols.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-card)] text-center space-y-2.5">
+                      <p className="text-xs text-[var(--text-muted)]">No custom columns added yet.</p>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCreateColumn('Deal Notes', 'long text')}
+                          className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500 text-[var(--text-primary)] font-medium cursor-pointer"
+                        >
+                          + Add "Deal Notes"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateColumn('Action Item', 'text')}
+                          className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500 text-[var(--text-primary)] font-medium cursor-pointer"
+                        >
+                          + Add "Action Item"
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateColumn('Follow-up Date', 'date')}
+                          className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] hover:border-teal-500 text-[var(--text-primary)] font-medium cursor-pointer"
+                        >
+                          + Add "Follow-up Date"
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {customCols.map((col) => {
+                        const val = draftCols[col.key] ?? ''
+                        const isSaving = savingColKey === col.key
+                        const annot = annotationsMap[col.key]
+                        return (
+                          <div
+                            key={col.key}
+                            className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] hover:border-teal-500/30 transition-all space-y-2 shadow-xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-[var(--text-primary)]">
+                                  {col.label}
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
+                                  {col.type}
+                                </span>
+                              </div>
+                              {annot?.updated_at && (
+                                <span className="text-[10px] text-[var(--text-muted)]">
+                                  Updated {formatDate(annot.updated_at)} by {annot.updated_by || 'user'}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {col.type === 'long text' ? (
+                                <textarea
+                                  rows={2}
+                                  value={val}
+                                  onChange={(e) => setDraftCols({ ...draftCols, [col.key]: e.target.value })}
+                                  placeholder={`Enter ${col.label}...`}
+                                  className="flex-1 p-2 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
+                                />
+                              ) : col.type === 'dropdown' && col.dropdown_options?.length ? (
+                                <select
+                                  value={val}
+                                  onChange={(e) => setDraftCols({ ...draftCols, [col.key]: e.target.value })}
+                                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                >
+                                  <option value="">(Select {col.label})</option>
+                                  {col.dropdown_options.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type={col.type === 'date' ? 'date' : col.type === 'number' ? 'number' : 'text'}
+                                  value={val}
+                                  onChange={(e) => setDraftCols({ ...draftCols, [col.key]: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleSaveCol(col)
+                                    }
+                                  }}
+                                  placeholder={`Enter ${col.label}...`}
+                                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                />
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleSaveCol(col)}
+                                disabled={isSaving}
+                                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                                title="Save field value"
+                              >
+                                <Save className="w-3 h-3" />
+                                {isSaving ? '...' : 'Save'}
+                              </button>
+
+                              {val && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleClearCol(col)}
+                                  disabled={isSaving}
+                                  className="p-1.5 text-[var(--text-muted)] hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                  title="Clear / delete value"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── DEAL COMMENTS SECTION ── */}
+              {(commentsColsSection === 'all' || commentsColsSection === 'comments') && (
+                <div className="space-y-3 pt-2">
+                  {/* Add Comment Card */}
+                  <div className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 shadow-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                        Add Deal Comment & Log
+                      </h4>
+                      <span className="text-[11px] text-[var(--text-muted)]">Logged with author & timestamp</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 flex items-center gap-1">
+                          <User className="w-3 h-3" /> Commenter:
+                        </span>
+                        <input
+                          type="text"
+                          value={commentAuthor}
+                          onChange={(e) => setCommentAuthor(e.target.value)}
+                          placeholder="Your name or role"
+                          className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                        />
+                      </div>
+
+                      <textarea
+                        rows={3}
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                            e.preventDefault()
+                            handleAddComment()
+                          }
+                        }}
+                        placeholder="Type comments, deal notes, approval updates, or risk reasons..."
+                        className="w-full p-2.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
+                      />
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-[var(--text-muted)]">
+                          Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[9px] font-mono">Ctrl+Enter</kbd> to save
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddComment()}
+                          disabled={!commentText.trim()}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        >
+                          <Send className="w-3 h-3" />
+                          Save Comment
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Comment Activity Thread */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs px-1">
+                      <span className="font-semibold text-[var(--text-secondary)]">
+                        Comment Activity Log ({comments.length})
+                      </span>
+                    </div>
+
+                    {comments.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-[var(--text-muted)] border border-dashed border-[var(--border)] rounded-xl p-4 bg-[var(--bg-card)]">
+                        <MessageSquare className="w-5 h-5 mx-auto mb-1 text-[var(--text-muted)] opacity-50" />
+                        <p className="font-medium">No comments recorded yet for this deal.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {comments.map((c) => (
+                          <div
+                            key={c.id}
+                            className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-xs flex flex-col gap-2 hover:border-teal-500/30 transition-all shadow-xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold flex items-center justify-center text-[10px]">
+                                  {c.author.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-[var(--text-primary)] text-xs">
+                                    {c.author}
+                                  </span>
+                                  <span className="text-[10px] text-[var(--text-muted)] ml-2">
+                                    {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {editingCommentId !== c.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditComment(c)}
+                                    className="p-1 text-[var(--text-muted)] hover:text-teal-600 rounded hover:bg-teal-500/10 transition-colors cursor-pointer"
+                                    title="Edit comment"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                  title="Delete comment"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {editingCommentId === c.id ? (
+                              <div className="space-y-2 pl-8 pt-1">
+                                <textarea
+                                  rows={2}
+                                  value={editingCommentText}
+                                  onChange={(e) => setEditingCommentText(e.target.value)}
+                                  className="w-full p-2 text-xs rounded-lg border border-teal-500 bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none resize-none"
+                                />
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCommentId(null)}
+                                    className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] rounded-md cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveEditComment}
+                                    className="px-3 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-md flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    Save Edit
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed pl-8">
+                                {c.text}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

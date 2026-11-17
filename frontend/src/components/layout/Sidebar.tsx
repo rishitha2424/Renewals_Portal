@@ -28,13 +28,14 @@ export default function Sidebar() {
   } = useAppStore()
   const location = useLocation()
 
-  // Track viewport breakpoint: tablet is 640-1024, desktop is >1024
-  const [isTablet, setIsTablet] = useState(false)
+  // Track viewport breakpoint: compact (< 1280px e.g. tablets, 720p/768p/900p laptops, zoomed displays)
+  const [isCompactScreen, setIsCompactScreen] = useState(false)
+  const [userToggled, setUserToggled] = useState<boolean | null>(null)
 
   useEffect(() => {
     const checkWidth = () => {
       const w = window.innerWidth
-      setIsTablet(w >= 640 && w < 1024)
+      setIsCompactScreen(w >= 640 && w < 1280)
     }
     checkWidth()
     window.addEventListener('resize', checkWidth)
@@ -46,8 +47,15 @@ export default function Sidebar() {
     setMobileSidebarOpen(false)
   }, [location.pathname, location.hash, setMobileSidebarOpen])
 
-  const effectiveCollapsed = isTablet ? true : sidebarCollapsed
+  // If user explicitly toggled, honor it; otherwise default to collapsed on compact screens (<1280px)
+  const effectiveCollapsed = userToggled !== null ? userToggled : (isCompactScreen ? true : sidebarCollapsed)
   const effectiveWidth = effectiveCollapsed ? 56 : 232
+
+  const handleToggle = () => {
+    const next = !effectiveCollapsed
+    setUserToggled(next)
+    toggleSidebarCollapsed()
+  }
 
   return (
     <>
@@ -145,26 +153,24 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom Footer: Collapse toggle (visible on desktop > 1024px) */}
-        {!isTablet && (
-          <div className="p-3 border-t border-white/10 flex-shrink-0">
-            <button
-              type="button"
-              onClick={toggleSidebarCollapsed}
-              className="w-full min-h-[40px] flex items-center justify-center gap-2 py-2 rounded-md text-slate-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors focus:outline-none"
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {sidebarCollapsed ? (
-                <ChevronRight className="w-4 h-4" strokeWidth={1.75} />
-              ) : (
-                <>
-                  <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
-                  <span>Collapse</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
+        {/* Bottom Footer: Collapse toggle (always available) */}
+        <div className="p-3 border-t border-white/10 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="w-full min-h-[40px] flex items-center justify-center gap-2 py-2 rounded-md text-slate-400 hover:text-white hover:bg-white/5 text-xs font-medium transition-colors focus:outline-none"
+            title={effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {effectiveCollapsed ? (
+              <ChevronRight className="w-4 h-4" strokeWidth={1.75} />
+            ) : (
+              <>
+                <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
+                <span>Collapse</span>
+              </>
+            )}
+          </button>
+        </div>
       </motion.aside>
 
       {/* ── 2. Mobile Drawer / Sheet (Phone < 640px) ── */}

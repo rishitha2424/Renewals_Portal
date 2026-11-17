@@ -157,7 +157,7 @@ export default function OpportunitiesListDrawer({
               <p className="text-xs text-slate-400 mt-1">Try refining your search terms or filters</p>
             </div>
           ) : (
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full min-w-[640px] text-left border-collapse text-xs">
               <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800/90 z-10 border-b border-slate-200 dark:border-white/10 select-none">
                 <tr>
                   <th

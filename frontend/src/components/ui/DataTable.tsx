@@ -77,9 +77,9 @@ export function DataTable<T extends Record<string, any>>({
         className="overflow-auto relative w-full"
         style={{ maxHeight }}
       >
-        <table className="w-full text-sm text-left border-collapse tabular-nums">
+        <table className="data-table w-full text-xs text-left border-collapse tabular-nums">
           {/* Sticky Header */}
-          <thead className="sticky top-0 z-20 bg-[var(--bg-card)] border-b border-[var(--border)] shadow-sm">
+          <thead className="sticky top-0 z-20 bg-[var(--bg-secondary)] border-b border-[var(--border)] shadow-xs">
             <tr>
               {columns.map((col, idx) => {
                 const isStickyCol = stickyFirstColumn && idx === 0
@@ -90,11 +90,11 @@ export function DataTable<T extends Record<string, any>>({
                     key={col.key}
                     style={{ width: col.width }}
                     className={clsx(
-                      'px-4 py-3 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] select-none transition-colors relative',
+                      'px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] select-none transition-colors relative',
                       col.align === 'right' && 'text-right',
                       col.align === 'center' && 'text-center',
                       isStickyCol &&
-                        'sticky left-0 z-30 bg-[var(--bg-card)] shadow-[2px_0_5px_rgba(0,0,0,0.03)] border-r border-[var(--border)]',
+                        'sticky left-0 z-30 bg-[var(--bg-secondary)] shadow-xs border-r border-[var(--border)]',
                       col.sortable && 'cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
                     )}
                     onClick={() => col.sortable && handleSort(col.key)}
@@ -165,11 +165,11 @@ export function DataTable<T extends Record<string, any>>({
                       <td
                         key={col.key}
                         className={clsx(
-                          'px-4 py-3 whitespace-nowrap transition-colors',
-                          col.align === 'right' && 'text-right font-medium',
+                          'px-3 py-2 text-xs whitespace-nowrap transition-colors h-[36px]',
+                          col.align === 'right' && 'text-right font-medium tabular-nums',
                           col.align === 'center' && 'text-center',
                           isStickyCol &&
-                            'sticky left-0 z-10 bg-[var(--bg-card)] group-hover:bg-[var(--bg-card-hover)] shadow-[2px_0_5px_rgba(0,0,0,0.03)] border-r border-[var(--border)] font-semibold text-[var(--text-primary)]'
+                            'sticky left-0 z-10 bg-[var(--bg-card)] group-hover:bg-[var(--bg-secondary)] shadow-xs border-r border-[var(--border)] font-semibold text-[var(--text-primary)]'
                         )}
                       >
                         {col.render ? col.render(rawVal, row) : rawVal ?? '—'}

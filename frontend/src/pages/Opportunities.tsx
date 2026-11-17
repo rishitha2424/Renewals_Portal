@@ -727,19 +727,17 @@ export default function Opportunities() {
             </button>
           )}
 
-          {/* Change Log (Admin only) */}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowChangeLogModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-all"
-              id="explorer-change-log-btn"
-              title="Audit change log of all additions and edits"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>Change log</span>
-            </button>
-          )}
+          {/* Audit Log */}
+          <button
+            type="button"
+            onClick={() => setShowChangeLogModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-all cursor-pointer"
+            id="explorer-change-log-btn"
+            title="Audit log of deal comments, additions, and field edits"
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Audit Log</span>
+          </button>
 
           {/* Column Picker Button */}
           <button
@@ -1476,7 +1474,7 @@ export default function Opportunities() {
       {/* ── Virtualised / Sticky Header Table ────────────────────────────── */}
       <Card id="explorer-table" padding="none" className="overflow-hidden border-[var(--border)] shadow-sm scroll-mt-24">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto relative" id="explorer-table-container">
-          <table className="w-full text-xs text-left border-collapse">
+          <table className="data-table w-full text-xs text-left border-collapse">
             {/* Sticky Header */}
             <thead className="sticky top-0 bg-[var(--bg-secondary)] z-20 shadow-sm border-b border-[var(--border)]">
               <tr>

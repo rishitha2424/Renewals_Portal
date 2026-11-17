@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar } from 'lucide-react'
+import { Printer, Presentation, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Calendar, ArrowLeft, ArrowUp } from 'lucide-react'
 import {
   getV2OverviewSummary,
   getApprovalsDistribution,
@@ -27,6 +28,22 @@ import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 export default function ExecutiveView() {
   const { activeSnapshotId, setActiveSnapshotId, compareSnapshotId, snapshots: storeSnapshots } = useAppStore()
   const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
+  const navigate = useNavigate()
+  const [scrollProgress, setScrollProgress] = useState(0)
+  const [showScrollTop, setShowScrollTop] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight
+      if (totalHeight > 0) {
+        setScrollProgress(Math.min(100, Math.max(0, (window.scrollY / totalHeight) * 100)))
+      }
+      setShowScrollTop(window.scrollY > 300)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const { data: fetchedSnapshots = [] } = useQuery({
     queryKey: ['snapshots'],
@@ -136,11 +153,23 @@ export default function ExecutiveView() {
     list.push({ id: 'exec-movement', title: 'Baselines' })
     if (approvalsQuery.data?.statuses?.length) list.push({ id: 'exec-approvals', title: 'Approval Status' })
     if (expiryQuery.data?.grids) list.push({ id: 'exec-expiry', title: 'Expiry Quarter' })
-    if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: 'Top Regions' })
+    if (regionsQuery.data?.regions?.length) list.push({ id: 'exec-regions', title: regionsQuery.data.regions.length > 10 ? 'Top 10 Regions' : 'Regions by ACV' })
     if (buQuery.data?.rows?.length) list.push({ id: 'exec-bu', title: 'Business Units' })
-    if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage' })
+    if (delayedQuery.data?.delayed_renewals || delayedQuery.data?.slippage) list.push({ id: 'exec-delayed', title: 'Delayed & Slippage to 2027' })
     return list
   }, [overviewQuery.data, approvalsQuery.data, expiryQuery.data, regionsQuery.data, buQuery.data, delayedQuery.data])
+
+  const currentSnapshotDate = overviewQuery.data?.snapshot_date || ''
+
+  useEffect(() => {
+    const prevTitle = document.title
+    if (currentSnapshotDate) {
+      document.title = `Renewals Executive Summary - ${formatDate(currentSnapshotDate)}`
+    }
+    return () => {
+      document.title = prevTitle
+    }
+  }, [currentSnapshotDate])
 
   if (isLoading) {
     return (
@@ -285,6 +314,7 @@ export default function ExecutiveView() {
   // Top 10 Regions
   const allRegions = regions.regions || []
   const top10Regions = allRegions.slice(0, 10)
+  const regionsTitle = allRegions.length > 10 ? '5. Top 10 Regions by ACV' : '5. Regions by ACV'
 
   // Business Units
   const buRows = bu.rows || []
@@ -330,7 +360,7 @@ export default function ExecutiveView() {
   }
 
   if (slippageRowsSumCount !== slippageTotal.count || Math.abs(slippageRowsSumAcv - slippageTotal.acv) > 0.05) {
-    mismatchErrors.push(`Slippage table rows (${slippageRowsSumCount} deals / ${formatCurrency(slippageRowsSumAcv)}) do not reconcile to Slippage total (${slippageTotal.count} deals / ${formatCurrency(slippageTotal.acv)})`)
+    mismatchErrors.push(`Slippage to 2027 table rows (${slippageRowsSumCount} deals / ${formatCurrency(slippageRowsSumAcv)}) do not reconcile to Slippage to 2027 total (${slippageTotal.count} deals / ${formatCurrency(slippageTotal.acv)})`)
   }
 
   const hasReconciliationMismatch = mismatchErrors.length > 0
@@ -341,31 +371,34 @@ export default function ExecutiveView() {
   })
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-6xl mx-auto" id="executive-report-view">
+    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 sm:p-10 max-w-[1000px] mx-auto space-y-7" id="executive-report-view">
       {/* Print CSS styles */}
       <style>{`
         @media print {
           @page {
-            size: A4;
-            margin: 12mm 15mm;
+            size: A4 portrait;
+            margin: 12mm;
           }
           body {
             background: #ffffff !important;
             color: #0f172a !important;
-            font-size: 11pt !important;
+            font-size: 10pt !important;
             line-height: 1.4 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print {
+          .no-print, nav, aside, header.app-header, #app-sidebar, [role="navigation"] {
             display: none !important;
           }
-          .page-break-avoid {
+          .page-break-avoid, .card {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
           table {
             page-break-inside: auto;
+          }
+          thead {
+            display: table-header-group !important;
           }
           tr {
             page-break-inside: avoid !important;
@@ -374,13 +407,51 @@ export default function ExecutiveView() {
         }
       `}</style>
 
+      {/* Scroll Progress Bar (Screen only) */}
+      <div className="fixed top-0 left-0 right-0 h-[3px] bg-slate-200 z-50 no-print">
+        <div
+          className="h-full bg-[#00A3AD] transition-all duration-75"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
+      {/* Floating Quick Scroll to Top (Screen only) */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 p-2.5 rounded-full bg-[#12284C] text-white shadow-lg hover:bg-[#00A3AD] transition-all duration-200 z-40 no-print flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+          title="Scroll to top"
+          id="exec-floating-top-btn"
+        >
+          <ArrowUp size={16} />
+          <span className="hidden sm:inline">Top</span>
+        </button>
+      )}
+
       {/* Action Bar (hidden in print) */}
       <div className="no-print flex flex-wrap items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-200">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              try {
+                if (window.history.length > 1) {
+                  navigate(-1)
+                } else {
+                  navigate('/')
+                }
+              } catch {
+                navigate('/')
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition cursor-pointer"
+            id="exec-back-btn"
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
           <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 size={13} className="mr-1 text-emerald-600" /> Standalone Print Report
           </span>
-          <span className="text-xs text-slate-500">Opens in new tab · Optimized for A4 / PDF export</span>
+          <span className="text-xs text-slate-500 hidden sm:inline">Opens in new tab · Optimized for A4 / PDF export</span>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -507,13 +578,14 @@ export default function ExecutiveView() {
       {/* Forecast Category Summary table */}
       <section id="exec-forecast" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-blue-50/60 border-b border-slate-200 border-l-4 border-l-blue-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-blue-900">
               1. Forecast Category Summary
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Forecast Category</th>
@@ -551,13 +623,14 @@ export default function ExecutiveView() {
       {/* Movement vs yesterday and vs last week */}
       <section id="exec-movement" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-teal-50/60 border-b border-slate-200 border-l-4 border-l-[#00A3AD] flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-teal-900">
               2. Movement vs. Historical Baselines
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Baseline Comparison</th>
@@ -614,13 +687,14 @@ export default function ExecutiveView() {
       {/* Approval Status Summary table */}
       <section id="exec-approvals" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-emerald-50/60 border-b border-slate-200 border-l-4 border-l-emerald-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-emerald-900">
               3. Approval Status Summary
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Approval Status</th>
@@ -659,13 +733,14 @@ export default function ExecutiveView() {
       {/* Expiry Quarter × Forecast Category table */}
       <section id="exec-expiry" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-indigo-50/60 border-b border-slate-200 border-l-4 border-l-indigo-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-indigo-900">
               4. Expiry Quarter × Forecast Category
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-3 py-2">Quarter</th>
@@ -708,16 +783,16 @@ export default function ExecutiveView() {
       {/* Top 10 Regions by ACV table */}
       <section id="exec-regions" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 border-l-4 border-l-[#12284C] flex items-center justify-between">
             <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-              5. Top 10 Regions by ACV
+              {regionsTitle}
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <th className="px-3 py-2 w-8 text-center">#</th>
                   <th className="px-3 py-2">Region</th>
                   <th className="px-3 py-2 text-right">Deals</th>
                   <th className="px-3 py-2 text-right">ACV (USD)</th>
@@ -728,8 +803,10 @@ export default function ExecutiveView() {
               <tbody className="divide-y divide-slate-100">
                 {top10Regions.map((reg: any, i: number) => (
                   <tr key={reg.region} className="hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-center text-slate-400 tabular-nums">{i + 1}</td>
-                    <td className="px-3 py-2 font-medium text-slate-800">{reg.region}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 mr-2 tabular-nums">{i + 1}</span>
+                      {reg.region}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatNumber(reg.count)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">{formatCurrency(reg.acv)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">
@@ -749,13 +826,14 @@ export default function ExecutiveView() {
       {/* Business Unit table */}
       <section id="exec-bu" className="scroll-mt-24 mb-6 page-break-avoid">
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-blue-50/60 border-b border-slate-200 border-l-4 border-l-blue-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-blue-900">
               6. Business Unit Breakdown
             </h2>
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Business Unit</th>
@@ -798,23 +876,26 @@ export default function ExecutiveView() {
         </div>
       </section>
 
-      {/* 7. Delayed Renewals & Slippage (Separated per Item 1) */}
+      {/* 7. Delayed Renewals & Slippage to 2027 (Separated per Item 1) */}
       <section id="exec-delayed" className="scroll-mt-24 mb-6 space-y-6 page-break-avoid">
         {/* 7a. Delayed Renewals Summary */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-rose-50/60 border-b border-slate-200 border-l-4 border-l-rose-600 flex items-center justify-between">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-rose-900">
               7a. Delayed Renewals Summary
             </h2>
-            <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-              {totalAcv > 0 ? `${((delayedRenewalsTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                {totalAcv > 0 ? `${((delayedRenewalsTotal.acv / totalAcv) * 100).toFixed(1)}%` : '—'} of Quarter Total
+              </span>
+              <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-[11px] font-medium text-slate-500 hover:text-[#00A3AD] transition-colors no-print cursor-pointer">↑ Top</button>
+            </div>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
             Total Delayed = Overdue + Delayed, close date ahead. Open renewals matching the delayed group setting.
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>
@@ -849,12 +930,12 @@ export default function ExecutiveView() {
           </div>
         </div>
 
-        {/* 7b. Slippage */}
+        {/* 7b. Slippage to 2027 */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-4 py-2.5 bg-amber-50/60 border-b border-slate-200 border-l-4 border-l-amber-500 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
-                7b. Slippage
+              <h2 className="font-bold text-xs uppercase tracking-wider text-amber-900">
+                7b. Slippage to 2027
               </h2>
               {slippage.type_filter_note && (
                 <span className="text-[10px] text-slate-500 font-normal">
@@ -867,7 +948,7 @@ export default function ExecutiveView() {
             </span>
           </div>
           <p className="px-4 py-1.5 text-[11px] text-slate-500 bg-slate-50/50 border-b border-slate-100">
-            {slippage.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close next year.'}
+            {slippage.rule_caption || 'Renewals whose service ended this year or earlier but are now expected to close in 2027.'}
           </p>
 
           {/* Category breakdown */}
@@ -889,7 +970,7 @@ export default function ExecutiveView() {
 
           {/* Slipped from table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Service start year</th>
@@ -904,16 +985,16 @@ export default function ExecutiveView() {
                     <td className="px-4 py-2 font-medium text-amber-900">From {sf.expiry_year}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatNumber(sf.count)}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(sf.acv)}</td>
-                    <td className="px-4 py-2 text-slate-500">Closing in {slippage.next_year || 'next year'}</td>
+                    <td className="px-4 py-2 text-slate-500">Closing in {slippage.next_year || '2027'}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-300 text-slate-900">
-                  <td className="px-4 py-2.5">Total Slippage</td>
+                  <td className="px-4 py-2.5">Total Slippage to 2027</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatNumber(slippageTotal.count)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-amber-900">{formatCurrency(slippageTotal.acv)}</td>
-                  <td className="px-4 py-2.5 text-slate-500">Expected to close in {slippage.next_year || 'next year'}</td>
+                  <td className="px-4 py-2.5 text-slate-500">Expected to close in {slippage.next_year || '2027'}</td>
                 </tr>
               </tfoot>
             </table>
@@ -922,8 +1003,8 @@ export default function ExecutiveView() {
 
         {/* 7c. Lost since start of quarter (Outside both totals) */}
         <div className="border border-slate-200 rounded-lg overflow-hidden shadow-none">
-          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-[#12284C]">
+          <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 border-l-4 border-l-slate-500">
+            <h2 className="font-bold text-xs uppercase tracking-wider text-slate-800">
               7c. Lost since start of quarter
             </h2>
           </div>
@@ -931,7 +1012,7 @@ export default function ExecutiveView() {
             Deals deleted or lost since the start of quarter baseline (excluded from delayed totals).
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+            <table className="exec-table text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="px-4 py-2">Category</th>

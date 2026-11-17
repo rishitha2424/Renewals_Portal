@@ -399,6 +399,7 @@ class V2DelayedService:
             delayed_nonpos_df = delayed_totals_df[delayed_totals_df["forecast_acv_amount"] <= 0].copy()
             fallback_used = False
         else:
+            delay_mask = pd.Series(False, index=open_df.index) if not open_df.empty else pd.Series(dtype=bool)
             delayed_totals_df = pd.DataFrame()
             delayed_other_type_df = pd.DataFrame()
             delayed_nonpos_df = pd.DataFrame()
@@ -1072,6 +1073,7 @@ class V2DelayedService:
         status: str | None = None,
         bu: str | None = None,
         ageing: str | None = None,
+        owner: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
         expiry_year: int | None = None,
         start_year: int | None = None,
@@ -1240,6 +1242,14 @@ class V2DelayedService:
             df = df[df["approval_status"] == status]
         if bu and bu != "All":
             df = df[df["business_unit"] == bu]
+        if owner and owner != "All" and not df.empty:
+            owner_clean = owner.strip().lower()
+            col = "opportunity_owner" if "opportunity_owner" in df.columns else ("owner" if "owner" in df.columns else None)
+            if col:
+                if owner_clean in ("unassigned", "none", ""):
+                    df = df[df[col].fillna("").astype(str).str.strip().str.lower().isin(["", "unassigned", "none"])]
+                else:
+                    df = df[df[col].fillna("").astype(str).str.strip().str.lower() == owner_clean]
         if ageing and not df.empty:
             if "days_overdue" not in df.columns:
                 df["days_overdue"] = df["_close_date"].apply(lambda d: max(0, (t_snap.snapshot_date - d).days) if d else 0)

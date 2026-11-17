@@ -1,5 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
+import clsx from 'clsx'
 import { getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 
 function acvM(v: number | null | undefined): string {
@@ -42,10 +43,11 @@ export interface CompactGridProps {
   yesterdayDate?: string | null
   lastweekDate?: string | null
   heatMode?: 'Value' | 'Yesterday' | 'LastWeek'
+  hideCardWrapper?: boolean
 }
 
 export default function CompactGrid({
-  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value'
+  title, columns, rows, totals, deltas, metricMode, onCellClick, rowLabelName = 'Row', columnLabels, compareDate, yesterdayDate, lastweekDate, heatMode = 'Value', hideCardWrapper = false
 }: CompactGridProps) {
   
   // 1. Keep all columns passed (Pipeline and 0-value columns always shown)
@@ -122,36 +124,49 @@ export default function CompactGrid({
     )
   }
 
-  return (
-    <div className="card overflow-hidden border border-[var(--border)]">
-      <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-        <h3 className="font-semibold text-sm">{title}</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[13px] whitespace-nowrap">
-          <thead>
-            <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
-              <th className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-medium text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs">{rowLabelName}</th>
-              {activeColumns.map(c => {
-                const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
-                return (
-                  <th key={c} className="px-3 py-2 text-center font-medium text-[var(--text-muted)]">{label}</th>
-                )
-              })}
-              <th className="px-3 py-2 text-center font-semibold text-[var(--text-primary)] border-l border-[var(--border)]">Total</th>
-            </tr>
-          </thead>
+  const tableElement = (
+    <div className="overflow-x-auto max-w-full">
+      <table
+        className="data-table text-xs whitespace-nowrap"
+        style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}
+      >
+        <thead>
+          <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+            <th
+              className="sticky left-0 bg-[var(--bg-secondary)] z-20 px-3 py-2 text-left font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] border-r border-[var(--border)] shadow-xs col-label"
+            >
+              {rowLabelName}
+            </th>
+            {activeColumns.map(c => {
+              const label = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
+              return (
+                <th
+                  key={c}
+                  className="px-3 py-2 text-right font-semibold text-[11px] uppercase tracking-wider text-[var(--text-muted)] col-num"
+                >
+                  {label}
+                </th>
+              )
+            })}
+            <th
+              className="px-3 py-2 text-right font-bold text-[11px] uppercase tracking-wider text-[var(--text-primary)] border-l border-[var(--border)] col-num"
+            >
+              Total
+            </th>
+          </tr>
+        </thead>
           <tbody>
             {rows.map(r => {
               const rowLabel = rowLabelName === 'Status' ? getApprovalStatusLabel(r.label) : r.label
+
               return (
                 <tr key={r.id} className="border-b border-[var(--border)] last:border-0 group hover:bg-[var(--bg-secondary)]/40 transition-colors">
                   <td 
-                    className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs"
+                    className="sticky left-0 bg-[var(--bg-secondary)] group-hover:bg-[var(--bg-secondary)] z-10 px-3 py-2 font-medium border-r border-[var(--border)] cursor-pointer hover:text-[var(--primary)] hover:underline transition-colors h-[36px] shadow-xs col-label"
                     onClick={() => onCellClick(r.id, null, `${rowLabel} Deals`)}
                     title={`${rowLabel}: Click to view deals`}
                   >
-                    {rowLabel}
+                    <span className="truncate block" title={rowLabel}>{rowLabel}</span>
                   </td>
                   {activeColumns.map(c => {
                     const colLabel = columnLabels?.[c] ?? (rowLabelName === 'Status' ? getForecastCategoryLabel(c) : (c === 'Blank' ? 'Not yet proposed' : c))
@@ -265,6 +280,18 @@ export default function CompactGrid({
           </tbody>
         </table>
       </div>
+  )
+
+  if (hideCardWrapper) {
+    return tableElement
+  }
+
+  return (
+    <div className="card overflow-hidden border border-[var(--border)] table-card">
+      <div className="px-4 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+        <h3 className="font-semibold text-sm">{title}</h3>
+      </div>
+      {tableElement}
     </div>
   )
 }

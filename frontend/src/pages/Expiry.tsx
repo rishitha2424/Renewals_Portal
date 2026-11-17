@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { AlertTriangle, TrendingUp, BarChart2, ListTodo, Activity } from 'lucide-react'
@@ -20,6 +20,12 @@ import Card from '@/components/ui/Card'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
+import Tile from '@/components/common/Tile'
+import CardRow from '@/components/common/CardRow'
+import ScrollList from '@/components/common/ScrollList'
+import ChartCard from '@/components/common/ChartCard'
+import InsightCard from '@/components/common/InsightCard'
+import { getExpiryInsights } from '@/insights/generators'
 import clsx from 'clsx'
 
 export default function Expiry() {
@@ -112,7 +118,7 @@ export default function Expiry() {
   const expirySections = React.useMemo(() => {
     const list: { id: string; title: string }[] = []
     if (sum?.grand_total) {
-      list.push({ id: 'expiry-totals', title: 'Totals & slippage' })
+      list.push({ id: 'expiry-totals', title: 'Totals & Slippage to 2027' })
     }
     if (sum?.fiscal_years) {
       sum.fiscal_years.forEach((fyObj: any) => {
@@ -128,6 +134,24 @@ export default function Expiry() {
     return list
   }, [sum])
 
+  const catTotals = useMemo(() => {
+    const res: Record<string, { count: number; acv: number }> = {
+      'Closed': { count: 0, acv: 0 },
+      'Commit': { count: 0, acv: 0 },
+      'Best Case': { count: 0, acv: 0 },
+      'Pipeline': { count: 0, acv: 0 },
+    }
+    Object.values(sum?.grids || {}).forEach((grid: any) => {
+      const cats = grid.totals?.category || {}
+      Object.keys(res).forEach((c) => {
+        if (cats[c]) {
+          res[c].count += cats[c].count || 0
+          res[c].acv += cats[c].acv || 0
+        }
+      })
+    })
+    return res
+  }, [sum?.grids])
 
   if (!activeSnapshotId || snapshots.length === 0) {
     return <PageNoSnapshotState />
@@ -168,6 +192,43 @@ export default function Expiry() {
   const yestGrand = deltas1?.yesterday?.grand
   const lastGrand = deltas1?.lastweek?.grand
 
+  const totalClosed = grid1?.rows?.reduce((s: number, r: any) => s + (r.cells['Closed']?.acv || 0), 0) || 0
+  const totalClosedCount = grid1?.rows?.reduce((s: number, r: any) => s + (r.cells['Closed']?.count || 0), 0) || 0
+  const totalAll = grid1?.rows?.reduce((s: number, r: any) => s + (r.total?.acv || 0), 0) || 0
+  const totalAllCount = grid1?.rows?.reduce((s: number, r: any) => s + (r.total?.count || 0), 0) || 0
+  const closurePct = totalAll > 0 ? ((totalClosed / totalAll) * 100).toFixed(1) : '0.0'
+
+  const openQuarters = (grid1?.rows || []).map((r: any) => {
+    const closedAcv = r.cells['Closed']?.acv || 0
+    const closedCount = r.cells['Closed']?.count || 0
+    const openAcv = Math.max((r.total?.acv || 0) - closedAcv, 0)
+    const openCount = Math.max((r.total?.count || 0) - closedCount, 0)
+    return {
+      quarter: r.quarter,
+      label: r.label,
+      openAcv,
+      openCount,
+    }
+  }).filter((q: any) => q.openAcv > 0 || q.openCount > 0)
+  const nextQuarterToExpire = [...openQuarters].sort((a: any, b: any) => b.openAcv - a.openAcv)[0] || {
+    quarter: null,
+    label: 'None',
+    openAcv: 0,
+    openCount: 0,
+  }
+
+  const rawCols1 = (sum.categories && sum.categories.length > 0) ? sum.categories : Object.keys(grid1?.totals?.category || {})
+  const cols1 = rawCols1.filter((c: string) => {
+    const s = grid1?.totals?.category?.[c]
+    return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
+  })
+
+  const rawCols2 = (sum.categories && sum.categories.length > 0) ? sum.categories : Object.keys(grid2?.totals?.category || {})
+  const cols2 = rawCols2.filter((c: string) => {
+    const s = grid2?.totals?.category?.[c]
+    return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
+  })
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -203,9 +264,9 @@ export default function Expiry() {
         }}
       />
 
-      {/* View by Toggle with definitions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-secondary)] p-3 rounded-xl border border-[var(--border)]">
-        <div className="flex items-center gap-2.5">
+      {/* View by Toggle with definitions (fills width) */}
+      <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[var(--bg-secondary)] px-4 py-3 rounded-xl border border-[var(--border)] shadow-xs">
+        <div className="flex items-center gap-2.5 shrink-0">
           <span className="text-xs font-bold text-[var(--text-secondary)] whitespace-nowrap">View by:</span>
           <div className="inline-flex p-1 bg-[var(--bg-primary)] rounded-lg border border-[var(--border)] shadow-xs">
             <button
@@ -234,7 +295,7 @@ export default function Expiry() {
             </button>
           </div>
         </div>
-        <div className="text-xs text-[var(--text-muted)] italic">
+        <div className="flex-1 md:text-right text-xs text-[var(--text-muted)] italic">
           {periodMode === 'fiscal'
             ? 'Fiscal period: Deals closing in each fiscal quarter (matches Overview & Executive numbers).'
             : 'Service end date: Groups deals by when contract service ends; totals will differ from the Overview.'}
@@ -255,389 +316,353 @@ export default function Expiry() {
         </div>
       )}
 
-      {/* Grand Total & Slippage KPI Strip */}
+      {/* 3 Compact Top Tiles: Closure Progress, Next Quarter to Expire, Slippage */}
       <ErrorBoundary compact sectionTitle="Expiry Totals">
-      <div id="expiry-totals" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24">
-        <Card
-          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-indigo-500"
-          onClick={() => handleCellClick(null, null, `All Expiry Deals (FY${fy1} + FY${fy2})`)}
-        >
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={`FY${fy1} All-Years Total Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}>
-                FY{fy1} All-Years Total Expiry ({periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {grandTotal.count} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--text-primary)] tracking-tight">
-              {formatCurrency(grandTotal.acv)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs yesterday</span>
-              <span className={`text-xs tabular-nums text-right ${yestGrand?.acv && yestGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : yestGrand?.acv && yestGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {yestGrand ? `${formatCurrency(yestGrand.acv)} · ${yestGrand.count >= 0 ? '+' : ''}${yestGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--text-muted)] font-normal text-xs">vs last week</span>
-              <span className={`text-xs tabular-nums text-right ${lastGrand?.acv && lastGrand.acv > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : lastGrand?.acv && lastGrand.acv < 0 ? "text-rose-600 dark:text-rose-400 font-medium" : "text-[var(--text-muted)]"}`}>
-                {lastGrand ? `${formatCurrency(lastGrand.acv)} · ${lastGrand.count >= 0 ? '+' : ''}${lastGrand.count} deals` : <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>}
-              </span>
-            </div>
-          </div>
-        </Card>
+        <div id="expiry-totals" className="grid grid-cols-1 sm:grid-cols-3 gap-4 scroll-mt-24">
+          <Tile
+            tone="closed"
+            title={`FY${fy1} Closure Progress`}
+            amount={`${closurePct}%`}
+            count={totalClosedCount}
+            subtitle={`${acvM(totalClosed)} of ${acvM(totalAll)} closed (${totalClosedCount} deals)`}
+            onClick={() => handleCellClick(null, 'Closed', `FY${fy1} Closed Deals`)}
+          />
 
-        <Card
-          className="p-4 flex flex-col justify-between gap-2.5 hover:border-[var(--brand-teal)] transition-colors cursor-pointer border-l-4 border-l-amber-500"
-          onClick={() => handleCellClick(null, null, `Slippage to FY${fy2} (${sum.slippage?.count || 0} deals)`, true)}
-        >
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-amber-600 dark:text-amber-400 truncate" title={`Slippage to FY${fy2}`}>
-                Slippage to FY{fy2}
-              </span>
-              <span className="text-xs font-medium text-[var(--text-muted)] flex-shrink-0">
-                {sum.slippage?.count ?? 0} deals
-              </span>
-            </div>
-            <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400 tracking-tight">
-              {formatCurrency(sum.slippage?.acv ?? 0)}
-            </div>
-          </div>
-          <div className="pt-2 border-t border-[var(--border-subtle)] text-xs text-[var(--text-muted)] flex items-center justify-between">
-            <span className="text-xs text-[var(--text-muted)]">{sum.slippage?.rule_caption || `Service started in ${Number(fy1) - 1} to ${fy1}, closing in ${fy2}`}</span>
-            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium hover:underline">View slippage deals →</span>
-          </div>
-        </Card>
-      </div>
-      </ErrorBoundary>
+          <Tile
+            tone="commit"
+            title="Next Quarter to Expire"
+            amount={acvM(nextQuarterToExpire.openAcv)}
+            count={nextQuarterToExpire.openCount}
+            subtitle={`${nextQuarterToExpire.label} · ${nextQuarterToExpire.openCount} open deals`}
+            onClick={() => handleCellClick(nextQuarterToExpire.quarter, null, `${nextQuarterToExpire.label} Open Deals`)}
+          />
 
-      <ErrorBoundary compact sectionTitle="Expiry Grids">
-      {sum.fiscal_years?.map((fyObj: any) => {
-        const yLabel = fyObj.label
-        const grid = sum.grids?.[yLabel]
-        if (!grid) return null
-        const deltas = sum.deltas?.[yLabel]
-        const rawCols = (sum.categories && sum.categories.length > 0) ? sum.categories : Object.keys(grid.totals?.category || {})
-        const cols = rawCols.filter((c: string) => {
-          const s = grid.totals?.category?.[c]
-          return s ? (s.count > 0 || (s.acv != null && s.acv !== 0)) : true
-        })
-        return (
-          <div key={yLabel} id={`expiry-grid-${yLabel}`} className="space-y-1 scroll-mt-24">
-            <CompactGrid
-              title={`FY ${yLabel} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
-              columns={cols}
-              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-              rows={grid.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
-              totals={grid.totals}
-              deltas={deltas}
-              metricMode={metricMode}
-              heatMode={heatMode}
-              onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
-              rowLabelName="Quarter"
-              compareDate={sum.compare_date}
-            />
-            <SummaryLine
-              primaryText={`FY${yLabel} expiry: ${acvM(sum.acv_by_year?.[yLabel]?.acv)} · ${sum.acv_by_year?.[yLabel]?.count} deals`}
-              secondaryText={yLabel === fy1 && sum.slippage?.count > 0 ? `Slippage to ${fy2}: ${acvM(sum.slippage?.acv)} · ${sum.slippage?.count} deals` : undefined}
-              details={yLabel === fy1 && sum.slippage?.by_quarter?.length > 0 ? sum.slippage.by_quarter : undefined}
-              onDetailClick={(q) => handleCellClick(q, null, `Slippage Deals in ${q}`, true)}
-            />
-          </div>
-        )
-      })}
-      </ErrorBoundary>
-
-      {/* Expiry Profile Stacked Column Chart Section */}
-      <ErrorBoundary compact sectionTitle="Expiry Profile">
-      <Card id="expiry-profile" className="p-5 mt-6 hover:border-[var(--primary)] transition-colors scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-[var(--text-primary)]">Expiry Profile</h2>
-              <span className="text-xs px-2 py-0.5 rounded font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                {periodMode === 'fiscal' ? 'Fiscal Period · Renewals' : 'Service End Date · Renewals'}
-              </span>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              {periodMode === 'fiscal'
-                ? 'Quarterly expiry profile stacked by forecast category, tied directly to Overview and Executive metrics.'
-                : 'Quarterly expiry profile stacked by forecast category based on service end date.'}
-            </p>
-          </div>
-
-          {/* Fixed Color Legend */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[11px] bg-[var(--bg-secondary)] px-3 py-1.5 rounded-xl border border-[var(--border)]">
-            {[
-              { label: 'Closed', color: '#0E7490' },
-              { label: 'Commit', color: '#1D4ED8' },
-              { label: 'Best Case', color: '#3B82F6' },
-              { label: 'Pipeline', color: '#D97706' },
-              { label: 'Not yet proposed', color: '#64748B' },
-            ].map((cat) => (
-              <div key={cat.label} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-xs shadow-xs" style={{ backgroundColor: cat.color }} />
-                <span className="font-semibold text-[var(--text-secondary)]">{cat.label}</span>
-              </div>
-            ))}
-          </div>
+          <Tile
+            tone="slippage"
+            polarity="bad_when_higher"
+            title="Slippage to 2027"
+            amount={formatCurrency(sum.slippage?.acv ?? 0)}
+            count={sum.slippage?.count ?? 0}
+            subtitle={sum.slippage?.rule_caption || `Slipped to 2027 (${sum.slippage?.count || 0} deals)`}
+            onClick={() => handleCellClick(null, null, `Slippage to 2027 (${sum.slippage?.count || 0} deals)`, true)}
+          />
         </div>
+      </ErrorBoundary>
 
-        {/* Stacked Column Chart */}
-        {(() => {
-          const chartData: any[] = sum.profile_chart || []
-          if (!chartData || chartData.length === 0) {
-            return (
-              <div className="py-12 text-center text-sm text-[var(--text-muted)]">
-                No expiry profile quarters found for the active snapshot.
+      {/* FY2026 & FY2027 Tables Stacked (Left) + Expiry Profile & Closure Progress (Right) */}
+      <ErrorBoundary compact sectionTitle="Expiry Grids">
+        <CardRow template="max-content minmax(360px, 1fr)" id="expiry-grids-section">
+          {/* Left Column: Stacked FY Tables with SAME width (R2) */}
+          <div className="flex flex-col gap-5 h-full">
+            {grid1 && (
+              <div id={`expiry-grid-${fy1}`}>
+                <CompactGrid
+                  title={`FY ${fy1} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
+                  columns={cols1}
+                  columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+                  rows={grid1.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
+                  totals={grid1.totals}
+                  deltas={deltas1}
+                  metricMode={metricMode}
+                  heatMode={heatMode}
+                  onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
+                  rowLabelName="Quarter"
+                  compareDate={sum.compare_date}
+                />
               </div>
-            )
-          }
+            )}
 
-          const maxAcv = Math.max(...chartData.map((d: any) => d.total_acv || 0), 1)
-          const chartHeightPx = 180
+            {grid2 && (
+              <div id={`expiry-grid-${fy2}`}>
+                <CompactGrid
+                  title={`FY ${fy2} Expiry (${periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'})`}
+                  columns={cols2}
+                  columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+                  rows={grid2.rows.map((r: any) => ({ id: r.quarter, label: r.label, cells: r.cells, total: r.total }))}
+                  totals={grid2.totals}
+                  deltas={deltas2}
+                  metricMode={metricMode}
+                  heatMode={heatMode}
+                  onCellClick={(quarter, cat, title) => handleCellClick(quarter, cat === 'Total' ? null : cat, title)}
+                  rowLabelName="Quarter"
+                  compareDate={sum.compare_date}
+                />
+              </div>
+            )}
+          </div>
 
-          return (
-            <div className="pt-4 pb-2">
-              <div className="flex items-end justify-between gap-2 sm:gap-4 overflow-x-auto pb-2">
-                {chartData.map((col: any) => {
-                  const total = col.total_acv || 0
-                  const heightPct = Math.max((total / maxAcv) * 100, total > 0 ? 8 : 2)
-                  const heightPx = Math.round((heightPct / 100) * chartHeightPx)
-                  const isCurrent = col.is_current
+          {/* Right Column: Expiry Profile Stacked Bars + Closure Progress Card */}
+          <div className="flex flex-col gap-5 h-full">
+            {/* Expiry Profile Stacked Column Chart */}
+            <Card id="expiry-profile" className="p-5 flex flex-col justify-between hover:border-[var(--primary)] transition-colors scroll-mt-24">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-semibold text-[var(--text-primary)]">Expiry Profile</h2>
+                      <span className="text-xs px-2 py-0.5 rounded font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                        {periodMode === 'fiscal' ? 'Fiscal Period' : 'Service End Date'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Quarterly expiry volume stacked by forecast category
+                    </p>
+                  </div>
 
-                  // Order of stack from bottom to top: Closed, Commit, Best Case, Pipeline, Not yet proposed
-                  const catList = [
-                    { name: 'Closed', data: col.categories?.['Closed'], color: '#0E7490' },
-                    { name: 'Commit', data: col.categories?.['Commit'], color: '#1D4ED8' },
-                    { name: 'Best Case', data: col.categories?.['Best Case'], color: '#3B82F6' },
-                    { name: 'Pipeline', data: col.categories?.['Pipeline'], color: '#D97706' },
-                    { name: 'Not yet proposed', data: col.categories?.['Not yet proposed'], color: '#64748B' },
-                  ]
+                  {/* Fixed Color Legend */}
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] bg-[var(--bg-secondary)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
+                    {[
+                      { label: 'Closed', color: '#0E7490' },
+                      { label: 'Commit', color: '#1D4ED8' },
+                      { label: 'Best Case', color: '#3B82F6' },
+                      { label: 'Pipeline', color: '#D97706' },
+                      { label: 'Not yet proposed', color: '#64748B' },
+                    ].map((cat) => (
+                      <div key={cat.label} className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: cat.color }} />
+                        <span className="font-semibold text-[var(--text-secondary)]">{cat.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stacked Column Chart */}
+                {(() => {
+                  const chartData: any[] = sum.profile_chart || []
+                  if (!chartData || chartData.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+                        No expiry profile quarters found.
+                      </div>
+                    )
+                  }
+
+                  const maxAcv = Math.max(...chartData.map((d: any) => d.total_acv || 0), 1)
+                  const chartHeightPx = 150
 
                   return (
-                    <div
-                      key={col.quarter}
-                      className={clsx(
-                        "flex-1 min-w-[95px] max-w-[140px] flex flex-col items-center group relative rounded-xl p-2 transition-all",
-                        isCurrent
-                          ? "bg-indigo-500/5 dark:bg-indigo-500/10 border-2 border-indigo-500 shadow-sm"
-                          : "hover:bg-[var(--bg-secondary)]/60 border border-transparent"
-                      )}
-                    >
-                      {/* Total ACV above column */}
-                      <div
-                        className="text-center mb-2 cursor-pointer transition-transform group-hover:scale-105"
-                        onClick={() => handleCellClick(col.quarter, null, `${col.label} · All Deals`, false, periodMode)}
-                        title={`Click to view all ${col.deal_count} deals in ${col.label}`}
-                      >
-                        <div className="text-xs sm:text-sm font-black font-mono text-[var(--text-primary)]">
-                          {total > 0 ? acvM(total) : '$0'}
-                        </div>
-                      </div>
+                    <div className="pt-2 pb-1">
+                      <div className="flex items-end justify-between gap-2 overflow-x-auto pb-1">
+                        {chartData.map((col: any) => {
+                          const total = col.total_acv || 0
+                          const heightPct = Math.max((total / maxAcv) * 100, total > 0 ? 8 : 2)
+                          const heightPx = Math.round((heightPct / 100) * chartHeightPx)
+                          const isCurrent = col.is_current
 
-                      {/* Stacked Bar Body */}
-                      <div
-                        className="w-full flex items-end justify-center"
-                        style={{ height: `${chartHeightPx}px` }}
-                      >
-                        {total > 0 ? (
-                          <div
-                            style={{ height: `${heightPx}px` }}
-                            className="w-12 sm:w-14 rounded-lg overflow-hidden flex flex-col-reverse shadow-sm border border-[var(--border)] bg-slate-100 dark:bg-slate-800 transition-all group-hover:shadow-md"
-                          >
-                            {catList.map((cat) => {
-                              const catAcv = cat.data?.acv || 0
-                              if (catAcv <= 0) return null
-                              const segPct = (catAcv / total) * 100
-                              return (
-                                <div
-                                  key={cat.name}
-                                  style={{
-                                    height: `${segPct}%`,
-                                    backgroundColor: cat.color,
-                                  }}
-                                  className="w-full cursor-pointer hover:opacity-85 transition-opacity relative"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleCellClick(
-                                      col.quarter,
-                                      cat.data?.raw_category || cat.name,
-                                      `${col.label} · ${cat.name} Deals`,
-                                      false,
-                                      periodMode
-                                    )
-                                  }}
-                                  title={`${col.label} · ${cat.name}: ${formatCurrency(catAcv)} (${segPct.toFixed(1)}%) · ${cat.data?.count || 0} deals (Click to view)`}
-                                />
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div
-                            style={{ height: '8px' }}
-                            className="w-12 sm:w-14 rounded bg-slate-200 dark:bg-slate-700 border border-dashed border-slate-300 dark:border-slate-600"
-                            title={`${col.label}: No renewal deals`}
-                          />
-                        )}
-                      </div>
+                          const catList = [
+                            { name: 'Closed', data: col.categories?.['Closed'], color: '#0E7490' },
+                            { name: 'Commit', data: col.categories?.['Commit'], color: '#1D4ED8' },
+                            { name: 'Best Case', data: col.categories?.['Best Case'], color: '#3B82F6' },
+                            { name: 'Pipeline', data: col.categories?.['Pipeline'], color: '#D97706' },
+                            { name: 'Not yet proposed', data: col.categories?.['Not yet proposed'], color: '#64748B' },
+                          ]
 
-                      {/* Quarter Label & Metrics Below Column */}
-                      <div className="mt-3 text-center w-full pt-2 border-t border-[var(--border)] space-y-0.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className={clsx("font-bold text-xs", isCurrent ? "text-indigo-600 dark:text-indigo-400" : "text-[var(--text-primary)]")}>
-                            {col.label}
-                          </span>
-                        </div>
-                        {isCurrent && (
-                          <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500 text-white shadow-xs">
-                            Current
-                          </span>
-                        )}
-                        <div className="text-[11px] font-mono text-[var(--text-muted)] font-semibold">
-                          {col.deal_count} deals
-                        </div>
-                        <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                          {col.commit_coverage_pct > 0 ? `${col.commit_coverage_pct}% commit` : (total > 0 ? '0% commit' : '—')}
-                        </div>
+                          return (
+                            <div
+                              key={col.quarter}
+                              className={clsx(
+                                "flex-1 min-w-[80px] max-w-[120px] flex flex-col items-center group relative rounded-lg p-1.5 transition-all",
+                                isCurrent
+                                  ? "bg-indigo-500/5 dark:bg-indigo-500/10 border-2 border-indigo-500 shadow-xs"
+                                  : "hover:bg-[var(--bg-secondary)]/60 border border-transparent"
+                              )}
+                            >
+                              <div
+                                className="text-center mb-1.5 cursor-pointer transition-transform group-hover:scale-105"
+                                onClick={() => handleCellClick(col.quarter, null, `${col.label} · All Deals`, false, periodMode)}
+                                title={`Click to view all ${col.deal_count} deals in ${col.label}`}
+                              >
+                                <div className="text-[11px] font-black font-mono text-[var(--text-primary)]">
+                                  {total > 0 ? acvM(total) : '$0'}
+                                </div>
+                              </div>
+
+                              <div
+                                className="w-full flex items-end justify-center"
+                                style={{ height: `${chartHeightPx}px` }}
+                              >
+                                {total > 0 ? (
+                                  <div
+                                    style={{ height: `${heightPx}px` }}
+                                    className="w-10 sm:w-12 rounded overflow-hidden flex flex-col-reverse shadow-xs border border-[var(--border)] bg-slate-100 dark:bg-slate-800 transition-all group-hover:shadow-sm"
+                                  >
+                                    {catList.map((cat) => {
+                                      const catAcv = cat.data?.acv || 0
+                                      if (catAcv <= 0) return null
+                                      const segPct = (catAcv / total) * 100
+                                      return (
+                                        <div
+                                          key={cat.name}
+                                          style={{
+                                            height: `${segPct}%`,
+                                            backgroundColor: cat.color,
+                                          }}
+                                          className="w-full cursor-pointer hover:opacity-85 transition-opacity relative"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleCellClick(
+                                              col.quarter,
+                                              cat.data?.raw_category || cat.name,
+                                              `${col.label} · ${cat.name} Deals`,
+                                              false,
+                                              periodMode
+                                            )
+                                          }}
+                                          title={`${col.label} · ${cat.name}: ${formatCurrency(catAcv)} (${segPct.toFixed(1)}%)`}
+                                        />
+                                      )
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div
+                                    style={{ height: '6px' }}
+                                    className="w-10 sm:w-12 rounded bg-slate-200 dark:bg-slate-700 border border-dashed border-slate-300 dark:border-slate-600"
+                                  />
+                                )}
+                              </div>
+
+                              <div className="mt-2 text-center w-full pt-1.5 border-t border-[var(--border)] space-y-0.5">
+                                <span className={clsx("font-bold text-[11px]", isCurrent ? "text-indigo-600 dark:text-indigo-400" : "text-[var(--text-primary)]")}>
+                                  {col.label}
+                                </span>
+                                <div className="text-[10px] font-mono text-[var(--text-muted)]">
+                                  {col.deal_count} deals
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )
-                })}
+                })()}
               </div>
-            </div>
-          )
-        })()}
-      </Card>
+            </Card>
+
+            {/* Closure Progress Card */}
+            <Card className="p-4 flex flex-col justify-between hover:border-[var(--primary)] transition-colors">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-emerald-500" />
+                    <h3 className="font-bold">Closure Progress (FY{fy1})</h3>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">By Quarter</span>
+                </div>
+                <div className="space-y-2.5">
+                  {grid1?.rows?.map((r: any) => {
+                    const closed = r.cells['Closed']?.acv || 0
+                    const tot = r.total?.acv || 0
+                    if (tot === 0) return null
+                    const pct = Math.round((closed / tot) * 100)
+                    return (
+                      <div key={r.quarter} className="w-full">
+                        <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mb-1">
+                          <span>{r.label}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-mono">{pct}% Closed ({acvM(closed)})</span>
+                        </div>
+                        <div className="flex w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div style={{ width: `${pct}%` }} className="h-full bg-emerald-500 transition-all duration-500" />
+                          <div style={{ width: `${100 - pct}%` }} className="h-full bg-slate-300 dark:bg-slate-600" />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="pt-2.5 mt-3 border-t border-[var(--border)] flex items-center justify-between text-[11px] font-bold text-[var(--text-primary)]">
+                <span>Portfolio Total</span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                  {acvM(totalClosed)} / {acvM(totalAll)} ({closurePct}%)
+                </span>
+              </div>
+            </Card>
+          </div>
+        </CardRow>
       </ErrorBoundary>
 
-      {/* Insights Section */}
-      <ErrorBoundary compact sectionTitle="Expiry Insights">
-      <div id="expiry-insights" className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 scroll-mt-24">
-
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-emerald-500" />
-              <h3 className="font-bold">Closure Progress</h3>
-            </div>
-            <span className="text-[10px] text-[var(--text-muted)] font-mono">By Quarter</span>
-          </div>
-          <div className="flex-1 flex flex-col justify-between min-h-[160px] overflow-y-auto">
-            <div className="space-y-2.5 flex-1">
-              {grid1?.rows?.map((r: any) => {
-                const closed = r.cells['Closed']?.acv || 0
-                const tot = r.total?.acv || 0
-                if (tot === 0) return null
-                const pct = Math.round((closed / tot) * 100)
-                return (
-                  <div key={r.quarter} className="w-full">
-                    <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mb-1">
-                      <span>{r.label}</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-mono">{pct}% Closed ({acvM(closed)})</span>
-                    </div>
-                    <div className="flex w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div style={{ width: `${pct}%` }} className="h-full bg-emerald-500 transition-all duration-500" />
-                      <div style={{ width: `${100 - pct}%` }} className="h-full bg-slate-300 dark:bg-slate-600" />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {(() => {
-              const totalClosed = grid1?.rows?.reduce((s: number, r: any) => s + (r.cells['Closed']?.acv || 0), 0) || 0
-              const totalAll = grid1?.rows?.reduce((s: number, r: any) => s + (r.total?.acv || 0), 0) || 0
-              const overallPct = totalAll > 0 ? Math.round((totalClosed / totalAll) * 100) : 0
-              return (
-                <div className="pt-2.5 mt-3 border-t border-[var(--border)] flex items-center justify-between text-[11px] font-bold text-[var(--text-primary)]">
-                  <span>Portfolio Total</span>
-                  <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                    {acvM(totalClosed)} / {acvM(totalAll)} ({overallPct}%)
+      {/* Bottom Row: What Changed Today & Largest Open (Equal height, inner ScrollList) */}
+      <ErrorBoundary compact sectionTitle="Expiry Movements & Top Open">
+        <CardRow cols="1fr 1fr" id="expiry-insights">
+          <Card className="p-4 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-sky-500" />
+                  <h3 className="font-bold">What Changed Today</h3>
+                </div>
+                {changedDeals.length > 0 && (
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                    {changedDeals.length} moves
                   </span>
-                </div>
-              )
-            })()}
-          </div>
-        </Card>
+                )}
+              </div>
 
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-sky-500" />
-              <h3 className="font-bold">What Changed Today</h3>
+              <ScrollList maxHeight="280px">
+                {changedDeals.length === 0 ? (
+                  <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">
+                    No changes since {movementsData?.compare_date ? formatDate(movementsData.compare_date) : 'yesterday'}
+                  </p>
+                ) : (
+                  changedDeals.slice(0, 10).map((d: any, idx: number) => (
+                    <div
+                      key={d.opportunity_id_18 || idx}
+                      className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
+                      onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
+                      title="Click to view opportunity details"
+                    >
+                      <div className="flex justify-between font-bold text-[var(--text-primary)] text-xs">
+                        <span className="truncate pr-2">{d.opportunity_name}</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">{acvM(d.acv || d.forecast_acv_amount)}</span>
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
+                        <span>{d.from_category || d.from_status || 'Previous'}</span>
+                        <span className={d.direction === 'positive' ? 'text-emerald-500 font-bold' : 'text-rose-500 font-bold'}>→</span>
+                        <span className="font-semibold text-[var(--text-primary)]">{d.to_category || d.to_status || 'Current'}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </ScrollList>
             </div>
-            {changedDeals.length > 0 && (
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                {changedDeals.length} moves
-              </span>
-            )}
-          </div>
-          <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-            {changedDeals.length === 0 ? (
-              <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">
-                No changes since {movementsData?.compare_date ? formatDate(movementsData.compare_date) : 'yesterday'}
-              </p>
-            ) : (
-              changedDeals.slice(0, 5).map((d: any, idx: number) => (
-                <div
-                  key={d.opportunity_id_18 || idx}
-                  className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
-                  onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
-                  title="Click to view opportunity details"
-                >
-                  <div className="flex justify-between font-bold text-[var(--text-primary)]">
-                    <span className="truncate pr-2">{d.opportunity_name}</span>
-                    <span className="font-mono text-emerald-600 dark:text-emerald-400">{acvM(d.acv || d.forecast_acv_amount)}</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
-                    <span>{d.from_category || d.from_status || 'Previous'}</span>
-                    <span className={d.direction === 'positive' ? 'text-emerald-500 font-bold' : 'text-rose-500 font-bold'}>→</span>
-                    <span className="font-semibold text-[var(--text-primary)]">{d.to_category || d.to_status || 'Current'}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
+          </Card>
 
-        <Card className="p-4 flex flex-col hover:border-[var(--primary)] transition-colors">
-          <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
-            <div className="flex items-center gap-2">
-              <ListTodo className="w-5 h-5 text-amber-500" />
-              <h3 className="font-bold">Largest Open</h3>
-            </div>
-            <span className="text-[10px] text-[var(--text-muted)] font-mono">Top ACV</span>
-          </div>
-          <div className="flex-1 overflow-y-auto min-h-[160px] text-xs space-y-2">
-            {topOpenDeals.length === 0 ? (
-              <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">No open deals found</p>
-            ) : (
-              topOpenDeals.map((d: any, idx: number) => (
-                <div
-                  key={d.opportunity_id_18 || idx}
-                  className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
-                  onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
-                  title="Click to view opportunity details"
-                >
-                  <div className="flex justify-between font-bold text-[var(--text-primary)]">
-                    <span className="truncate pr-2">{d.opportunity_name}</span>
-                    <span className="font-mono text-amber-600 dark:text-amber-400">{acvM(d.forecast_acv_amount || d.acv)}</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center justify-between">
-                    <span className="font-semibold text-[var(--text-secondary)]">{d.forecast_category}</span>
-                    <span className="text-[var(--text-muted)] truncate max-w-[120px]">{d.sub_region || d.account_name || ''}</span>
-                  </div>
+          <Card className="p-4 flex flex-col justify-between hover:border-[var(--primary)] transition-colors h-full">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3 text-[var(--text-primary)]">
+                <div className="flex items-center gap-2">
+                  <ListTodo className="w-5 h-5 text-amber-500" />
+                  <h3 className="font-bold">Largest Open</h3>
                 </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
+                <span className="text-[10px] text-[var(--text-muted)] font-mono">Top ACV</span>
+              </div>
+
+              <ScrollList maxHeight="280px">
+                {topOpenDeals.length === 0 ? (
+                  <p className="text-[var(--text-muted)] text-[11px] italic py-8 text-center">No open deals found</p>
+                ) : (
+                  topOpenDeals.map((d: any, idx: number) => (
+                    <div
+                      key={d.opportunity_id_18 || idx}
+                      className="bg-[var(--bg-secondary)] p-2 rounded-lg border border-[var(--border)] cursor-pointer hover:border-[var(--primary)] transition-colors"
+                      onClick={() => d.opportunity_id_18 && setSelectedOppId(d.opportunity_id_18)}
+                      title="Click to view opportunity details"
+                    >
+                      <div className="flex justify-between font-bold text-[var(--text-primary)] text-xs">
+                        <span className="truncate pr-2">{d.opportunity_name}</span>
+                        <span className="font-mono text-amber-600 dark:text-amber-400">{acvM(d.forecast_acv_amount || d.acv)}</span>
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center justify-between">
+                        <span className="font-semibold text-[var(--text-secondary)]">{d.forecast_category}</span>
+                        <span className="text-[var(--text-muted)] truncate max-w-[120px]">{d.sub_region || d.account_name || ''}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </ScrollList>
+            </div>
+          </Card>
+        </CardRow>
       </ErrorBoundary>
 
       {modalOpen && (

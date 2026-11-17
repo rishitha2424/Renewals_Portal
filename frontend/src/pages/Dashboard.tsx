@@ -18,6 +18,7 @@ import {
 import { getForecastCategoryLabel, formatCurrency, formatNumber, getQuarterFromDate, getMetricPolarity, getDeltaTextColor } from '@/utils/format'
 import { formatDate } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
+import { CONCEPT_COLORS } from '@/design/conceptColors'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
@@ -30,6 +31,9 @@ import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
 import SlippageBreakdown from '@/components/delayed/SlippageBreakdown'
 import DelayedBreakdown from '@/components/delayed/DelayedBreakdown'
 import SectionHeading from '@/components/common/SectionHeading'
+import CardRow from '@/components/common/CardRow'
+import InsightCard from '@/components/common/InsightCard'
+import { getOverviewInsights } from '@/insights/generators'
 
 // Region display order (Sections 6 & 7)
 const REGION_ORDER = [
@@ -386,163 +390,310 @@ export default function Dashboard() {
 
       {/* ── BLOCK 1: Portfolio ─────────────────────────────────────────── */}
       <section id="overview-portfolio" className="space-y-4 scroll-mt-24">
-        {/* ── SECTION 1 – Total Renewal ACV Value ──────────────────────────── */}
-        <div id="overview-hero" className="card p-6 scroll-mt-24">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                TOTAL {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} ACV VALUE
-              </p>
-              <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-3">
-              {sumLoading ? (
-                <div className="h-12 w-52 rounded-lg skeleton-shimmer" />
-              ) : (
-                <span
-                  className="font-extrabold text-4xl md:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline"
-                  onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} deals · ${formatCurrency(total.acv ?? 0)})`, {})}
-                  title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
-                >
-                  {acvM(total.acv ?? 0)}
-                </span>
-              )}
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-sm bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
-                {total.count ?? 0} deals
-              </span>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1.5">
-              Fiscal Period = {summary?.data_slice || 'Selected Period'}
-            </p>
-
-          {/* Trend rows BELOW the total ACV and contract count */}
-          <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-col sm:flex-row gap-4 sm:gap-8">
-            {[
-              { label: 'vs yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
-              { label: 'vs last week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
-            ].map(({ label, delta, kind, date }) => {
-              const acvVal = delta?.acv ?? 0
-              const countVal = delta?.count ?? 0
-              const isAcvNeutral = acvVal === 0
-              const isCountNeutral = countVal === 0
-
-              const acvColor = isAcvNeutral
-                ? 'text-[var(--text-muted)]'
-                : acvVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                : 'text-rose-600 dark:text-rose-400 font-medium'
-
-              const countColor = isCountNeutral
-                ? 'text-[var(--text-muted)]'
-                : countVal > 0
-                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                : 'text-rose-600 dark:text-rose-400 font-medium'
-
-              const acvSign = acvVal > 0 ? '+' : ''
-              const countSign = countVal > 0 ? '+' : ''
-
-              return (
-                <div
-                  key={label}
-                  className="flex items-center gap-2 text-xs cursor-pointer group hover:opacity-80 transition-opacity"
-                  onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
-                  title={`Click to view deals with changes ${label}`}
-                >
-                  <span className="text-[var(--text-muted)] font-normal text-xs">
-                    {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}:
-                  </span>
-                  {delta ? (
-                    <span className="text-xs tabular-nums flex items-center gap-1.5">
-                      <span className={`inline-flex items-center gap-0.5 ${acvColor}`}>
-                        {acvVal > 0 && <TrendingUp className="w-3 h-3 inline" />}
-                        {acvVal < 0 && <TrendingDown className="w-3 h-3 inline" />}
-                        {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
-                      </span>
-                      <span className="text-[var(--text-muted)]">·</span>
-                      <span className={countColor}>
-                        {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
-                      </span>
+        {/* ── SECTION 1 – Overview Hero Row (Three Equal-Height Cards) ── */}
+        <div id="overview-hero" className="scroll-mt-24">
+          <CardRow cols="1fr 1fr 1fr" gap="gap-5">
+            {/* Zone (a): Total ACV + deals count + deltas */}
+            <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                      Total {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} Value
                     </span>
+                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
+                      {total.count ?? 0} deals
+                    </span>
+                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border)]">
+                      {summary?.data_slice || 'FY2026'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="my-3">
+                  {sumLoading ? (
+                    <div className="h-12 w-48 rounded-lg skeleton-shimmer" />
                   ) : (
-                    <span className="text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+                    <span
+                      className="font-extrabold text-4xl sm:text-5xl text-[var(--text-primary)] tabular-nums cursor-pointer hover:underline tracking-tight block"
+                      onClick={() => openDealsQuery(`Total Renewal ${summary?.data_slice || ''} Deals (${total.count ?? 0} deals · ${formatCurrency(total.acv ?? 0)})`, {})}
+                      title={`Click to view all ${summary?.data_slice || 'renewal'} deals`}
+                    >
+                      {acvM(total.acv ?? 0)}
+                    </span>
                   )}
                 </div>
+              </div>
+
+              {/* Bottom two equal mini-boxes filling width */}
+              <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5 w-full">
+                {[
+                  { label: 'vs yesterday', delta: total.delta_yesterday, kind: 'delta_yesterday', date: summary?.yesterday_date },
+                  { label: 'vs last week', delta: total.delta_lastweek, kind: 'delta_lastweek', date: summary?.lastweek_date },
+                ].map(({ label, delta, kind, date }) => {
+                  const acvVal = delta?.acv ?? 0
+                  const countVal = delta?.count ?? 0
+                  const isAcvNeutral = acvVal === 0
+                  const isCountNeutral = countVal === 0
+
+                  const acvColor = isAcvNeutral
+                    ? 'text-[var(--text-muted)]'
+                    : acvVal > 0
+                    ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'text-rose-600 dark:text-rose-400 font-bold'
+
+                  const countColor = isCountNeutral
+                    ? 'text-[var(--text-muted)]'
+                    : countVal > 0
+                    ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                    : 'text-rose-600 dark:text-rose-400 font-medium'
+
+                  const acvSign = acvVal > 0 ? '+' : ''
+                  const countSign = countVal > 0 ? '+' : ''
+
+                  return (
+                    <div
+                      key={label}
+                      className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] flex flex-col justify-between cursor-pointer hover:border-[var(--brand-teal)] transition-all"
+                      onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
+                      title={`Click to view deals with changes ${label}`}
+                    >
+                      <span className="text-[10px] text-[var(--text-muted)] font-medium truncate">
+                        {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}
+                      </span>
+                      {delta ? (
+                        <div className="mt-1">
+                          <div className={`text-xs tabular-nums flex items-center gap-0.5 ${acvColor}`}>
+                            {acvVal > 0 && <TrendingUp className="w-3 h-3 inline mr-0.5" />}
+                            {acvVal < 0 && <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                            {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
+                          </div>
+                          <div className={`text-[10px] tabular-nums mt-0.5 ${countColor}`}>
+                            {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Zone (b): Approval readiness (Replaces duplicate Forecast Mix) */}
+            {(() => {
+              const totAcv = total.acv || 1
+              const approvedAcv = (propConf || []).reduce((acc: number, r: any) => acc + (r.approved_acv || 0), 0)
+              const pendingAcv = (propConf || []).reduce((acc: number, r: any) => acc + (r.pending_acv || 0), 0)
+              const blankAcv = (propConf || []).reduce((acc: number, r: any) => acc + (r.blank_acv || 0), 0)
+
+              const approvedCount = propTotals.approved_count ?? 0
+              const pendingCount = propTotals.pending_count ?? 0
+              const blankCount = propTotals.blank_count ?? 0
+              const totalCount = approvedCount + pendingCount + blankCount || total.count || 1
+
+              const appPct = total.acv > 0 ? (approvedAcv / totAcv) * 100 : (approvedCount / totalCount) * 100
+              const penPct = total.acv > 0 ? (pendingAcv / totAcv) * 100 : (pendingCount / totalCount) * 100
+              const blkPct = Math.max(0, 100 - appPct - penPct)
+
+              const sortedByBlank = [...(propConf || [])].sort((a: any, b: any) => (b.blank_acv || 0) - (a.blank_acv || 0))
+              const topBlankReg = sortedByBlank[0]
+
+              return (
+                <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        Approval Readiness
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {appPct.toFixed(1)}% Approved
+                      </span>
+                    </div>
+
+                    {/* Stacked bar */}
+                    <div className="h-3.5 w-full rounded-full overflow-hidden flex bg-slate-200 dark:bg-slate-700 my-3">
+                      {appPct > 0 && (
+                        <div
+                          style={{ width: `${appPct}%`, backgroundColor: CONCEPT_COLORS.approved.hex }}
+                          className="h-full transition-all hover:opacity-85 cursor-pointer"
+                          title={`Approved: ${appPct.toFixed(1)}% (${acvM(approvedAcv)}, ${approvedCount} deals)`}
+                          onClick={() => openDealsQuery('Approved Deals', { approval_status: 'Approved' })}
+                        />
+                      )}
+                      {penPct > 0 && (
+                        <div
+                          style={{ width: `${penPct}%`, backgroundColor: CONCEPT_COLORS.pending.hex }}
+                          className="h-full transition-all hover:opacity-85 cursor-pointer"
+                          title={`Pending Approval: ${penPct.toFixed(1)}% (${acvM(pendingAcv)}, ${pendingCount} deals)`}
+                          onClick={() => openDealsQuery('Pending Approval Deals', { approval_status: 'Pending Approval' })}
+                        />
+                      )}
+                      {blkPct > 0 && (
+                        <div
+                          style={{ width: `${blkPct}%`, backgroundColor: CONCEPT_COLORS.not_submitted.hex }}
+                          className="h-full transition-all hover:opacity-85 cursor-pointer"
+                          title={`Not submitted: ${blkPct.toFixed(1)}% (${acvM(blankAcv)}, ${blankCount} deals)`}
+                          onClick={() => openDealsQuery('Not submitted Deals', { approval_status: 'Blank' })}
+                        />
+                      )}
+                    </div>
+
+                    {/* Breakdown items */}
+                    <div className="space-y-1.5 pt-1">
+                      {[
+                        { label: 'Approved', acv: approvedAcv, count: approvedCount, pct: appPct, color: CONCEPT_COLORS.approved.hex, query: { approval_status: 'Approved' } },
+                        { label: 'Pending Approval', acv: pendingAcv, count: pendingCount, pct: penPct, color: CONCEPT_COLORS.pending.hex, query: { approval_status: 'Pending Approval' } },
+                        { label: 'Not submitted', acv: blankAcv, count: blankCount, pct: blkPct, color: CONCEPT_COLORS.not_submitted.hex, query: { approval_status: 'Blank' } },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          onClick={() => openDealsQuery(`${item.label} Deals (${item.count} deals · ${acvM(item.acv)})`, item.query)}
+                          className="flex items-center justify-between text-xs cursor-pointer p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="font-semibold text-[var(--text-primary)]">{item.label}</span>
+                            <span className="text-[10px] text-[var(--text-muted)] tabular-nums">({item.count})</span>
+                          </div>
+                          <div className="flex items-center gap-3 tabular-nums">
+                            <span className="font-bold text-[var(--text-primary)]">{acvM(item.acv)}</span>
+                            <span className="text-[11px] font-semibold text-[var(--text-muted)] w-11 text-right">{item.pct.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* One-line insight */}
+                  <div className="pt-2.5 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-[var(--brand-teal)] shrink-0" />
+                    <span className="truncate">
+                      {topBlankReg && (topBlankReg.blank_acv || 0) > 0 ? (
+                        <>
+                          <strong>{topBlankReg.region}</strong> holds largest unsubmitted ACV: <strong>{acvM(topBlankReg.blank_acv)}</strong> ({topBlankReg.blank_count} deals).
+                        </>
+                      ) : (
+                        'All active renewal proposals submitted for review.'
+                      )}
+                    </span>
+                  </div>
+                </div>
               )
-            })}
-          </div>
+            })()}
+
+            {/* Zone (c): Key stats 2x2 grid */}
+            {(() => {
+              const sortedRegions = (regTrend || []).slice().sort((a: any, b: any) => (b.total_acv || 0) - (a.total_acv || 0))
+              const topRegion = sortedRegions[0]
+              const topRegionShare = total.acv > 0 && topRegion ? ((topRegion.total_acv / total.acv) * 100).toFixed(1) + '%' : ''
+              const largestDeal = summary?.needs_attention?.items?.find((i: any) => i.opportunity_name && i.acv)
+              const covDeltaY = summary?.coverage?.delta_yesterday_pp
+
+              // Days to period end calculation
+              let daysToPeriodEnd: number | null = null
+              let periodLabel = 'quarter'
+              const snapDateStr = summary?.snapshot_date || activeSnapshot?.snapshot_date
+              if (snapDateStr) {
+                const d = new Date(snapDateStr.length === 10 ? snapDateStr + 'T00:00:00' : snapDateStr)
+                if (!isNaN(d.getTime())) {
+                  const qIdx = Math.floor(d.getMonth() / 3)
+                  const qEndMonth = (qIdx + 1) * 3 - 1
+                  const qEndDate = new Date(d.getFullYear(), qEndMonth + 1, 0, 23, 59, 59)
+                  daysToPeriodEnd = Math.max(0, Math.ceil((qEndDate.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)))
+                  periodLabel = `Q${qIdx + 1}`
+                }
+              }
+
+              return (
+                <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        Key Performance Stats
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      {/* 1. Commit Coverage */}
+                      <div
+                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        onClick={() => {
+                          const cov = summary?.coverage
+                          cov && openDealsQuery(
+                            `Coverage Deals (Commit + Best Case) · ${formatNumber(cov.count)} deals · ${formatCurrency(cov.acv)}`,
+                            { kind: 'coverage' }
+                          )
+                        }}
+                        title="Click to view Commit + Best Case deals"
+                      >
+                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Commit Coverage</div>
+                        <div className="text-lg font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                          {summary?.coverage?.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
+                        </div>
+                        <div className="text-[10px] tabular-nums text-[var(--text-muted)] truncate">
+                          {covDeltaY != null ? (
+                            <span className={covDeltaY >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-rose-600 dark:text-rose-400 font-medium'}>
+                              {covDeltaY >= 0 ? '+' : ''}{Number(covDeltaY).toFixed(1)} pts vs yday
+                            </span>
+                          ) : 'Commit + Best Case'}
+                        </div>
+                      </div>
+
+                      {/* 2. Days to Period End */}
+                      <div
+                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-default transition-all flex flex-col justify-between min-h-[78px]"
+                        title={`Days remaining to ${periodLabel} period close`}
+                      >
+                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Days to Period End</div>
+                        <div className="text-lg font-bold text-[var(--brand-teal)] tabular-nums">
+                          {daysToPeriodEnd != null ? `${daysToPeriodEnd} days` : '—'}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                          {periodLabel} period end
+                        </div>
+                      </div>
+
+                      {/* 3. Largest Region */}
+                      <div
+                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        onClick={() => topRegion && openDealsQuery(`${topRegion.region} Deals`, { region: topRegion.region })}
+                        title={topRegion ? `Click to view ${topRegion.region} deals` : undefined}
+                      >
+                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Region</div>
+                        <div className="text-sm font-bold text-[var(--text-primary)] truncate" title={topRegion?.region}>
+                          {topRegion?.region || '—'}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                          {topRegion ? `${acvM(topRegion.total_acv)} (${topRegionShare})` : '—'}
+                        </div>
+                      </div>
+
+                      {/* 4. Largest Deal */}
+                      <div
+                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        onClick={() => largestDeal && openDealsQuery(`Largest Deal: ${largestDeal.opportunity_name}`, { deal_ids: largestDeal.opportunity_id_18 })}
+                        title={largestDeal ? `${largestDeal.opportunity_name} · ${acvM(largestDeal.acv)}` : undefined}
+                      >
+                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Deal</div>
+                        <div className="text-xs font-bold text-[var(--brand-teal)] truncate" title={largestDeal?.opportunity_name}>
+                          {largestDeal?.opportunity_name || '—'}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                          {largestDeal ? acvM(largestDeal.acv) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </CardRow>
         </div>
-
-        {/* ── B8 Coverage Line: Commit + Best Case % of Total ACV ── */}
-        {summary?.coverage && (
-          <div
-            className="mt-5 pt-4 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3 cursor-pointer group hover:bg-[var(--bg-secondary)]/50 p-2.5 rounded-lg transition-colors"
-            onClick={() => {
-              const cov = summary.coverage
-              openDealsQuery(
-                `Coverage Deals (Commit + Best Case) · ${formatNumber(cov.count)} deals · ${formatCurrency(cov.acv)}`,
-                { kind: 'coverage' }
-              )
-            }}
-            title="Click to view Commit + Best Case deals"
-          >
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-tight group-hover:text-[var(--brand-teal)] transition-colors">
-                  Coverage (Commit + Best Case):
-                </span>
-              </div>
-              <span className="text-sm sm:text-base font-bold tabular-nums text-[var(--text-primary)] group-hover:underline">
-                {summary.coverage.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
-              </span>
-              <span className="text-xs text-[var(--text-muted)]">
-                of total ACV
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <div className="flex items-center gap-1.5" title="Percentage-point change vs yesterday">
-                <span className="text-xs text-[var(--text-muted)]">vs yesterday:</span>
-                {summary.coverage.delta_yesterday_pp != null ? (
-                  <span
-                    className={`tabular-nums font-medium text-xs ${
-                      summary.coverage.delta_yesterday_pp >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {summary.coverage.delta_yesterday_pp >= 0 ? '+' : ''}
-                    {Number(summary.coverage.delta_yesterday_pp).toFixed(1)} pts
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-muted)]">—</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5" title="Percentage-point change vs last week">
-                <span className="text-xs text-[var(--text-muted)]">vs last week:</span>
-                {summary.coverage.delta_lastweek_pp != null ? (
-                  <span
-                    className={`tabular-nums font-medium text-xs ${
-                      summary.coverage.delta_lastweek_pp >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {summary.coverage.delta_lastweek_pp >= 0 ? '+' : ''}
-                    {Number(summary.coverage.delta_lastweek_pp).toFixed(1)} pts
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-muted)]">—</span>
-                )}
-              </div>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 group-hover:underline flex items-center gap-0.5">
-                View deals →
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* ── SECTION 2 – Forecast Category Group (Data-driven) ──────────────── */}
       {(() => {
         const isFuture = summary?.is_future || summary?.slippage?.is_future
@@ -625,7 +776,7 @@ export default function Dashboard() {
               title="Forecast category"
               subtitle="Closed, Commit, Best Case and Pipeline value for the selected period."
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               {categoryKeys.map((catKey) => {
                 const cat = cats[catKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
                 const label = getForecastCategoryLabel(catKey)
@@ -778,12 +929,12 @@ export default function Dashboard() {
         const slipAcv = slipTot?.acv ?? 0
         const slipIsNA = isFuture || slipTot?.count === null
         const slipHasDeals = slipCnt > 0 || slipAcv > 0
-        const slipMainTitle = `Slippage (${slipCnt} ${slipCnt === 1 ? 'deal' : 'deals'} · ${acvM(slipAcv)})`
+        const slipMainTitle = `Slippage to 2027 (${slipCnt} ${slipCnt === 1 ? 'deal' : 'deals'} · ${acvM(slipAcv)})`
         const slipYDelta = slipTot?.delayed_vs_yesterday
         const slipLWDelta = slipTot?.delayed_vs_lastweek
-        const slipYTitle = `Slippage · vs yesterday (${Math.abs(slipYDelta?.count || 0)} deals · ${acvM(Math.abs(slipYDelta?.acv || 0))})`
-        const slipLWTitle = `Slippage · vs last week (${Math.abs(slipLWDelta?.count || 0)} deals · ${acvM(Math.abs(slipLWDelta?.acv || 0))})`
-        const slipSubtitle = summary?.slippage?.rule_caption || summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date next year.'
+        const slipYTitle = `Slippage to 2027 · vs yesterday (${Math.abs(slipYDelta?.count || 0)} deals · ${acvM(Math.abs(slipYDelta?.acv || 0))})`
+        const slipLWTitle = `Slippage to 2027 · vs last week (${Math.abs(slipLWDelta?.count || 0)} deals · ${acvM(Math.abs(slipLWDelta?.acv || 0))})`
+        const slipSubtitle = summary?.slippage?.rule_caption || summary?.rules?.slippage_subtitle || 'Service started in prior or current year, close date in 2027.'
 
         const j1Data = summary?.jan1_renewals
         const j1Cnt = j1Data?.count ?? 0
@@ -848,7 +999,7 @@ export default function Dashboard() {
                     <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                       Delayed Renewals
                     </span>
-                    <Pill color="rose"><AlertCircle className="w-3 h-3" />{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
+                    <Pill color="rose">{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={delSubtitle}>
                     {delSubtitle}
@@ -896,9 +1047,9 @@ export default function Dashboard() {
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                      Slippage
+                      Slippage to 2027
                     </span>
-                    <Pill color="amber"><AlertTriangle className="w-3 h-3" />{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
+                    <Pill color="amber">{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
                   </div>
                   <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={slipSubtitle}>
                     {slipSubtitle}
@@ -906,15 +1057,15 @@ export default function Dashboard() {
                   <div
                     className={`text-3xl font-extrabold text-[var(--text-primary)] tabular-nums ${slipHasDeals && !slipIsNA ? 'cursor-pointer hover:underline' : 'cursor-default'}`}
                     onClick={() => slipHasDeals && !slipIsNA && openDealsQuery(slipMainTitle, { kind: 'slippage_total' })}
-                    title={slipHasDeals ? 'Click to view slippage deals' : '0 deals'}
+                    title={slipHasDeals ? 'Click to view slippage to 2027 deals' : '0 deals'}
                   >
                     {slipIsNA ? 'n/a' : acvM(slipAcv)}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
-                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage')}
-                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage')}
+                  {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage to 2027')}
+                  {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage to 2027')}
                 </div>
 
                 {(() => {
@@ -1164,7 +1315,7 @@ export default function Dashboard() {
                     </h3>
                   </div>
                   <p className="text-xs text-[var(--text-muted)] max-w-xl">
-                    Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage totals).
+                    Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage to 2027 totals).
                   </p>
                 </div>
 
@@ -1232,47 +1383,46 @@ export default function Dashboard() {
           }
         />
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
+        <CardRow cols="max-content max-content minmax(0, 1fr)" gap="gap-5">
           {/* ── Approval Status by Region ───────────────────────────────── */}
-          <div id="overview-proposal-confirmation" className="card p-6 flex flex-col justify-between space-y-4 scroll-mt-24 h-full">
+          <div id="overview-proposal-confirmation" className="card p-5 flex flex-col justify-between space-y-3 scroll-mt-24 h-full border border-[var(--border)] shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-bold text-base text-[var(--text-primary)]">Approval Status by Region</h2>
-                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Approved, waiting for approval, and not yet submitted deals per region for the selected period.</p>
+                  <h2 className="font-bold text-sm text-[var(--text-primary)]">Approval Status by Region</h2>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Approved, waiting for approval, and unsubmitted deals.</p>
                 </div>
-                <Globe2 className="w-5 h-5 text-[var(--text-muted)]" />
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
-                <table className="w-full text-xs">
+              <div className="overflow-x-auto rounded-lg border border-[var(--border)] flex-1 table-compact-container">
+                <table className="data-table w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total deals</th>
-                      <th className="text-right px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400">Approved</th>
-                      <th className="text-right px-4 py-3 font-semibold text-amber-600 dark:text-amber-400">Pending Approval</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Not submitted</th>
+                      <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
+                      <th className="text-right px-3 py-2 font-bold !text-[#12284C] dark:!text-[#38bdf8] col-num">Total deals</th>
+                      <th className="text-right px-3 py-2 font-bold !text-emerald-600 dark:!text-emerald-400 col-num">Approved</th>
+                      <th className="text-right px-3 py-2 font-bold !text-amber-600 dark:!text-amber-400 col-num">Pending</th>
+                      <th className="text-right px-3 py-2 font-bold !text-slate-600 dark:!text-slate-400 col-num">Not submitted</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {propRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                        <td className="px-4 py-3 font-medium cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
+                        <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline !text-[#12284C] dark:!text-[#38bdf8] col-num" onClick={() => openDealsQuery(`${row.region} · All Approvals`, { region: row.region }, { sub_region: row.region })}>
                           {(row.approved_count ?? 0) + (row.pending_count ?? 0) + (row.blank_count ?? 0)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 font-bold cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right font-mono text-[var(--text-secondary)] cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-emerald-600 dark:!text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Approved Deals`, { region: row.region, approval_status: 'Approved' }, { sub_region: row.region, approval_status: 'Approved' })}>{row.approved_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-amber-600 dark:!text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Pending Approval Deals`, { region: row.region, approval_status: 'Pending Approval' }, { sub_region: row.region, approval_status: 'Pending Approval' })}>{row.pending_count ?? 0}</td>
+                        <td className="px-3 py-2 text-right font-mono !text-slate-600 dark:!text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`${row.region} · Not submitted`, { region: row.region, approval_status: 'Blank' }, { sub_region: row.region, approval_status: 'Blank' })}>{row.blank_count ?? 0}</td>
                       </tr>
                     ))}
-                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
-                      <td className="px-4 py-3">Total</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
+                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
+                      <td className="px-3 py-2 col-main">Total</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline !text-[#12284C] dark:!text-[#38bdf8] col-num" onClick={() => openDealsQuery(`Total Opportunity Approvals (${(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)} deals)`, {})}>
                         {(propTotals.approved_count ?? 0) + (propTotals.pending_count ?? 0) + (propTotals.blank_count ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-700 dark:text-emerald-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
-                      <td className="px-4 py-3 text-right font-mono text-amber-700 dark:text-amber-400 cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-emerald-600 dark:!text-emerald-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Approved Deals (${propTotals.approved_count ?? 0} deals)`, { approval_status: 'Approved' }, { approval_status: 'Approved' })}>{propTotals.approved_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-amber-600 dark:!text-amber-400 font-bold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Pending Approval Deals (${propTotals.pending_count ?? 0} deals)`, { approval_status: 'Pending Approval' }, { approval_status: 'Pending Approval' })}>{propTotals.pending_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-mono !text-slate-600 dark:!text-slate-400 font-semibold cursor-pointer hover:underline col-num" onClick={() => openDealsQuery(`All Not submitted Deals (${propTotals.blank_count ?? 0} deals)`, { approval_status: 'Blank' }, { approval_status: 'Blank' })}>{propTotals.blank_count ?? 0}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1280,22 +1430,22 @@ export default function Dashboard() {
             </div>
 
             {/* ── Regional ACV by Forecast Category ───────────────────────────────────────── */}
-            <div id="overview-regional-trend" className="card p-6 flex flex-col justify-between space-y-4 scroll-mt-24 h-full">
+            <div id="overview-regional-trend" className="card p-5 flex flex-col justify-between space-y-3 scroll-mt-24 h-full border border-[var(--border)] shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-bold text-base text-[var(--text-primary)]">Regional ACV by Forecast Category</h2>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Closed, Commit and Best Case value per region for the selected period.</p>
+                  <h2 className="font-bold text-sm text-[var(--text-primary)]">Regional ACV by Forecast Category</h2>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Value per region for the selected period.</p>
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-[var(--border)] flex-1">
-                <table className="w-full text-xs">
+              <div className="overflow-x-auto rounded-lg border border-[var(--border)] flex-1 table-compact-container">
+                <table className="data-table w-full text-xs">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-[var(--text-muted)]">Region</th>
-                      <th className="text-right px-4 py-3 font-semibold text-[var(--text-muted)]">Total ACV Value</th>
+                      <th className="text-left px-3 py-2 font-semibold text-[var(--text-muted)] col-main">Region</th>
+                      <th className="text-right px-3 py-2 font-bold text-teal-700 dark:text-teal-400 col-num">Total ACV</th>
                       {trendFcCols.map(fc => (
-                        <th key={fc} className="text-right px-4 py-3 font-semibold" style={{ color: FORECAST_COLORS[fc] }}>
-                          {fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)}
+                        <th key={fc} className="text-right px-3 py-2 font-bold col-num" style={{ color: FORECAST_COLORS[fc] }}>
+                          {fc === 'Blank' ? 'Deleted / lost' : getForecastCategoryLabel(fc)}
                         </th>
                       ))}
                     </tr>
@@ -1303,17 +1453,17 @@ export default function Dashboard() {
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {trendRows.map((row: any) => (
                       <tr key={row.region} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                        <td className="px-4 py-3 font-medium cursor-pointer hover:underline" onClick={() => openDealsQuery(`${row.region} Deals (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
-                        <td className="px-4 py-3 text-right font-mono font-bold cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`${row.region} Total (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{acvM(row.total_acv)}</td>
+                        <td className="px-3 py-2 font-medium cursor-pointer hover:underline col-main" onClick={() => openDealsQuery(`${row.region} Deals (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{row.region}</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-teal-700 dark:text-teal-400 col-num" onClick={() => openDealsQuery(`${row.region} Total (${acvM(row.total_acv)})`, { region: row.region }, { sub_region: row.region })}>{acvM(row.total_acv)}</td>
                         {trendFcCols.map(fc => {
                           const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                           const val = row[k] ?? 0
                           return (
                             <td
                               key={fc}
-                              className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
+                              className="px-3 py-2 text-right font-mono font-semibold cursor-pointer hover:underline col-num"
                               style={{ color: FORECAST_COLORS[fc] }}
-                              onClick={() => openDealsQuery(`${row.region} · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { region: row.region, category: fc }, { sub_region: row.region, forecast_category: fc })}
+                              onClick={() => openDealsQuery(`${row.region} · ${fc === 'Blank' ? 'Deleted / lost' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { region: row.region, category: fc }, { sub_region: row.region, forecast_category: fc })}
                             >
                               {acvM(val)}
                             </td>
@@ -1321,18 +1471,18 @@ export default function Dashboard() {
                         })}
                       </tr>
                     ))}
-                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)]">
-                      <td className="px-4 py-3">Total</td>
-                      <td className="px-4 py-3 text-right font-mono cursor-pointer hover:underline text-[var(--brand-teal)]" onClick={() => openDealsQuery(`Total Renewal ACV (${acvM(regTotals.total_acv)})`, {})}>{acvM(regTotals.total_acv)}</td>
+                    <tr className="bg-[var(--bg-secondary)] font-bold border-t-2 border-[var(--border)] total-row">
+                      <td className="px-3 py-2 col-main">Total</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline text-teal-700 dark:text-teal-400 col-num" onClick={() => openDealsQuery(`Total Renewal ACV (${acvM(regTotals.total_acv)})`, {})}>{acvM(regTotals.total_acv)}</td>
                       {trendFcCols.map(fc => {
                         const k = fc.toLowerCase().replace(' ', '_') + '_acv'
                         const val = regTotals[k] ?? 0
                         return (
                           <td
                             key={fc}
-                            className="px-4 py-3 text-right font-mono cursor-pointer hover:underline"
+                            className="px-3 py-2 text-right font-mono font-bold cursor-pointer hover:underline col-num"
                             style={{ color: FORECAST_COLORS[fc] }}
-                            onClick={() => openDealsQuery(`Total · ${fc === 'Blank' ? 'Deleted / lost in snapshot' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { category: fc }, { forecast_category: fc })}
+                            onClick={() => openDealsQuery(`Total · ${fc === 'Blank' ? 'Deleted / lost' : getForecastCategoryLabel(fc)} (${acvM(val)})`, { category: fc }, { forecast_category: fc })}
                           >
                             {acvM(val)}
                           </td>
@@ -1343,7 +1493,15 @@ export default function Dashboard() {
                 </table>
               </div>
             </div>
-        </div>
+
+            {/* ── Regional & Portfolio Insights ───────────────────────────── */}
+            <InsightCard
+              title="Regional & Portfolio Insights"
+              subtitle="Key trends and concentration across territories"
+              insights={getOverviewInsights(summary, regional, movements, (title, params) => openDealsQuery(title, params))}
+              className="h-full"
+            />
+        </CardRow>
       </section>
 
       {/* Deal modal */}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -29,6 +29,13 @@ import MetricToggle from '@/components/common/MetricToggle'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import SectionNav from '@/components/common/SectionNav'
 import ExcludedTypesNote from '@/components/common/ExcludedTypesNote'
+import SectionHeading from '@/components/common/SectionHeading'
+import Tile from '@/components/common/Tile'
+import CardRow from '@/components/common/CardRow'
+import InsightCard from '@/components/common/InsightCard'
+import ChartCard from '@/components/common/ChartCard'
+import ScrollList from '@/components/common/ScrollList'
+import { getDelayedInsights, getTopDelayedDealsSignals } from '@/insights/generators'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import { useRuleDeals } from '@/hooks/useRuleDeals'
@@ -59,15 +66,61 @@ function DelayedContent() {
     },
   })
 
+  // Fetch Lost deals to build lost tables by region & BU
+  const { data: lostDealsData } = useQuery({
+    queryKey: ['v2-delayed-lost-deals', activeSnapshotId, filters],
+    queryFn: async () => {
+      const res = await api.get('/v2/delayed/deals', {
+        params: { ...filters, as_of: activeSnapshotId ?? undefined, kind: 'lost' },
+      })
+      return res.data
+    },
+    enabled: Boolean(summary?.lost?.count)
+  })
+
+  const { lostByRegion, lostByBu } = React.useMemo(() => {
+    const deals = lostDealsData?.deals || []
+    const totalAcv = summary?.lost?.acv || 1
+
+    const regMap: Record<string, { count: number; acv: number }> = {}
+    const buMap: Record<string, { count: number; acv: number }> = {}
+
+    deals.forEach((d: any) => {
+      const r = d.region || 'Unknown'
+      const b = d.business_unit_primary || d.business_unit || d.bu || 'Unknown'
+      const acv = d.forecast_acv_amount || 0
+
+      if (!regMap[r]) regMap[r] = { count: 0, acv: 0 }
+      regMap[r].count += 1
+      regMap[r].acv += acv
+
+      if (!buMap[b]) buMap[b] = { count: 0, acv: 0 }
+      buMap[b].count += 1
+      buMap[b].acv += acv
+    })
+
+    const lostByRegion = Object.entries(regMap)
+      .map(([name, val]) => ({ name, count: val.count, acv: val.acv, pct: (val.acv / totalAcv) * 100 }))
+      .sort((a, b) => b.acv - a.acv)
+
+    const lostByBu = Object.entries(buMap)
+      .map(([name, val]) => ({ name, count: val.count, acv: val.acv, pct: (val.acv / totalAcv) * 100 }))
+      .sort((a, b) => b.acv - a.acv)
+
+    return { lostByRegion, lostByBu }
+  }, [lostDealsData?.deals, summary?.lost?.acv])
+
   const delayedSections = React.useMemo(() => {
     const list: { id: string; title: string }[] = []
-    const delCount = summary?.delayed_renewals?.total?.count ?? summary?.total?.count
-    if (delCount != null) {
-      list.push({ id: 'delayed-renewals-group', title: 'Delayed Renewals' })
+    if (summary?.by_region?.length || summary?.by_bu?.length) {
+      list.push({ id: 'delayed-breakdowns', title: 'Delayed by Region & BU' })
     }
     const slipCount = summary?.slippage?.total?.count ?? summary?.slippage?.count ?? summary?.slipped?.count
     if (slipCount != null) {
-      list.push({ id: 'delayed-slippage-group', title: 'Slippage' })
+      list.push({ id: 'delayed-slippage-group', title: 'Slippage to 2027' })
+    }
+    if (summary?.top_deals?.length) {
+      list.push({ id: 'delayed-top-deals', title: 'Top 10 Delayed Deals' })
     }
     const pName = summary?.period_label || summary?.data_slice || 'quarter'
     if (summary?.lost) {
@@ -76,12 +129,6 @@ function DelayedContent() {
     const overdueCount = summary?.delayed_renewals?.overdue?.count ?? summary?.overdue?.count ?? 0
     if (overdueCount > 0 && summary?.ageing_breakdown?.length) {
       list.push({ id: 'delayed-ageing', title: 'Overdue Ageing' })
-    }
-    if (summary?.by_region?.length || summary?.by_bu?.length) {
-      list.push({ id: 'delayed-breakdowns', title: 'Region & BU Grids' })
-    }
-    if (summary?.top_deals?.length) {
-      list.push({ id: 'delayed-top-deals', title: 'Top Delayed Deals' })
     }
     if (summary?.reconciliation?.sheets?.length) {
       list.push({ id: 'delayed-reconciliation', title: 'Reconciliation vs Manual Sheets' })
@@ -116,6 +163,13 @@ function DelayedContent() {
   const yDateStr = summary.yesterday_date ? format(parseISO(summary.yesterday_date), 'dd MMM') : 'Yday'
   const wDateStr = summary.lastweek_date ? format(parseISO(summary.lastweek_date), 'dd MMM') : 'Wk'
 
+  const isFuture = summary?.is_future || summary?.slippage?.is_future
+  const delRenewals = summary?.delayed_renewals
+  const delTot = summary?.delayed_renewals_total || delRenewals?.total
+  const overdue = delRenewals?.overdue || summary?.overdue
+  const delayedAhead = delRenewals?.ahead || summary?.ahead || delRenewals?.later_close || summary?.later_close
+  const slipTot = summary?.slippage_total || summary?.slippage?.total || summary?.slippage?.overall
+
   const DualBoxDisplay = ({
     data,
     isOverdue,
@@ -127,7 +181,7 @@ function DelayedContent() {
     catTitle: string
     catKind: string
   }) => {
-    const isFuture = summary?.is_future
+    const isFuturePeriod = summary?.is_future
 
     const renderBox = (
       label: string,
@@ -135,7 +189,7 @@ function DelayedContent() {
       compPeriod: 'yesterday' | 'last_week',
       dateLabel: string
     ) => {
-      if (delta === null || delta === undefined || isFuture) {
+      if (delta === null || delta === undefined || isFuturePeriod) {
         return (
           <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default flex-1">
             <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
@@ -187,7 +241,7 @@ function DelayedContent() {
     )
   }
 
-  // 4px left accent bar + 32px rounded-lg tinted icon tile
+
   const DelayedKpiCard = ({
     title,
     definition,
@@ -456,9 +510,34 @@ function DelayedContent() {
   const regionGrid = buildGrid('by_region', 'region')
   const buGrid = buildGrid('by_bu', 'bu')
 
-  const delTot = summary.delayed_renewals?.total || summary.total
-  const slipTot = summary.slippage?.total || summary.slipped
-  const isFuture = summary?.is_future
+  const buStackedData = buGrid.rows.map((r: any) => {
+    const commitVal = r.cells?.['Commit']?.acv || 0
+    const bestCaseVal = r.cells?.['Best Case']?.acv || 0
+    const pipelineVal = r.cells?.['Pipeline']?.acv || 0
+    const otherVal = Object.entries(r.cells || {}).reduce((sum: number, [cat, cell]: [string, any]) => {
+      if (!['Commit', 'Best Case', 'Pipeline'].includes(cat)) {
+        return sum + (cell?.acv || 0)
+      }
+      return sum
+    }, 0)
+
+    const series = [
+      { name: 'Commit', value: commitVal, color: '#10B981', formattedValue: formatACV(commitVal) },
+      { name: 'Best Case', value: bestCaseVal, color: '#F59E0B', formattedValue: formatACV(bestCaseVal) },
+      { name: 'Pipeline', value: pipelineVal, color: '#64748B', formattedValue: formatACV(pipelineVal) },
+    ]
+    if (otherVal > 0) {
+      series.push({ name: 'Other', value: otherVal, color: '#94A3B8', formattedValue: formatACV(otherVal) })
+    }
+
+    return {
+      label: r.label || r.id,
+      value: r.total?.acv || 0,
+      formattedValue: formatACV(r.total?.acv || 0),
+      series,
+      onClick: () => handleDrill(`Delayed Deals · ${r.label || r.id}`, { kind: 'all', bu: r.id }),
+    }
+  })
 
   return (
     <div className="space-y-8">
@@ -466,8 +545,8 @@ function DelayedContent() {
 
       {/* Aligned Section Header with integrated controls (no combined banner) */}
       <SectionHeader
-        title="Delayed Renewals & Slippage"
-        subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage, and removals.`}
+        title="Delayed Renewals & Slippage to 2027"
+        subtitle={`Renewals in ${summary.data_slice} tracked for timing delays, slippage to 2027, and removals.`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <MetricToggle />
@@ -512,30 +591,73 @@ function DelayedContent() {
         </div>
       )}
 
-      {/* ────────────────── SECTION 1: DELAYED RENEWALS ────────────────── */}
-      <div id="delayed-renewals-group" className="space-y-4 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                Delayed Renewals
-              </h2>
-              {delTot?.count != null && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
-                  {delTot.count} deals · {formatACV(delTot.acv)}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              Service has ended, renewal not closed yet (depends on snapshot as-of date, not selected period).
-            </p>
+      {/* ── TOP KPI ROW (TWO TILES ONLY) ── */}
+      {(() => {
+        const overdueCount = overdue?.count ?? 0
+        const aheadCount = delayedAhead?.count ?? 0
+        const delayedQuietLine = `Overdue ${overdueCount} · Close date ahead ${aheadCount}`
+
+        const slipCats = summary.slippage?.categories || (Array.isArray(summary.slippage?.by_category) ? Object.fromEntries(summary.slippage.by_category.map((x: any) => [x.category, x])) : summary.slippage?.by_category) || {}
+        const slipQuietParts: string[] = []
+        ;['Commit', 'Best Case', 'Pipeline'].forEach((cat) => {
+          const c = slipCats[cat]?.count
+          if (c !== undefined) {
+            slipQuietParts.push(`${cat} ${c}`)
+          }
+        })
+        const slippageQuietLine = slipQuietParts.length > 0 ? slipQuietParts.join(' · ') : undefined
+
+        return (
+          <div id="delayed-top-kpis" className="grid grid-cols-1 md:grid-cols-2 gap-4 scroll-mt-24 mb-6">
+            {/* 1. Delayed Tile */}
+            <Tile
+              tone="delayed"
+              title="Delayed Total"
+              amount={formatACV(delTot?.acv || 0)}
+              count={delTot?.count || 0}
+              subtitle={delayedQuietLine}
+              polarity="bad_when_higher"
+              onClick={() => handleDrill(`Delayed Renewals Total (${formatCount(delTot?.count || 0)} deals · ${formatACV(delTot?.acv || 0)})`, { kind: 'delayed_total' })}
+              deltaYesterday={delTot?.delayed_vs_yesterday}
+              deltaLastWeek={delTot?.delayed_vs_lastweek}
+            />
+
+            {/* 2. Slippage Tile */}
+            <Tile
+              tone="slippage"
+              title="Slippage to 2027 Total"
+              amount={formatACV(slipTot?.acv || 0)}
+              count={slipTot?.count || 0}
+              subtitle={slippageQuietLine || 'Slipped to 2027'}
+              polarity="bad_when_higher"
+              onClick={() => handleDrill(`Slippage to 2027 Total · ${formatCount(slipTot?.count || 0)} deals · ${formatACV(slipTot?.acv || 0)}`, { kind: 'slippage' })}
+              deltaYesterday={slipTot?.delta_yesterday || slipTot?.delayed_vs_yesterday}
+              deltaLastWeek={slipTot?.delta_lastweek || slipTot?.delayed_vs_lastweek}
+            />
           </div>
-          {summary.delayed_pct_of_quarter != null && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
-              {summary.delayed_pct_of_quarter}% of Quarter Total ({formatACV(delTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
-            </span>
-          )}
-        </div>
+        )
+      })()}
+
+      {/* ────────────────── SECTION 1: DELAYED RENEWALS BY REGION & BU ────────────────── */}
+      <div id="delayed-breakdowns" className="space-y-4 scroll-mt-24">
+        <SectionHeading
+          title="Delayed renewals by region and by business unit"
+          subtitle="Service has ended, renewal not closed yet (depends on snapshot as-of date, not selected period)."
+          badge={
+            delTot?.count != null ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                {delTot.count} deals · {formatACV(delTot.acv)}
+              </span>
+            ) : undefined
+          }
+          action={
+            summary.delayed_pct_of_quarter != null ? (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 whitespace-nowrap">
+                {summary.delayed_pct_of_quarter}% of Quarter Total ({formatACV(delTot?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+              </span>
+            ) : undefined
+          }
+        />
 
         {/* Fallback Notice */}
         {Boolean(summary.fallback_used || summary.delayed_renewals?.fallback_used) && (
@@ -567,258 +689,97 @@ function DelayedContent() {
           )
         })()}
 
-        {/* Delayed Renewals Total Bar */}
-        {(() => {
-          const isNA = isFuture || delTot?.count === null
-          const cnt = delTot?.count ?? 0
-          const acvVal = delTot?.acv ?? 0
-          const hasDeals = cnt > 0 || acvVal > 0
-          const drawerTitle = `Delayed Renewals · quarter to date (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
-
-          return (
-            <div className="rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)] p-4 flex flex-wrap items-center justify-between gap-4">
-              <div
-                className={cn(hasDeals && !isNA ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
-                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'delayed_total' })}
-                title={hasDeals ? 'Click to view all delayed renewals' : '0 deals'}
-              >
-                <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
-                  Delayed Renewals Total
-                </div>
-                <div className="flex items-baseline gap-3">
-                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'hover:underline')}>
-                    {isNA ? 'n/a' : formatACV(acvVal)}
-                  </span>
-                  <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
-                    {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week', dateStr: string) => {
-                    if (delta === null || delta === undefined || isFuture) {
-                      return (
-                        <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] opacity-60 cursor-default">
-                          <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                          <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
-                        </div>
-                      )
-                    }
-                    const count = Math.abs(delta.count || 0)
-                    const acv = Math.abs(delta.acv || 0)
-                    const hasBoxDeals = count > 0 || acv > 0
-
-                    const acvColor = hasBoxDeals ? getDeltaTextColor(delta.acv, 'bad_when_higher') : 'text-slate-400 dark:text-slate-500 font-normal'
-                    const cntColor = hasBoxDeals ? getDeltaTextColor(delta.count, 'bad_when_higher') : 'text-slate-400 dark:text-slate-500 font-normal'
-                    const arrow = (delta.acv > 0 || delta.count > 0) ? '↑ ' : (delta.acv < 0 || delta.count < 0) ? '↓ ' : ''
-                    const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
-                    const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
-                    const periodName = comp === 'yesterday' ? 'yesterday' : 'last week'
-                    const boxDrawerTitle = `Delayed Renewals · since ${periodName} (${count} ${count === 1 ? 'deal' : 'deals'} · ${formatACV(acv)})`
-
-                    return (
-                      <div
-                        className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] transition-all', hasBoxDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
-                        onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'delayed_total_delta', compare: comp })}
-                        title={hasBoxDeals ? `Click to view deals changed since ${dateStr}` : `No deals changed since ${dateStr}`}
-                      >
-                        <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                        <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
-                        <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <>
-                      {renderTotBox('vs yesterday', delTot?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-                      {renderTotBox('vs last week', delTot?.delayed_vs_lastweek, 'last_week', wDateStr)}
-                    </>
-                  )
-                })()}
-              </div>
-
-              {/* Right-aligned Newly delayed line (hidden if N == 0) */}
-              {(summary.newly_delayed?.count || 0) > 0 && (
-                <div className="w-full flex justify-end pt-2 border-t border-rose-500/15">
-                  <button
-                    type="button"
-                    onClick={() => handleDrill('Newly Delayed Deals', { kind: 'newly_delayed' })}
-                    className="text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    Newly delayed vs yesterday: {summary.newly_delayed.count} {summary.newly_delayed.count === 1 ? 'deal' : 'deals'} ({formatACV(summary.newly_delayed.acv)})
-                  </button>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-
-        {/* 2 Delayed KPI Cards: Overdue & Delayed, close date ahead */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-          <DelayedKpiCard
-            title="Overdue"
-            definition="Close date has passed."
-            data={summary.delayed_renewals?.overdue || summary.overdue}
-            icon={AlertCircle}
-            accent="rose"
-            kind="overdue"
-            isOverdue={true}
-          />
-          <DelayedAheadCard
-            title="Delayed, close date ahead"
-            definition="Close date is still to come."
-            data={summary.delayed_renewals?.ahead || summary.ahead || summary.delayed_renewals?.later_close || summary.later_close}
-            kind="delayed_ahead"
-            onDrillSplit={(label: string, splitKey: string) => handleDrill(label, { kind: 'delayed_ahead_split', split_key: splitKey })}
-          />
-        </div>
-      </div>
-
-      {/* ────────────────── SECTION 2: SLIPPAGE ────────────────── */}
-      <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
-                Slippage
-              </h2>
-              {summary.slippage?.total?.count != null && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
-                  {summary.slippage.total.count} deals · {formatACV(summary.slippage.total.acv)}
+        {/* Grid Breakdowns & Insights (no outer wrapper cards) */}
+        <CardRow template="max-content minmax(0, 1fr) minmax(0, 1fr)">
+          <Card className="p-4 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)] shrink-0">
+                <h3 className="font-semibold text-sm text-[var(--text-primary)]">Delayed ACV by region</h3>
+                <span className="text-xs text-[var(--text-muted)] font-mono">
+                  {metricMode === 'Amount' ? 'ACV' : metricMode === 'Count' ? 'Deals' : 'ACV & Deals'}
                 </span>
-              )}
+              </div>
+              <div className="overflow-x-auto">
+                <CompactGrid
+                  title=""
+                  hideCardWrapper={true}
+                  rowLabelName="Region"
+                  columns={regionGrid.categories}
+                  columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
+                  rows={regionGrid.rows}
+                  totals={regionGrid.totals}
+                  deltas={regionGrid.gridDeltas}
+                  metricMode={metricMode}
+                  onCellClick={regionGrid.handleCellClick}
+                  compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
+                  yesterdayDate={summary.yesterday_date}
+                  lastweekDate={summary.lastweek_date}
+                  heatMode={heatMode}
+                />
+              </div>
+
+              {/* StatStrip pinned to bottom to match middle chart and right insights */}
+              <div className="grid grid-cols-2 gap-2 mt-auto pt-3 border-t border-[var(--border-subtle)] text-xs shrink-0">
+                <div className="p-2 rounded bg-[var(--bg-secondary)]/50">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Delayed Region</span>
+                  <span className="font-bold text-[var(--text-primary)] truncate block" title={regionGrid.rows[0]?.label}>
+                    {regionGrid.rows[0]?.label || '—'} ({formatACV(regionGrid.rows[0]?.total?.acv || 0)})
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-[var(--bg-secondary)]/50 text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Overdue Volume</span>
+                  <span className="font-bold text-rose-600 dark:text-rose-400 font-mono">
+                    {summary.overdue?.count ?? 0} ({formatACV(summary.overdue?.acv ?? 0)})
+                  </span>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              {summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to next year.'}
-            </p>
+          </Card>
+
+          <div className="h-full flex flex-col min-w-0">
+            <ChartCard
+              title="Delayed ACV by business unit"
+              subtitle="Commit, Best Case, and Pipeline delayed volume"
+              tone="delayed"
+              type="stacked-columns"
+              data={buStackedData}
+              footer={
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Commit</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Commit']?.acv || 0)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Best Case</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Best Case']?.acv || 0)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#64748B] shrink-0" />
+                    <span className="text-[var(--text-secondary)] font-medium">Pipeline</span>
+                    <span className="text-[11px] font-semibold text-[var(--text-primary)] tabular-nums">
+                      ({formatACV(buGrid.totals?.category?.['Pipeline']?.acv || 0)})
+                    </span>
+                  </div>
+                </div>
+              }
+            />
           </div>
-          {summary.slippage_pct_of_quarter != null && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
-              {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(summary.slippage?.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
-            </span>
-          )}
-        </div>
 
-        {/* Slippage Total Box with Deltas */}
-        {(() => {
-          const isNA = isFuture || summary.slippage?.total?.count === null
-          const cnt = summary.slippage?.total?.count ?? 0
-          const acvVal = summary.slippage?.total?.acv ?? 0
-          const hasDeals = cnt > 0 || acvVal > 0
-          const drawerTitle = `Slippage (${cnt} ${cnt === 1 ? 'deal' : 'deals'} · ${formatACV(acvVal)})`
-
-          const renderTotBox = (label: string, delta: any, comp: 'yesterday' | 'last_week' | 'period_start', dateStr: string) => {
-            if (delta === null || delta === undefined || isFuture) {
-              return (
-                <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] opacity-60 cursor-default">
-                  <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                  <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
-                </div>
-              )
-            }
-            const dCount = delta.count || 0
-            const dAcv = delta.acv || 0
-            const hasBoxDeals = dCount !== 0 || dAcv !== 0
-            const polarity = 'bad_when_higher'
-
-            const acvColor = hasBoxDeals ? getDeltaTextColor(delta.acv, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
-            const cntColor = hasBoxDeals ? getDeltaTextColor(delta.count, polarity) : 'text-slate-400 dark:text-slate-500 font-normal'
-            const arrow = (delta.acv > 0 || delta.count > 0) ? '↑ ' : (delta.acv < 0 || delta.count < 0) ? '↓ ' : ''
-            const acvTxt = delta.acv > 0 ? `+${formatACV(delta.acv)}` : delta.acv < 0 ? `-${formatACV(Math.abs(delta.acv))}` : '$0'
-            const cntTxt = delta.count > 0 ? `+${delta.count} deals` : delta.count < 0 ? `${delta.count} deals` : '0 deals'
-            const boxDrawerTitle = `Slippage · ${label} (${Math.abs(dCount)} deals · ${formatACV(Math.abs(dAcv))})`
-
-            return (
-              <div
-                className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] min-w-[120px] transition-all', hasBoxDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
-                onClick={() => hasBoxDeals && handleDrill(boxDrawerTitle, { kind: 'slippage', compare: comp })}
-                title={hasBoxDeals ? `Click to view deals changed vs ${dateStr}` : `No change vs ${dateStr}`}
-              >
-                <div className="text-[10px] font-semibold text-[var(--text-muted)]">{label}</div>
-                <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
-                <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
-              </div>
-            )
-          }
-
-          return (
-            <div className="rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)] p-4 flex flex-wrap items-center justify-between gap-4">
-              <div
-                className={cn(hasDeals && !isNA ? 'cursor-pointer group' : 'cursor-not-allowed opacity-75')}
-                onClick={() => hasDeals && !isNA && handleDrill(drawerTitle, { kind: 'slippage' })}
-                title={hasDeals ? 'Click to view all slipped deals' : '0 deals'}
-              >
-                <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
-                  Slippage Total
-                </div>
-                <div className="flex items-baseline gap-3">
-                  <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', hasDeals && !isNA && 'group-hover:underline')}>
-                    {isNA ? 'n/a' : formatACV(acvVal)}
-                  </span>
-                  <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
-                    {isNA ? 'n/a' : `${formatCount(cnt)} deals`}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {renderTotBox('Vs start of year', summary.slippage?.total?.delta_period_start, 'period_start', summary.slippage?.period_start_baseline_date ? formatDate(summary.slippage.period_start_baseline_date) : 'start of year')}
-                {renderTotBox('Vs yesterday', summary.slippage?.total?.delayed_vs_yesterday, 'yesterday', yDateStr)}
-                {renderTotBox('Vs last week', summary.slippage?.total?.delayed_vs_lastweek, 'last_week', wDateStr)}
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* Forecast Category Split & Slipped From Table */}
-        <SlippageBreakdown
-          slippageSec={summary.slippage}
-          slipTot={summary.slippage_total || summary.slippage?.total}
-          onDealsClick={handleDrill}
-        />
-      </div>
-
-      {/* ────────────────── SECTION 3: LOST SINCE START OF PERIOD ────────────────── */}
-      {summary.lost && (
-        <div id="delayed-lost-group" className="scroll-mt-24">
-          <div className="rounded-xl bg-slate-500/5 dark:bg-slate-950/20 border border-slate-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
-            <div
-              className={cn((summary.lost.count || 0) > 0 ? 'cursor-pointer group' : 'cursor-default')}
-              onClick={() => (summary.lost.count || 0) > 0 && handleDrill(`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`, { kind: 'lost', compare: 'period_start' })}
-              title={(summary.lost.count || 0) > 0 ? `Click to view deals lost since start of ${summary.period_label || summary.data_slice || 'quarter'}` : '0 deals'}
-            >
-              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-2">
-                <span>Lost since start of {summary.period_label || summary.data_slice || 'quarter'}</span>
-              </div>
-              <div className="flex flex-wrap items-baseline gap-3">
-                <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', (summary.lost.count || 0) > 0 && 'group-hover:underline')}>
-                  {formatACV(summary.lost.acv || 0)}
-                </span>
-                <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
-                  {formatCount(summary.lost.count || 0)} deals
-                </span>
-                <span className="text-xs text-[var(--text-muted)]">
-                  (Deals deleted or lost since start of {summary.period_label || summary.data_slice || 'quarter'} baseline; excluded from delayed totals)
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <DualBoxDisplay
-                data={summary.lost}
-                isOverdue={false}
-                catTitle={`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`}
-                catKind="lost"
-              />
-            </div>
+          <div className="h-full min-w-0">
+            <InsightCard
+              title="Delay summary"
+              subtitle="Portfolio delay observations"
+              insights={getDelayedInsights(summary, (title, p) => handleDrill(title, p))}
+            />
           </div>
-        </div>
-      )}
+        </CardRow>
+      </div>
 
       {/* Overdue Ageing Breakdown */}
       {((summary.delayed_renewals?.overdue?.count ?? summary.overdue?.count ?? 0) > 0) && summary.ageing_breakdown && summary.ageing_breakdown.length > 0 && (
@@ -837,7 +798,7 @@ function DelayedContent() {
               Total Overdue: <span className="font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{formatCount(summary.overdue?.count || 0)} deals ({formatACV(summary.overdue?.acv || 0)})</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             {summary.ageing_breakdown?.map((item: any) => {
               const severityClass = {
                 '0-7': 'border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300',
@@ -872,133 +833,398 @@ function DelayedContent() {
         </Card>
       )}
 
-      {/* Grid Breakdowns */}
-      <div id="delayed-breakdowns" className="grid grid-cols-1 lg:grid-cols-2 gap-4 scroll-mt-24">
-        <Card className="flex flex-col h-[400px]" padding="none">
-          <div className="overflow-x-auto h-full p-4">
-            <CompactGrid
-              title="By Region"
-              rowLabelName="Region"
-              columns={regionGrid.categories}
-              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-              rows={regionGrid.rows}
-              totals={regionGrid.totals}
-              deltas={regionGrid.gridDeltas}
-              metricMode={metricMode}
-              onCellClick={regionGrid.handleCellClick}
-              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-              heatMode={heatMode}
-            />
-          </div>
-        </Card>
+      {/* ────────────────── SECTION 2: SLIPPAGE TO 2027 ────────────────── */}
+      <div id="delayed-slippage-group" className="space-y-4 scroll-mt-24">
+        <SectionHeading
+          title="Slippage to 2027"
+          subtitle={summary.slippage?.rule_caption || 'Renewals whose service started in past or current year, but close date slipped to 2027.'}
+          badge={
+            summary.slippage?.total?.count != null ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                {summary.slippage.total.count} deals · {formatACV(summary.slippage.total.acv)}
+              </span>
+            ) : undefined
+          }
+          action={
+            summary.slippage_pct_of_quarter != null ? (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                {summary.slippage_pct_of_quarter}% of Quarter Total ({formatACV(summary.slippage?.total?.acv || 0)} of {formatACV(summary.quarter_total_acv || 0)})
+              </span>
+            ) : undefined
+          }
+        />
 
-        <Card className="flex flex-col h-[400px]" padding="none">
-          <div className="overflow-x-auto h-full p-4">
-            <CompactGrid
-              title="By Business Unit"
-              rowLabelName="Business Unit"
-              columns={buGrid.categories}
-              columnLabels={{ 'Blank': 'Deleted / lost in snapshot' }}
-              rows={buGrid.rows}
-              totals={buGrid.totals}
-              deltas={buGrid.gridDeltas}
-              metricMode={metricMode}
-              onCellClick={buGrid.handleCellClick}
-              compareDate={compare === 'yesterday' ? summary.yesterday_date : summary.lastweek_date}
-              yesterdayDate={summary.yesterday_date}
-              lastweekDate={summary.lastweek_date}
-              heatMode={heatMode}
-            />
-          </div>
-        </Card>
+        {/* Forecast Category Split & Slipped From Table */}
+        <SlippageBreakdown
+          slippageSec={summary.slippage}
+          slipTot={summary.slippage_total || summary.slippage?.total}
+          onDealsClick={handleDrill}
+        />
       </div>
 
-      {/* Top Delayed Deals Table: 44px rows, px-4 py-3 padding, hairline divider, right-aligned numbers */}
-      <Card id="delayed-top-deals" padding="none" className="scroll-mt-24">
-        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>
-            <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
-          </div>
-          <button
-            onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
-            className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
-          >
-            View All ({formatCount(summary.total?.count || 0)})
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="table-enterprise text-xs">
-            <thead>
-              <tr>
-                <th className="text-left">Opportunity & Account</th>
-                <th className="text-left">Region</th>
-                <th className="text-left">Owner</th>
-                <th className="text-left">Reason</th>
-                <th className="text-right">Days Overdue / to Close</th>
-                <th className="text-right">ACV</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.top_deals?.map((deal: any) => (
-                <tr
-                  key={deal.opportunity_id_18}
-                  className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
-                  onClick={() => setSelectedOppId(deal.opportunity_id_18)}
-                >
-                  <td className="max-w-xs">
-                    <div className="font-medium text-[var(--brand-teal)] truncate">
-                      {deal.opportunity_name}
-                    </div>
-                    <div className="text-[10px] text-[var(--text-muted)] truncate">
-                      {deal.account_name}
-                    </div>
-                  </td>
-                  <td className="text-[var(--text-secondary)]">{deal.region}</td>
-                  <td className="text-[var(--text-secondary)]">{deal.owner || deal.opportunity_owner || '—'}</td>
-                  <td>
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
-                        deal.reason === 'Overdue'
-                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
-                          : 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-900/30'
+      {/* ────────────────── SECTION 3: TOP 10 DELAYED DEALS & HIGHLIGHTS ────────────────── */}
+      {(() => {
+        const topDeals = summary.top_deals || []
+
+        const ownerMap: Record<string, { count: number; acv: number }> = {}
+        topDeals.forEach((d: any) => {
+          const o = d.owner || d.opportunity_owner || 'Unassigned'
+          if (!ownerMap[o]) ownerMap[o] = { count: 0, acv: 0 }
+          ownerMap[o].count += 1
+          ownerMap[o].acv += d.forecast_acv_amount || 0
+        })
+        const topOwnersChartData = Object.entries(ownerMap)
+          .sort((a, b) => b[1].acv - a[1].acv)
+          .slice(0, 4)
+          .map(([owner, val]) => ({
+            label: owner,
+            value: val.acv,
+            formattedValue: `${formatACV(val.acv)} (${val.count})`,
+            color: '#00A3AD',
+            onClick: () => handleDrill(`Delayed Deals · ${owner}`, { kind: 'all', owner }),
+          }))
+
+        return (
+          <CardRow template="max-content minmax(0, 1fr)" id="delayed-top-deals">
+            <Card padding="none" className="h-full flex flex-col justify-between">
+              <div>
+                <div className="p-3.5 border-b border-[var(--border)] flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[var(--text-primary)]">Top 10 Delayed Deals by ACV</h2>
+                    <p className="text-xs text-[var(--text-muted)]">Highest-value renewals requiring immediate attention</p>
+                  </div>
+                  <button
+                    onClick={() => handleDrill('All Delayed Deals', { kind: 'all' })}
+                    className="text-xs text-[var(--brand-teal)] hover:underline font-medium"
+                  >
+                    View All ({formatCount(summary.total?.count || 0)})
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th className="text-left col-label">Opportunity & Account</th>
+                        <th className="text-left col-label">Region</th>
+                        <th className="text-left col-label">Owner</th>
+                        <th className="text-left col-label">Status</th>
+                        <th className="text-right col-num">Timing</th>
+                        <th className="text-right col-num">ACV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.top_deals?.map((deal: any) => (
+                        <tr
+                          key={deal.opportunity_id_18}
+                          className="hover:bg-[var(--bg-secondary)]/60 cursor-pointer transition-colors"
+                          onClick={() => setSelectedOppId(deal.opportunity_id_18)}
+                        >
+                          <td className="col-label font-medium text-[var(--brand-teal)] truncate" title={deal.opportunity_name}>
+                            <div className="truncate max-w-[200px]">{deal.opportunity_name}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate max-w-[180px]">{deal.account_name}</div>
+                          </td>
+                          <td className="text-[var(--text-secondary)] col-label truncate max-w-[90px]">{deal.region}</td>
+                          <td className="text-[var(--text-secondary)] col-label truncate max-w-[90px]">{deal.owner || deal.opportunity_owner || '—'}</td>
+                          <td className="col-label">
+                            <span
+                              className={cn(
+                                'px-2 py-0.5 rounded-sm text-[10px] font-medium border',
+                                deal.reason === 'Overdue'
+                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-900/30'
+                                  : 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-900/30'
+                              )}
+                            >
+                              {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
+                            </span>
+                          </td>
+                          <td className="text-right tabular-nums col-num">
+                            {deal.days_overdue > 0 ? (
+                              <span className="font-semibold text-rose-600 dark:text-rose-400">
+                                {deal.days_overdue}d overdue
+                              </span>
+                            ) : deal.days_to_close > 0 ? (
+                              <span className="font-medium text-teal-600 dark:text-teal-400">
+                                {deal.days_to_close}d to close
+                              </span>
+                            ) : (
+                              <span className="text-[var(--text-muted)]">—</span>
+                            )}
+                          </td>
+                          <td className="text-right font-medium text-[var(--text-primary)] tabular-nums col-num">
+                            {formatACV(deal.forecast_acv_amount)}
+                          </td>
+                        </tr>
+                      ))}
+                      {(!summary.top_deals || summary.top_deals.length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-[var(--text-muted)]">
+                            No delayed deals found.
+                          </td>
+                        </tr>
                       )}
-                    >
-                      {deal.reason || (deal.days_overdue > 0 ? 'Overdue' : 'Close date ahead')}
-                    </span>
-                  </td>
-                  <td className="text-right tabular-nums">
-                    {deal.days_overdue > 0 ? (
-                      <span className="font-semibold text-rose-600 dark:text-rose-400">
-                        {deal.days_overdue}d overdue
-                      </span>
-                    ) : deal.days_to_close > 0 ? (
-                      <span className="font-medium text-teal-600 dark:text-teal-400">
-                        {deal.days_to_close}d to close
-                      </span>
-                    ) : (
-                      <span className="text-[var(--text-muted)]">—</span>
-                    )}
-                  </td>
-                  <td className="text-right font-medium text-[var(--text-primary)] tabular-nums">
-                    {formatACV(deal.forecast_acv_amount)}
-                  </td>
-                </tr>
-              ))}
-              {(!summary.top_deals || summary.top_deals.length === 0) && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-[var(--text-muted)]">
-                    No delayed deals found.
-                  </td>
-                </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Card>
+
+            <div className="h-full flex flex-col gap-3 min-w-0">
+              <InsightCard
+                title="Top delayed deals: signals"
+                subtitle="Exposure concentration & critical dates"
+                insights={getTopDelayedDealsSignals(summary, setSelectedOppId)}
+              />
+              {topOwnersChartData.length > 0 && (
+                <ChartCard
+                  title="Delayed ACV by owner (top 4)"
+                  subtitle="Owner concentration among top delayed contracts"
+                  type="horizontal-bars"
+                  data={topOwnersChartData}
+                  className="min-h-[140px]"
+                />
               )}
-            </tbody>
-          </table>
+            </div>
+          </CardRow>
+        )
+      })()}
+
+      {/* ────────────────── SECTION 4: LOST SINCE START OF QUARTER ────────────────── */}
+      {summary.lost && (
+        <div id="delayed-lost-group" className="scroll-mt-24 space-y-4">
+          <SectionHeading
+            title={`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`}
+            subtitle="Deals deleted or lost since start of baseline (excluded from delayed totals)."
+            badge={
+              summary.lost.count != null ? (
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/20">
+                  {summary.lost.count} deals · {formatACV(summary.lost.acv)}
+                </span>
+              ) : undefined
+            }
+          />
+          <div className="rounded-xl bg-slate-500/5 dark:bg-slate-950/20 border border-slate-500/20 p-4 flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={cn((summary.lost.count || 0) > 0 ? 'cursor-pointer group' : 'cursor-default')}
+              onClick={() => (summary.lost.count || 0) > 0 && handleDrill(`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`, { kind: 'lost', compare: 'period_start' })}
+              title={(summary.lost.count || 0) > 0 ? `Click to view deals lost since start of ${summary.period_label || summary.data_slice || 'quarter'}` : '0 deals'}
+            >
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-2">
+                <span>Lost Deals Total</span>
+              </div>
+              <div className="flex flex-wrap items-baseline gap-3">
+                <span className={cn('text-2xl font-black text-[var(--text-primary)] tabular-nums', (summary.lost.count || 0) > 0 && 'group-hover:underline')}>
+                  {formatACV(summary.lost.acv || 0)}
+                </span>
+                <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
+                  {formatCount(summary.lost.count || 0)} deals
+                </span>
+                <span className="text-xs text-[var(--text-muted)]">
+                  (Excluded from delayed totals)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <DualBoxDisplay
+                data={summary.lost}
+                isOverdue={false}
+                catTitle={`Lost since start of ${summary.period_label || summary.data_slice || 'quarter'}`}
+                catKind="lost"
+              />
+            </div>
+          </div>
+
+          <CardRow template="max-content minmax(0, 1fr)">
+            <Card padding="none" className="overflow-hidden h-full flex flex-col justify-between">
+              <div>
+                <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/30 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Lost deals by region</h3>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByRegion.length} regions</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th className="text-left col-label">Region</th>
+                        <th className="text-right col-num">Deals</th>
+                        <th className="text-right col-money">ACV</th>
+                        <th className="text-right col-pct">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lostByRegion.map((r) => (
+                        <tr
+                          key={r.name}
+                          className="hover:bg-[var(--bg-secondary)]/50 cursor-pointer transition-colors"
+                          onClick={() => handleDrill(`Lost Deals · ${r.name}`, { kind: 'lost', region: r.name })}
+                        >
+                          <td className="col-label font-medium text-[var(--text-primary)] truncate" title={r.name}>{r.name}</td>
+                          <td className="text-right tabular-nums col-num">{r.count}</td>
+                          <td className="text-right tabular-nums font-semibold col-money">{formatACV(r.acv)}</td>
+                          <td className="text-right tabular-nums text-[var(--text-muted)] col-pct">{r.pct.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                      {lostByRegion.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">No lost deals</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Top Lost Region</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByRegion[0]?.name || '—'} ({formatACV(lostByRegion[0]?.acv || 0)})
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Regional Concentration</span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {lostByRegion[0]?.pct ? `${lostByRegion[0].pct.toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            <ChartCard
+              title="Lost deals by business unit"
+              subtitle="Distribution of lost renewal ACV across business units"
+              type="vertical-bars"
+              tone="neutral"
+              data={lostByBu.map((bu) => ({
+                label: bu.name,
+                value: bu.acv,
+                formattedValue: formatACV(bu.acv),
+                percentage: bu.pct,
+                sublabel: `${bu.count} ${bu.count === 1 ? 'deal' : 'deals'}`,
+                dealsCount: bu.count,
+                color: '#64748B',
+                onClick: () => handleDrill(`Lost Deals · ${bu.name}`, { kind: 'lost', business_unit: bu.name }),
+              }))}
+              footer={
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[10px] text-[var(--text-muted)] uppercase font-medium">
+                    Top Lost BU: <strong className="text-[var(--text-primary)]">{lostByBu[0]?.name || '—'}</strong> ({formatACV(lostByBu[0]?.acv || 0)})
+                  </span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">
+                    {lostByBu[0]?.pct ? `${lostByBu[0].pct.toFixed(1)}% share` : '—'}
+                  </span>
+                </div>
+              }
+            />
+          </CardRow>
         </div>
-      </Card>
+      )}
+
+      {/* ────────────────── SECTION 5: NEEDS REVIEW ────────────────── */}
+      {(() => {
+        const rawItems = (summary.needs_review?.items || summary.needs_review?.types || [])
+        const reviewList = rawItems.filter((t: any) => t.count > 0 && t.type !== 'expired_no_group')
+        if (reviewList.length === 0) return null
+        const totalAcv = summary.needs_review?.total_acv ?? reviewList.reduce((acc: number, x: any) => acc + (x.acv || 0), 0)
+        const totalCount = summary.needs_review?.total_count || reviewList.reduce((acc: number, x: any) => acc + (x.count || 0), 0)
+
+        return (
+          <CardRow template="max-content minmax(0, 1fr)" id="delayed-needs-review">
+            <Card padding="none" className="h-full flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--border)] p-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-[var(--text-primary)]">
+                        Needs review
+                      </h2>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                        {totalCount} deals
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">
+                      Deals requiring inspection. Exceptions and data-quality checks tracked alongside renewals.
+                    </p>
+                  </div>
+                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    Total Exception ACV: {formatACV(totalAcv)}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto p-4">
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
+                    <thead>
+                      <tr className="bg-[var(--bg-secondary)]/50 text-[var(--text-secondary)]">
+                        <th className="text-left font-semibold">Review Type</th>
+                        <th className="text-right font-semibold">Deals</th>
+                        <th className="text-right font-semibold">ACV</th>
+                        <th className="text-left font-semibold">Explanation</th>
+                        <th className="text-right font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border)]">
+                      {reviewList.map((t: any) => (
+                        <tr key={t.type || t.type_id || t.title} className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                          <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
+                          <td className="text-right font-semibold tabular-nums">{t.count}</td>
+                          <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
+                          <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.description || t.explanation}</td>
+                          <td className="text-right">
+                            <button
+                              onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id })}
+                              className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
+                            >
+                              View deals →
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]/20 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Total Exceptions</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">{totalCount} deals</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Exception Value</span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">{formatACV(totalAcv)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Flagged Categories</span>
+                  <span className="font-bold text-[var(--text-primary)] tabular-nums">{reviewList.length} categories</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[var(--text-muted)] block uppercase font-medium">Primary Flag</span>
+                  <span className="font-bold text-[var(--text-primary)] truncate block" title={reviewList[0]?.title}>{reviewList[0]?.title || '—'}</span>
+                </div>
+              </div>
+            </Card>
+
+            <ChartCard
+              title="Why Deals Need Review"
+              subtitle="Exception distribution by type"
+              type="vertical-bars"
+              data={reviewList.map((t: any) => ({
+                label: t.title,
+                value: t.acv || 0,
+                formattedValue: formatACV(t.acv || 0),
+                sublabel: `${t.count} ${t.count === 1 ? 'deal' : 'deals'}`,
+                dealsCount: t.count,
+                color: '#F59E0B',
+                onClick: () => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id }),
+              }))}
+              footer={
+                <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+                  <span>{totalCount} total exceptions</span>
+                  <span>Click bars or buttons to inspect</span>
+                </div>
+              }
+            />
+          </CardRow>
+        )
+      })()}
 
       {/* ────────────────── ADMIN: RECONCILIATION VS MANUAL SHEETS ────────────────── */}
       {summary.reconciliation?.sheets?.length > 0 && (
@@ -1014,7 +1240,7 @@ function DelayedContent() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="table-enterprise text-xs">
+            <table className="data-table table-enterprise w-full text-xs">
               <thead>
                 <tr>
                   <th className="text-left">Manual Sheet</th>
@@ -1045,67 +1271,6 @@ function DelayedContent() {
           </div>
         </div>
       )}
-
-      {/* ────────────────── BOTTOM SECTION: NEEDS REVIEW ────────────────── */}
-      {(() => {
-        const reviewList = (summary.needs_review?.items || summary.needs_review?.types || []).filter((t: any) => t.count > 0)
-        if (reviewList.length === 0) return null
-        return (
-          <div id="delayed-needs-review" className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 scroll-mt-24 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-amber-500/20 pb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                  <h2 className="text-base font-bold text-[var(--text-primary)]">
-                    Needs review
-                  </h2>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                    {summary.needs_review?.total_count || reviewList.reduce((acc: number, x: any) => acc + (x.count || 0), 0)} deals
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                  Deals requiring inspection. None of these deals count in any headline totals above.
-                </p>
-              </div>
-              <div className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                Total Exception ACV: {formatACV(summary.needs_review?.total_acv ?? reviewList.reduce((acc: number, x: any) => acc + (x.acv || 0), 0))}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="table-enterprise text-xs">
-                <thead>
-                  <tr>
-                    <th className="text-left font-semibold">Review Type</th>
-                    <th className="text-right font-semibold">Deals</th>
-                    <th className="text-right font-semibold">ACV</th>
-                    <th className="text-left font-semibold">Explanation</th>
-                    <th className="text-right font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {reviewList.map((t: any) => (
-                    <tr key={t.type || t.type_id || t.title} className="hover:bg-amber-500/10 transition-colors">
-                      <td className="font-bold text-[var(--text-primary)]">{t.title}</td>
-                      <td className="text-right font-semibold tabular-nums">{t.count}</td>
-                      <td className="text-right font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatACV(t.acv)}</td>
-                      <td className="text-[var(--text-secondary)] text-[11px] max-w-md">{t.description || t.explanation}</td>
-                      <td className="text-right">
-                        <button
-                          onClick={() => handleDrill(t.title, { kind: 'needs_review', review_type: t.type || t.type_id })}
-                          className="px-2.5 py-1 rounded bg-[var(--bg-primary)] border border-amber-500/30 text-amber-700 dark:text-amber-300 font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer text-xs"
-                        >
-                          View deals →
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )
-      })()}
 
       {modalState.isOpen && (
         <DealListModal
