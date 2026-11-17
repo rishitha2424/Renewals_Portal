@@ -425,7 +425,7 @@ export default function Topbar() {
       <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
         <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar py-0.5">
+          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -626,7 +626,7 @@ export default function Topbar() {
 
               {/* More Filters popover */}
               {moreFiltersOpen && (
-                <div className="absolute left-0 mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
+                <div className="absolute left-0 top-full mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
                   <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
                     <span className="font-semibold text-xs text-[var(--text-primary)]">Filter Dimensions</span>
                     <button
@@ -776,7 +776,7 @@ export default function Topbar() {
               </button>
 
               {savedViewsOpen && (
-                <div className="absolute left-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-2">
+                <div className="absolute left-0 top-full mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-2">
                   <span className="font-semibold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
                   <div className="flex gap-1.5">
                     <input
