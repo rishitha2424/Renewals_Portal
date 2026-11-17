@@ -115,13 +115,13 @@ export function Drawer({
             </div>
 
             {/* Content Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
               {children}
             </div>
 
             {/* Footer */}
             {footer && (
-              <div className="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30">
                 {footer}
               </div>
             )}

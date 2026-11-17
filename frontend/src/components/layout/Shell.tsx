@@ -95,7 +95,7 @@ export default function Shell() {
           }}
           className="flex-1 overflow-y-auto relative z-10"
         >
-          <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="w-full max-w-[2560px] mx-auto px-3 sm:px-6 lg:px-8 2xl:px-10 py-3 sm:py-6">
             <ErrorBoundary>
               <Outlet />
             </ErrorBoundary>

@@ -128,7 +128,7 @@ export default function CompactGrid({
     <div className="overflow-x-auto max-w-full">
       <table
         className="data-table text-xs whitespace-nowrap"
-        style={{ tableLayout: 'auto', width: 'max-content', maxWidth: '100%' }}
+        style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}
       >
         <thead>
           <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border)]">

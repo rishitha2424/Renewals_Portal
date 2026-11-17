@@ -179,7 +179,7 @@ function BusinessUnitsContent() {
     return (
       <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <Skeleton className="h-14 w-full rounded-xl" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
@@ -390,7 +390,7 @@ function BusinessUnitsContent() {
         const top3Summary = top3BUs.map((r: any) => `${r.bu} ${total.acv > 0 ? ((r.acv / total.acv) * 100).toFixed(0) : 0}%`).join(' · ')
 
         return (
-          <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 scroll-mt-24">
+          <div id="bu-kpi-summary" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 scroll-mt-24">
             {/* Card 1: Total Portfolio ACV */}
             <Tile
               tone="total"

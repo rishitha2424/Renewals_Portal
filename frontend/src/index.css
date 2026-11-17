@@ -100,34 +100,34 @@
 }
 
 @layer components {
-  /* Type Scale */
+  /* Type Scale with Fluid clamp() */
   .type-page-title {
-    font-size: 1.5rem; /* 24px */
-    line-height: 2rem;
+    font-size: clamp(1.25rem, 1.1rem + 0.65vw, 1.625rem);
+    line-height: 1.3;
     font-weight: 700;
     letter-spacing: -0.015em;
   }
   .type-section-title {
-    font-size: 1rem; /* 16px */
-    line-height: 1.5rem;
+    font-size: clamp(0.875rem, 0.8rem + 0.35vw, 1.125rem);
+    line-height: 1.4;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .type-card-label {
-    font-size: 0.75rem; /* 12px */
+    font-size: clamp(0.7rem, 0.65rem + 0.2vw, 0.75rem);
     line-height: 1rem;
     font-weight: 500;
     color: var(--text-muted);
   }
   .type-big-number {
-    font-size: 1.5rem; /* 24px */
-    line-height: 2rem;
+    font-size: clamp(1.25rem, 1.05rem + 0.8vw, 1.75rem);
+    line-height: 1.25;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
   .type-body {
-    font-size: 0.875rem; /* 14px */
-    line-height: 1.25rem;
+    font-size: clamp(0.8125rem, 0.775rem + 0.2vw, 0.875rem);
+    line-height: 1.35rem;
     font-weight: 400;
   }
   .type-caption {
@@ -143,6 +143,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     box-shadow: var(--card-shadow);
+    min-width: 0;
   }
 
   /* ── Tight, Aligned, Crisp Enterprise Table Standards (.data-table & .table-enterprise) ── */
@@ -161,7 +162,7 @@
   .table-enterprise {
     table-layout: auto;
     width: max-content;
-    max-width: 100%;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 12px;
     line-height: 1.35;
@@ -359,9 +360,10 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Cap width on tables with 5 or fewer columns to prevent large empty gaps */
+  /* Table container helper: full width with smooth horizontal scrolling if columns exceed container */
   .table-compact-container {
-    max-width: 720px;
+    width: 100%;
+    max-width: 100%;
   }
 
   /* Skeleton loading */
@@ -369,26 +371,41 @@
     background-color: var(--bg-secondary);
     border-radius: 6px;
   }
-  /* CardRow grid helper implementing Principles R1 & R2 (Phase 1 Item A) */
+  /* CardRow multi-tier responsive grid system */
   .card-row-grid {
     display: grid;
     width: 100%;
     align-items: stretch;
     min-width: 0;
     max-width: 100%;
+    grid-template-columns: 1fr;
   }
   .card-row-grid > * {
     min-width: 0;
     min-height: 0;
   }
-  @media (min-width: 1100px) {
-    .card-row-grid {
+
+  /* Two-column card rows: stack below 1024px, two columns above 1024px */
+  @media (min-width: 1024px) {
+    .card-row-grid.card-row-two-col,
+    .card-row-grid:not(.card-row-three-col) {
       grid-template-columns: var(--card-row-cols, 1fr 1fr);
     }
   }
-  @media (max-width: 1099px) {
-    .card-row-grid {
-      grid-template-columns: 1fr !important;
+
+  /* Three-column card rows:
+     - < 1024px: 1 column
+     - 1024px - 1439px: fluid wrapping (fits 2 cards then wraps 3rd, avoiding cramped columns)
+     - >= 1440px: full 3-column template
+  */
+  @media (min-width: 1024px) and (max-width: 1439px) {
+    .card-row-grid.card-row-three-col {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    }
+  }
+  @media (min-width: 1440px) {
+    .card-row-grid.card-row-three-col {
+      grid-template-columns: var(--card-row-cols, 1fr 1fr 1fr);
     }
   }
 

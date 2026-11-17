@@ -98,7 +98,7 @@ export default function ChartCard({
                     )}
                   >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[180px]" title={d.label}>
+                      <span className="font-semibold text-[var(--text-primary)] truncate flex-1 min-w-0 pr-2" title={d.label}>
                         {d.label}
                       </span>
                       <div className="flex items-center gap-2 tabular-nums">
@@ -213,7 +213,7 @@ export default function ChartCard({
               })()}
             </div>
           ) : type === 'grouped-columns' ? (
-            <div className="flex-1 flex items-end justify-around gap-6 pt-2 pb-2 min-h-[190px]">
+            <div className="flex-1 flex items-end justify-around gap-2 sm:gap-4 lg:gap-6 pt-2 pb-2 min-h-[190px]">
               {(() => {
                 let maxVal = 1
                 data.forEach((d) => {
@@ -227,7 +227,7 @@ export default function ChartCard({
                 })
 
                 return data.map((d) => (
-                  <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full max-w-[160px]">
+                  <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full max-w-[180px] min-w-0">
                     {/* Clean Group Header */}
                     <div className="text-center mb-2 px-1">
                       <span className="text-xs font-bold text-[var(--text-primary)] font-mono tabular-nums block">
@@ -433,7 +433,7 @@ export default function ChartCard({
                   return (
                     <div key={d.label} className="space-y-0.5 text-xs">
                       <div className="flex justify-between text-[11px]">
-                        <span className="font-medium text-[var(--text-primary)] truncate max-w-[160px]">{d.label}</span>
+                        <span className="font-medium text-[var(--text-primary)] truncate flex-1 min-w-0 pr-2">{d.label}</span>
                         <span className={clsx('font-bold tabular-nums', isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                           {d.formattedValue ?? `${isPos ? '+' : ''}${d.value}`}
                         </span>
@@ -460,8 +460,8 @@ export default function ChartCard({
             </div>
           ) : type === 'donut' ? (
             <div className="flex-1 flex flex-col items-center justify-start gap-2 p-1 min-h-0 overflow-hidden">
-              {/* Donut SVG - Fixed size ~150px centered at top (B) */}
-              <div className="relative w-[150px] h-[150px] shrink-0 mx-auto my-1">
+              {/* Donut SVG - Responsive sizing centered at top */}
+              <div className="relative w-32 h-32 sm:w-36 sm:h-36 2xl:w-40 2xl:h-40 shrink-0 mx-auto my-1">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {(() => {
                     let cumulative = 0
@@ -509,9 +509,9 @@ export default function ChartCard({
                         d.onClick && 'cursor-pointer'
                       )}
                     >
-                      <div className="flex items-center gap-1.5 truncate pr-2 min-w-0">
+                      <div className="flex items-center gap-1.5 truncate pr-2 min-w-0 flex-1">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color || toneDef.hex }} />
-                        <span className="font-medium text-[var(--text-secondary)] truncate max-w-[180px]" title={d.label}>{d.label}</span>
+                        <span className="font-medium text-[var(--text-secondary)] truncate flex-1 min-w-0" title={d.label}>{d.label}</span>
                       </div>
                       <div className="flex items-center gap-2 tabular-nums shrink-0">
                         <span className="font-bold text-[var(--text-primary)]">{d.formattedValue ?? acvM(d.value)}</span>

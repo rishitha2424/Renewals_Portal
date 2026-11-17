@@ -798,7 +798,7 @@ function DelayedContent() {
               Total Overdue: <span className="font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{formatCount(summary.overdue?.count || 0)} deals ({formatACV(summary.overdue?.acv || 0)})</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             {summary.ageing_breakdown?.map((item: any) => {
               const severityClass = {
                 '0-7': 'border-l-amber-400 bg-amber-50/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300',
@@ -901,7 +901,7 @@ function DelayedContent() {
                   </button>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
                     <thead>
                       <tr>
                         <th className="text-left col-label">Opportunity & Account</th>
@@ -1042,7 +1042,7 @@ function DelayedContent() {
                   <span className="text-[11px] text-[var(--text-muted)] font-mono">{lostByRegion.length} regions</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
                     <thead>
                       <tr>
                         <th className="text-left col-label">Region</th>
@@ -1151,7 +1151,7 @@ function DelayedContent() {
                 </div>
 
                 <div className="overflow-x-auto p-4">
-                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
                     <thead>
                       <tr className="bg-[var(--bg-secondary)]/50 text-[var(--text-secondary)]">
                         <th className="text-left font-semibold">Review Type</th>

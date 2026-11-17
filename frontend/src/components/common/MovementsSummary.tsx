@@ -94,7 +94,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
       {/* Positive / Negative tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* GREEN – Positive */}
-        <div className="rounded-xl border border-emerald-500/20 bg-[var(--bg-card)] overflow-hidden shadow-xs">
+        <div className="rounded-xl border border-emerald-500/20 bg-[var(--bg-card)] overflow-x-auto shadow-xs">
           <div className="px-4 py-2.5 bg-emerald-600 text-white flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-white" /> Positive Movements
@@ -103,7 +103,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               +{acvM(posTotal)}
             </span>
           </div>
-          <table className="w-full text-xs table-fixed">
+          <table className="w-full min-w-[300px] text-xs table-fixed">
             <colgroup>
               <col className="w-[44%]" />
               <col className="w-[24%]" />
@@ -172,7 +172,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
         </div>
 
         {/* RED – Negative */}
-        <div className="rounded-xl border border-rose-500/20 bg-[var(--bg-card)] overflow-hidden shadow-xs">
+        <div className="rounded-xl border border-rose-500/20 bg-[var(--bg-card)] overflow-x-auto shadow-xs">
           <div className="px-4 py-2.5 bg-rose-600 text-white flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
               <TrendingDown className="w-4 h-4 text-white" /> Negative Movements
@@ -181,7 +181,7 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               -{acvM(negTotal)}
             </span>
           </div>
-          <table className="w-full text-xs table-fixed">
+          <table className="w-full min-w-[300px] text-xs table-fixed">
             <colgroup>
               <col className="w-[44%]" />
               <col className="w-[24%]" />
@@ -274,8 +274,8 @@ export const MovementsSummary: React.FC<MovementsSummaryProps> = ({
               {apv.reduce((s: number, r: any) => s + (r.count ?? 0), 0)} Status Changes ({acvM(apvTotal)})
             </span>
           </div>
-          <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-            <table className="w-full text-xs table-fixed">
+          <div className="rounded-xl border border-[var(--border)] overflow-x-auto">
+            <table className="w-full min-w-[560px] text-xs table-fixed">
               <colgroup>
                 <col className="w-[28%]" />
                 <col className="w-[28%]" />

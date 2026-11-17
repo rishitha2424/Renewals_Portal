@@ -776,7 +776,7 @@ export default function Dashboard() {
               title="Forecast category"
               subtitle="Closed, Commit, Best Case and Pipeline value for the selected period."
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               {categoryKeys.map((catKey) => {
                 const cat = cats[catKey] ?? { count: 0, acv: 0, delta_yesterday: null, delta_lastweek: null }
                 const label = getForecastCategoryLabel(catKey)

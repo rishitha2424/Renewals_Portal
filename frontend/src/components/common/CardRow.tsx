@@ -28,11 +28,19 @@ export default function CardRow({
   children,
 }: CardRowProps) {
   const colDef = template || cols || '1fr 1fr'
+  // Split on whitespace not inside parentheses to count columns accurately
+  const segments = colDef.trim().split(/\s+(?![^(]*\))/)
+  const isThreeOrMore = segments.length >= 3
 
   return (
     <div
       id={id}
-      className={clsx('card-row-grid', gap, className)}
+      className={clsx(
+        'card-row-grid',
+        isThreeOrMore ? 'card-row-three-col' : 'card-row-two-col',
+        gap,
+        className
+      )}
       style={{
         ['--card-row-cols' as any]: colDef,
         minHeight,

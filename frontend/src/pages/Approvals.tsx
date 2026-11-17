@@ -244,7 +244,7 @@ export default function Approvals() {
         />
 
         {/* 4 summary tiles */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="cursor-pointer" onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}>
             <StatChip
               tone="approved"
@@ -461,7 +461,7 @@ export default function Approvals() {
                 </div>
 
                 <div className="overflow-x-auto flex-1">
-                  <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+                  <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
                     <thead>
                       {metricMode === 'Both' ? (
                         <>
@@ -764,7 +764,7 @@ export default function Approvals() {
               </div>
 
             <div className="overflow-x-auto">
-              <table className="data-table text-xs text-left" style={{ width: 'max-content', maxWidth: '100%' }}>
+              <table className="data-table text-xs text-left" style={{ width: 'max-content', minWidth: '100%' }}>
                 <thead>
                   {metricMode === 'Both' ? (
                     <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
