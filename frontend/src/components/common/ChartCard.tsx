@@ -213,7 +213,7 @@ export default function ChartCard({
               })()}
             </div>
           ) : type === 'grouped-columns' ? (
-            <div className="flex-1 flex items-end justify-between gap-3 pt-4 pb-1 border-b border-[var(--border-subtle)] min-h-[160px]">
+            <div className="flex-1 flex items-end justify-around gap-6 pt-2 pb-2 min-h-[190px]">
               {(() => {
                 let maxVal = 1
                 data.forEach((d) => {
@@ -227,9 +227,10 @@ export default function ChartCard({
                 })
 
                 return data.map((d) => (
-                  <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
-                    <div className="text-center mb-1">
-                      <span className="text-[11px] font-bold text-[var(--text-primary)] font-mono tabular-nums block">
+                  <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full max-w-[160px]">
+                    {/* Clean Group Header */}
+                    <div className="text-center mb-2 px-1">
+                      <span className="text-xs font-bold text-[var(--text-primary)] font-mono tabular-nums block">
                         {d.formattedValue}
                       </span>
                       {d.dealsCount !== undefined && (
@@ -238,35 +239,41 @@ export default function ChartCard({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-end justify-center gap-1.5 w-full h-full">
+
+                    {/* Bars in Group */}
+                    <div className="flex items-end justify-center gap-3 w-full h-full pb-1.5 border-b border-[var(--border-subtle)]">
                       {(d.series || [{ name: d.label, value: d.value, color: d.color, formattedValue: d.formattedValue }]).map((s: any) => {
-                        const hPct = Math.max(6, (s.value / maxVal) * 100)
+                        const hPct = Math.max(8, (s.value / maxVal) * 100)
                         return (
                           <div
                             key={s.name}
                             onClick={d.onClick}
-                            className="flex-1 max-w-[32px] flex flex-col items-center justify-end h-full group cursor-pointer"
+                            className="flex-1 max-w-[48px] flex flex-col items-center justify-end h-full group cursor-pointer"
                             title={`${d.label} - ${s.name}: ${s.formattedValue ?? s.value}${s.dealsCount !== undefined ? ` (${s.dealsCount} deals)` : ''}`}
                           >
-                            <span className="text-[9px] font-bold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums">
+                            <span className="text-[10px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums mb-1 whitespace-nowrap">
                               {s.formattedValue ?? s.value}
                             </span>
                             <div
-                              className="w-full rounded-t-sm transition-all group-hover:opacity-85"
+                              className="w-full rounded-t-md transition-all group-hover:opacity-85 shadow-xs"
                               style={{ height: `${hPct}%`, backgroundColor: s.color || toneDef.hex }}
                             />
                             {s.dealsCount !== undefined && (
-                              <span className="text-[8px] text-[var(--text-muted)] mt-0.5 tabular-nums">
-                                {s.dealsCount}d
+                              <span className="text-[9px] font-medium text-[var(--text-muted)] mt-1 tabular-nums whitespace-nowrap">
+                                {s.dealsCount} {s.dealsCount === 1 ? 'deal' : 'deals'}
                               </span>
                             )}
                           </div>
                         )
                       })}
                     </div>
-                    <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full mt-1" title={d.label}>
-                      {d.label}
-                    </span>
+
+                    {/* Group Label - ample room so letters never clip */}
+                    <div className="pt-2 text-center w-full">
+                      <span className="text-xs font-semibold text-[var(--text-primary)] block truncate" title={d.label}>
+                        {d.label}
+                      </span>
+                    </div>
                   </div>
                 ))
               })()}

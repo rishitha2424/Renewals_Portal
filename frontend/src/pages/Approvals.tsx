@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { useAppStore } from '@/store/appStore'
 import { getApprovalsDistribution, getApprovalsDeals } from '@/api/client'
-import { formatCurrency, formatNumber, acvM, formatDate, getApprovalStatusLabel, getForecastCategoryLabel } from '@/utils/format'
+import { formatCurrency, formatNumber, acvM, formatACV, formatDate, getApprovalStatusLabel, getForecastCategoryLabel } from '@/utils/format'
 import { DEFINITIONS } from '@/config/definitions'
 import EmptyState from '@/components/ui/EmptyState'
 import { PageNoSnapshotState } from '@/components/ui/PageNoSnapshotState'
@@ -662,56 +662,66 @@ export default function Approvals() {
               </div>
             </Card>
 
-            <ChartCard
-              title="Deal-Size Distribution"
-              subtitle={`Large (≥ ${deal_size_split.threshold_label}) vs Small (< ${deal_size_split.threshold_label})`}
-              type="grouped-columns"
-              data={deal_size_split.statuses
-                .filter((s: any) => s.status !== 'Total')
-                .map((st: any) => {
-                  const totalAcv = (st.large?.acv || 0) + (st.small?.acv || 0)
-                  const totalDeals = (st.large?.count || 0) + (st.small?.count || 0)
-                  return {
-                    label: getApprovalStatusLabel(st.status),
-                    value: totalAcv,
-                    formattedValue: formatCurrency(totalAcv),
-                    dealsCount: totalDeals,
-                    sublabel: `${totalDeals} ${totalDeals === 1 ? 'deal' : 'deals'}`,
-                    onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${getApprovalStatusLabel(st.status)} All Deals`),
-                    series: [
-                      {
-                        name: `Large (≥ ${deal_size_split.threshold_label})`,
-                        value: st.large?.acv || 0,
-                        formattedValue: formatCurrency(st.large?.acv || 0),
-                        dealsCount: st.large?.count || 0,
-                        color: '#2563EB',
-                      },
-                      {
-                        name: `Small (< ${deal_size_split.threshold_label})`,
-                        value: st.small?.acv || 0,
-                        formattedValue: formatCurrency(st.small?.acv || 0),
-                        dealsCount: st.small?.count || 0,
-                        color: '#93C5FD',
-                      },
-                    ],
+            {(() => {
+              const totalSplitStatus = deal_size_split.statuses.find((s: any) => s.status === 'Total')
+              const largeTotalAcv = totalSplitStatus?.large?.acv ?? 0
+              const largeTotalCount = totalSplitStatus?.large?.count ?? 0
+              const smallTotalAcv = totalSplitStatus?.small?.acv ?? 0
+              const smallTotalCount = totalSplitStatus?.small?.count ?? 0
+
+              return (
+                <ChartCard
+                  title="Deal-Size Distribution"
+                  subtitle={`Large (≥ ${deal_size_split.threshold_label}) vs Small (< ${deal_size_split.threshold_label})`}
+                  type="grouped-columns"
+                  data={deal_size_split.statuses
+                    .filter((s: any) => s.status !== 'Total')
+                    .map((st: any) => {
+                      const totalAcv = (st.large?.acv || 0) + (st.small?.acv || 0)
+                      const totalDeals = (st.large?.count || 0) + (st.small?.count || 0)
+                      return {
+                        label: getApprovalStatusLabel(st.status),
+                        value: totalAcv,
+                        formattedValue: formatACV(totalAcv),
+                        dealsCount: totalDeals,
+                        sublabel: `${totalDeals} ${totalDeals === 1 ? 'deal' : 'deals'}`,
+                        onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${getApprovalStatusLabel(st.status)} All Deals`),
+                        series: [
+                          {
+                            name: `Large (≥ ${deal_size_split.threshold_label})`,
+                            value: st.large?.acv || 0,
+                            formattedValue: formatACV(st.large?.acv || 0),
+                            dealsCount: st.large?.count || 0,
+                            color: '#2563EB',
+                          },
+                          {
+                            name: `Small (< ${deal_size_split.threshold_label})`,
+                            value: st.small?.acv || 0,
+                            formattedValue: formatACV(st.small?.acv || 0),
+                            dealsCount: st.small?.count || 0,
+                            color: '#93C5FD',
+                          },
+                        ],
+                      }
+                    })}
+                  footer={
+                    <div className="text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-subtle)]">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[#2563EB]" />
+                          <span>Large (≥ {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatACV(largeTotalAcv)} ({largeTotalCount} deals)</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[#93C5FD]" />
+                          <span>Small (&lt; {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatACV(smallTotalAcv)} ({smallTotalCount} deals)</strong></span>
+                        </div>
+                      </div>
+                      <span>Total: <strong className="text-[var(--text-primary)] font-mono">{formatACV(total?.acv || 0)} ({total?.count || 0} deals)</strong></span>
+                    </div>
                   }
-                })}
-              footer={
-                <div className="text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-[#2563EB]" />
-                      <span>Large (≥ {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(deal_size_split.total?.large?.acv || 0)} ({deal_size_split.total?.large?.count || 0} deals)</strong></span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-[#93C5FD]" />
-                      <span>Small (&lt; {deal_size_split.threshold_label}): <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(deal_size_split.total?.small?.acv || 0)} ({deal_size_split.total?.small?.count || 0} deals)</strong></span>
-                    </div>
-                  </div>
-                  <span>Total: <strong className="text-[var(--text-primary)] font-mono">{formatCurrency(total?.acv || 0)} ({total?.count || 0} deals)</strong></span>
-                </div>
-              }
-            />
+                />
+              )
+            })()}
           </CardRow>
         </div>
       )}
