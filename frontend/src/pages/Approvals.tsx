@@ -284,7 +284,7 @@ export default function Approvals() {
           <div className="cursor-pointer" onClick={() => handleCellClick({}, 'All Deals')}>
             <StatChip
               tone="total"
-              label="Total portfolio"
+              label="Total"
               data={attachDates(total)}
               metricMode={metricMode}
               compareDate={compareSnapshot?.snapshot_date}
@@ -332,7 +332,7 @@ export default function Approvals() {
                     })}
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total Portfolio</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Total</span>
                     <span className="text-base font-black text-[var(--text-primary)] font-mono tabular-nums leading-tight" title={formatCurrency(total?.acv ?? 0)}>
                       {acvM(total?.acv ?? 0)}
                     </span>
