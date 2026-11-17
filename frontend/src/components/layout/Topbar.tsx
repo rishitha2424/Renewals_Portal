@@ -436,8 +436,8 @@ export default function Topbar() {
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* 1. Search (shrinks and flexes to fill free space) */}
-            <div className="min-w-[80px] sm:min-w-[110px] max-w-[125px] sm:max-w-[140px] lg:max-w-[160px] xl:max-w-[180px] min-[1800px]:max-w-xs flex-1 sm:flex-initial">
+            {/* 1. Search (Always shows full prompt like 67% view) */}
+            <div className="min-w-[160px] sm:min-w-[200px] max-w-[260px] sm:max-w-xs flex-1 sm:flex-initial">
               <button
                 type="button"
                 onClick={() => setCommandPaletteOpen(true)}
@@ -447,8 +447,7 @@ export default function Topbar() {
               >
                 <div className="inline-flex items-center gap-1.5 sm:gap-2 truncate">
                   <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                  <span className="truncate hidden min-[1800px]:inline">Search opportunities, regions, accounts...</span>
-                  <span className="truncate min-[1800px]:hidden">Search...</span>
+                  <span className="truncate inline">Search opportunities, regions, accounts...</span>
                 </div>
                 <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
                   ⌘K
@@ -456,16 +455,16 @@ export default function Topbar() {
               </button>
             </div>
 
-            {/* 2. As of (hidden on phone, accessible via Filters button) */}
-            <div className="hidden sm:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+            {/* 2. As of (Always visible with label) */}
+            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
               <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 As of:
               </span>
               <select
                 value={activeSnap?.id ?? ''}
                 onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[120px] xl:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[120px] sm:max-w-[140px] truncate"
                 id="topbar-view-as-of-select"
               >
                 {snapshotsLoading && <option>Loading dates...</option>}
@@ -477,19 +476,19 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 3. vs (compare selector with helper in tooltip) */}
+            {/* 3. vs (compare selector - always visible with label) */}
             <div
-              className="hidden lg:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
+              className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
               title={getCompareLabel()}
             >
               <GitCompare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 vs:
               </span>
               <select
                 value={compareSnapshotId ?? ''}
                 onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[120px] xl:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[120px] sm:max-w-[140px] truncate"
                 id="topbar-compare-with-select"
               >
                 {vsOptions.map((opt: any) => (
@@ -500,16 +499,16 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 4. Period (visible >= xl) */}
-            <div className="hidden xl:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+            {/* 4. Period (Always visible with label) */}
+            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
               <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden 2xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 Period:
               </span>
               <select
                 value={globalFilters.period}
                 onChange={(e) => setGlobalFilters({ period: e.target.value })}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] xl:max-w-[135px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[130px] sm:max-w-[150px] truncate"
                 id="filter-period-select"
               >
                 <option value="current_quarter">Current Quarter (Default)</option>
@@ -529,8 +528,8 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 5. Type Filter (Multi-select dropdown, visible >= 2xl) */}
-            <div className="relative hidden 2xl:inline-flex flex-shrink-0" ref={typeFilterRef}>
+            {/* 5. Type Filter (Multi-select dropdown, always visible) */}
+            <div className="relative inline-flex flex-shrink-0" ref={typeFilterRef}>
               <button
                 type="button"
                 onClick={() => setTypeFilterOpen(!typeFilterOpen)}
@@ -539,8 +538,8 @@ export default function Topbar() {
                 title="Filter by Deal Type"
               >
                 <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                <span className="font-medium text-[var(--text-muted)] hidden min-[1800px]:inline">Type:</span>
-                <span className="font-medium truncate max-w-[50px] xl:max-w-[80px]">
+                <span className="font-medium text-[var(--text-muted)] inline">Type:</span>
+                <span className="font-medium truncate max-w-[70px] xl:max-w-[100px]">
                   {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
@@ -607,8 +606,8 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* More Filters (visible >= 1800px) */}
-            <div className="relative hidden min-[1800px]:block flex-shrink-0" ref={moreRef}>
+            {/* More Filters (Always visible like 67% view) */}
+            <div className="relative block flex-shrink-0" ref={moreRef}>
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
@@ -763,8 +762,8 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* 8. Saved Views (visible >= 1800px) */}
-            <div className="relative hidden min-[1800px]:block flex-shrink-0" ref={viewsRef}>
+            {/* 8. Saved Views (Always visible like 67% view) */}
+            <div className="relative block flex-shrink-0" ref={viewsRef}>
               <button
                 type="button"
                 onClick={() => setSavedViewsOpen(!savedViewsOpen)}
@@ -821,8 +820,8 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* Unified "Filters" panel toggle button for narrower screens (< 1800px or phone) */}
-            <div className="inline-flex min-[1800px]:hidden flex-shrink-0">
+            {/* Mobile Filters drawer button (visible only on small mobile < 640px) */}
+            <div className="inline-flex sm:hidden flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(true)}
