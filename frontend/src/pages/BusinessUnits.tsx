@@ -66,7 +66,8 @@ function BusinessUnitsContent() {
   // Modal state for drill-through
   const [modalOpen, setModalOpen] = useState(false)
   const [modalTitle, setModalTitle] = useState('')
-  const [modalFilters, setModalFilters] = useState<{ bu?: string; category?: string }>({})
+  const [modalFilters, setModalFilters] = useState<{ bu?: string; category?: string; kind?: string }>({})
+  const [customDeals, setCustomDeals] = useState<any[] | null>(null)
 
   // Opportunity Detail drawer
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
@@ -125,7 +126,8 @@ function BusinessUnitsContent() {
   })
 
   // Handle drill-through from any cell, row, total, or BU share item
-  const handleCellClick = (rowId: string | null, colId: string | null, title: string) => {
+  const handleCellClick = (rowId: string | null, colId: string | null, title: string, kind?: string) => {
+    setCustomDeals(null)
     const isRowTotal = !rowId || rowId === 'Total' || rowId === 'All' || rowId === 'Grand Total'
     const isColTotal = !colId || colId === 'Total' || colId === 'All' || colId === 'Grand Total'
 
@@ -134,9 +136,9 @@ function BusinessUnitsContent() {
 
     let formattedTitle = title
     if (!bu && !category) {
-      formattedTitle = 'All Business Units · All Categories'
+      formattedTitle = kind === 'delta_yesterday' ? 'All Business Units · Movement vs Yesterday' : (kind === 'delta_lastweek' ? 'All Business Units · Movement vs Last Week' : 'All Business Units · All Categories')
     } else if (bu && !category) {
-      formattedTitle = `${bu} · All Categories`
+      formattedTitle = kind === 'delta_yesterday' ? `${bu} · Movement vs Yesterday` : (kind === 'delta_lastweek' ? `${bu} · Movement vs Last Week` : `${bu} · All Categories`)
     } else if (!bu && category) {
       formattedTitle = `All Business Units · ${category === 'Blank' ? 'Not yet proposed' : category}`
     } else if (bu && category) {
@@ -144,7 +146,7 @@ function BusinessUnitsContent() {
     }
 
     setModalTitle(formattedTitle)
-    setModalFilters({ bu, category })
+    setModalFilters({ bu, category, kind })
     setModalOpen(true)
   }
 
@@ -666,10 +668,24 @@ function BusinessUnitsContent() {
                         {formatCurrency(r.cells?.[c]?.acv || 0)}
                       </td>
                     ))}
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums">
+                    <td
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCellClick(r.bu, null, `${r.bu} · Movement vs Yesterday`, 'delta_yesterday')
+                      }}
+                      className="py-2.5 px-3 text-right font-mono tabular-nums hover:underline cursor-pointer"
+                      title={`View ${r.bu} deals with movement vs yesterday`}
+                    >
                       {deltaSpan(r.delta_yesterday, false)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono tabular-nums">
+                    <td
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCellClick(r.bu, null, `${r.bu} · Movement vs Last Week`, 'delta_lastweek')
+                      }}
+                      className="py-2.5 px-3 text-right font-mono tabular-nums hover:underline cursor-pointer"
+                      title={`View ${r.bu} deals with movement vs last week`}
+                    >
                       {deltaSpan(r.delta_lastweek, false)}
                     </td>
                   </tr>
@@ -714,10 +730,24 @@ function BusinessUnitsContent() {
                     {formatCurrency(totals.categories[c]?.acv || 0)}
                   </td>
                 ))}
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums">
+                <td
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCellClick(null, null, 'All Business Units · Movement vs Yesterday', 'delta_yesterday')
+                  }}
+                  className="py-2.5 px-3 text-right font-mono font-bold tabular-nums hover:underline cursor-pointer"
+                  title="View All deals with movement vs yesterday"
+                >
                   {deltaSpan(totals.grand.delta_yesterday, false)}
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold tabular-nums">
+                <td
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCellClick(null, null, 'All Business Units · Movement vs Last Week', 'delta_lastweek')
+                  }}
+                  className="py-2.5 px-3 text-right font-mono font-bold tabular-nums hover:underline cursor-pointer"
+                  title="View All deals with movement vs last week"
+                >
                   {deltaSpan(totals.grand.delta_lastweek, false)}
                 </td>
               </tr>
@@ -844,6 +874,12 @@ function BusinessUnitsContent() {
               value: val,
               formattedValue: formatACV(val),
               color: c === 'Commit' ? '#10B981' : c === 'Best Case' ? '#F59E0B' : '#64748B',
+              onClick: () => {
+                const catDeals = deals.filter((d: any) => (d.forecast_category || 'Other') === c)
+                setModalTitle(`${c} Opportunities · ${topBuFilter === 'All' ? 'All BUs' : topBuFilter}`)
+                setCustomDeals(catDeals)
+                setModalOpen(true)
+              }
             }))
 
             return (
@@ -873,15 +909,18 @@ function BusinessUnitsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={dealsData?.deals || []}
-          initialFilters={{
-            business_unit_primary: modalFilters?.bu || undefined,
+          deals={customDeals || dealsData?.deals || []}
+          initialFilters={customDeals ? undefined : {
+            business_unit_primary: modalFilters?.kind ? undefined : (modalFilters?.bu || undefined),
             forecast_category: modalFilters?.category || undefined,
           }}
           onSelectOpp={(id) => {
             setSelectedOppId(id)
           }}
-          onClose={() => setModalOpen(false)}
+          onClose={() => {
+            setModalOpen(false)
+            setCustomDeals(null)
+          }}
         />
       )}
 

@@ -52,6 +52,7 @@ export default function ChartCard({
   className = '',
   emptyText = 'No chart data available.',
 }: ChartCardProps) {
+  const [hoveredSlice, setHoveredSlice] = React.useState<number | null>(null)
   const toneDef = CONCEPT_COLORS[tone] || CONCEPT_COLORS.total
   const calculatedTotal = total ?? data.reduce((acc, d) => acc + (d.value || 0), 0)
 
@@ -93,9 +94,10 @@ export default function ChartCard({
                     key={d.label}
                     onClick={d.onClick}
                     className={clsx(
-                      'group space-y-1',
-                      d.onClick ? 'cursor-pointer hover:opacity-90' : 'cursor-default'
+                      'group space-y-1 p-1 rounded transition-colors',
+                      d.onClick ? 'cursor-pointer hover:bg-[var(--bg-secondary)]/60' : 'cursor-default'
                     )}
+                    title={`${d.label}: ${d.formattedValue ?? d.value} (${pct.toFixed(1)}%)`}
                   >
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-[var(--text-primary)] truncate flex-1 min-w-0 pr-2" title={d.label}>
@@ -460,17 +462,18 @@ export default function ChartCard({
             </div>
           ) : type === 'donut' ? (
             <div className="flex-1 flex flex-col items-center justify-start gap-2 p-1 min-h-0 overflow-hidden">
-              {/* Donut SVG - Responsive sizing centered at top */}
+              {/* Donut SVG - Interactive hover & click slices */}
               <div className="relative w-32 h-32 sm:w-36 sm:h-36 2xl:w-40 2xl:h-40 shrink-0 mx-auto my-1">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {(() => {
                     let cumulative = 0
-                    return data.map((d) => {
+                    return data.map((d, idx) => {
                       const pct = d.percentage ?? (calculatedTotal > 0 ? (d.value / calculatedTotal) * 100 : 0)
                       if (pct <= 0) return null
                       const strokeDasharray = `${pct * 2.512} ${251.2}`
                       const strokeDashoffset = `-${cumulative * 2.512}`
                       cumulative += pct
+                      const isHovered = hoveredSlice === idx
                       return (
                         <circle
                           key={d.label}
@@ -479,35 +482,64 @@ export default function ChartCard({
                           r="40"
                           fill="transparent"
                           stroke={d.color || toneDef.hex}
-                          strokeWidth="16"
+                          strokeWidth={isHovered ? "20" : "16"}
                           strokeDasharray={strokeDasharray}
                           strokeDashoffset={strokeDashoffset}
-                          className="transition-all duration-300"
-                        />
+                          opacity={hoveredSlice === null || isHovered ? 1 : 0.45}
+                          className="transition-all duration-200 cursor-pointer"
+                          onClick={d.onClick}
+                          onMouseEnter={() => setHoveredSlice(idx)}
+                          onMouseLeave={() => setHoveredSlice(null)}
+                        >
+                          <title>{`${d.label}: ${d.formattedValue ?? acvM(d.value)} (${pct.toFixed(1)}%)`}</title>
+                        </circle>
                       )
                     })
                   })()}
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
-                  <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">Total</span>
-                  <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]" title={String(total != null ? total : calculatedTotal)}>
-                    {acvM(total != null ? total : calculatedTotal)}
-                  </span>
+                  {hoveredSlice !== null && data[hoveredSlice] ? (
+                    <>
+                      <span className="text-[10px] uppercase font-bold text-[#00A3AD] tracking-wider truncate max-w-[95px]" title={data[hoveredSlice].label}>
+                        {data[hoveredSlice].label}
+                      </span>
+                      <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]">
+                        {data[hoveredSlice].formattedValue ?? acvM(data[hoveredSlice].value)}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-muted)] font-semibold">
+                        {(data[hoveredSlice].percentage ?? (calculatedTotal > 0 ? (data[hoveredSlice].value / calculatedTotal) * 100 : 0)).toFixed(1)}%
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">Total</span>
+                      <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]" title={String(total != null ? total : calculatedTotal)}>
+                        {acvM(total != null ? total : calculatedTotal)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Legend directly below donut */}
               <div className="w-full space-y-1 overflow-y-auto flex-1 min-h-0 pr-1">
-                {data.map((d) => {
+                {data.map((d, idx) => {
                   const pct = d.percentage ?? (calculatedTotal > 0 ? (d.value / calculatedTotal) * 100 : 0)
+                  const isHovered = hoveredSlice === idx
                   return (
                     <div
                       key={d.label}
                       onClick={d.onClick}
+                      onMouseEnter={() => setHoveredSlice(idx)}
+                      onMouseLeave={() => setHoveredSlice(null)}
                       className={clsx(
-                        'flex items-center justify-between p-1.5 rounded text-xs hover:bg-[var(--bg-secondary)] transition-colors border border-[var(--border-subtle)]',
+                        'flex items-center justify-between p-1.5 rounded text-xs transition-colors border',
+                        isHovered
+                          ? 'bg-[var(--bg-secondary)] border-[#00A3AD] shadow-xs'
+                          : 'hover:bg-[var(--bg-secondary)] border-[var(--border-subtle)]',
                         d.onClick && 'cursor-pointer'
                       )}
+                      title={`${d.label}: ${d.formattedValue ?? acvM(d.value)} (${pct.toFixed(1)}%)`}
                     >
                       <div className="flex items-center gap-1.5 truncate pr-2 min-w-0 flex-1">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color || toneDef.hex }} />

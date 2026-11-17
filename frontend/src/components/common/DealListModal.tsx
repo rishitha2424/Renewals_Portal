@@ -5,6 +5,31 @@ import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, get
 import { FORECAST_COLORS } from '@/design/tokens'
 import { useAppStore } from '@/store/appStore'
 
+export const getDealStage = (d: any): string => {
+  if (!d) return ''
+  return String(
+    d.stage ||
+    d.stage_number ||
+    d.stage_name ||
+    d.extra_attributes?.['Stage Number'] ||
+    d.extra_attributes?.['Stage'] ||
+    d.extra_attributes?.stage ||
+    ''
+  ).trim()
+}
+
+export const getDealOwner = (d: any): string => {
+  if (!d) return ''
+  return String(
+    d.owner ||
+    d.opportunity_owner ||
+    d.extra_attributes?.['Opportunity Owner'] ||
+    d.extra_attributes?.['Owner'] ||
+    d.extra_attributes?.opportunity_owner ||
+    ''
+  ).trim()
+}
+
 interface Deal {
   id: string
   opportunity_id_18: string
@@ -107,10 +132,23 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
 
   const fcOptions = ['All', 'Closed', 'Commit', 'Best Case', 'Pipeline', 'Not yet proposed']
   const statusOptions = uniqueValues('approval_status')
-  const stageOptions = uniqueValues('stage', 'stage_number' as keyof Deal)
+  const stageOptions = useMemo(() => {
+    const vals = new Set((deals || []).map(d => getDealStage(d)).filter(Boolean))
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
   const regionOptions = uniqueValues('sub_region', 'region' as keyof Deal)
-  const buOptions = uniqueValues('business_unit_primary', 'business_unit' as keyof Deal)
-  const ownerOptions = uniqueValues('owner', 'opportunity_owner' as keyof Deal)
+  const buOptions = useMemo(() => {
+    const vals = new Set(
+      (deals || [])
+        .map(d => (d.business_unit_primary || (d as any).business_unit || (d as any).business_unit_raw || '') as string)
+        .filter(v => Boolean(v && v.trim()))
+    )
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
+  const ownerOptions = useMemo(() => {
+    const vals = new Set((deals || []).map(d => getDealOwner(d)).filter(Boolean))
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
 
   const handleSort = (field: keyof Deal) => {
     if (sortField === field) {
@@ -133,20 +171,33 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
         if (fcNorm !== filterFC && d.forecast_category !== filterFC) return false
       }
       if (filterStatus !== 'All') {
-        const stNorm = getApprovalStatusLabel(d.approval_status)
-        if (stNorm !== filterStatus && d.approval_status !== filterStatus) return false
+        if (filterStatus === 'not_approved' || filterStatus === 'unapproved' || filterStatus === 'Not approved') {
+          if (d.approval_status === 'Approved' || (d as any).approval_status_key === 'Approved') return false
+        } else {
+          const stNorm = getApprovalStatusLabel(d.approval_status)
+          if (stNorm !== filterStatus && d.approval_status !== filterStatus && (d as any).approval_status_key !== filterStatus) return false
+        }
       }
-      if (filterStage !== 'All' && d.stage !== filterStage && (d as any).stage_number !== filterStage) return false
+      if (filterStage !== 'All' && getDealStage(d) !== filterStage) return false
       if (filterRegion !== 'All' && d.sub_region !== filterRegion && (d as any).region !== filterRegion) return false
-      if (filterBU !== 'All' && d.business_unit_primary !== filterBU && (d as any).business_unit !== filterBU) return false
-      if (filterOwner !== 'All' && d.owner !== filterOwner && (d as any).opportunity_owner !== filterOwner) return false
+      if (filterBU !== 'All') {
+        const buPrimary = (d.business_unit_primary || (d as any).business_unit || '').toLowerCase()
+        const buRaw = ((d as any).business_unit_raw || '').toLowerCase()
+        const target = filterBU.toLowerCase()
+        const match = buPrimary === target || buRaw === target || buRaw.includes(target) || target.includes(buPrimary)
+        if (!match) return false
+      }
+      if (filterOwner !== 'All' && getDealOwner(d) !== filterOwner) return false
       
       if (search) {
         const q = search.toLowerCase()
+        const st = getDealStage(d).toLowerCase()
+        const ow = getDealOwner(d).toLowerCase()
         if (!d.opportunity_name?.toLowerCase().includes(q) &&
             !d.account_name?.toLowerCase().includes(q) &&
             !d.opportunity_id_18?.toLowerCase().includes(q) &&
-            !d.owner?.toLowerCase().includes(q)) {
+            !ow.includes(q) &&
+            !st.includes(q)) {
           return false
         }
       }
@@ -182,10 +233,10 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
         `"${d.approval_status || ''}"`,
         d.forecast_acv_amount || 0,
         `"${d.close_date || ''}"`,
-        `"${d.stage || ''}"`,
-        `"${d.sub_region || ''}"`,
-        `"${d.business_unit_primary || ''}"`,
-        `"${d.owner || ''}"`
+        `"${getDealStage(d).replace(/"/g, '""')}"`,
+        `"${d.sub_region || (d as any).region || ''}"`,
+        `"${d.business_unit_primary || (d as any).business_unit || ''}"`,
+        `"${getDealOwner(d).replace(/"/g, '""')}"`
       ].join(','))
     ].join('\n')
     
@@ -240,7 +291,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   // Local modal filters
   if (selectedGroup !== 'All') activeChips.push({ label: 'Group', value: selectedGroup === 'added' ? 'Added' : selectedGroup === 'left' ? 'Left' : 'Amount changed', onRemove: () => setSelectedGroup('All') })
   if (filterFC !== 'All') activeChips.push({ label: 'Category', value: filterFC, onRemove: () => setFilterFC('All') })
-  if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus, onRemove: () => setFilterStatus('All') })
+  if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus === 'not_approved' ? 'Awaiting approval' : getApprovalStatusLabel(filterStatus), onRemove: () => setFilterStatus('All') })
   if (filterStage !== 'All') activeChips.push({ label: 'Stage', value: filterStage, onRemove: () => setFilterStage('All') })
   if (filterRegion !== 'All') activeChips.push({ label: 'Region', value: filterRegion, onRemove: () => setFilterRegion('All') })
   if (filterBU !== 'All') activeChips.push({ label: 'BU', value: filterBU, onRemove: () => setFilterBU('All') })
@@ -350,6 +401,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
               {fcOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Categories' : getForecastCategoryLabel(o)}</option>)}
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterStatus === 'not_approved' && <option value="not_approved">Awaiting Approval</option>}
               {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : getApprovalStatusLabel(o)}</option>)}
             </select>
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
@@ -359,6 +411,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
               {regionOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Regions' : o}</option>)}
             </select>
             <select value={filterBU} onChange={e => setFilterBU(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterBU !== 'All' && !buOptions.includes(filterBU) && <option value={filterBU}>{filterBU}</option>}
               {buOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All BUs' : o}</option>)}
             </select>
             
@@ -466,11 +519,11 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
                           {formatDate(d.service_expiry_date)}
                         </td>
                       )}
-                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.stage || (d as any).stage_number}>
-                        {d.stage || (d as any).stage_number || '—'}
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={getDealStage(d)}>
+                        {getDealStage(d) || '—'}
                       </td>
-                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.owner || (d as any).opportunity_owner}>
-                        {d.owner || (d as any).opportunity_owner || '—'}
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={getDealOwner(d)}>
+                        {getDealOwner(d) || '—'}
                       </td>
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}

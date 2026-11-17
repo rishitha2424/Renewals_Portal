@@ -1728,7 +1728,15 @@ export default function Approvals() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={(dealsData?.deals || []).map((d: any) => ({ ...d, owner: d.opportunity_owner || d.owner }))}
+          deals={(
+            (dealsData?.deals && dealsData.deals.length > 0)
+              ? dealsData.deals
+              : (modalFilters.approval_status === 'not_approved' ? (commit_not_approved.deals || []) : [])
+          ).map((d: any) => ({
+            ...d,
+            owner: d.opportunity_owner || d.owner,
+            stage: d.stage_number || d.stage,
+          }))}
           initialFilters={modalFilters}
           onSelectOpp={setSelectedOppId}
           onClose={() => setModalOpen(false)}
