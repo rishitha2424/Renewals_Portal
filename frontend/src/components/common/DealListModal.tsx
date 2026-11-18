@@ -12,6 +12,8 @@ export const getDealStage = (d: any): string => {
     d.stage_number ||
     d.stage_name ||
     d.Stage ||
+    d.Stage_Number ||
+    d.Stage_Name ||
     d['Stage Number'] ||
     d['Stage Name'] ||
     d.extra_attributes?.['Stage Number'] ||
@@ -19,6 +21,7 @@ export const getDealStage = (d: any): string => {
     d.extra_attributes?.stage ||
     d.extra_attributes?.stage_number ||
     d.extra_attributes?.stage_name ||
+    d.extra_attributes?.Stage ||
     ''
   )
   return String(val === null || val === undefined ? '' : val).trim()
@@ -270,6 +273,20 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
     
     if (sortField) {
       result.sort((a, b) => {
+        if (sortField === 'stage') {
+          const valA = getDealStage(a)
+          const valB = getDealStage(b)
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1
+          return 0
+        }
+        if (sortField === 'owner') {
+          const valA = getDealOwner(a)
+          const valB = getDealOwner(b)
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1
+          return 0
+        }
         const valA = a[sortField] || ''
         const valB = b[sortField] || ''
         if (valA < valB) return sortDir === 'asc' ? -1 : 1

@@ -30,8 +30,11 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
         if bu == "" or bu.lower() == "nan":
             bu = "Unassigned"
 
+        stage_val = (o.stage_number or (o.extra_attributes or {}).get("Stage Number") or (o.extra_attributes or {}).get("Stage") or "").strip()
+        owner_val = (o.opportunity_owner or (o.extra_attributes or {}).get("Opportunity Owner") or (o.extra_attributes or {}).get("Owner") or "").strip()
         records.append({
             "opportunity_id_18": o.opportunity_id_18,
+            "id": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name,
             "account_name": o.account_name,
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
@@ -43,13 +46,18 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "fiscal_period": o.fiscal_period or "",
             "close_date": o.close_date,
             "approval_status": o.approval_status or "",
+            "stage": stage_val,
+            "stage_number": stage_val,
+            "owner": owner_val,
+            "opportunity_owner": owner_val,
         })
     if not records:
         return pd.DataFrame(columns=[
-            "opportunity_id_18", "opportunity_name", "account_name",
+            "opportunity_id_18", "id", "opportunity_name", "account_name",
             "forecast_acv_amount", "forecast_category", "business_unit",
             "business_unit_primary", "sub_region", "is_deleted_or_lost",
-            "fiscal_period", "close_date", "approval_status"
+            "fiscal_period", "close_date", "approval_status",
+            "stage", "stage_number", "owner", "opportunity_owner"
         ])
     return pd.DataFrame(records)
 
