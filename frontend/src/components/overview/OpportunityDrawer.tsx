@@ -65,6 +65,9 @@ export interface DealComment {
   createdAt: string
 }
 
+const EMPTY_COLS: CustomColumnItem[] = []
+const EMPTY_ANNOTS: Record<string, DealAnnotationItem> = {}
+
 interface OpportunityDrawerProps {
   oppId: string | null
   onClose: () => void
@@ -94,12 +97,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [editingCommentText, setEditingCommentText] = useState('')
 
   // ── Custom Columns & Deal Annotations Queries ────────────────────────────
-  const { data: customCols = [], refetch: refetchCols } = useQuery<CustomColumnItem[]>({
+  const { data: customCols = EMPTY_COLS, refetch: refetchCols } = useQuery<CustomColumnItem[]>({
     queryKey: ['custom-columns'],
     queryFn: () => getCustomColumns(),
   })
 
-  const { data: annotationsMap = {}, refetch: refetchAnnots } = useQuery<Record<string, DealAnnotationItem>>({
+  const { data: annotationsMap = EMPTY_ANNOTS, refetch: refetchAnnots } = useQuery<Record<string, DealAnnotationItem>>({
     queryKey: ['deal-annotations', oppId],
     queryFn: () => (oppId ? getDealAnnotations(oppId) : Promise.resolve({})),
     enabled: !!oppId,
@@ -116,7 +119,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [isCreatingCol, setIsCreatingCol] = useState(false)
 
   // ── Comments Server Query ───────────────────────────────────────────────
-  const { data: serverComments = [], refetch: refetchComments } = useQuery({
+  const { data: serverComments, refetch: refetchComments } = useQuery({
     queryKey: ['deal-comments', oppId],
     queryFn: () => (oppId ? getDealComments(oppId) : Promise.resolve([])),
     enabled: !!oppId,
@@ -124,6 +127,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
 
   // Synchronize server comments into local state
   useEffect(() => {
+    if (!oppId) {
+      setComments((prev) => (prev.length > 0 ? [] : prev))
+      return
+    }
     if (serverComments && serverComments.length > 0) {
       setComments(
         serverComments.map((c: any) => ({
@@ -150,10 +157,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
             localStorage.removeItem(`deal_comments_${oppId}`)
           }
         } else {
-          setComments([])
+          setComments((prev) => (prev.length > 0 ? [] : prev))
         }
       } catch {
-        setComments([])
+        setComments((prev) => (prev.length > 0 ? [] : prev))
       }
     }
   }, [serverComments, oppId, opp?.opportunity_name])
@@ -257,16 +264,15 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
 
   // Sync draft values for custom columns
   useEffect(() => {
-    if (opp && customCols.length > 0) {
-      const initial: Record<string, string> = {}
-      customCols.forEach((col) => {
-        const directAnnot = annotationsMap[col.key]?.value
-        const oppVal = (opp as any)[col.key] ?? (opp as any)[col.label]
-        initial[col.key] = directAnnot !== undefined ? String(directAnnot ?? '') : (oppVal !== undefined ? String(oppVal ?? '') : '')
-      })
-      setDraftCols(initial)
-    }
-  }, [opp, customCols, annotationsMap])
+    if (!oppId || !opp || customCols.length === 0) return
+    const initial: Record<string, string> = {}
+    customCols.forEach((col) => {
+      const directAnnot = annotationsMap[col.key]?.value
+      const oppVal = (opp as any)[col.key] ?? (opp as any)[col.label]
+      initial[col.key] = directAnnot !== undefined ? String(directAnnot ?? '') : (oppVal !== undefined ? String(oppVal ?? '') : '')
+    })
+    setDraftCols(initial)
+  }, [oppId, opp, customCols, annotationsMap])
 
   const handleSaveCol = async (col: CustomColumnItem) => {
     if (!oppId || col.type.startsWith('auto:')) return
