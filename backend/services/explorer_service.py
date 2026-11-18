@@ -424,7 +424,11 @@ class ExplorerService:
                     effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
             else:
                 from backend.services.settings_service import SettingsService
-                effective_types = SettingsService.get_included_types(self.db)
+                setting_types = SettingsService.get_included_types(self.db)
+                if setting_types and not any(t.lower() == "all" for t in setting_types):
+                    effective_types = setting_types
+                else:
+                    effective_types = None
 
             if effective_types is not None:
                 if len(effective_types) == 0:
@@ -693,7 +697,11 @@ class ExplorerService:
                     effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
             else:
                 from backend.services.settings_service import SettingsService
-                effective_types = SettingsService.get_included_types(self.db)
+                setting_types = SettingsService.get_included_types(self.db)
+                if setting_types and not any(t.lower() == "all" for t in setting_types):
+                    effective_types = setting_types
+                else:
+                    effective_types = None
         else:
             from backend.services.settings_service import SettingsService
             effective_types = SettingsService.get_included_types(self.db)

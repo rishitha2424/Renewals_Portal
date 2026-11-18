@@ -4,7 +4,7 @@ import re
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import Tuple, List, Optional, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_, and_, ColumnElement, func
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,15 @@ class FilterSpec(BaseModel):
     approval_statuses: List[str] = Field(default_factory=list)
     types: Optional[List[str]] = Field(default_factory=lambda: ["all"])
     include_deleted_lost: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_none_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for k in ("sales_types", "regions", "business_units", "forecast_categories", "approval_statuses", "types"):
+                if k in data and data[k] is None:
+                    data[k] = ["all"] if k in ("sales_types", "types") else []
+        return data
 
     @classmethod
     def from_params(
@@ -533,9 +542,11 @@ class ScopeService:
 
         # 8. Deal Types (shared global type filter)
         effective_types: Optional[list[str]] = None
-        if filter_spec.types is not None:
+        if filter_spec.types is not None and len(filter_spec.types) > 0:
             if not any(t.lower() == "all" for t in filter_spec.types):
                 effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
+            else:
+                effective_types = None
         else:
             # Default to the "included types" Setting (default: All)
             from backend.services.settings_service import SettingsService

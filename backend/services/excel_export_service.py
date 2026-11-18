@@ -86,6 +86,11 @@ class ExcelExportService:
         scope: str = "renewals",
         include_deleted_lost: bool = False,
         types: list[str] | None = None,
+        period: str = "current_quarter",
+        regions: list[str] | None = None,
+        business_units: list[str] | None = None,
+        forecast_categories: list[str] | None = None,
+        approval_statuses: list[str] | None = None,
     ) -> tuple[io.BytesIO, str]:
         # 1. Resolve active snapshot
         snap = self.analytics_svc._resolve_snapshot(ADMIN_CONTEXT, snapshot_id)
@@ -108,27 +113,44 @@ class ExcelExportService:
         wb = openpyxl.Workbook()
         wb.remove(wb.active)  # remove default sheet
 
-        cq = ScopeService.quarter_of(snap.snapshot_date)
-        parts = cq.split("-")
+        # 3. Resolve unified Scope and FilterSpec
+        eff_sales_types = ["Renewals"] if scope == "renewals" else ["all"]
+        fs = FilterSpec(
+            sales_types=eff_sales_types,
+            period=period or "current_quarter",
+            include_deleted_lost=include_deleted_lost,
+            types=types,
+            regions=regions,
+            business_units=business_units,
+            forecast_categories=forecast_categories,
+            approval_statuses=approval_statuses,
+        )
+        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=self.db)
+        target_fp = res.resolved_quarter or ScopeService.quarter_of(snap.snapshot_date)
+        data_slice = res.data_slice or ScopeService.quarter_label(target_fp)
+        parts = target_fp.split("-")
         q_short = parts[0] if len(parts) > 0 else "Q"
-        fy_label = f"FY{parts[1][-2:]}" if len(parts) > 1 and len(parts[1]) >= 2 else (f"FY{snap.snapshot_date.year % 100:02d}" if snap and snap.snapshot_date else "FY")
+        fy_label = ScopeService.quarter_label(target_fp)
 
-        opps = self.analytics_svc._opps_for(snap, scope=scope, include_deleted_lost=include_deleted_lost, types=types)
-        fs = self.analytics_svc.get_forecast_summary(
+        # Scoped opportunities matching website exactly
+        from backend.models.opportunity import Opportunity
+        q_opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id, *res.conditions)
+        opps = q_opps.all()
+        df_scoped = _opps_to_df(opps)
+
+        fs_analytics = self.analytics_svc.get_forecast_summary(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=scope, include_deleted_lost=include_deleted_lost,
         )
 
-        ov_summary = None
-        if scope == "renewals":
-            ov_svc = V2OverviewService(self.db)
-            ov_summary = ov_svc.get_summary(
-                ADMIN_CONTEXT,
-                as_of=snap.snapshot_date.isoformat(),
-                filter_spec=FilterSpec(sales_types=["Renewals"], period="current_quarter", include_deleted_lost=include_deleted_lost),
-            )
+        ov_svc = V2OverviewService(self.db)
+        ov_summary = ov_svc.get_summary(
+            ADMIN_CONTEXT,
+            as_of=snap.snapshot_date.isoformat(),
+            filter_spec=fs,
+        )
 
-        approval_scope = "current_quarter" if scope == "renewals" else scope
+        approval_scope = target_fp if scope == "renewals" else scope
         aps = self.analytics_svc.get_approval_status(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
             scope=approval_scope, include_deleted_lost=include_deleted_lost,
@@ -139,7 +161,7 @@ class ExcelExportService:
         )
         comp_data = {}
         if comp_snap:
-            comp_scope = "current_quarter" if scope == "renewals" else scope
+            comp_scope = target_fp if scope == "renewals" else scope
             comp_data = self.analytics_svc.get_comparison(
                 ADMIN_CONTEXT, comp_snap.snapshot_date, snap.snapshot_date,
                 scope=comp_scope, include_deleted_lost=include_deleted_lost,
@@ -162,7 +184,7 @@ class ExcelExportService:
         ws1.append(headers1)
         style_header_row(ws1, len(headers1))
 
-        if scope == "renewals" and ov_summary:
+        if ov_summary:
             ov_tot = ov_summary.get("total", {})
             ov_cats = ov_summary.get("categories", {})
             ov_dy = ov_tot.get("delta_yesterday", {}) or {}
@@ -171,9 +193,9 @@ class ExcelExportService:
             cat_keys = ["Commit", "Best Case", "Pipeline", "Blank"]
 
             r_idx = 2
-            # Parent row (cq)
+            # Parent row (target_fp)
             ws1.append([
-                cq,
+                target_fp,
                 "",
                 ov_tot.get("acv", 0),
                 int(ov_tot.get("count", 0)),
@@ -272,9 +294,9 @@ class ExcelExportService:
             ws1.cell(r_idx, 8).number_format = "#,##0"
             autofit_columns(ws1)
         else:
-            by_cell = fs.get("by_cell", {})
-            by_quarter = fs.get("by_quarter", {})
-            totals = fs.get("totals", {})
+            by_cell = fs_analytics.get("by_cell", {})
+            by_quarter = fs_analytics.get("by_quarter", {})
+            totals = fs_analytics.get("totals", {})
 
             quarters = ScopeService.sort_quarters(list(by_quarter.keys()))
             if not quarters:
