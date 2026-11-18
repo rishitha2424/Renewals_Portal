@@ -728,6 +728,9 @@ class V2RegionsService:
                 "business_unit": row.get("business_unit_primary") or row.get("business_unit") or "",
                 "close_date": c_str,
                 "owner": row.get("opportunity_owner") or row.get("owner") or "",
+                "opportunity_owner": row.get("opportunity_owner") or row.get("owner") or "",
+                "stage": row.get("stage_number") or row.get("stage") or "",
+                "stage_number": row.get("stage_number") or row.get("stage") or "",
             }
             if from_cat and to_cat:
                 d["from_category"] = from_cat

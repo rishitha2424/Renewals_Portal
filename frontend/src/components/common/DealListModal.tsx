@@ -489,12 +489,15 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
               {filterStatus === 'not_approved' && <option value="not_approved">Awaiting Approval</option>}
+              {filterStatus !== 'All' && filterStatus !== 'not_approved' && !statusOptions.includes(filterStatus) && <option value={filterStatus}>{getApprovalStatusLabel(filterStatus)}</option>}
               {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : getApprovalStatusLabel(o)}</option>)}
             </select>
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterStage !== 'All' && !stageOptions.includes(filterStage) && <option value={filterStage}>{filterStage}</option>}
               {stageOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Stages' : o}</option>)}
             </select>
             <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterRegion !== 'All' && !regionOptions.includes(filterRegion) && <option value={filterRegion}>{filterRegion}</option>}
               {regionOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Regions' : o}</option>)}
             </select>
             <select value={filterBU} onChange={e => setFilterBU(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
