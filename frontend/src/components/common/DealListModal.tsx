@@ -5,6 +5,44 @@ import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, get
 import { FORECAST_COLORS } from '@/design/tokens'
 import { useAppStore } from '@/store/appStore'
 
+export const getDealStage = (d: any): string => {
+  if (!d) return ''
+  const val = (
+    d.stage ||
+    d.stage_number ||
+    d.stage_name ||
+    d.Stage ||
+    d.Stage_Number ||
+    d.Stage_Name ||
+    d['Stage Number'] ||
+    d['Stage Name'] ||
+    d.extra_attributes?.['Stage Number'] ||
+    d.extra_attributes?.['Stage'] ||
+    d.extra_attributes?.stage ||
+    d.extra_attributes?.stage_number ||
+    d.extra_attributes?.stage_name ||
+    d.extra_attributes?.Stage ||
+    ''
+  )
+  return String(val === null || val === undefined ? '' : val).trim()
+}
+
+export const getDealOwner = (d: any): string => {
+  if (!d) return ''
+  const val = (
+    d.owner ||
+    d.opportunity_owner ||
+    d.Owner ||
+    d['Opportunity Owner'] ||
+    d.extra_attributes?.['Opportunity Owner'] ||
+    d.extra_attributes?.['Owner'] ||
+    d.extra_attributes?.opportunity_owner ||
+    d.extra_attributes?.owner ||
+    ''
+  )
+  return String(val === null || val === undefined ? '' : val).trim()
+}
+
 interface Deal {
   id: string
   opportunity_id_18: string
@@ -89,12 +127,42 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   }, [onClose])
 
   
-  const [filterFC, setFilterFC] = useState<string>(initialFilters?.forecast_category || 'All')
-  const [filterStatus, setFilterStatus] = useState<string>(initialFilters?.approval_status || 'All')
-  const [filterStage, setFilterStage] = useState<string>(initialFilters?.stage || 'All')
-  const [filterRegion, setFilterRegion] = useState<string>(initialFilters?.sub_region || 'All')
-  const [filterBU, setFilterBU] = useState<string>(initialFilters?.business_unit_primary || 'All')
-  const [filterOwner, setFilterOwner] = useState<string>(initialFilters?.owner || 'All')
+  const initFC = initialFilters?.forecast_category || (initialFilters as any)?.category || 'All'
+  const initStatus = initialFilters?.approval_status || (initialFilters as any)?.status || 'All'
+  const initStage = initialFilters?.stage || (initialFilters as any)?.stage_number || 'All'
+  const initRegion = initialFilters?.sub_region || (initialFilters as any)?.region || 'All'
+  const initBU = initialFilters?.business_unit_primary || (initialFilters as any)?.bu || (initialFilters as any)?.business_unit || 'All'
+  const initOwner = initialFilters?.owner || (initialFilters as any)?.opportunity_owner || 'All'
+
+  const [filterFC, setFilterFC] = useState<string>(initFC)
+  const [filterStatus, setFilterStatus] = useState<string>(initStatus)
+  const [filterStage, setFilterStage] = useState<string>(initStage)
+  const [filterRegion, setFilterRegion] = useState<string>(initRegion)
+  const [filterBU, setFilterBU] = useState<string>(initBU)
+  const [filterOwner, setFilterOwner] = useState<string>(initOwner)
+
+  React.useEffect(() => {
+    if (initialFilters) {
+      if (initialFilters.forecast_category || (initialFilters as any).category) {
+        setFilterFC(initialFilters.forecast_category || (initialFilters as any).category)
+      }
+      if (initialFilters.approval_status || (initialFilters as any).status) {
+        setFilterStatus(initialFilters.approval_status || (initialFilters as any).status)
+      }
+      if (initialFilters.stage || (initialFilters as any).stage_number) {
+        setFilterStage(initialFilters.stage || (initialFilters as any).stage_number)
+      }
+      if (initialFilters.sub_region || (initialFilters as any).region) {
+        setFilterRegion(initialFilters.sub_region || (initialFilters as any).region)
+      }
+      if (initialFilters.business_unit_primary || (initialFilters as any).bu || (initialFilters as any).business_unit) {
+        setFilterBU(initialFilters.business_unit_primary || (initialFilters as any).bu || (initialFilters as any).business_unit)
+      }
+      if (initialFilters.owner || (initialFilters as any).opportunity_owner) {
+        setFilterOwner(initialFilters.owner || (initialFilters as any).opportunity_owner)
+      }
+    }
+  }, [initialFilters])
 
   const uniqueValues = (primaryField: keyof Deal, fallbackField?: keyof Deal) => {
     const vals = new Set(
@@ -107,10 +175,23 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
 
   const fcOptions = ['All', 'Closed', 'Commit', 'Best Case', 'Pipeline', 'Not yet proposed']
   const statusOptions = uniqueValues('approval_status')
-  const stageOptions = uniqueValues('stage', 'stage_number' as keyof Deal)
+  const stageOptions = useMemo(() => {
+    const vals = new Set((deals || []).map(d => getDealStage(d)).filter(Boolean))
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
   const regionOptions = uniqueValues('sub_region', 'region' as keyof Deal)
-  const buOptions = uniqueValues('business_unit_primary', 'business_unit' as keyof Deal)
-  const ownerOptions = uniqueValues('owner', 'opportunity_owner' as keyof Deal)
+  const buOptions = useMemo(() => {
+    const vals = new Set(
+      (deals || [])
+        .map(d => (d.business_unit_primary || (d as any).business_unit || (d as any).business_unit_raw || '') as string)
+        .filter(v => Boolean(v && v.trim()))
+    )
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
+  const ownerOptions = useMemo(() => {
+    const vals = new Set((deals || []).map(d => getDealOwner(d)).filter(Boolean))
+    return ['All', ...Array.from(vals)].sort()
+  }, [deals])
 
   const handleSort = (field: keyof Deal) => {
     if (sortField === field) {
@@ -133,20 +214,57 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
         if (fcNorm !== filterFC && d.forecast_category !== filterFC) return false
       }
       if (filterStatus !== 'All') {
-        const stNorm = getApprovalStatusLabel(d.approval_status)
-        if (stNorm !== filterStatus && d.approval_status !== filterStatus) return false
+        if (filterStatus === 'not_approved' || filterStatus === 'unapproved' || filterStatus === 'Not approved') {
+          if (d.approval_status === 'Approved' || (d as any).approval_status_key === 'Approved') return false
+        } else {
+          const stNorm = getApprovalStatusLabel(d.approval_status)
+          if (stNorm !== filterStatus && d.approval_status !== filterStatus && (d as any).approval_status_key !== filterStatus) return false
+        }
       }
-      if (filterStage !== 'All' && d.stage !== filterStage && (d as any).stage_number !== filterStage) return false
+      if (filterStage !== 'All' && getDealStage(d) !== filterStage) return false
       if (filterRegion !== 'All' && d.sub_region !== filterRegion && (d as any).region !== filterRegion) return false
-      if (filterBU !== 'All' && d.business_unit_primary !== filterBU && (d as any).business_unit !== filterBU) return false
-      if (filterOwner !== 'All' && d.owner !== filterOwner && (d as any).opportunity_owner !== filterOwner) return false
+      if (filterBU !== 'All') {
+        const buPrimary = (d.business_unit_primary || (d as any).business_unit || '').toLowerCase()
+        const buRaw = ((d as any).business_unit_raw || '').toLowerCase()
+        const target = filterBU.toLowerCase()
+        const match = buPrimary === target || buRaw === target || buRaw.includes(target) || target.includes(buPrimary)
+        if (!match) return false
+      }
+      if (filterOwner !== 'All' && getDealOwner(d) !== filterOwner) return false
+
+      // min_acv / max_acv
+      const acvVal = d.forecast_acv_amount ?? (d as any).acv ?? 0
+      if ((initialFilters as any)?.min_acv !== undefined && (initialFilters as any)?.min_acv !== null) {
+        if (acvVal < (initialFilters as any).min_acv) return false
+      }
+      if ((initialFilters as any)?.max_acv !== undefined && (initialFilters as any)?.max_acv !== null) {
+        if (acvVal >= (initialFilters as any).max_acv) return false
+      }
+
+      // opp_id / deal_ids
+      if ((initialFilters as any)?.opp_id) {
+        const targetId = String((initialFilters as any).opp_id).trim()
+        if (String(d.opportunity_id_18).trim() !== targetId && String(d.id).trim() !== targetId) return false
+      }
+      if ((initialFilters as any)?.deal_ids) {
+        const rawIds = (initialFilters as any).deal_ids
+        const idList = (Array.isArray(rawIds) ? rawIds : String(rawIds).split(',')).map((s: any) => String(s).trim()).filter(Boolean)
+        if (idList.length > 0) {
+          const dId18 = String(d.opportunity_id_18 || '').trim()
+          const dId = String(d.id || '').trim()
+          if (!idList.includes(dId18) && !idList.includes(dId)) return false
+        }
+      }
       
       if (search) {
         const q = search.toLowerCase()
+        const st = getDealStage(d).toLowerCase()
+        const ow = getDealOwner(d).toLowerCase()
         if (!d.opportunity_name?.toLowerCase().includes(q) &&
             !d.account_name?.toLowerCase().includes(q) &&
             !d.opportunity_id_18?.toLowerCase().includes(q) &&
-            !d.owner?.toLowerCase().includes(q)) {
+            !ow.includes(q) &&
+            !st.includes(q)) {
           return false
         }
       }
@@ -155,6 +273,20 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
     
     if (sortField) {
       result.sort((a, b) => {
+        if (sortField === 'stage') {
+          const valA = getDealStage(a)
+          const valB = getDealStage(b)
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1
+          return 0
+        }
+        if (sortField === 'owner') {
+          const valA = getDealOwner(a)
+          const valB = getDealOwner(b)
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1
+          return 0
+        }
         const valA = a[sortField] || ''
         const valB = b[sortField] || ''
         if (valA < valB) return sortDir === 'asc' ? -1 : 1
@@ -182,10 +314,10 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
         `"${d.approval_status || ''}"`,
         d.forecast_acv_amount || 0,
         `"${d.close_date || ''}"`,
-        `"${d.stage || ''}"`,
-        `"${d.sub_region || ''}"`,
-        `"${d.business_unit_primary || ''}"`,
-        `"${d.owner || ''}"`
+        `"${getDealStage(d).replace(/"/g, '""')}"`,
+        `"${d.sub_region || (d as any).region || ''}"`,
+        `"${d.business_unit_primary || (d as any).business_unit || ''}"`,
+        `"${getDealOwner(d).replace(/"/g, '""')}"`
       ].join(','))
     ].join('\n')
     
@@ -201,23 +333,23 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   }
 
   const clearFilters = () => {
-    setFilterFC(initialFilters?.forecast_category || 'All')
-    setFilterStatus(initialFilters?.approval_status || 'All')
-    setFilterStage(initialFilters?.stage || 'All')
-    setFilterRegion(initialFilters?.sub_region || 'All')
-    setFilterBU(initialFilters?.business_unit_primary || 'All')
-    setFilterOwner(initialFilters?.owner || 'All')
+    setFilterFC(initFC)
+    setFilterStatus(initStatus)
+    setFilterStage(initStage)
+    setFilterRegion(initRegion)
+    setFilterBU(initBU)
+    setFilterOwner(initOwner)
     setSelectedGroup('All')
     setSearch('')
   }
 
   const hasActiveFilters = 
-    filterFC !== (initialFilters?.forecast_category || 'All') ||
-    filterStatus !== (initialFilters?.approval_status || 'All') ||
-    filterStage !== (initialFilters?.stage || 'All') ||
-    filterRegion !== (initialFilters?.sub_region || 'All') ||
-    filterBU !== (initialFilters?.business_unit_primary || 'All') ||
-    filterOwner !== (initialFilters?.owner || 'All') ||
+    filterFC !== initFC ||
+    filterStatus !== initStatus ||
+    filterStage !== initStage ||
+    filterRegion !== initRegion ||
+    filterBU !== initBU ||
+    filterOwner !== initOwner ||
     selectedGroup !== 'All' ||
     search !== ''
 
@@ -240,11 +372,17 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
   // Local modal filters
   if (selectedGroup !== 'All') activeChips.push({ label: 'Group', value: selectedGroup === 'added' ? 'Added' : selectedGroup === 'left' ? 'Left' : 'Amount changed', onRemove: () => setSelectedGroup('All') })
   if (filterFC !== 'All') activeChips.push({ label: 'Category', value: filterFC, onRemove: () => setFilterFC('All') })
-  if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus, onRemove: () => setFilterStatus('All') })
+  if (filterStatus !== 'All') activeChips.push({ label: 'Status', value: filterStatus === 'not_approved' ? 'Awaiting approval' : getApprovalStatusLabel(filterStatus), onRemove: () => setFilterStatus('All') })
   if (filterStage !== 'All') activeChips.push({ label: 'Stage', value: filterStage, onRemove: () => setFilterStage('All') })
   if (filterRegion !== 'All') activeChips.push({ label: 'Region', value: filterRegion, onRemove: () => setFilterRegion('All') })
   if (filterBU !== 'All') activeChips.push({ label: 'BU', value: filterBU, onRemove: () => setFilterBU('All') })
   if (filterOwner !== 'All') activeChips.push({ label: 'Owner', value: filterOwner, onRemove: () => setFilterOwner('All') })
+  if ((initialFilters as any)?.min_acv !== undefined && (initialFilters as any)?.min_acv !== null) {
+    activeChips.push({ label: 'Deal Size', value: `≥ ${formatCurrency((initialFilters as any).min_acv)}` })
+  }
+  if ((initialFilters as any)?.max_acv !== undefined && (initialFilters as any)?.max_acv !== null) {
+    activeChips.push({ label: 'Deal Size', value: `< ${formatCurrency((initialFilters as any).max_acv)}` })
+  }
 
   return (
     <AnimatePresence>
@@ -350,6 +488,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
               {fcOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Categories' : getForecastCategoryLabel(o)}</option>)}
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterStatus === 'not_approved' && <option value="not_approved">Awaiting Approval</option>}
               {statusOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Statuses' : getApprovalStatusLabel(o)}</option>)}
             </select>
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
@@ -359,6 +498,7 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
               {regionOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All Regions' : o}</option>)}
             </select>
             <select value={filterBU} onChange={e => setFilterBU(e.target.value)} className="text-xs py-1.5 px-2.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none cursor-pointer">
+              {filterBU !== 'All' && !buOptions.includes(filterBU) && <option value={filterBU}>{filterBU}</option>}
               {buOptions.map(o => <option key={o} value={o}>{o === 'All' ? 'All BUs' : o}</option>)}
             </select>
             
@@ -466,11 +606,11 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
                           {formatDate(d.service_expiry_date)}
                         </td>
                       )}
-                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.stage || (d as any).stage_number}>
-                        {d.stage || (d as any).stage_number || '—'}
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={getDealStage(d)}>
+                        {getDealStage(d) || '—'}
                       </td>
-                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={d.owner || (d as any).opportunity_owner}>
-                        {d.owner || (d as any).opportunity_owner || '—'}
+                      <td className="px-3 py-2 text-[var(--text-secondary)] font-normal text-xs max-w-[120px] truncate" title={getDealOwner(d)}>
+                        {getDealOwner(d) || '—'}
                       </td>
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-normal tabular-nums">
                         {formatDate(d.close_date)}

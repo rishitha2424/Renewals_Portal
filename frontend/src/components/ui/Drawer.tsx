@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
@@ -62,10 +63,10 @@ export function Drawer({
 
   const slideX = position === 'right' ? '100%' : '-100%'
 
-  return (
+  const content = (
     <AnimatePresence>
       {isDrawerOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex">
+        <div className="fixed inset-0 z-[100] overflow-hidden flex">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -73,7 +74,7 @@ export function Drawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.14 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/50"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
           />
 
           {/* Drawer Panel */}
@@ -82,24 +83,29 @@ export function Drawer({
             animate={{ x: 0 }}
             exit={{ x: slideX }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
-            style={{ width: 'min(960px, 92vw)', maxWidth: 'min(960px, 92vw)' }}
+            style={{ width: 'min(960px, 94vw)', maxWidth: 'min(960px, 94vw)' }}
             className={clsx(
-              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-elevation flex flex-col h-full',
+              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full',
               'max-sm:max-w-full max-sm:rounded-none',
               position === 'right' ? 'sm:rounded-l-2xl' : 'sm:rounded-r-2xl',
               position === 'right' ? 'ml-auto' : 'mr-auto'
             )}
           >
-            {/* Sticky Header with sticky close button */}
-            <div className={clsx("sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]", position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl')}>
-              <div>
+            {/* Sticky Header with prominent title, subtitle, and close button */}
+            <div
+              className={clsx(
+                'sticky top-0 z-30 flex items-center justify-between px-5 sm:px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] shadow-xs',
+                position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl'
+              )}
+            >
+              <div className="min-w-0 pr-3">
                 {title && (
-                  <h3 className="font-semibold text-sm sm:text-base text-[var(--text-primary)]">
+                  <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)] truncate" title={title}>
                     {title}
                   </h3>
                 )}
                 {subtitle && (
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate font-mono">
                     {subtitle}
                   </p>
                 )}
@@ -107,7 +113,7 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none"
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none flex-shrink-0 cursor-pointer border border-transparent hover:border-[var(--border)]"
                 aria-label="Close drawer"
               >
                 <X className="w-5 h-5" strokeWidth={1.75} />
@@ -130,6 +136,10 @@ export function Drawer({
       )}
     </AnimatePresence>
   )
+
+  if (typeof document === 'undefined') return null
+  const target = document.getElementById('root') || document.body
+  return createPortal(content, target)
 }
 
 export default Drawer

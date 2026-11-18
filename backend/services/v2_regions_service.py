@@ -61,6 +61,9 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
     records = []
     for o in opps:
         reg = _map_region(o.revised_sub_region)
+        extra = o.extra_attributes or {}
+        st_val = (o.stage_number or extra.get("Stage Number") or extra.get("Stage") or "").strip()
+        ow_val = (o.opportunity_owner or extra.get("Opportunity Owner") or extra.get("Owner") or "").strip()
         records.append({
             "id": o.opportunity_id_18,
             "opportunity_id_18": o.opportunity_id_18,
@@ -77,8 +80,10 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "region": reg,
             "sub_region": reg,
             "raw_sub_region": o.revised_sub_region or "",
-            "owner": (o.opportunity_owner or "").strip(),
-            "opportunity_owner": (o.opportunity_owner or "").strip(),
+            "owner": ow_val,
+            "opportunity_owner": ow_val,
+            "stage": st_val,
+            "stage_number": st_val,
         })
     df = pd.DataFrame(records)
     df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
@@ -840,6 +845,9 @@ class V2RegionsService:
                 for o in base_opps:
                     raw_tp = (o.extra_attributes or {}).get("Type") or (o.extra_attributes or {}).get("type") or o.sales_type
                     if ScopeService.extract_type_code(raw_tp) not in res.effective_types:
+                        extra_attr = o.extra_attributes or {}
+                        st_val = (o.stage_number or extra_attr.get("Stage Number") or extra_attr.get("Stage") or "").strip()
+                        ow_val = (o.opportunity_owner or extra_attr.get("Opportunity Owner") or extra_attr.get("Owner") or "").strip()
                         deals.append({
                             "id": o.opportunity_id_18,
                             "opportunity_id_18": o.opportunity_id_18,
@@ -854,6 +862,10 @@ class V2RegionsService:
                             "approval_status": o.approval_status,
                             "close_date": o.close_date.isoformat() if hasattr(o.close_date, "isoformat") else str(o.close_date) if o.close_date else None,
                             "type": raw_tp,
+                            "owner": ow_val,
+                            "opportunity_owner": ow_val,
+                            "stage": st_val,
+                            "stage_number": st_val,
                         })
             return {
                 "count": len(deals),

@@ -1,9 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldCheck, AlertTriangle, CheckCircle2, Save, Lock, RefreshCw, KeyRound, Info } from 'lucide-react'
+import { ShieldCheck, AlertTriangle, CheckCircle2, Save, Lock, RefreshCw, KeyRound, Info, Monitor } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { getAdminStatus, getSystemSettings, updateSystemSetting } from '@/api/client'
 import { showToast } from '@/components/ui/Toast'
+import {
+  DisplaySizeOption,
+  DISPLAY_SIZE_OPTIONS,
+  getSavedDisplaySize,
+  saveDisplaySize,
+  computeScale,
+} from '@/config/layoutScale'
 
 export default function Settings() {
   const queryClient = useQueryClient()
@@ -22,6 +29,14 @@ export default function Settings() {
   })
 
   const [editValues, setEditValues] = useState<Record<string, string>>({})
+  const [displaySize, setDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
+  const currentComputedScale = computeScale(typeof window !== 'undefined' ? window.innerWidth : 1920, displaySize)
+
+  const handleDisplaySizeChange = (val: DisplaySizeOption) => {
+    setDisplaySize(val)
+    saveDisplaySize(val)
+    showToast.success('Display size updated', val === 'auto' ? 'Auto (fit to screen)' : val)
+  }
 
   const updateMutation = useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
@@ -147,6 +162,52 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* ── DISPLAY & SCALING SETTINGS (Available to all users) ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-xs overflow-hidden" id="display-settings">
+        <div className="px-5 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]/40 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Monitor className="w-4 h-4 text-[var(--brand-teal)]" />
+            <div>
+              <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-tight">Display & Scaling</h2>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Fit layout smoothly across screen sizes, laptop monitors, and browser zoom levels.
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
+            Effective scale: {Math.round(currentComputedScale * 100)}%
+          </span>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <label className="text-xs font-bold text-[var(--text-primary)] block">
+                Display size
+              </label>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Choose between automatic fit-to-screen scaling or a fixed scale percentage.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {DISPLAY_SIZE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleDisplaySizeChange(opt.value)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-all cursor-pointer ${
+                    displaySize === opt.value
+                      ? 'bg-[#12284C] text-white border-[#12284C] shadow-xs'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── SYSTEM SETTINGS CARD ─────────────────────────────────────────── */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-xs overflow-hidden">

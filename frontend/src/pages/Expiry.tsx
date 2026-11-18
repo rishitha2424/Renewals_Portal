@@ -668,7 +668,11 @@ export default function Expiry() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={drillDeals || dealsData || []}
+          deals={(drillDeals || dealsData || []).map((d: any) => ({
+            ...d,
+            owner: d.opportunity_owner || d.owner,
+            stage: d.stage_number || d.stage,
+          }))}
           onSelectOpp={setSelectedOppId}
           onClose={() => {
             setModalOpen(false)

@@ -705,7 +705,11 @@ export function getApprovalsInsights(approvalsData: any, onDrill?: (title: strin
 }
 
 /** 6. Delayed Renewals Summary Generator (at least 6 points without decorative icons) */
-export function getDelayedInsights(summary: any, onDrill?: (title: string, params: any) => void): InsightItem[] {
+export function getDelayedInsights(
+  summary: any,
+  onDrill?: (title: string, params: any) => void,
+  onSelectOpp?: (id: string) => void
+): InsightItem[] {
   const items: InsightItem[] = []
   if (!summary) return items
 
@@ -775,7 +779,16 @@ export function getDelayedInsights(summary: any, onDrill?: (title: string, param
         </span>
       ),
       linkText: 'Inspect deal',
-      onLinkClick: onDrill ? () => onDrill(`Inspect Deal: ${topDeal.opportunity_name}`, { opp_id: topDeal.opportunity_id_18 }) : undefined,
+      onLinkClick: onSelectOpp && topDeal.opportunity_id_18
+        ? () => onSelectOpp(topDeal.opportunity_id_18)
+        : onDrill
+          ? () => onDrill(`Inspect Deal: ${topDeal.opportunity_name}`, {
+              kind: 'delayed_total',
+              opp_id: topDeal.opportunity_id_18,
+              deal_ids: topDeal.opportunity_id_18,
+              deals: [topDeal],
+            })
+          : undefined,
     })
   }
 
@@ -792,7 +805,7 @@ export function getDelayedInsights(summary: any, onDrill?: (title: string, param
         </span>
       ),
       linkText: 'View BU',
-      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topBu.label || topBu.name}`, { bu: topBu.label || topBu.name }) : undefined,
+      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topBu.label || topBu.name}`, { kind: 'delayed_total', bu: topBu.label || topBu.name }) : undefined,
     })
   }
 
@@ -816,7 +829,7 @@ export function getDelayedInsights(summary: any, onDrill?: (title: string, param
         </span>
       ),
       linkText: 'View category',
-      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topCat[0]}`, { category: topCat[0] }) : undefined,
+      onLinkClick: onDrill ? () => onDrill(`Delayed Deals · ${topCat[0]}`, { kind: 'delayed_total', category: topCat[0] }) : undefined,
     })
   }
 

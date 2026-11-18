@@ -164,6 +164,7 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "region": _map_region(o.revised_sub_region),
             "sub_region": _map_region(o.revised_sub_region),
             "sales_type": sales_t,
+            "stage": stage_val,
             "stage_number": stage_val,
             "probability_pct": prob_val,
             "owner": (o.opportunity_owner or "").strip(),

@@ -16,6 +16,7 @@ import LoadingScreen from '@/pages/LoadingScreen'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
 import { useAdminSession } from '@/hooks/useAdminSession'
+import { computeScale, applyScale, getSavedDisplaySize } from '@/config/layoutScale'
 
 export default function App() {
   useAdminSession()
@@ -24,6 +25,51 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
+
+  // Display scaling: compute scale on start & window resize (debounced 100ms)
+  useEffect(() => {
+    const updateScale = () => {
+      const pref = getSavedDisplaySize()
+      const scale = computeScale(window.innerWidth, pref)
+      applyScale(scale)
+    }
+
+    updateScale()
+
+    let timer: any
+    const handleResize = () => {
+      clearTimeout(timer)
+      timer = setTimeout(updateScale, 100)
+    }
+
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('display-size-change', updateScale)
+
+    // Reset scaling during print
+    let mql: MediaQueryList | null = null
+    const handlePrintChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        applyScale(1.0)
+      } else {
+        updateScale()
+      }
+    }
+
+    if (window.matchMedia) {
+      mql = window.matchMedia('print')
+      try {
+        mql.addEventListener('change', handlePrintChange)
+      } catch (_) {
+        mql.addListener(handlePrintChange)
+      }
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('display-size-change', updateScale)
+      clearTimeout(timer)
+    }
+  }, [])
 
   // Dynamic titles based on path
   useEffect(() => {

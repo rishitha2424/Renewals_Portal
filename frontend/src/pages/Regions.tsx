@@ -1718,7 +1718,11 @@ function RegionsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
-          deals={modalFilters.deals || dealsData?.deals || []}
+          deals={(modalFilters.deals || dealsData?.deals || []).map((d: any) => ({
+            ...d,
+            owner: d.opportunity_owner || d.owner,
+            stage: d.stage_number || d.stage,
+          }))}
           onSelectOpp={setSelectedOppId}
           onClose={() => setModalOpen(false)}
         />

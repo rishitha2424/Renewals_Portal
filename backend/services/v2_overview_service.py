@@ -83,6 +83,9 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
         return pd.DataFrame()
     records = []
     for o in opps:
+        extra = o.extra_attributes or {}
+        st_val = (o.stage_number or extra.get("Stage Number") or extra.get("Stage") or "").strip()
+        ow_val = (o.opportunity_owner or extra.get("Opportunity Owner") or extra.get("Owner") or "").strip()
         records.append({
             "opportunity_id_18": o.opportunity_id_18 or "",
             "opportunity_name":  o.opportunity_name or "",
@@ -98,6 +101,10 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period":      o.fiscal_period or "",
             "sales_type":         o.sales_type or "",
+            "stage":              st_val,
+            "stage_number":       st_val,
+            "owner":              ow_val,
+            "opportunity_owner":  ow_val,
         })
     return pd.DataFrame(records)
 
@@ -1779,6 +1786,8 @@ class V2OverviewService:
 
         records = []
         for _, r in df.iterrows():
+            ow_val = str(r.get("opportunity_owner") or r.get("owner") or "")
+            st_val = str(r.get("stage_number") or r.get("stage") or "")
             records.append({
                 "id": str(r["opportunity_id_18"]),
                 "opportunity_id_18": str(r["opportunity_id_18"]),
@@ -1789,7 +1798,10 @@ class V2OverviewService:
                 "approval_status": str(r["approval_status"]),
                 "sub_region": str(r["canonical_region"]),
                 "business_unit_primary": str(r["business_unit_primary"]),
-                "opportunity_owner": str(r.get("opportunity_owner") or r.get("owner") or ""),
+                "opportunity_owner": ow_val,
+                "owner": ow_val,
+                "stage": st_val,
+                "stage_number": st_val,
                 "close_date": r["close_date"].isoformat() if hasattr(r["close_date"], "isoformat") else str(r["close_date"]) if r["close_date"] else None,
             })
         return {

@@ -1509,7 +1509,11 @@ export default function Dashboard() {
         <DealListModal
           key={modal.title}
           title={modal.title}
-          deals={modal.deals}
+          deals={(modal.deals || []).map((d: any) => ({
+            ...d,
+            owner: d.opportunity_owner || d.owner,
+            stage: d.stage_number || d.stage,
+          }))}
           initialFilters={modalInitialFilters}
           deltaGroups={modal.deltaGroups}
           onSelectOpp={(id) => { setModal(null); setSelectedOppId(id) }}

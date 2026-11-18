@@ -22,6 +22,7 @@ import {
   Info,
   AlertTriangle,
   Tag,
+  Monitor,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
@@ -29,6 +30,12 @@ import { getSnapshots, getFilterOptions, downloadReport } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import AdminAuthModal from '@/components/common/AdminAuthModal'
+import {
+  DisplaySizeOption,
+  DISPLAY_SIZE_OPTIONS,
+  getSavedDisplaySize,
+  saveDisplaySize,
+} from '@/config/layoutScale'
 
 export default function Topbar() {
   const {
@@ -61,6 +68,9 @@ export default function Topbar() {
   const viewsRef = useRef<HTMLDivElement>(null)
   const typeFilterRef = useRef<HTMLDivElement>(null)
   const [typeFilterOpen, setTypeFilterOpen] = useState(false)
+  const displaySizeRef = useRef<HTMLDivElement>(null)
+  const [displaySizeOpen, setDisplaySizeOpen] = useState(false)
+  const [currentDisplaySize, setCurrentDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
 
   const location = useLocation()
   const isExplorer = location.pathname.startsWith('/opportunities') || location.pathname.startsWith('/explore')
@@ -105,9 +115,20 @@ export default function Topbar() {
       if (typeFilterRef.current && !typeFilterRef.current.contains(target)) {
         setTypeFilterOpen(false)
       }
+      if (displaySizeRef.current && !displaySizeRef.current.contains(target)) {
+        setDisplaySizeOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
+
+  useEffect(() => {
+    const handleSizeChange = () => {
+      setCurrentDisplaySize(getSavedDisplaySize())
+    }
+    window.addEventListener('display-size-change', handleSizeChange)
+    return () => window.removeEventListener('display-size-change', handleSizeChange)
   }, [])
 
   // Helper to parse date string YYYY-MM-DD into UTC date for exact difference
@@ -402,9 +423,9 @@ export default function Topbar() {
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
       <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
-        <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 lg:gap-2 min-w-0 flex-1">
+          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -415,8 +436,8 @@ export default function Topbar() {
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* 1. Search (shrinks and flexes to fill free space) */}
-            <div className="min-w-[80px] sm:min-w-[110px] max-w-[125px] sm:max-w-[140px] lg:max-w-[160px] xl:max-w-[180px] min-[1800px]:max-w-xs flex-1 sm:flex-initial">
+            {/* 1. Search (Always shows full prompt like 67% view) */}
+            <div className="min-w-[130px] sm:min-w-[160px] max-w-[200px] xl:max-w-[240px] 2xl:max-w-xs flex-1 sm:flex-initial flex-shrink">
               <button
                 type="button"
                 onClick={() => setCommandPaletteOpen(true)}
@@ -426,8 +447,7 @@ export default function Topbar() {
               >
                 <div className="inline-flex items-center gap-1.5 sm:gap-2 truncate">
                   <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                  <span className="truncate hidden min-[1800px]:inline">Search opportunities, regions, accounts...</span>
-                  <span className="truncate min-[1800px]:hidden">Search...</span>
+                  <span className="truncate inline">Search opportunities, regions, accounts...</span>
                 </div>
                 <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
                   ⌘K
@@ -435,16 +455,16 @@ export default function Topbar() {
               </button>
             </div>
 
-            {/* 2. As of (hidden on phone, accessible via Filters button) */}
-            <div className="hidden sm:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+            {/* 2. As of (Always visible with label) */}
+            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
               <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 As of:
               </span>
               <select
                 value={activeSnap?.id ?? ''}
                 onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[120px] xl:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
                 id="topbar-view-as-of-select"
               >
                 {snapshotsLoading && <option>Loading dates...</option>}
@@ -456,19 +476,19 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 3. vs (compare selector with helper in tooltip) */}
+            {/* 3. vs (compare selector - always visible with label) */}
             <div
-              className="hidden lg:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
+              className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
               title={getCompareLabel()}
             >
               <GitCompare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 vs:
               </span>
               <select
                 value={compareSnapshotId ?? ''}
                 onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[120px] xl:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
                 id="topbar-compare-with-select"
               >
                 {vsOptions.map((opt: any) => (
@@ -479,16 +499,16 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 4. Period (visible >= xl) */}
-            <div className="hidden xl:inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
+            {/* 4. Period (Always visible with label) */}
+            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
               <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] hidden 2xl:inline">
+              <span className="font-medium text-[var(--text-muted)] inline">
                 Period:
               </span>
               <select
                 value={globalFilters.period}
                 onChange={(e) => setGlobalFilters({ period: e.target.value })}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] xl:max-w-[135px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] sm:max-w-[120px] md:max-w-[140px] truncate"
                 id="filter-period-select"
               >
                 <option value="current_quarter">Current Quarter (Default)</option>
@@ -508,8 +528,8 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 5. Type Filter (Multi-select dropdown, visible >= 2xl) */}
-            <div className="relative hidden 2xl:inline-flex flex-shrink-0" ref={typeFilterRef}>
+            {/* 5. Type Filter (Multi-select dropdown, always visible) */}
+            <div className="relative inline-flex flex-shrink-0" ref={typeFilterRef}>
               <button
                 type="button"
                 onClick={() => setTypeFilterOpen(!typeFilterOpen)}
@@ -518,8 +538,8 @@ export default function Topbar() {
                 title="Filter by Deal Type"
               >
                 <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                <span className="font-medium text-[var(--text-muted)] hidden min-[1800px]:inline">Type:</span>
-                <span className="font-medium truncate max-w-[50px] xl:max-w-[80px]">
+                <span className="font-medium text-[var(--text-muted)] inline">Type:</span>
+                <span className="font-medium truncate max-w-[50px] sm:max-w-[65px] xl:max-w-[90px]">
                   {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
@@ -586,12 +606,12 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* More Filters (visible >= 1800px) */}
-            <div className="relative hidden min-[1800px]:block flex-shrink-0" ref={moreRef}>
+            {/* More Filters (Always visible like 67% view) */}
+            <div className="relative block flex-shrink-0" ref={moreRef}>
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
-                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
                 id="filter-more-btn"
               >
                 <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
@@ -606,7 +626,7 @@ export default function Topbar() {
 
               {/* More Filters popover */}
               {moreFiltersOpen && (
-                <div className="absolute left-0 mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
+                <div className="absolute left-0 top-full mt-1 w-80 md:w-96 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-3 max-h-[80vh] overflow-y-auto">
                   <div className="flex items-center justify-between border-b pb-2 border-[var(--border)]">
                     <span className="font-semibold text-xs text-[var(--text-primary)]">Filter Dimensions</span>
                     <button
@@ -742,12 +762,12 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* 8. Saved Views (visible >= 1800px) */}
-            <div className="relative hidden min-[1800px]:block flex-shrink-0" ref={viewsRef}>
+            {/* 8. Saved Views (Always visible like 67% view) */}
+            <div className="relative block flex-shrink-0" ref={viewsRef}>
               <button
                 type="button"
                 onClick={() => setSavedViewsOpen(!savedViewsOpen)}
-                className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1.5 focus:outline-none text-xs"
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
                 id="filter-saved-views-btn"
               >
                 <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
@@ -756,7 +776,7 @@ export default function Topbar() {
               </button>
 
               {savedViewsOpen && (
-                <div className="absolute left-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-2">
+                <div className="absolute left-0 top-full mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-3 z-[100] flex flex-col gap-2">
                   <span className="font-semibold text-xs text-[var(--text-primary)]">Custom Filter Views</span>
                   <div className="flex gap-1.5">
                     <input
@@ -800,8 +820,8 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* Unified "Filters" panel toggle button for narrower screens (< 1800px or phone) */}
-            <div className="inline-flex min-[1800px]:hidden flex-shrink-0">
+            {/* Mobile Filters drawer button (visible only on small mobile < 640px) */}
+            <div className="inline-flex sm:hidden flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(true)}
@@ -821,7 +841,7 @@ export default function Topbar() {
           </div>
 
           {/* ── Right Utility Controls (Always visible, never pushed off-screen) ── */}
-          <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-2 flex-shrink-0 ml-auto">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
             {/* Download report Menu */}
             <div className="relative flex-shrink-0" ref={downloadRef}>
               <button
@@ -935,6 +955,53 @@ export default function Topbar() {
             {/* Admin sign in (Always visible!) */}
             <div className="flex-shrink-0">
               <AdminAuthModal />
+            </div>
+
+            {/* Display Size selector */}
+            <div className="relative flex-shrink-0" ref={displaySizeRef} id="topbar-display-size">
+              <button
+                type="button"
+                onClick={() => setDisplaySizeOpen((prev) => !prev)}
+                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0 text-xs font-medium"
+                id="topbar-display-size-btn"
+                title="Display size (fit to screen / zoom)"
+              >
+                <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
+                <span className="hidden xl:inline">
+                  {DISPLAY_SIZE_OPTIONS.find((o) => o.value === currentDisplaySize)?.label.replace(' (fit to screen)', '') || 'Auto'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+              </button>
+
+              {displaySizeOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1.5 w-44 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 py-1"
+                  id="topbar-display-size-menu"
+                >
+                  <div className="px-3 py-1.5 border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                    Display Size
+                  </div>
+                  {DISPLAY_SIZE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        saveDisplaySize(opt.value)
+                        setCurrentDisplaySize(opt.value)
+                        setDisplaySizeOpen(false)
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+                        currentDisplaySize === opt.value
+                          ? 'bg-[#00A3AD]/10 text-[#00A3AD] font-semibold'
+                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Theme toggle */}
