@@ -49,6 +49,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": "true",
         "description": "Exclude deals where Reconciliation Entry = Yes across the application.",
     },
+    "allow_viewer_comments": {
+        "value": "true",
+        "description": "Allow viewers to add comments to opportunities. If false, only admins may comment.",
+    },
 }
 
 
@@ -171,6 +175,23 @@ class SettingsService:
                 return True
         try:
             val = SettingsService.get_setting(db, "exclude_reconciliation_entry", "true")
+            return str(val).strip().lower() in ("true", "1", "yes")
+        except Exception:
+            return True
+
+    @staticmethod
+    def get_allow_viewer_comments(db: Optional[Session] = None) -> bool:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_allow_viewer_comments(session)
+                session.close()
+                return res
+            except Exception:
+                return True
+        try:
+            val = SettingsService.get_setting(db, "allow_viewer_comments", "true")
             return str(val).strip().lower() in ("true", "1", "yes")
         except Exception:
             return True

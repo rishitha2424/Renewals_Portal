@@ -313,7 +313,9 @@ export const downloadReport = async (
   snapshotId?: string | null,
   compareTo?: string | null,
   scope: string = 'renewals',
-  includeDeletedLost?: boolean | null
+  includeDeletedLost?: boolean | null,
+  period?: string | null,
+  filterSpecOverride?: Partial<FilterSpec>
 ): Promise<{ filename: string }> => {
   const state = useAppStore.getState()
   const endpoint = format === 'pptx' ? '/export/pptx' : '/export/excel'
@@ -321,10 +323,32 @@ export const downloadReport = async (
   if (snapshotId) params.snapshot_id = snapshotId
   if (compareTo) params.compare_to = compareTo
   params.scope = scope || 'renewals'
-  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null ? includeDeletedLost : (state.includeDeletedLost ?? false)
+  
+  const fs = { ...(state.globalFilters || {}), ...filterSpecOverride }
+  const incl = includeDeletedLost !== undefined && includeDeletedLost !== null 
+    ? includeDeletedLost 
+    : (fs.include_deleted_lost !== undefined ? fs.include_deleted_lost : (state.includeDeletedLost ?? false))
   params.include_deleted_lost = incl ? 'true' : 'false'
-  if (state.globalFilters?.types && state.globalFilters.types.length > 0) {
+
+  const effPeriod = period || fs.period || 'current_quarter'
+  params.period = effPeriod
+
+  if (fs.types && fs.types.length > 0) {
+    params.types = fs.types.join(',')
+  } else if (state.globalFilters?.types && state.globalFilters.types.length > 0) {
     params.types = state.globalFilters.types.join(',')
+  }
+  if (fs.regions && fs.regions.length > 0) {
+    params.regions = fs.regions.join(',')
+  }
+  if (fs.business_units && fs.business_units.length > 0) {
+    params.business_units = fs.business_units.join(',')
+  }
+  if (fs.forecast_categories && fs.forecast_categories.length > 0) {
+    params.forecast_categories = fs.forecast_categories.join(',')
+  }
+  if (fs.approval_statuses && fs.approval_statuses.length > 0) {
+    params.approval_statuses = fs.approval_statuses.join(',')
   }
 
   const response = await api.get(endpoint, {
@@ -745,5 +769,52 @@ export const downloadFullExcel = async (snapshotId?: string | null): Promise<{ d
   }
   return { data: res.data, filename }
 }
+
+export interface DealCommentItem {
+  id: string
+  opportunity_id_18: string
+  author: string
+  text: string
+  is_deleted?: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const getDealComments = async (opportunityId: string): Promise<DealCommentItem[]> => {
+  const res = await api.get(`/custom-columns/deals/${opportunityId}/comments`)
+  return res.data.comments || []
+}
+
+export const addDealComment = async (
+  opportunityId: string,
+  text: string,
+  author?: string
+): Promise<DealCommentItem> => {
+  const res = await api.post(`/custom-columns/deals/${opportunityId}/comments`, {
+    text,
+    author,
+  })
+  return res.data.comment
+}
+
+export const updateDealComment = async (
+  opportunityId: string,
+  commentId: string,
+  text: string
+): Promise<DealCommentItem> => {
+  const res = await api.put(`/custom-columns/deals/${opportunityId}/comments/${commentId}`, {
+    text,
+  })
+  return res.data.comment
+}
+
+export const deleteDealComment = async (
+  opportunityId: string,
+  commentId: string
+): Promise<boolean> => {
+  const res = await api.delete(`/custom-columns/deals/${opportunityId}/comments/${commentId}`)
+  return res.data.ok ?? true
+}
+
 
 

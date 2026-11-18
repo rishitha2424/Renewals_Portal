@@ -41,6 +41,10 @@ import {
   getDealAnnotations,
   setDealAnnotation,
   deleteDealAnnotation,
+  getDealComments,
+  addDealComment,
+  updateDealComment,
+  deleteDealComment,
   CustomColumnItem,
   DealAnnotationItem,
 } from '@/api/client'
@@ -74,6 +78,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const activeSnapshotId = useAppStore((s) => s.activeSnapshotId)
   const adminName = useAppStore((s) => s.adminName)
 
+  const { data: opp, isLoading: oppLoading } = useQuery({
+    queryKey: ['opportunity', oppId, activeSnapshotId],
+    queryFn: () => (oppId ? getOpportunity(oppId, activeSnapshotId ?? undefined) : null),
+    enabled: !!oppId,
+  })
+
   // ── Comments State ────────────────────────────────────────────────────────
   const [comments, setComments] = useState<DealComment[]>([])
   const [commentAuthor, setCommentAuthor] = useState<string>(() => {
@@ -105,23 +115,48 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [newColType, setNewColType] = useState('text')
   const [isCreatingCol, setIsCreatingCol] = useState(false)
 
-  // Load comments from localStorage on oppId change
+  // ── Comments Server Query ───────────────────────────────────────────────
+  const { data: serverComments = [], refetch: refetchComments } = useQuery({
+    queryKey: ['deal-comments', oppId],
+    queryFn: () => (oppId ? getDealComments(oppId) : Promise.resolve([])),
+    enabled: !!oppId,
+  })
+
+  // Synchronize server comments into local state
   useEffect(() => {
-    if (!oppId) {
-      setComments([])
-      return
-    }
-    try {
-      const raw = localStorage.getItem(`deal_comments_${oppId}`)
-      if (raw) {
-        setComments(JSON.parse(raw))
-      } else {
+    if (serverComments && serverComments.length > 0) {
+      setComments(
+        serverComments.map((c: any) => ({
+          id: c.id,
+          oppId: c.opportunity_id_18,
+          oppName: opp?.opportunity_name || 'Opportunity',
+          author: c.author,
+          text: c.text,
+          createdAt: c.created_at,
+        }))
+      )
+    } else if (serverComments && serverComments.length === 0) {
+      // Fallback check to localStorage if server has no comments yet
+      try {
+        const raw = localStorage.getItem(`deal_comments_${oppId}`)
+        if (raw) {
+          const localList: DealComment[] = JSON.parse(raw)
+          setComments(localList)
+          // Automatically migrate local comments to server in background
+          if (oppId && localList.length > 0) {
+            localList.forEach((lc) => {
+              addDealComment(oppId, lc.text, lc.author).catch(() => {})
+            })
+            localStorage.removeItem(`deal_comments_${oppId}`)
+          }
+        } else {
+          setComments([])
+        }
+      } catch {
         setComments([])
       }
-    } catch {
-      setComments([])
     }
-  }, [oppId])
+  }, [serverComments, oppId, opp?.opportunity_name])
 
   const handleCopyId = () => {
     if (!oppId) return
@@ -131,7 +166,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     setTimeout(() => setCopiedId(false), 2000)
   }
 
-  const handleAddComment = (e?: React.FormEvent) => {
+  const handleAddComment = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     const trimmed = commentText.trim()
     if (!trimmed || !oppId) return
@@ -139,8 +174,8 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     const author = commentAuthor.trim() || adminName || 'Reviewer'
     localStorage.setItem('deal_commenter_name', author)
 
-    const newComment: DealComment = {
-      id: `comm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    const tempComment: DealComment = {
+      id: `comm_${Date.now()}`,
       oppId,
       oppName: opp?.opportunity_name || 'Opportunity',
       author,
@@ -148,22 +183,19 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       createdAt: new Date().toISOString(),
     }
 
-    const updated = [newComment, ...comments]
-    setComments(updated)
-    try {
-      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
-
-      // Also append to global deal comments audit log
-      const globalRaw = localStorage.getItem('global_deal_comments_log')
-      const globalList = globalRaw ? JSON.parse(globalRaw) : []
-      globalList.unshift(newComment)
-      localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
-    } catch {
-      // ignore
-    }
-
+    // Optimistic update
+    setComments((prev) => [tempComment, ...prev])
     setCommentText('')
-    showToast.success('Comment saved')
+
+    try {
+      await addDealComment(oppId, trimmed, author)
+      await refetchComments()
+      showToast.success('Comment saved')
+    } catch (err: any) {
+      await refetchComments()
+      const msg = err?.response?.data?.detail || 'Failed to save comment'
+      showToast.error(msg)
+    }
   }
 
   const handleStartEditComment = (c: DealComment) => {
@@ -171,53 +203,45 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     setEditingCommentText(c.text)
   }
 
-  const handleSaveEditComment = () => {
+  const handleSaveEditComment = async () => {
     if (!editingCommentId || !editingCommentText.trim() || !oppId) return
     const trimmed = editingCommentText.trim()
-    const updated = comments.map((c) =>
-      c.id === editingCommentId ? { ...c, text: trimmed } : c
+    const targetId = editingCommentId
+
+    // Optimistic update
+    setComments((prev) =>
+      prev.map((c) => (c.id === targetId ? { ...c, text: trimmed } : c))
     )
-    setComments(updated)
-    try {
-      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
-      const globalRaw = localStorage.getItem('global_deal_comments_log')
-      if (globalRaw) {
-        const globalList = JSON.parse(globalRaw).map((c: any) =>
-          c.id === editingCommentId ? { ...c, text: trimmed } : c
-        )
-        localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
-      }
-    } catch {
-      // ignore
-    }
     setEditingCommentId(null)
     setEditingCommentText('')
-    showToast.success('Comment updated')
-  }
 
-  const handleDeleteComment = (commentId: string) => {
-    if (!oppId) return
-    const updated = comments.filter((c) => c.id !== commentId)
-    setComments(updated)
     try {
-      localStorage.setItem(`deal_comments_${oppId}`, JSON.stringify(updated))
-
-      const globalRaw = localStorage.getItem('global_deal_comments_log')
-      if (globalRaw) {
-        const globalList = JSON.parse(globalRaw).filter((c: any) => c.id !== commentId)
-        localStorage.setItem('global_deal_comments_log', JSON.stringify(globalList))
-      }
-    } catch {
-      // ignore
+      await updateDealComment(oppId, targetId, trimmed)
+      await refetchComments()
+      showToast.success('Comment updated')
+    } catch (err: any) {
+      await refetchComments()
+      const msg = err?.response?.data?.detail || 'Failed to update comment'
+      showToast.error(msg)
     }
-    showToast.info('Comment removed')
   }
 
-  const { data: opp, isLoading: oppLoading } = useQuery({
-    queryKey: ['opportunity', oppId, activeSnapshotId],
-    queryFn: () => (oppId ? getOpportunity(oppId, activeSnapshotId ?? undefined) : null),
-    enabled: !!oppId,
-  })
+  const handleDeleteComment = async (commentId: string) => {
+    if (!oppId) return
+
+    // Optimistic update
+    setComments((prev) => prev.filter((c) => c.id !== commentId))
+
+    try {
+      await deleteDealComment(oppId, commentId)
+      await refetchComments()
+      showToast.info('Comment removed')
+    } catch (err: any) {
+      await refetchComments()
+      const msg = err?.response?.data?.detail || 'Failed to delete comment'
+      showToast.error(msg)
+    }
+  }
 
   const { data: history = [], isLoading: historyLoading } = useQuery({
     queryKey: ['opportunity-history', oppId],

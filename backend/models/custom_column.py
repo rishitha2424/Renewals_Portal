@@ -115,3 +115,31 @@ class AnnotationAudit(Base):
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "extra_info": self.extra_info,
         }
+
+
+class DealComment(Base):
+    __tablename__ = "deal_comments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    opportunity_id_18: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    author: Mapped[str] = mapped_column(String(128), default="Viewer", nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_deal_comments_opp_deleted", "opportunity_id_18", "is_deleted"),
+        Index("ix_deal_comments_created", "created_at"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "opportunity_id_18": self.opportunity_id_18,
+            "author": self.author,
+            "text": self.text,
+            "is_deleted": self.is_deleted,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

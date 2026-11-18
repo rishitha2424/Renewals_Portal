@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.services.context import UserContext, get_user_context, require_admin_context
+from backend.services.settings_service import SettingsService
 from backend.services.annotation_service import (
     AnnotationService,
     ValidationError,
@@ -62,6 +63,15 @@ class SetDealAnnotationRequest(BaseModel):
     expected_version: Optional[int] = Field(None, description="Version for optimistic concurrency")
 
 
+class CreateDealCommentRequest(BaseModel):
+    text: str = Field(..., description="Comment text")
+    author: Optional[str] = Field("Viewer", description="Author display name")
+
+
+class UpdateDealCommentRequest(BaseModel):
+    text: str = Field(..., description="Comment text")
+
+
 def _svc(db: Session = Depends(get_db)) -> AnnotationService:
     return AnnotationService(db)
 
@@ -89,13 +99,13 @@ def list_custom_columns(
     return {"columns": result}
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_admin_context)])
 def create_custom_column(
     body: CreateColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Create a new custom column."""
+    """Create a new custom column (Admin only)."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         col = svc.create_column(
@@ -310,15 +320,15 @@ def get_deal_annotations(
     return {"opportunity_id_18": opportunity_id, "annotations": annots}
 
 
-@router.put("/deals/{opportunity_id}/annotations/{column_key}")
+@router.put("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_admin_context)])
 def set_deal_annotation(
     opportunity_id: str,
     column_key: str,
     body: SetDealAnnotationRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Set or update a deal annotation."""
+    """Set or update a deal annotation (Admin only)."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         res = svc.set_deal_value(
@@ -336,18 +346,106 @@ def set_deal_annotation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.delete("/deals/{opportunity_id}/annotations/{column_key}")
+@router.delete("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_admin_context)])
 def delete_deal_annotation(
     opportunity_id: str,
     column_key: str,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_admin_context),
 ):
-    """Clear a deal annotation."""
+    """Clear a deal annotation (Admin only)."""
     try:
         user_id = getattr(ctx, "user_id", "admin") or "admin"
         cleared = svc.delete_deal_value(opportunity_id, column_key, user_id=user_id)
         return {"cleared": cleared, "opportunity_id_18": opportunity_id, "column_key": column_key}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# -----------------------------------------------------------------
+# Deal Comments Endpoints
+# -----------------------------------------------------------------
+@router.get("/deals/{opportunity_id}/comments")
+def list_deal_comments(
+    opportunity_id: str,
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """List comments for an opportunity (Viewers and Admins)."""
+    comments = svc.list_comments(opportunity_id)
+    return {"opportunity_id_18": opportunity_id, "comments": comments}
+
+
+@router.post("/deals/{opportunity_id}/comments")
+def add_deal_comment(
+    opportunity_id: str,
+    body: CreateDealCommentRequest,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Add a comment to an opportunity (Admin or Viewer if allowed by Settings)."""
+    if not ctx.is_admin and not SettingsService.get_allow_viewer_comments(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Commenting is disabled for viewers in Settings.",
+        )
+    author_name = body.author or (ctx.display_name if ctx.is_admin else "Viewer")
+    try:
+        comment = svc.add_comment(
+            opportunity_id_18=opportunity_id,
+            text=body.text,
+            author=author_name,
+            user_id=ctx.user_id,
+        )
+        return {"comment": comment}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.put("/deals/{opportunity_id}/comments/{comment_id}")
+def update_deal_comment(
+    opportunity_id: str,
+    comment_id: str,
+    body: UpdateDealCommentRequest,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Update a comment (Admin or Viewer if allowed by Settings)."""
+    if not ctx.is_admin and not SettingsService.get_allow_viewer_comments(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Commenting is disabled for viewers in Settings.",
+        )
+    try:
+        comment = svc.update_comment(
+            comment_id=comment_id,
+            text=body.text,
+            user_id=ctx.user_id,
+        )
+        return {"comment": comment}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/deals/{opportunity_id}/comments/{comment_id}")
+def delete_deal_comment(
+    opportunity_id: str,
+    comment_id: str,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Delete a comment (Admin or Viewer if allowed by Settings)."""
+    if not ctx.is_admin and not SettingsService.get_allow_viewer_comments(db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Commenting is disabled for viewers in Settings.",
+        )
+    try:
+        deleted = svc.delete_comment(comment_id=comment_id, user_id=ctx.user_id)
+        return {"deleted": deleted, "comment_id": comment_id}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

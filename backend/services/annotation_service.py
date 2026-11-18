@@ -13,7 +13,7 @@ from typing import Any, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.models.custom_column import CustomColumn, DealAnnotation, AnnotationAudit
+from backend.models.custom_column import CustomColumn, DealAnnotation, AnnotationAudit, DealComment
 from backend.models.snapshot import UploadSnapshot
 from backend.models.opportunity import Opportunity
 
@@ -938,6 +938,117 @@ class AnnotationService:
 
         self.db.commit()
         return summary
+
+    # -------------------------------------------------------------
+    # Deal Comments
+    # -------------------------------------------------------------
+    def list_comments(self, opportunity_id_18: str) -> list[dict]:
+        opp_id = str(opportunity_id_18 or "").strip()
+        if not opp_id:
+            return []
+        comments = (
+            self.db.query(DealComment)
+            .filter(DealComment.opportunity_id_18 == opp_id, DealComment.is_deleted == False)
+            .order_by(DealComment.created_at.asc())
+            .all()
+        )
+        return [c.to_dict() for c in comments]
+
+    def add_comment(self, opportunity_id_18: str, text: str, author: str = "Viewer", user_id: str = "Viewer") -> dict:
+        opp_id = str(opportunity_id_18 or "").strip()
+        cleaned_text = str(text or "").strip()
+        if not opp_id:
+            raise ValidationError("Opportunity ID cannot be empty.")
+        if not cleaned_text:
+            raise ValidationError("Comment text cannot be empty.")
+
+        now = datetime.now(timezone.utc)
+        comment = DealComment(
+            id=str(uuid.uuid4()),
+            opportunity_id_18=opp_id,
+            author=author.strip() if author else "Viewer",
+            text=cleaned_text,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(comment)
+
+        # Audit Log entry visible in Data Explorer > Audit Log
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=opp_id,
+            action="create",
+            old_value=None,
+            new_value=cleaned_text,
+            user_id=author.strip() if author else user_id,
+            timestamp=now,
+            extra_info={"author": comment.author},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment.to_dict()
+
+    def update_comment(self, comment_id: str, text: str, user_id: str = "Viewer") -> dict:
+        cleaned_text = str(text or "").strip()
+        if not cleaned_text:
+            raise ValidationError("Comment text cannot be empty.")
+        comment = self.db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+        if not comment:
+            raise ValidationError("Comment not found.")
+
+        old_val = comment.text
+        now = datetime.now(timezone.utc)
+        comment.text = cleaned_text
+        comment.updated_at = now
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=comment.opportunity_id_18,
+            action="update",
+            old_value=old_val,
+            new_value=cleaned_text,
+            user_id=user_id,
+            timestamp=now,
+            extra_info={"author": comment.author},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment.to_dict()
+
+    def delete_comment(self, comment_id: str, user_id: str = "Viewer") -> bool:
+        comment = self.db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+        if not comment:
+            raise ValidationError("Comment not found.")
+
+        now = datetime.now(timezone.utc)
+        comment.is_deleted = True
+        comment.updated_at = now
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=comment.opportunity_id_18,
+            action="delete",
+            old_value=comment.text,
+            new_value=None,
+            user_id=user_id,
+            timestamp=now,
+            extra_info={"author": comment.author},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        return True
 
 
 def pd_is_null(val: Any) -> bool:
