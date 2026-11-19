@@ -19,10 +19,10 @@ export default {
       },
       fontFamily: {
         sans: [
-          'system-ui',
+          'InterVariable',
+          'Inter',
           '-apple-system',
-          '"SF Pro Text"',
-          '"SF Pro Display"',
+          'BlinkMacSystemFont',
           '"Segoe UI"',
           'Roboto',
           '"Helvetica Neue"',
@@ -30,15 +30,13 @@ export default {
           'sans-serif',
         ],
         mono: [
-          'system-ui',
+          'InterVariable',
+          'Inter',
           '-apple-system',
-          '"SF Pro Text"',
-          '"SF Pro Display"',
+          'BlinkMacSystemFont',
           '"Segoe UI"',
           'Roboto',
-          '"Helvetica Neue"',
-          'Arial',
-          'sans-serif',
+          'monospace',
         ],
       },
       fontSize: {

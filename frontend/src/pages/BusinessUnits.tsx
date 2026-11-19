@@ -418,7 +418,7 @@ function BusinessUnitsContent() {
                 </span>
               }
               footer={
-                <div className="space-y-1 text-[11px] text-[var(--text-muted)] pt-1 border-t border-[var(--border)]">
+                <div className="space-y-1 text-xs sm:text-sm text-[var(--text-secondary)] pt-1.5 border-t border-[var(--border)]">
                   <div className="truncate" title={`Top: ${top3Summary}`}>
                     <span className="font-semibold text-[var(--text-secondary)]">Top:</span> {top3Summary}
                   </div>
@@ -489,38 +489,38 @@ function BusinessUnitsContent() {
             </div>
 
             {/* Stat strip below the table pinned to bottom */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-auto border-t border-[var(--border-subtle)] text-[11px] shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 mt-auto border-t border-[var(--border-subtle)] text-xs shrink-0">
               <div
                 onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
-                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                className="p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 title="Click to view all deals"
               >
-                <span className="text-[var(--text-muted)] block text-[10px]">Business Units</span>
-                <span className="font-bold text-[var(--text-primary)] font-mono">{numBUs} units</span>
+                <span className="text-[var(--text-muted)] block text-xs font-semibold uppercase tracking-wider">Business Units</span>
+                <span className="font-bold text-sm text-[var(--text-primary)] font-mono">{numBUs} units</span>
               </div>
               <div
                 onClick={() => handleCellClick(null, null, 'All Business Units Deals')}
-                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                className="p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 title="Click to view all deals"
               >
-                <span className="text-[var(--text-muted)] block text-[10px]">Total Deals</span>
-                <span className="font-bold text-[var(--text-primary)] font-mono">{formatCount(total.count)} deals</span>
+                <span className="text-[var(--text-muted)] block text-xs font-semibold uppercase tracking-wider">Total Deals</span>
+                <span className="font-bold text-sm text-[var(--text-primary)] font-mono">{formatCount(total.count)} deals</span>
               </div>
               <div
                 onClick={() => largestBu?.bu && handleBuShareClick(largestBu.bu)}
-                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                className="p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 title={`Click to view ${largestBu?.bu} deals`}
               >
-                <span className="text-[var(--text-muted)] block text-[10px]">Top BU Share</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{largestBuPct}% ({largestBu?.bu || '—'})</span>
+                <span className="text-[var(--text-muted)] block text-xs font-semibold uppercase tracking-wider">Top BU Share</span>
+                <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400 font-mono">{largestBuPct}% ({largestBu?.bu || '—'})</span>
               </div>
               <div
                 onClick={() => handleCellClick(null, 'Commit', 'All Business Units · Commit Deals')}
-                className="p-2 rounded bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
+                className="p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                 title="Click to view Commit deals"
               >
-                <span className="text-[var(--text-muted)] block text-[10px]">Commit Coverage</span>
-                <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">{commitCov}%</span>
+                <span className="text-[var(--text-muted)] block text-xs font-semibold uppercase tracking-wider">Commit Coverage</span>
+                <span className="font-bold text-sm text-blue-600 dark:text-blue-400 font-mono">{commitCov}%</span>
               </div>
             </div>
           </div>

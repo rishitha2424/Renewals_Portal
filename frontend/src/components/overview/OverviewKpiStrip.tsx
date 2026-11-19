@@ -76,7 +76,7 @@ function MiniSparklineWithHistory({
 
   if (!path) {
     return (
-      <span className="text-[10px] text-[var(--text-muted)] italic">
+      <span className="text-xs text-[var(--text-muted)] italic">
         1 snapshot
       </span>
     )
@@ -104,7 +104,7 @@ function MiniSparklineWithHistory({
         )}
       </svg>
       {count < 7 && (
-        <span className="text-[9px] text-[var(--text-muted)] mt-0.5 tracking-tight font-medium">
+        <span className="text-[10px] text-[var(--text-muted)] mt-0.5 tracking-tight font-medium">
           {count} snapshots
         </span>
       )}
@@ -152,7 +152,7 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
       {/* Top row: Label, Sparkline, Icon */}
       <div>
         <div className="flex items-start justify-between gap-1 mb-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] truncate">
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] truncate">
             {item.label}
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -173,7 +173,7 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
       </div>
 
       {/* Deltas: vs compare date & vs last week */}
-      <div className="pt-2 border-t border-[var(--border)] mt-2 flex flex-col gap-1 text-[11px]">
+      <div className="pt-2.5 border-t border-[var(--border)] mt-2 flex flex-col gap-1 text-xs">
         {/* Delta 1: vs selected compare date */}
         <div className="flex items-center justify-between">
           <span className="text-[var(--text-muted)] truncate">
@@ -187,9 +187,9 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
             }`}
           >
             {isPosCompare ? (
-              <ArrowUpRight className="w-3 h-3" />
+              <ArrowUpRight className="w-3.5 h-3.5" />
             ) : (
-              <ArrowDownRight className="w-3 h-3" />
+              <ArrowDownRight className="w-3.5 h-3.5" />
             )}
             {formatDelta(item.delta_compare, item.delta_compare_count)}
           </span>
@@ -197,7 +197,7 @@ function AnimatedTile({ item, idx }: { item: KpiStripItem; idx: number }) {
 
         {/* Delta 2: vs last week */}
         {item.delta_last_week != null && (
-          <div className="flex items-center justify-between text-[10.5px]">
+          <div className="flex items-center justify-between text-xs">
             <span className="text-[var(--text-muted)] truncate">
               {item.delta_last_week_label}:
             </span>

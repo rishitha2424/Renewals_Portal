@@ -403,26 +403,26 @@ export default function Approvals() {
               {/* Governance Summary Strip pinned to bottom */}
               <div className="grid grid-cols-2 gap-2 mt-auto pt-3 border-t border-[var(--border-subtle)] text-center text-xs">
                 <div
-                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500 transition-colors"
+                  className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-emerald-500 transition-colors"
                   onClick={() => handleCellClick({ approval_status: 'Approved' }, 'Approved Deals')}
                 >
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Approved Rate</span>
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                  <span className="text-xs uppercase font-bold tracking-wider text-[var(--text-muted)]">Approved Rate</span>
+                  <span className="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
                     {total.acv ? ((getStatus('Approved').acv / total.acv) * 100).toFixed(1) : '0'}%
                   </span>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                  <span className="text-xs text-[var(--text-muted)] font-mono">
                     {acvM(getStatus('Approved').acv)} · {getStatus('Approved').count} deals
                   </span>
                 </div>
                 <div
-                  className="flex flex-col items-center justify-center p-2 rounded bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-amber-500 transition-colors"
+                  className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-[var(--bg-secondary)]/50 border border-[var(--border-subtle)] cursor-pointer hover:border-amber-500 transition-colors"
                   onClick={() => handleCellClick({ approval_status: 'Pending Approval' }, 'Pending Deals')}
                 >
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)]">Pending Review</span>
-                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
+                  <span className="text-xs uppercase font-bold tracking-wider text-[var(--text-muted)]">Pending Review</span>
+                  <span className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400 font-mono tabular-nums">
                     {acvM(getStatus('Pending Approval').acv)}
                   </span>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                  <span className="text-xs text-[var(--text-muted)] font-mono">
                     {getStatus('Pending Approval').count} deals
                   </span>
                 </div>
@@ -714,7 +714,7 @@ export default function Approvals() {
                       }
                     })}
                   footer={
-                    <div className="text-[11px] text-[var(--text-muted)] flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[var(--border-subtle)]">
+                    <div className="text-xs sm:text-sm text-[var(--text-secondary)] flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-sm bg-[#2563EB]" />

@@ -191,10 +191,10 @@ function DelayedContent() {
     ) => {
       if (delta === null || delta === undefined || isFuturePeriod) {
         return (
-          <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default flex-1">
-            <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-            <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
-            <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
+          <div className="p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default flex-1">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+            <div className="font-bold text-sm text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 font-medium">n/a</div>
           </div>
         )
       }
@@ -215,7 +215,7 @@ function DelayedContent() {
 
       return (
         <div
-          className={cn('p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-all flex-1', hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
+          className={cn('p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] transition-all flex-1', hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70')}
           onClick={(e) => {
             e.stopPropagation()
             if (!hasDeals) return
@@ -226,9 +226,9 @@ function DelayedContent() {
           }}
           title={hasDeals ? `Click to view deals changed since ${dateLabel}` : `No deals changed since ${dateLabel}`}
         >
-          <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-          <div className={cn('font-bold text-xs tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
-          <div className={cn('text-[10px] tabular-nums', cntColor)}>{cntTxt}</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+          <div className={cn('font-bold text-sm sm:text-base tabular-nums', acvColor)}>{arrow}{acvTxt}</div>
+          <div className={cn('text-xs font-medium tabular-nums', cntColor)}>{cntTxt}</div>
         </div>
       )
     }
@@ -284,12 +284,12 @@ function DelayedContent() {
       >
         <div>
           <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={title}>
+            <span className="text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)] truncate" title={title}>
               {title}
             </span>
           </div>
           {definition && (
-            <p className="text-[11px] text-[var(--text-muted)] leading-tight mb-2 min-h-[28px] line-clamp-2">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-normal mb-2.5 min-h-[28px] line-clamp-2">
               {definition}
             </p>
           )}
@@ -305,12 +305,12 @@ function DelayedContent() {
             }}
             title={hasDeals ? `Click to view all deals for ${title}` : `0 deals`}
           >
-            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
+            <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
               {isNA ? 'n/a' : formatACV(acvVal)}
             </div>
-            <div className="text-xs font-medium text-[var(--text-muted)] tabular-nums flex items-center justify-between">
+            <div className="text-xs sm:text-sm font-medium text-[var(--text-muted)] tabular-nums flex items-center justify-between">
               <span>{isNA ? 'n/a' : `${formatCount(cnt)} deals`}</span>
-              <span className="text-[10px] font-semibold text-[var(--text-muted)]">
+              <span className="text-xs font-semibold text-[var(--text-muted)]">
                 {isFuture ? 'n/a' : (data?.baseline_label || 'Current')}
               </span>
             </div>
@@ -351,12 +351,12 @@ function DelayedContent() {
       >
         <div>
           <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-xs font-medium text-[var(--text-muted)] truncate" title={title}>
+            <span className="text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)] truncate" title={title}>
               {title}
             </span>
           </div>
           {definition && (
-            <p className="text-[11px] text-[var(--text-muted)] leading-tight mb-2 min-h-[28px] line-clamp-2">
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-normal mb-2.5 min-h-[28px] line-clamp-2">
               {definition}
             </p>
           )}
@@ -372,12 +372,12 @@ function DelayedContent() {
             }}
             title={hasDeals ? `Click to view all deals for ${title}` : '0 deals'}
           >
-            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
+            <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--text-primary)] tabular-nums group-hover:underline">
               {isNA ? 'n/a' : formatACV(acvVal)}
             </div>
-            <div className="text-xs font-medium text-[var(--text-muted)] tabular-nums flex items-center justify-between">
+            <div className="text-xs sm:text-sm font-medium text-[var(--text-muted)] tabular-nums flex items-center justify-between">
               <span>{isNA ? 'n/a' : `${formatCount(cnt)} deals`}</span>
-              <span className="text-[10px] font-semibold text-[var(--text-muted)]">
+              <span className="text-xs font-semibold text-[var(--text-muted)]">
                 {isFuture ? 'n/a' : (data?.baseline_label || 'Current')}
               </span>
             </div>
@@ -387,7 +387,7 @@ function DelayedContent() {
         {/* Data-driven split by when close date falls */}
         {data?.splits && (
           <div className="my-2 pt-2 border-t border-[var(--border-subtle)]">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+            <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
               Close Date Breakdown
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -403,18 +403,18 @@ function DelayedContent() {
                       if (hasS) onDrillSplit(sVal.label, sKey)
                     }}
                     className={cn(
-                      'p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/50 transition-colors',
+                      'p-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/50 transition-colors',
                       hasS ? 'cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5' : 'opacity-60 cursor-default'
                     )}
                     title={hasS ? `Click to view ${sVal.label}` : '0 deals'}
                   >
-                    <div className="text-[10px] font-medium text-[var(--text-secondary)] truncate" title={sVal.label}>
+                    <div className="text-xs font-medium text-[var(--text-secondary)] truncate" title={sVal.label}>
                       {sVal.label}
                     </div>
-                    <div className="font-bold text-xs tabular-nums text-[var(--text-primary)]">
+                    <div className="font-bold text-xs sm:text-sm tabular-nums text-[var(--text-primary)]">
                       {formatACV(sAcv)}
                     </div>
-                    <div className="text-[10px] text-[var(--text-muted)] tabular-nums">
+                    <div className="text-xs text-[var(--text-muted)] tabular-nums">
                       {sCnt} {sCnt === 1 ? 'deal' : 'deals'}
                     </div>
                   </div>

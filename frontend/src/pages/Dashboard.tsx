@@ -95,7 +95,7 @@ function Pill({ children, color = 'teal' }: { children: React.ReactNode; color?:
     slate: 'bg-slate-200/70 dark:bg-slate-700/40 text-slate-600 dark:text-slate-400 border border-slate-300/40 dark:border-slate-600/40',
   }
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-sm ${cls[color] ?? cls.teal}`}>
+    <span className={`inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-md ${cls[color] ?? cls.teal}`}>
       {children}
     </span>
   )
@@ -398,16 +398,16 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                    <span className="text-sm font-bold text-[var(--text-secondary)] uppercase tracking-wider">
                       Total {summary?.data_slice ? summary.data_slice.toUpperCase() : 'RENEWAL ACV'} Value
                     </span>
-                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300" title={DEFINITIONS.total_acv}>i</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
+                    <span className="text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-md bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20">
                       {total.count ?? 0} deals
                     </span>
-                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border)]">
+                    <span className="text-xs sm:text-sm font-medium px-2.5 py-1 rounded-md bg-[var(--bg-secondary)] text-[var(--text-muted)] border border-[var(--border)]">
                       {summary?.data_slice || 'FY2026'}
                     </span>
                   </div>
@@ -457,26 +457,26 @@ export default function Dashboard() {
                   return (
                     <div
                       key={label}
-                      className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] flex flex-col justify-between cursor-pointer hover:border-[var(--brand-teal)] transition-all"
+                      className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] flex flex-col justify-between cursor-pointer hover:border-[var(--brand-teal)] transition-all"
                       onClick={() => delta && openDealsQuery(`${label} Movement Deals (${delta.count ?? 0} deals · ${acvM(delta.acv ?? 0)})`, { kind })}
                       title={`Click to view deals with changes ${label}`}
                     >
-                      <span className="text-[10px] text-[var(--text-muted)] font-medium truncate">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">
                         {label} {date ? `(${formatDate(date).split(',')[0]})` : ''}
                       </span>
                       {delta ? (
                         <div className="mt-1">
-                          <div className={`text-xs tabular-nums flex items-center gap-0.5 ${acvColor}`}>
-                            {acvVal > 0 && <TrendingUp className="w-3 h-3 inline mr-0.5" />}
-                            {acvVal < 0 && <TrendingDown className="w-3 h-3 inline mr-0.5" />}
+                          <div className={`text-sm sm:text-base font-bold tabular-nums flex items-center gap-1 ${acvColor}`}>
+                            {acvVal > 0 && <TrendingUp className="w-3.5 h-3.5 inline mr-0.5" />}
+                            {acvVal < 0 && <TrendingDown className="w-3.5 h-3.5 inline mr-0.5" />}
                             {isAcvNeutral ? '$0' : `${acvSign}${acvM(acvVal)}`}
                           </div>
-                          <div className={`text-[10px] tabular-nums mt-0.5 ${countColor}`}>
+                          <div className={`text-xs tabular-nums font-medium mt-0.5 ${countColor}`}>
                             {isCountNeutral ? '0 deals' : `${countSign}${countVal} deals`}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">n/a</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 font-normal">n/a</span>
                       )}
                     </div>
                   )
@@ -507,10 +507,10 @@ export default function Dashboard() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <span className="text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                         Approval Readiness
                       </span>
-                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      <span className="text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
                         {appPct.toFixed(1)}% Approved
                       </span>
                     </div>
@@ -553,16 +553,16 @@ export default function Dashboard() {
                         <div
                           key={item.label}
                           onClick={() => openDealsQuery(`${item.label} Deals (${item.count} deals · ${acvM(item.acv)})`, item.query)}
-                          className="flex items-center justify-between text-xs cursor-pointer p-1 rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                          className="flex items-center justify-between text-xs sm:text-sm cursor-pointer p-1.5 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                             <span className="font-semibold text-[var(--text-primary)]">{item.label}</span>
-                            <span className="text-[10px] text-[var(--text-muted)] tabular-nums">({item.count})</span>
+                            <span className="text-xs text-[var(--text-muted)] tabular-nums">({item.count})</span>
                           </div>
                           <div className="flex items-center gap-3 tabular-nums">
                             <span className="font-bold text-[var(--text-primary)]">{acvM(item.acv)}</span>
-                            <span className="text-[11px] font-semibold text-[var(--text-muted)] w-11 text-right">{item.pct.toFixed(1)}%</span>
+                            <span className="text-xs sm:text-sm font-semibold text-[var(--text-muted)] w-12 text-right">{item.pct.toFixed(1)}%</span>
                           </div>
                         </div>
                       ))}
@@ -570,8 +570,8 @@ export default function Dashboard() {
                   </div>
 
                   {/* One-line insight */}
-                  <div className="pt-2.5 border-t border-[var(--border)] text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 text-[var(--brand-teal)] shrink-0" />
+                  <div className="pt-2.5 border-t border-[var(--border)] text-xs sm:text-sm text-[var(--text-secondary)] flex items-center gap-1.5">
+                    <Info className="w-4 h-4 text-[var(--brand-teal)] shrink-0" />
                     <span className="truncate">
                       {topBlankReg && (topBlankReg.blank_acv || 0) > 0 ? (
                         <>
@@ -613,15 +613,15 @@ export default function Dashboard() {
                 <div className="card p-5 flex flex-col justify-between h-full border border-[var(--border)] shadow-xs">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      <span className="text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                         Key Performance Stats
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                    <div className="grid grid-cols-2 gap-2.5 text-xs sm:text-sm">
                       {/* 1. Commit Coverage */}
                       <div
-                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[85px]"
                         onClick={() => {
                           const cov = summary?.coverage
                           cov && openDealsQuery(
@@ -631,11 +631,11 @@ export default function Dashboard() {
                         }}
                         title="Click to view Commit + Best Case deals"
                       >
-                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Commit Coverage</div>
-                        <div className="text-lg font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                        <div className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Commit Coverage</div>
+                        <div className="text-xl font-bold text-blue-600 dark:text-blue-400 tabular-nums">
                           {summary?.coverage?.pct != null ? `${Number(summary.coverage.pct).toFixed(1)}%` : '—'}
                         </div>
-                        <div className="text-[10px] tabular-nums text-[var(--text-muted)] truncate">
+                        <div className="text-xs tabular-nums text-[var(--text-muted)] truncate">
                           {covDeltaY != null ? (
                             <span className={covDeltaY >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-rose-600 dark:text-rose-400 font-medium'}>
                               {covDeltaY >= 0 ? '+' : ''}{Number(covDeltaY).toFixed(1)} pts vs yday
@@ -646,44 +646,44 @@ export default function Dashboard() {
 
                       {/* 2. Days to Period End */}
                       <div
-                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-default transition-all flex flex-col justify-between min-h-[78px]"
+                        className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] cursor-default transition-all flex flex-col justify-between min-h-[85px]"
                         title={`Days remaining to ${periodLabel} period close`}
                       >
-                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Days to Period End</div>
-                        <div className="text-lg font-bold text-[var(--brand-teal)] tabular-nums">
+                        <div className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Days to Period End</div>
+                        <div className="text-xl font-bold text-[var(--brand-teal)] tabular-nums">
                           {daysToPeriodEnd != null ? `${daysToPeriodEnd} days` : '—'}
                         </div>
-                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                        <div className="text-xs text-[var(--text-muted)] tabular-nums truncate">
                           {periodLabel} period end
                         </div>
                       </div>
 
                       {/* 3. Largest Region */}
                       <div
-                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[85px]"
                         onClick={() => topRegion && openDealsQuery(`${topRegion.region} Deals`, { region: topRegion.region })}
                         title={topRegion ? `Click to view ${topRegion.region} deals` : undefined}
                       >
-                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Region</div>
-                        <div className="text-sm font-bold text-[var(--text-primary)] truncate" title={topRegion?.region}>
+                        <div className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Region</div>
+                        <div className="text-base font-bold text-[var(--text-primary)] truncate" title={topRegion?.region}>
                           {topRegion?.region || '—'}
                         </div>
-                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                        <div className="text-xs text-[var(--text-muted)] tabular-nums truncate">
                           {topRegion ? `${acvM(topRegion.total_acv)} (${topRegionShare})` : '—'}
                         </div>
                       </div>
 
                       {/* 4. Largest Deal */}
                       <div
-                        className="p-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[78px]"
+                        className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] cursor-pointer hover:border-[var(--brand-teal)] transition-all flex flex-col justify-between min-h-[85px]"
                         onClick={() => largestDeal && openDealsQuery(`Largest Deal: ${largestDeal.opportunity_name}`, { deal_ids: largestDeal.opportunity_id_18 })}
                         title={largestDeal ? `${largestDeal.opportunity_name} · ${acvM(largestDeal.acv)}` : undefined}
                       >
-                        <div className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Deal</div>
-                        <div className="text-xs font-bold text-[var(--brand-teal)] truncate" title={largestDeal?.opportunity_name}>
+                        <div className="text-xs text-[var(--text-muted)] font-semibold uppercase tracking-wider truncate">Largest Deal</div>
+                        <div className="text-sm font-bold text-[var(--brand-teal)] truncate" title={largestDeal?.opportunity_name}>
                           {largestDeal?.opportunity_name || '—'}
                         </div>
-                        <div className="text-[10px] text-[var(--text-muted)] tabular-nums truncate">
+                        <div className="text-xs text-[var(--text-muted)] tabular-nums truncate">
                           {largestDeal ? acvM(largestDeal.acv) : '—'}
                         </div>
                       </div>
@@ -713,10 +713,10 @@ export default function Dashboard() {
         ) => {
           if (delta === null || delta === undefined || delta.count === null || isFuture) {
             return (
-              <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
-                <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
-                <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
+                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+                <div className="font-bold text-sm text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 font-medium">n/a</div>
               </div>
             )
           }
@@ -750,17 +750,17 @@ export default function Dashboard() {
 
           return (
             <div
-              className={`p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
+              className={`p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
                 hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70'
               }`}
               onClick={() => hasDeals && onBoxClick()}
               title={hasDeals ? `Click to view deals changed (${drawerTitle})` : `No deals changed ${dateLabel}`}
             >
-              <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-              <div className={`font-bold text-xs tabular-nums ${acvColor}`}>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+              <div className={`font-bold text-sm sm:text-base tabular-nums ${acvColor}`}>
                 {arrow}{acvText}
               </div>
-              <div className={`text-[10px] tabular-nums ${countColor}`}>{countText}</div>
+              <div className={`text-xs font-medium tabular-nums ${countColor}`}>{countText}</div>
             </div>
           )
         }
@@ -787,19 +787,19 @@ export default function Dashboard() {
                   <motion.div
                     key={catKey}
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="card p-4 flex flex-col justify-between gap-2.5 transition-all"
+                    className="card p-5 flex flex-col justify-between gap-3 transition-all"
                     style={{ borderLeft: `4px solid ${color}` }}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
+                        <span className="text-sm font-bold uppercase tracking-wider" style={{ color }}>
                           {label}
                         </span>
                         <Pill color={catKey === 'Closed' ? 'slate' : catKey === 'Commit' ? 'teal' : catKey === 'Best Case' ? 'sky' : 'indigo'}>
                           {`${cat.count ?? 0} deals`}
                         </Pill>
                       </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={`${label} deals in portfolio`}>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-2.5 line-clamp-1" title={`${label} deals in portfolio`}>
                         {catKey === 'Closed' ? 'Closed-won deals' : catKey === 'Commit' ? 'Committed renewal opportunities' : catKey === 'Best Case' ? 'Best case renewal opportunities' : 'Pipeline opportunities'}
                       </p>
                       {sumLoading ? (
@@ -815,7 +815,7 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                    <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5">
                       {renderSubBox('vs yesterday', cat.delta_yesterday, yDateStr, () => openDealsQuery(`${label} Deals (vs yesterday) · ${cat.delta_yesterday?.count ?? 0} deals · ${acvM(cat.delta_yesterday?.acv ?? 0)}`, { category: catKey, kind: 'delta_yesterday' }), `${label} · vs yesterday`, catKey)}
                       {renderSubBox('vs last week', cat.delta_lastweek, lwDateStr, () => openDealsQuery(`${label} Deals (vs last week) · ${cat.delta_lastweek?.count ?? 0} deals · ${acvM(cat.delta_lastweek?.acv ?? 0)}`, { category: catKey, kind: 'delta_lastweek' }), `${label} · vs last week`, catKey)}
                     </div>
@@ -852,10 +852,10 @@ export default function Dashboard() {
         ) => {
           if (delta === null || delta === undefined || delta.count === null || isFuture) {
             return (
-              <div className="p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
-                <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                <div className="font-bold text-xs text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
-                <div className="text-[10px] text-slate-400 dark:text-slate-500">n/a</div>
+              <div className="p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] opacity-60 cursor-default">
+                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+                <div className="font-bold text-sm text-slate-400 dark:text-slate-500 tabular-nums">n/a</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 font-medium">n/a</div>
               </div>
             )
           }
@@ -889,17 +889,17 @@ export default function Dashboard() {
 
           return (
             <div
-              className={`p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
+              className={`p-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] transition-colors ${
                 hasDeals ? 'cursor-pointer hover:border-[var(--brand-teal)]' : 'cursor-default opacity-70'
               }`}
               onClick={() => hasDeals && onBoxClick()}
               title={hasDeals ? `Click to view deals changed (${drawerTitle})` : `No deals changed ${dateLabel}`}
             >
-              <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-              <div className={`font-bold text-xs tabular-nums ${acvColor}`}>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+              <div className={`font-bold text-sm sm:text-base tabular-nums ${acvColor}`}>
                 {arrow}{acvText}
               </div>
-              <div className={`text-[10px] tabular-nums ${countColor}`}>{countText}</div>
+              <div className={`text-xs font-medium tabular-nums ${countColor}`}>{countText}</div>
             </div>
           )
         }
@@ -956,15 +956,15 @@ export default function Dashboard() {
             {/* 4 equal, compact tiles */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {/* Tile 1: Proposal Pending */}
-              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #6366F1' }}>
+              <div className="card p-5 flex flex-col justify-between gap-3" style={{ borderLeft: '4px solid #6366F1' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                       Proposal Pending
                     </span>
                     <Pill color="indigo"><FileText className="w-3 h-3" />{`${ppCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title="Open renewals with no approval status and no proposal status yet.">
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-2.5 line-clamp-1" title="Open renewals with no approval status and no proposal status yet.">
                     Open renewals with no approval status and no proposal status yet.
                   </p>
                   <div
@@ -976,14 +976,14 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5">
                   {renderSubBox('vs yesterday', ppYDelta, yDateStr, () => openDealsQuery(ppYTitle, { kind: 'proposal_pending', compare: 'yesterday' }), ppYTitle, 'Proposal Pending')}
                   {renderSubBox('vs last week', ppLWDelta, lwDateStr, () => openDealsQuery(ppLWTitle, { kind: 'proposal_pending', compare: 'last_week' }), ppLWTitle, 'Proposal Pending')}
                 </div>
 
                 {ppData?.top_deal && (
                   <div
-                    className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                    className="pt-2.5 border-t border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-secondary)] truncate cursor-pointer hover:text-[var(--text-primary)]"
                     onClick={() => ppData.top_deal?.opportunity_id_18 && setSelectedOppId(ppData.top_deal.opportunity_id_18)}
                     title={`Largest deal: ${ppData.top_deal.opportunity_name} (${formatCurrency(ppData.top_deal.acv)})`}
                   >
@@ -993,15 +993,15 @@ export default function Dashboard() {
               </div>
 
               {/* Tile 2: Delayed Renewals */}
-              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #F43F5E' }}>
+              <div className="card p-5 flex flex-col justify-between gap-3" style={{ borderLeft: '4px solid #F43F5E' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                    <span className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                       Delayed Renewals
                     </span>
                     <Pill color="rose">{delIsNA ? 'n/a' : `${delCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={delSubtitle}>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-2.5 line-clamp-1" title={delSubtitle}>
                     {delSubtitle}
                   </p>
                   <div
@@ -1013,7 +1013,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5">
                   {renderSubBox('vs yesterday', delYDelta, yDateStr, () => openDealsQuery(delYTitle, { kind: 'delayed_total_delta', compare: 'yesterday' }), delYTitle, 'Delayed')}
                   {renderSubBox('vs last week', delLWDelta, lwDateStr, () => openDealsQuery(delLWTitle, { kind: 'delayed_total_delta', compare: 'last_week' }), delLWTitle, 'Delayed')}
                 </div>
@@ -1023,7 +1023,7 @@ export default function Dashboard() {
                   if (!delTop) return null
                   return (
                     <div
-                      className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                      className="pt-2.5 border-t border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-secondary)] truncate cursor-pointer hover:text-[var(--text-primary)]"
                       onClick={() => delTop.opportunity_id_18 && setSelectedOppId(delTop.opportunity_id_18)}
                       title={`Largest deal: ${delTop.opportunity_name} (${formatCurrency(delTop.acv || delTop.forecast_acv_amount)})`}
                     >
@@ -1035,7 +1035,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setShowDelayedDetails(!showDelayedDetails)}
-                  className="pt-1.5 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-between w-full"
+                  className="pt-2 border-t border-[var(--border-subtle)] text-xs sm:text-sm font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center justify-between w-full"
                 >
                   <span>{showDelayedDetails ? 'Hide details' : 'Show details'}</span>
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDelayedDetails ? 'rotate-180' : ''}`} />
@@ -1043,15 +1043,15 @@ export default function Dashboard() {
               </div>
 
               {/* Tile 3: Slippage */}
-              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #F59E0B' }}>
+              <div className="card p-5 flex flex-col justify-between gap-3" style={{ borderLeft: '4px solid #F59E0B' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                    <span className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                       Slippage to 2027
                     </span>
                     <Pill color="amber">{slipIsNA ? 'n/a' : `${slipCnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title={slipSubtitle}>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-2.5 line-clamp-1" title={slipSubtitle}>
                     {slipSubtitle}
                   </p>
                   <div
@@ -1063,7 +1063,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5">
                   {renderSubBox('vs yesterday', slipYDelta, yDateStr, () => openDealsQuery(slipYTitle, { kind: 'slippage_total', compare: 'yesterday' }), slipYTitle, 'Slippage to 2027')}
                   {renderSubBox('vs last week', slipLWDelta, lwDateStr, () => openDealsQuery(slipLWTitle, { kind: 'slippage_total', compare: 'last_week' }), slipLWTitle, 'Slippage to 2027')}
                 </div>
@@ -1073,7 +1073,7 @@ export default function Dashboard() {
                   if (!slipTop) return null
                   return (
                     <div
-                      className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                      className="pt-2.5 border-t border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-secondary)] truncate cursor-pointer hover:text-[var(--text-primary)]"
                       onClick={() => slipTop.opportunity_id_18 && setSelectedOppId(slipTop.opportunity_id_18)}
                       title={`Largest deal: ${slipTop.opportunity_name} (${formatCurrency(slipTop.acv || slipTop.forecast_acv_amount)})`}
                     >
@@ -1085,7 +1085,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setShowSlippageDetails(!showSlippageDetails)}
-                  className="pt-1.5 border-t border-[var(--border-subtle)] text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-between w-full"
+                  className="pt-2 border-t border-[var(--border-subtle)] text-xs sm:text-sm font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center justify-between w-full"
                 >
                   <span>{showSlippageDetails ? 'Hide details' : 'Show details'}</span>
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSlippageDetails ? 'rotate-180' : ''}`} />
@@ -1093,15 +1093,15 @@ export default function Dashboard() {
               </div>
 
               {/* Tile 4: Jan 1st Renewals */}
-              <div className="card p-4 flex flex-col gap-2.5" style={{ borderLeft: '4px solid #0EA5E9' }}>
+              <div className="card p-5 flex flex-col justify-between gap-3" style={{ borderLeft: '4px solid #0EA5E9' }}>
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
+                    <span className="text-sm font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
                       Jan 1st Renewals
                     </span>
                     <Pill color="sky"><Calendar className="w-3 h-3" />{`${j1Cnt} deals`}</Pill>
                   </div>
-                  <p className="text-[11px] text-[var(--text-muted)] mb-2 line-clamp-1" title="Service starts on the upcoming January 1st.">
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] mb-2.5 line-clamp-1" title="Service starts on the upcoming January 1st.">
                     Service starts on the upcoming January 1st.
                   </p>
                   <div
@@ -1113,14 +1113,14 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border)] grid grid-cols-2 gap-2">
+                <div className="pt-3 border-t border-[var(--border)] grid grid-cols-2 gap-2.5">
                   {renderSubBox('vs yesterday', j1YDelta, yDateStr, () => openDealsQuery(j1YTitle, { kind: 'jan1_renewals', compare: 'yesterday' }), j1YTitle, 'Jan 1st Renewals')}
                   {renderSubBox('vs last week', j1LWDelta, lwDateStr, () => openDealsQuery(j1LWTitle, { kind: 'jan1_renewals', compare: 'last_week' }), j1LWTitle, 'Jan 1st Renewals')}
                 </div>
 
                 {j1Data?.top_deal && (
                   <div
-                    className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] truncate cursor-pointer hover:text-[var(--text-primary)]"
+                    className="pt-2.5 border-t border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-secondary)] truncate cursor-pointer hover:text-[var(--text-primary)]"
                     onClick={() => j1Data.top_deal?.opportunity_id_18 && setSelectedOppId(j1Data.top_deal.opportunity_id_18)}
                     title={`Largest deal: ${j1Data.top_deal.opportunity_name} (${formatCurrency(j1Data.top_deal.acv)})`}
                   >
@@ -1283,23 +1283,23 @@ export default function Dashboard() {
           ) => {
             if (delta === null || delta === undefined || isNA) {
               return (
-                <div className="p-2 rounded-lg bg-slate-500/5 border border-slate-500/10 cursor-not-allowed opacity-60">
-                  <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                  <div className="font-bold text-xs text-[var(--text-muted)] tabular-nums">n/a</div>
-                  <div className="text-[10px] text-[var(--text-muted)]">n/a</div>
+                <div className="p-2.5 rounded-xl bg-slate-500/5 border border-slate-500/10 cursor-not-allowed opacity-60">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+                  <div className="font-bold text-sm text-[var(--text-muted)] tabular-nums">n/a</div>
+                  <div className="text-xs font-medium text-[var(--text-muted)]">n/a</div>
                 </div>
               )
             }
             const hasDelta = Math.abs(delta.count || 0) > 0 || Math.abs(delta.acv || 0) > 0
             return (
               <div
-                className={`p-2 rounded-lg border transition-all ${hasDelta ? 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 cursor-pointer hover:border-slate-500/50' : 'bg-slate-500/5 border-slate-500/10 cursor-not-allowed opacity-60'}`}
+                className={`p-2.5 rounded-xl border transition-all ${hasDelta ? 'bg-slate-500/10 border-slate-500/20 text-slate-600 dark:text-slate-400 cursor-pointer hover:border-slate-500/50' : 'bg-slate-500/5 border-slate-500/10 cursor-not-allowed opacity-60'}`}
                 onClick={() => hasDelta && onBoxClick()}
                 title={hasDelta ? `Click to view deals changed (${drawerTitle})` : `No deals changed ${dateLabel}`}
               >
-                <div className="text-[10px] font-semibold text-[var(--text-muted)] truncate">{label}</div>
-                <div className="font-bold text-xs tabular-nums">{acvM(delta.acv || 0)}</div>
-                <div className="text-[10px] text-[var(--text-muted)]">{delta.count || 0} deals</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
+                <div className="font-bold text-sm sm:text-base tabular-nums">{acvM(delta.acv || 0)}</div>
+                <div className="text-xs font-medium text-[var(--text-muted)] tabular-nums">{delta.count || 0} deals</div>
               </div>
             )
           }
@@ -1310,11 +1310,11 @@ export default function Dashboard() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
-                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       Lost / Removed
                     </h3>
                   </div>
-                  <p className="text-xs text-[var(--text-muted)] max-w-xl">
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-xl">
                     Deals deleted or lost since the baseline period (kept separate outside Delayed and Slippage to 2027 totals).
                   </p>
                 </div>
@@ -1325,11 +1325,11 @@ export default function Dashboard() {
                     onClick={() => hasDeals && !isNA && openDealsQuery(mainTitle, { kind: 'lost', compare: 'period_start' })}
                     title={hasDeals ? 'Click to view lost/removed deals' : '0 deals'}
                   >
-                    <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                    <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                       Deals Removed
                     </div>
                     <div className="flex items-baseline gap-2">
-                      <span className={`text-xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'hover:underline' : ''}`}>
+                      <span className={`text-2xl font-black text-[var(--text-primary)] tabular-nums ${hasDeals && !isNA ? 'hover:underline' : ''}`}>
                         {isNA ? 'n/a' : acvM(acvVal)}
                       </span>
                       <Pill color="slate">{isNA ? 'n/a' : `${cnt} deals`}</Pill>

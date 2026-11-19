@@ -36,7 +36,7 @@ export default function DeltaChip({
       ? ((Math.abs(value) / Math.abs(previousValue)) * 100).toFixed(1)
       : null
 
-  const sizeClasses = size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'
+  const sizeClasses = size === 'sm' ? 'text-xs px-2 py-0.5 rounded-md' : 'text-xs sm:text-sm px-2.5 py-1 rounded-md font-semibold'
 
   // Neutral background with text-only polarity coloring
   let colorClasses = 'bg-[var(--bg-secondary)] border border-[var(--border)] text-slate-500 dark:text-slate-400'

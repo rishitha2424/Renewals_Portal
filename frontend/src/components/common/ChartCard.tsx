@@ -69,11 +69,11 @@ export default function ChartCard({
         {/* Header - No decorative icon (F8) */}
         <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-[var(--border-subtle)] shrink-0">
           <div>
-            <h3 className={clsx('text-xs font-bold uppercase tracking-wider', toneDef.titleClass)}>
+            <h3 className={clsx('text-sm font-bold uppercase tracking-wider', toneDef.titleClass)}>
               {title}
             </h3>
             {subtitle && (
-              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{subtitle}</p>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">{subtitle}</p>
             )}
           </div>
           {action && <div className="shrink-0">{action}</div>}
@@ -99,7 +99,7 @@ export default function ChartCard({
                     )}
                     title={`${d.label}: ${d.formattedValue ?? d.value} (${pct.toFixed(1)}%)`}
                   >
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
                       <span className="font-semibold text-[var(--text-primary)] truncate flex-1 min-w-0 pr-2" title={d.label}>
                         {d.label}
                       </span>
@@ -107,7 +107,7 @@ export default function ChartCard({
                         <span className="font-bold text-[var(--text-primary)]">
                           {d.formattedValue ?? d.value}
                         </span>
-                        <span className="text-[11px] text-[var(--text-muted)] w-10 text-right font-medium">
+                        <span className="text-xs text-[var(--text-muted)] w-11 text-right font-medium">
                           {pct.toFixed(1)}%
                         </span>
                       </div>
@@ -153,11 +153,11 @@ export default function ChartCard({
                           >
                             {/* Value & percentage badge above the bar */}
                             <div className="flex flex-col items-center gap-0.5 mb-1.5 transition-transform duration-200 group-hover:-translate-y-0.5">
-                              <span className="text-[11px] sm:text-xs font-bold text-[var(--text-primary)] tabular-nums whitespace-nowrap">
+                              <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)] tabular-nums whitespace-nowrap">
                                 {d.formattedValue ?? d.value}
                               </span>
                               {d.percentage != null && !isPctInValue && (
-                                <span className="text-[10px] font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums">
+                                <span className="text-xs font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums">
                                   {d.percentage.toFixed(1)}%
                                 </span>
                               )}
@@ -197,13 +197,13 @@ export default function ChartCard({
                           )}
                         >
                           <span
-                            className="text-[11px] font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate w-full"
+                            className="text-xs sm:text-sm font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate w-full"
                             title={d.label}
                           >
                             {d.label}
                           </span>
                           {(d.sublabel || d.dealsCount != null) && (
-                            <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] group-hover:border-[var(--brand-teal)] group-hover:text-[var(--brand-teal)] transition-colors tabular-nums whitespace-nowrap">
+                            <span className="mt-0.5 inline-block px-1.5 py-0.5 rounded-full text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] border border-[var(--border-subtle)] group-hover:border-[var(--brand-teal)] group-hover:text-[var(--brand-teal)] transition-colors tabular-nums whitespace-nowrap">
                               {d.sublabel ?? `${d.dealsCount} ${d.dealsCount === 1 ? 'deal' : 'deals'}`}
                             </span>
                           )}
@@ -232,11 +232,11 @@ export default function ChartCard({
                   <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full max-w-[180px] min-w-0">
                     {/* Clean Group Header */}
                     <div className="text-center mb-2 px-1">
-                      <span className="text-xs font-bold text-[var(--text-primary)] font-mono tabular-nums block">
+                      <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)] font-mono tabular-nums block">
                         {d.formattedValue}
                       </span>
                       {d.dealsCount !== undefined && (
-                        <span className="text-[10px] text-[var(--text-muted)] font-medium block">
+                        <span className="text-xs text-[var(--text-muted)] font-medium block">
                           {d.dealsCount} {d.dealsCount === 1 ? 'deal' : 'deals'}
                         </span>
                       )}
@@ -263,7 +263,7 @@ export default function ChartCard({
                             )}
                             title={`${d.label} - ${s.name}: ${s.formattedValue ?? s.value}${s.dealsCount !== undefined ? ` (${s.dealsCount} deals)` : ''}`}
                           >
-                            <span className="text-[10px] font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums mb-1 whitespace-nowrap">
+                            <span className="text-xs font-bold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors tabular-nums mb-1 whitespace-nowrap">
                               {s.formattedValue ?? s.value}
                             </span>
                             <div
@@ -271,7 +271,7 @@ export default function ChartCard({
                               style={{ height: `${hPct}%`, backgroundColor: s.color || toneDef.hex }}
                             />
                             {s.dealsCount !== undefined && (
-                              <span className="text-[9px] font-medium text-[var(--text-muted)] mt-1 tabular-nums whitespace-nowrap">
+                              <span className="text-[11px] font-medium text-[var(--text-muted)] mt-1 tabular-nums whitespace-nowrap">
                                 {s.dealsCount} {s.dealsCount === 1 ? 'deal' : 'deals'}
                               </span>
                             )}
@@ -303,7 +303,7 @@ export default function ChartCard({
                       onClick={d.onClick}
                       className={clsx('flex-1 flex flex-col items-center justify-end h-full gap-1 group', d.onClick && 'cursor-pointer')}
                     >
-                      <span className="text-[10px] font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                      <span className="text-xs font-bold text-[var(--text-primary)] tabular-nums group-hover:opacity-100 transition-opacity whitespace-nowrap">
                         {d.formattedValue ?? d.value}
                       </span>
                       <div
@@ -332,7 +332,7 @@ export default function ChartCard({
                           )
                         })}
                       </div>
-                      <span className="text-[10px] font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
+                      <span className="text-xs font-semibold text-[var(--text-secondary)] truncate text-center w-full" title={d.label}>
                         {d.label}
                       </span>
                     </div>
@@ -344,7 +344,7 @@ export default function ChartCard({
             <div className="flex-1 flex flex-col justify-start gap-2 py-1 min-h-0 overflow-y-auto pr-1">
               {/* Benchmark Reference Ruler Header */}
               {benchmark != null && (
-                <div className="relative w-full h-3.5 mb-0.5 text-[10px] font-mono text-[var(--text-muted)] select-none shrink-0 border-b border-[var(--border-subtle)] pb-1">
+                <div className="relative w-full h-3.5 mb-0.5 text-xs font-mono text-[var(--text-muted)] select-none shrink-0 border-b border-[var(--border-subtle)] pb-1">
                   <span className="absolute left-0 bottom-0.5">0%</span>
                   <div
                     className="absolute bottom-0.5 -translate-x-1/2 flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400"
@@ -382,7 +382,7 @@ export default function ChartCard({
                             {d.formattedValue ?? `${d.value}%`}
                           </span>
                           {d.sublabel && !isCompact && (
-                            <span className="text-[10px] text-[var(--text-muted)] truncate hidden sm:inline font-medium">
+                            <span className="text-xs text-[var(--text-muted)] truncate hidden sm:inline font-medium">
                               ({d.sublabel})
                             </span>
                           )}
@@ -391,7 +391,7 @@ export default function ChartCard({
                         {/* Gap Pill */}
                         <span
                           className={clsx(
-                            'inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border tabular-nums whitespace-nowrap shadow-xs',
+                            'inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-bold border tabular-nums whitespace-nowrap shadow-xs',
                             isAbove
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
                               : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
@@ -453,7 +453,7 @@ export default function ChartCard({
                   const widthPct = Math.min(50, (Math.abs(d.value) / maxAbs) * 50)
                   return (
                     <div key={d.label} className="space-y-0.5 text-xs">
-                      <div className="flex justify-between text-[11px]">
+                      <div className="flex justify-between text-xs">
                         <span className="font-medium text-[var(--text-primary)] truncate flex-1 min-w-0 pr-2">{d.label}</span>
                         <span className={clsx('font-bold tabular-nums', isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                           {d.formattedValue ?? `${isPos ? '+' : ''}${d.value}`}
@@ -519,20 +519,20 @@ export default function ChartCard({
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
                   {hoveredSlice !== null && data[hoveredSlice] ? (
                     <>
-                      <span className="text-[10px] uppercase font-bold text-[#00A3AD] tracking-wider truncate max-w-[95px]" title={data[hoveredSlice].label}>
+                      <span className="text-xs uppercase font-bold text-[#00A3AD] tracking-wider truncate max-w-[95px]" title={data[hoveredSlice].label}>
                         {data[hoveredSlice].label}
                       </span>
-                      <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]">
+                      <span className="text-sm font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]">
                         {data[hoveredSlice].formattedValue ?? acvM(data[hoveredSlice].value)}
                       </span>
-                      <span className="text-[10px] text-[var(--text-muted)] font-semibold">
+                      <span className="text-xs text-[var(--text-muted)] font-semibold">
                         {(data[hoveredSlice].percentage ?? (calculatedTotal > 0 ? (data[hoveredSlice].value / calculatedTotal) * 100 : 0)).toFixed(1)}%
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">Total</span>
-                      <span className="text-xs font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]" title={String(total != null ? total : calculatedTotal)}>
+                      <span className="text-xs uppercase font-bold text-[var(--text-muted)] tracking-wider">Total</span>
+                      <span className="text-sm font-black text-[var(--text-primary)] tabular-nums truncate max-w-[95px]" title={String(total != null ? total : calculatedTotal)}>
                         {acvM(total != null ? total : calculatedTotal)}
                       </span>
                     </>
@@ -562,11 +562,11 @@ export default function ChartCard({
                     >
                       <div className="flex items-center gap-1.5 truncate pr-2 min-w-0 flex-1">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color || toneDef.hex }} />
-                        <span className="font-medium text-[var(--text-secondary)] truncate flex-1 min-w-0" title={d.label}>{d.label}</span>
+                        <span className="font-medium text-[var(--text-secondary)] text-xs sm:text-sm truncate flex-1 min-w-0" title={d.label}>{d.label}</span>
                       </div>
                       <div className="flex items-center gap-2 tabular-nums shrink-0">
-                        <span className="font-bold text-[var(--text-primary)]">{d.formattedValue ?? acvM(d.value)}</span>
-                        <span className="text-[10px] text-[var(--text-muted)] w-9 text-right font-semibold">{pct.toFixed(1)}%</span>
+                        <span className="font-bold text-[var(--text-primary)] text-xs sm:text-sm">{d.formattedValue ?? acvM(d.value)}</span>
+                        <span className="text-xs text-[var(--text-muted)] w-10 text-right font-semibold">{pct.toFixed(1)}%</span>
                       </div>
                     </div>
                   )
