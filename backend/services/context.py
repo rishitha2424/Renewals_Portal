@@ -1,55 +1,42 @@
 """
-UserContext and Admin Authentication (Addendum D).
-- Constant-time password validation against ADMIN_PASSWORD from environment.
-- HMAC-SHA256 signed admin tokens with expiry.
-- Rate-limiting (5 failures -> 60s lockout).
-- Write routes dependency (require_admin_context).
-- Public read dependency (get_user_context).
-- Never leaks or logs ADMIN_PASSWORD.
+UserContext and Authentication Dependencies (Round 18).
+- Role-based authorization: admin, management, kam, viewer.
+- Server-side KAM owner & alias resolution.
+- Legacy admin token backwards compatibility.
+- Cookies: auth_token, admin_token.
+- Bearer token header support.
 """
 from __future__ import annotations
 
-import hmac
-import hashlib
-import time
-import json
 import base64
+import hashlib
+import hmac
+import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 
 from backend.config import settings
+from backend.database import get_db
 
 log = logging.getLogger(__name__)
 
 security_bearer = HTTPBearer(auto_error=False)
 
-
-@dataclass
-class UserContext:
-    user_id: str = "guest"
-    display_name: str = "Viewer"
-    roles: list[str] = field(default_factory=lambda: ["viewer"])
-    is_admin: bool = False
-
-    def has_role(self, role: str) -> bool:
-        return role in self.roles or self.is_admin
-
-
-# Rate-limiting state for login: client IP -> list of failed attempt timestamps
+# Backward-compatibility rate-limiting helpers for admin_auth.py
 _LOGIN_FAILURES: dict[str, list[float]] = {}
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION_SEC = 60.0
 
-
 def check_rate_limit(ip: str) -> None:
     now = time.time()
     attempts = _LOGIN_FAILURES.get(ip, [])
-    # Keep attempts within lockout window
     recent = [t for t in attempts if now - t < LOCKOUT_DURATION_SEC]
     _LOGIN_FAILURES[ip] = recent
     if len(recent) >= MAX_FAILED_ATTEMPTS:
@@ -59,20 +46,58 @@ def check_rate_limit(ip: str) -> None:
             detail=f"Too many failed login attempts. Please wait {max(1, retry_after)} seconds.",
         )
 
-
 def record_login_failure(ip: str) -> None:
     now = time.time()
-    attempts = _LOGIN_FAILURES.get(ip, [])
+    attempts = _LOGIN_FAILURES.setdefault(ip, [])
     attempts.append(now)
-    _LOGIN_FAILURES[ip] = attempts
-
 
 def reset_login_failures(ip: str) -> None:
     _LOGIN_FAILURES.pop(ip, None)
 
 
+@dataclass
+class UserContext:
+    user_id: str = "guest"
+    email: str = ""
+    display_name: str = "Viewer"
+    role: str = "viewer"  # "admin" | "management" | "kam" | "viewer"
+    roles: list[str] = field(default_factory=lambda: ["viewer"])
+    is_owner: bool = False
+    owner_name: Optional[str] = None
+    owner_aliases: list[str] = field(default_factory=list)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin" or "admin" in self.roles
+
+    @property
+    def is_management(self) -> bool:
+        return self.role == "management" or "management" in self.roles
+
+    @property
+    def is_kam(self) -> bool:
+        return self.role == "kam" or "kam" in self.roles
+
+    @property
+    def all_owner_names(self) -> list[str]:
+        names = []
+        if self.owner_name:
+            names.append(self.owner_name.strip())
+        for a in self.owner_aliases:
+            if a and a.strip() and a.strip() not in names:
+                names.append(a.strip())
+        return names
+
+    def has_role(self, required_role: str) -> bool:
+        if self.is_admin:
+            return True
+        return self.role == required_role or required_role in self.roles
+
+
+# Legacy admin token helpers for backward compatibility
 def sign_admin_token(user_name: str = "Admin") -> str:
     """Create a signed, expiring admin token."""
+    from backend.services.auth_service import sign_session_token
     payload = {
         "sub": "admin",
         "name": user_name.strip() if user_name else "Admin",
@@ -88,7 +113,7 @@ def sign_admin_token(user_name: str = "Admin") -> str:
 
 
 def decode_admin_token(token: str) -> dict | None:
-    """Validate token signature and expiration, returning payload dict or None."""
+    """Validate legacy admin token signature and expiration."""
     if not token or "." not in token:
         return None
     parts = token.split(".")
@@ -114,7 +139,6 @@ def decode_admin_token(token: str) -> dict | None:
 
 
 def verify_admin_token(token: str) -> bool:
-    """Validate token signature and expiration."""
     return decode_admin_token(token) is not None
 
 
@@ -123,50 +147,112 @@ def get_token_from_request(request: Request) -> Optional[str]:
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         return auth_header[7:].strip()
-    # 2. HttpOnly Cookie
-    cookie_token = request.cookies.get("admin_token")
+    # 2. auth_token Cookie
+    cookie_token = request.cookies.get("auth_token")
     if cookie_token:
         return cookie_token.strip()
+    # 3. Legacy admin_token Cookie
+    admin_cookie = request.cookies.get("admin_token")
+    if admin_cookie:
+        return admin_cookie.strip()
     return None
 
 
-def get_user_context(request: Request) -> UserContext:
-    """Public read context. If valid admin token is present, returns admin context; otherwise guest."""
-    token = get_token_from_request(request)
-    if token:
-        payload = decode_admin_token(token)
-        if payload:
-            user_name = payload.get("name") or "admin"
-            return UserContext(user_id=user_name, display_name=user_name, roles=["admin", "viewer"], is_admin=True)
-    return UserContext(user_id="guest", display_name="Viewer", roles=["viewer"], is_admin=False)
-
-
-def require_admin_context(request: Request) -> UserContext:
-    """Enforce admin authentication for mutating endpoints."""
-    if not settings.is_admin_configured:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Write operations disabled: Admin authentication is not configured (ADMIN_PASSWORD or ADMIN_SECRET_KEY missing/unset).",
-        )
-
+def get_user_context(request: Request, db: Session = Depends(get_db)) -> UserContext:
+    """
+    Public context resolver.
+    Extracts session or admin token. If valid, returns authenticated UserContext.
+    If no valid token is present, returns anonymous guest UserContext (role="viewer").
+    """
     token = get_token_from_request(request)
     if not token:
+        return UserContext(user_id="guest", email="", display_name="Viewer", role="viewer", roles=["viewer"])
+
+    # 1. Try decoding as Round 18 session token
+    from backend.services.auth_service import decode_session_token
+    session_data = decode_session_token(token)
+    if session_data:
+        from backend.models.user import User, UserAlias
+        user_id = session_data.get("uid")
+        user = db.query(User).filter(User.id == user_id).first() if user_id else None
+        if user and user.status == "active":
+            aliases = [a.alias_name for a in user.aliases] if hasattr(user, "aliases") else []
+            return UserContext(
+                user_id=str(user.id),
+                email=user.email,
+                display_name=user.name or user.email,
+                role=user.role,
+                roles=[user.role, "viewer"],
+                is_owner=bool(user.is_owner),
+                owner_name=user.owner_name,
+                owner_aliases=aliases,
+            )
+
+    # 2. Try legacy admin token
+    legacy_payload = decode_admin_token(token)
+    if legacy_payload:
+        user_name = legacy_payload.get("name") or "admin"
+        return UserContext(
+            user_id="admin",
+            email="rishitha@mobileum.com",
+            display_name=user_name,
+            role="admin",
+            roles=["admin", "management", "viewer"],
+            is_owner=True,
+        )
+
+    return UserContext(user_id="guest", email="", display_name="Viewer", role="viewer", roles=["viewer"])
+
+
+def require_authenticated(ctx: UserContext = Depends(get_user_context)) -> UserContext:
+    """Enforce that the caller is logged in (not guest)."""
+    if ctx.role == "viewer" and ctx.user_id == "guest":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return ctx
+
+
+def require_admin_context(ctx: UserContext = Depends(get_user_context)) -> UserContext:
+    """Enforce admin authorization."""
+    if ctx.role == "viewer" and ctx.user_id == "guest":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required: Admin token missing.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    payload = decode_admin_token(token)
-    if not payload:
+    if not ctx.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid or expired admin token. Please sign in again.",
+            detail="Access forbidden: Admin permissions required.",
         )
-
-    user_name = payload.get("name") or "admin"
-    return UserContext(user_id=user_name, display_name=user_name, roles=["admin", "viewer"], is_admin=True)
+    return ctx
 
 
-# Keep ADMIN_CONTEXT available for testing utilities if needed
-ADMIN_CONTEXT = UserContext(user_id="admin", display_name="Administrator", roles=["admin"], is_admin=True)
+def require_management_or_admin(ctx: UserContext = Depends(get_user_context)) -> UserContext:
+    """Enforce management or admin role."""
+    if ctx.role == "viewer" and ctx.user_id == "guest":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not (ctx.is_admin or ctx.is_management):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: Management or Admin role required.",
+        )
+    return ctx
+
+
+# Default admin context for CLI scripts or tests
+ADMIN_CONTEXT = UserContext(
+    user_id="admin",
+    email="rishitha@mobileum.com",
+    display_name="Rishitha (Admin)",
+    role="admin",
+    roles=["admin", "management", "viewer"],
+    is_owner=True,
+)

@@ -123,7 +123,9 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
 
         close_d = parse_excel_date(o.close_date or extra.get("Close Date") or extra.get("close_date"))
         prob_val = o.probability_pct if o.probability_pct is not None else extra.get("Probability (%)") or extra.get("probability")
-        stage_val = o.stage_number or str(extra.get("Stage Number") or extra.get("stage") or "")
+        stage_val = o.stage_number or str(extra.get("Stage Number") or extra.get("stage") or extra.get("Stage") or "")
+        owner_val = (o.opportunity_owner or "").strip() or str(extra.get("Opportunity Owner") or extra.get("Owner") or extra.get("owner") or "").strip()
+        raw_bu = str(extra.get("Business Unit") or extra.get("business_unit") or o.business_unit_raw or o.business_unit_primary or "").strip()
         sales_t = o.sales_type or str(extra.get("Sales Type") or extra.get("sales_type") or "")
         fc_norm = _norm_fc(o.forecast_category or str(extra.get("Forecast Category") or extra.get("forecast_category") or ""))
 
@@ -147,6 +149,7 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "forecast_category": fc_norm,
             "business_unit": (o.business_unit_primary or "").strip() or "Unassigned",
             "business_unit_primary": (o.business_unit_primary or "").strip() or "Unassigned",
+            "business_unit_raw": raw_bu,
             "is_deleted_or_lost": bool(o.is_deleted_or_lost),
             "fiscal_period": o.fiscal_period or "",
             "close_date": pd.Timestamp(close_d) if close_d else pd.NaT,
@@ -167,8 +170,8 @@ def _opps_to_df(opps: list[Opportunity]) -> pd.DataFrame:
             "stage": stage_val,
             "stage_number": stage_val,
             "probability_pct": prob_val,
-            "owner": (o.opportunity_owner or "").strip(),
-            "opportunity_owner": (o.opportunity_owner or "").strip(),
+            "owner": owner_val,
+            "opportunity_owner": owner_val,
             "is_open": is_open,
         })
     df = pd.DataFrame(records)
@@ -893,11 +896,20 @@ class V2DelayedService:
             for _, r in overdue_df.iterrows():
                 if r["opportunity_id_18"] not in comp_od_ids:
                     newly_overdue_deals.append({
+                        "id": r["opportunity_id_18"],
                         "opportunity_id_18": r["opportunity_id_18"],
                         "opportunity_name": r["opportunity_name"],
                         "account_name": r["account_name"],
                         "region": r["region"],
                         "forecast_acv_amount": r["forecast_acv_amount"],
+                        "forecast_category": r.get("forecast_category", ""),
+                        "approval_status": r.get("approval_status", ""),
+                        "business_unit_primary": r.get("business_unit_primary", r.get("business_unit", "")),
+                        "business_unit": r.get("business_unit", ""),
+                        "owner": r.get("opportunity_owner", r.get("owner", "")),
+                        "opportunity_owner": r.get("opportunity_owner", r.get("owner", "")),
+                        "stage": r.get("stage_number", r.get("stage", "")),
+                        "stage_number": r.get("stage_number", r.get("stage", "")),
                         "reason": "Close date passed",
                     })
 
@@ -987,11 +999,21 @@ class V2DelayedService:
                 d_od = max(0, (snap_dt - r["_close_date"]).days) if (is_deal_od and r["_close_date"]) else 0
                 d_close = max(0, (r["_close_date"] - snap_dt).days) if (not is_deal_od and r["_close_date"]) else 0
                 top_records.append({
+                    "id": r["id"],
                     "opportunity_id_18": r["opportunity_id_18"],
                     "opportunity_name": r["opportunity_name"],
                     "account_name": r["account_name"],
                     "region": r["region"],
+                    "sub_region": r["region"],
                     "owner": r.get("owner") or r.get("opportunity_owner") or "—",
+                    "opportunity_owner": r.get("opportunity_owner") or r.get("owner") or "—",
+                    "stage": r.get("stage") or r.get("stage_number") or "",
+                    "stage_number": r.get("stage_number") or r.get("stage") or "",
+                    "forecast_category": r.get("forecast_category") or "",
+                    "approval_status": r.get("approval_status") or "",
+                    "business_unit": r.get("business_unit") or "",
+                    "business_unit_primary": r.get("business_unit_primary") or "",
+                    "business_unit_raw": r.get("business_unit_raw") or "",
                     "reason": "Overdue" if is_deal_od else "Close date ahead",
                     "days_overdue": d_od,
                     "days_to_close": d_close,
@@ -1242,7 +1264,13 @@ class V2DelayedService:
         if status and status != "All":
             df = df[df["approval_status"] == status]
         if bu and bu != "All":
-            df = df[df["business_unit"] == bu]
+            bu_clean = bu.strip().lower()
+            df = df[
+                (df["business_unit"].fillna("").astype(str).str.strip().str.lower() == bu_clean) |
+                (df.get("business_unit_primary", pd.Series(dtype=str)).fillna("").astype(str).str.strip().str.lower() == bu_clean) |
+                (df.get("business_unit_raw", pd.Series(dtype=str)).fillna("").astype(str).str.strip().str.lower() == bu_clean) |
+                (df.get("business_unit_raw", pd.Series(dtype=str)).fillna("").astype(str).str.lower().str.contains(re.escape(bu_clean), na=False))
+            ]
         if owner and owner != "All" and not df.empty:
             owner_clean = owner.strip().lower()
             col = "opportunity_owner" if "opportunity_owner" in df.columns else ("owner" if "owner" in df.columns else None)

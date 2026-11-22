@@ -44,6 +44,7 @@ def serialize_opportunity(o: Opportunity) -> dict[str, Any]:
         "region": reg,
         "business_unit_primary": bu,
         "business_unit": bu,
+        "business_unit_raw": o.business_unit_raw or bu,
         "approval_status": st_display,
         "type": raw_type,
         "type_code": type_code,

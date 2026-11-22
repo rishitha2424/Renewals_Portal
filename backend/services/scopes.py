@@ -52,6 +52,8 @@ class FilterSpec(BaseModel):
     approval_statuses: List[str] = Field(default_factory=list)
     types: Optional[List[str]] = Field(default_factory=lambda: ["all"])
     include_deleted_lost: bool = False
+    allowed_owners: Optional[List[str]] = None
+    user_context: Optional[Any] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -75,6 +77,8 @@ class FilterSpec(BaseModel):
         approval_statuses: Optional[List[str] | str] = None,
         types: Optional[List[str] | str] = None,
         include_deleted_lost: Optional[bool] = False,
+        allowed_owners: Optional[List[str]] = None,
+        user_context: Optional[Any] = None,
     ) -> FilterSpec:
         def _parse_list(val: Any, default: Any) -> Any:
             if val is None:
@@ -110,6 +114,8 @@ class FilterSpec(BaseModel):
             approval_statuses=appr,
             types=tp,
             include_deleted_lost=False if include_deleted_lost is None else bool(include_deleted_lost),
+            allowed_owners=allowed_owners,
+            user_context=user_context,
         )
 
 
@@ -463,7 +469,7 @@ class ScopeService:
             if reg_conds:
                 conditions.append(or_(*reg_conds))
 
-        # 4. Business Units (supports exact BU raw matches)
+        # 4. Business Units (supports exact BU raw matches or primary BU)
         bus = filter_spec.business_units
         if bus and not ("all" in [b.lower() for b in bus] or "" in bus):
             bu_conds = []
@@ -478,9 +484,28 @@ class ScopeService:
                         )
                     )
                 elif b_clean and b_clean not in ("All", "Total", "Grand Total"):
-                    bu_conds.append(Opportunity.business_unit_raw == b_clean)
+                    bu_conds.append(
+                        or_(
+                            Opportunity.business_unit_raw == b_clean,
+                            Opportunity.business_unit_primary == b_clean,
+                            Opportunity.business_unit_raw.ilike(f"%{b_clean}%"),
+                        )
+                    )
             if bu_conds:
                 conditions.append(or_(*bu_conds))
+
+        # KAM Data Isolation: enforce owner match centrally
+        target_owners = None
+        if filter_spec.allowed_owners is not None:
+            target_owners = filter_spec.allowed_owners
+        elif filter_spec.user_context and getattr(filter_spec.user_context, "is_kam", False):
+            target_owners = getattr(filter_spec.user_context, "all_owner_names", [])
+
+        if target_owners is not None:
+            if len(target_owners) == 0:
+                conditions.append(Opportunity.id == "no_access_kam_unassigned")
+            else:
+                conditions.append(Opportunity.opportunity_owner.in_(target_owners))
 
         # 5. Forecast Categories
         fcs = filter_spec.forecast_categories

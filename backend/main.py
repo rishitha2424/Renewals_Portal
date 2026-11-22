@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import settings
 from backend.routers import snapshots, analytics, opportunities, export, health, admin_auth, settings as system_settings_router, custom_columns
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters, v2_explorer
+from backend.routers import auth, admin_users, messages, email_admin, kam
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,6 +99,15 @@ async def lifespan(app: FastAPI):
     except Exception as log_err:
         log.info(f"Database: {dialect} ({migrations_status})")
 
+    # Seed default user accounts (admin Rishitha and management)
+    try:
+        from backend.database import SessionLocal
+        from backend.services.auth_service import ensure_default_accounts
+        with SessionLocal() as db_init:
+            ensure_default_accounts(db_init)
+    except Exception as exc:
+        log.warning("Could not seed default accounts on startup: %s", exc)
+
     # Security check on startup
     from backend.routers.admin_auth import get_security_warnings
     sec_warnings = get_security_warnings()
@@ -169,6 +179,11 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(opportunities.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(admin_auth.router, prefix="/api")
+app.include_router(auth.router)
+app.include_router(admin_users.router)
+app.include_router(messages.router)
+app.include_router(email_admin.router)
+app.include_router(kam.router)
 app.include_router(health.router)
 app.include_router(v2_overview.router)
 app.include_router(v2_expiry.router)

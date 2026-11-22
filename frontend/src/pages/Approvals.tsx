@@ -75,7 +75,7 @@ export default function Approvals() {
     enabled: !!activeSnapshotId,
   })
 
-  const { data: dealsData } = useQuery({
+  const { data: dealsData, isLoading: isDealsLoading } = useQuery({
     queryKey: ['approvals_deals_v2', activeSnapshotId, effectiveAsOf, modalFilters, includeDeletedLost],
     queryFn: () => getApprovalsDeals(
       effectiveAsOf || '', 
@@ -686,7 +686,10 @@ export default function Approvals() {
                         formattedValue: formatACV(totalAcv),
                         dealsCount: totalDeals,
                         sublabel: `${totalDeals} ${totalDeals === 1 ? 'deal' : 'deals'}`,
-                        onClick: () => handleCellClick({ approval_status: st.status_key || undefined }, `${statusLabel} All Deals`),
+                        onClick: () => handleCellClick({
+                          approval_status: st.status_key || undefined,
+                          expectedCount: totalDeals,
+                        }, `${statusLabel} All Deals (${totalDeals} deals · ${formatACV(totalAcv)})`),
                         series: [
                           {
                             name: `Large (≥ ${deal_size_split.threshold_label})`,
@@ -697,7 +700,8 @@ export default function Approvals() {
                             onClick: () => handleCellClick({
                               approval_status: st.status_key || undefined,
                               min_acv: deal_size_split.threshold,
-                            }, `${statusLabel} Large Deals (≥ ${deal_size_split.threshold_label})`),
+                              expectedCount: st.large?.count || 0,
+                            }, `${statusLabel} Large Deals (${st.large?.count || 0} deals · ${formatACV(st.large?.acv || 0)})`),
                           },
                           {
                             name: `Small (< ${deal_size_split.threshold_label})`,
@@ -708,7 +712,8 @@ export default function Approvals() {
                             onClick: () => handleCellClick({
                               approval_status: st.status_key || undefined,
                               max_acv: deal_size_split.threshold,
-                            }, `${statusLabel} Small Deals (< ${deal_size_split.threshold_label})`),
+                              expectedCount: st.small?.count || 0,
+                            }, `${statusLabel} Small Deals (${st.small?.count || 0} deals · ${formatACV(st.small?.acv || 0)})`),
                           },
                         ],
                       }
@@ -1737,6 +1742,8 @@ export default function Approvals() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
+          isLoading={isDealsLoading}
+          expectedCount={modalFilters?.expectedCount}
           deals={(
             (dealsData?.deals && dealsData.deals.length > 0)
               ? dealsData.deals

@@ -76,6 +76,8 @@ class OpportunityService:
 
         if forecast_category:
             q = q.filter(Opportunity.forecast_category.in_(forecast_category))
+        if ctx and ctx.is_kam:
+            q = q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
         if approval_status:
             norm_statuses = []
             for s in approval_status:
@@ -308,6 +310,10 @@ class OpportunityService:
         )
         if not opp:
             return None
+        if ctx and ctx.is_kam:
+            owner = (opp.opportunity_owner or "").strip()
+            if owner not in ctx.all_owner_names:
+                return None
         data = self._to_dict(opp)
         from backend.services.risk_service import RiskService
         risk_svc = RiskService(self.db)
@@ -320,6 +326,10 @@ class OpportunityService:
 
     def get_opportunity_history(self, ctx: UserContext, opp_id: str) -> list[dict]:
         """Return field values across all snapshots for a single opportunity."""
+        if ctx and ctx.is_kam:
+            opp_check = self.db.query(Opportunity.opportunity_owner).filter(Opportunity.opportunity_id_18 == opp_id).first()
+            if not opp_check or (opp_check[0] or "").strip() not in ctx.all_owner_names:
+                return []
         opps = (
             self.db.query(Opportunity, UploadSnapshot)
             .join(UploadSnapshot, Opportunity.snapshot_id == UploadSnapshot.id)
@@ -334,6 +344,10 @@ class OpportunityService:
 
     def get_opportunity_changelog(self, ctx: UserContext, opp_id: str) -> list[dict]:
         """Return all changelog entries for a single opportunity."""
+        if ctx and ctx.is_kam:
+            opp_check = self.db.query(Opportunity.opportunity_owner).filter(Opportunity.opportunity_id_18 == opp_id).first()
+            if not opp_check or (opp_check[0] or "").strip() not in ctx.all_owner_names:
+                return []
         changes = (
             self.db.query(ChangeLog)
             .filter(ChangeLog.opportunity_id_18 == opp_id)

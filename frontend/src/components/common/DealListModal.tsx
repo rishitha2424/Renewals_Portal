@@ -77,6 +77,7 @@ interface DealListModalProps {
   title: string
   deals: Deal[]
   expectedCount?: number
+  isLoading?: boolean
   initialFilters?: {
     forecast_category?: string | null
     approval_status?: string | null
@@ -95,7 +96,7 @@ interface DealListModalProps {
   onClose: () => void
 }
 
-export default function DealListModal({ title, deals, expectedCount, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
+export default function DealListModal({ title, deals, expectedCount, isLoading, initialFilters, deltaGroups, onSelectOpp, onClose }: DealListModalProps) {
   const [selectedGroup, setSelectedGroup] = useState<'All' | 'added' | 'left' | 'amount_changed'>('All')
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState<keyof Deal | null>(null)
@@ -224,10 +225,15 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
       if (filterStage !== 'All' && getDealStage(d) !== filterStage) return false
       if (filterRegion !== 'All' && d.sub_region !== filterRegion && (d as any).region !== filterRegion) return false
       if (filterBU !== 'All') {
-        const buPrimary = (d.business_unit_primary || (d as any).business_unit || '').toLowerCase()
-        const buRaw = ((d as any).business_unit_raw || '').toLowerCase()
-        const target = filterBU.toLowerCase()
-        const match = buPrimary === target || buRaw === target || buRaw.includes(target) || target.includes(buPrimary)
+        const buPrimary = (d.business_unit_primary || (d as any).business_unit || '').toLowerCase().trim()
+        const buRaw = ((d as any).business_unit_raw || '').toLowerCase().trim()
+        const target = filterBU.toLowerCase().trim()
+        const match =
+          buPrimary === target ||
+          buRaw === target ||
+          buRaw.includes(target) ||
+          target.includes(buPrimary) ||
+          (buPrimary && target.split(/[;,]/).some(part => part.trim() === buPrimary))
         if (!match) return false
       }
       if (filterOwner !== 'All' && getDealOwner(d) !== filterOwner) return false
@@ -514,7 +520,17 @@ export default function DealListModal({ title, deals, expectedCount, initialFilt
 
           {/* Table */}
           <div className="overflow-y-auto flex-1 bg-[var(--bg-primary)]">
-            {filteredDeals.length === 0 ? (
+            {isLoading ? (
+              <div className="p-6 space-y-3">
+                <div className="flex items-center gap-2.5 text-xs text-[var(--text-muted)] mb-4">
+                  <div className="w-4 h-4 rounded-full border-2 border-teal-500 border-t-transparent animate-spin shrink-0" />
+                  <span className="font-medium">Loading deals from snapshot...</span>
+                </div>
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="h-10 bg-[var(--bg-secondary)] rounded-md animate-pulse border border-[var(--border)]" />
+                ))}
+              </div>
+            ) : filteredDeals.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                 <div className="w-12 h-12 rounded-sm bg-[var(--bg-secondary)] border border-[var(--border)] flex items-center justify-center mb-3">
                   <Search className="w-5 h-5 text-[var(--text-muted)] opacity-60" />

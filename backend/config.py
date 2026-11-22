@@ -101,13 +101,30 @@ class Settings(BaseSettings):
     NEEDS_ATTENTION_WINDOW_DAYS: int = 14
     NEEDS_ATTENTION_MAX_ITEMS: int = 5
 
-    # Security & Admin Auth (Addendum D)
+    # Security & Admin Auth (Addendum D & Round 18)
     TESTING: bool = False
     ENVIRONMENT: str = "development"
     ADMIN_PASSWORD: str = ""
     ADMIN_SECRET_KEY: str = ""
     COOKIE_SECURE: Optional[bool] = None
     ADMIN_TOKEN_EXPIRE_HOURS: int = 8
+    AUTH_SESSION_EXPIRE_HOURS: int = 24
+    INVITE_TOKEN_EXPIRE_HOURS: int = 72
+    RESET_TOKEN_EXPIRE_HOURS: int = 24
+    MAX_FAILED_LOGIN_ATTEMPTS: int = 5
+    LOCKOUT_DURATION_MINUTES: int = 15
+
+    # Email & SMTP Configuration (Round 18)
+    MAIL_ENABLED: bool = False
+    SMTP_HOST: str = "smtp.office365.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_STARTTLS: bool = True
+    SMTP_SSL: bool = False
+    MAIL_FROM: str = "renewals@mobileum.com"
+    APP_BASE_URL: str = "http://localhost:5173"
+    ADMIN_ALERT_EMAIL: str = "rishitha@mobileum.com"
 
     @property
     def is_cookie_secure(self) -> bool:

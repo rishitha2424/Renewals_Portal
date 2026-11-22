@@ -901,16 +901,14 @@ function DelayedContent() {
           .sort((a, b) => b[1].acv - a[1].acv)
           .slice(0, 4)
           .map(([owner, val]) => {
-            const ownerDeals = topDeals.filter((d: any) => (d.owner || d.opportunity_owner) === owner)
             return {
               label: owner,
               value: val.acv,
               formattedValue: `${formatACV(val.acv)} (${val.count})`,
               color: '#00A3AD',
-              onClick: () => handleDrill(`Delayed Deals · ${owner}`, {
+              onClick: () => handleDrill(`Delayed Deals · ${owner} (${val.count} deals · ${formatACV(val.acv)})`, {
                 kind: 'delayed_total',
                 owner,
-                deals: ownerDeals,
                 expectedCount: val.count,
               }),
             }
@@ -1308,6 +1306,7 @@ function DelayedContent() {
         <DealListModal
           title={modalState.title}
           deals={modalState.deals}
+          isLoading={modalState.isLoading}
           expectedCount={modalState.expectedCount}
           deltaGroups={modalState.deltaGroups}
           initialFilters={modalState.initialFilters || {}}

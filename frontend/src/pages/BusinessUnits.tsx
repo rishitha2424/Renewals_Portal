@@ -93,7 +93,7 @@ function BusinessUnitsContent() {
   })
 
   // Fetch Deals for Modal
-  const { data: dealsData } = useQuery({
+  const { data: dealsData, isLoading: isDealsLoading } = useQuery({
     queryKey: ['v2-bu-deals', activeSnapshotId, modalFilters, globalFilters?.period, globalFilters?.include_deleted_lost],
     queryFn: async () => {
       const res = await api.get('/v2/business-units/deals', {
@@ -909,6 +909,7 @@ function BusinessUnitsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
+          isLoading={!customDeals && isDealsLoading}
           deals={(customDeals || dealsData?.deals || []).map((d: any) => ({
             ...d,
             owner: d.opportunity_owner || d.owner,

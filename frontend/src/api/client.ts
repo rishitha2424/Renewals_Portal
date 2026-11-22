@@ -816,5 +816,265 @@ export const deleteDealComment = async (
   return res.data.ok ?? true
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUND 18: AUTHENTICATION, ROLES, KAM PORTAL, MESSAGING, EMAIL OUTBOX
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Auth Endpoints ───────────────────────────────────────────────────────────
+export const authLogin = async (email: string, password: string, remember_me = true) => {
+  const res = await api.post('/auth/login', { email, password, remember_me })
+  return res.data
+}
+
+export const authLogout = async () => {
+  const res = await api.post('/auth/logout')
+  return res.data
+}
+
+export const getAuthMe = async () => {
+  const res = await api.get('/auth/me')
+  return res.data
+}
+
+export const authChangePassword = async (current_password: string, new_password: string, confirm_password?: string) => {
+  const res = await api.post('/auth/change-password', {
+    current_password,
+    new_password,
+    confirm_password: confirm_password || new_password,
+  })
+  return res.data
+}
+
+export const forgotPassword = async (email: string) => {
+  const res = await api.post('/auth/forgot-password', { email })
+  return res.data
+}
+
+export const verifyInviteToken = async (token: string) => {
+  const res = await api.get('/auth/invite/verify', { params: { token } })
+  return res.data
+}
+
+export const setInvitePassword = async (token: string, password: string) => {
+  const res = await api.post('/auth/invite/set-password', { token, password })
+  return res.data
+}
+
+export const resetPasswordWithToken = async (token: string, password: string) => {
+  const res = await api.post('/auth/reset-password', { token, password })
+  return res.data
+}
+
+// ── Admin User Management ────────────────────────────────────────────────────
+export interface AdminUserItem {
+  id: string
+  name: string
+  email: string
+  role: 'admin' | 'management' | 'kam'
+  is_owner: boolean
+  owner_name?: string
+  status: 'active' | 'invited' | 'disabled' | 'pending_email'
+  must_change_password: boolean
+  last_login?: string
+  created_at?: string
+  aliases: string[]
+}
+
+export const getAdminUsers = async (): Promise<{ users: AdminUserItem[] }> => {
+  const res = await api.get('/admin/users')
+  return res.data
+}
+
+export const createAdminUser = async (data: {
+  name: string
+  email: string
+  role: 'admin' | 'management' | 'kam'
+  owner_name?: string
+  aliases?: string[]
+}) => {
+  const res = await api.post('/admin/users', data)
+  return res.data
+}
+
+export const updateAdminUser = async (
+  userId: string,
+  data: {
+    name?: string
+    email?: string
+    role?: 'admin' | 'management' | 'kam'
+    owner_name?: string
+  }
+) => {
+  const res = await api.put(`/admin/users/${userId}`, data)
+  return res.data
+}
+
+export const toggleAdminUserStatus = async (userId: string, status: 'active' | 'disabled') => {
+  const res = await api.post(`/admin/users/${userId}/status`, { status })
+  return res.data
+}
+
+export const deleteAdminUser = async (userId: string) => {
+  const res = await api.delete(`/admin/users/${userId}`)
+  return res.data
+}
+
+export const getUserInviteLink = async (userId: string): Promise<{ invite_url: string; expires_at: string }> => {
+  const res = await api.post(`/admin/users/${userId}/invite-link`)
+  return res.data
+}
+
+export const getUserResetLink = async (userId: string): Promise<{ reset_url: string; expires_at: string }> => {
+  const res = await api.post(`/admin/users/${userId}/reset-link`)
+  return res.data
+}
+
+export const addUserAlias = async (userId: string, alias_name: string) => {
+  const res = await api.post(`/admin/users/${userId}/aliases`, { alias_name })
+  return res.data
+}
+
+export const deleteUserAlias = async (userId: string, alias_name: string) => {
+  const res = await api.delete(`/admin/users/${userId}/aliases/${encodeURIComponent(alias_name)}`)
+  return res.data
+}
+
+export const uploadKamRoster = async (file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post('/admin/kam-list/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export const getKamSyncAlerts = async () => {
+  const res = await api.get('/admin/kam-sync/alerts')
+  return res.data
+}
+
+export const resolveKamSyncAlert = async (alertId: string, resolution: string) => {
+  const res = await api.post(`/admin/kam-sync/alerts/${alertId}/resolve`, { resolution })
+  return res.data
+}
+
+export const getAuditLogs = async (params: { page?: number; limit?: number; action?: string; user_id?: string } = {}) => {
+  const res = await api.get('/admin/users/audit-logs', { params })
+  return res.data
+}
+
+// ── Email Admin & Outbox ─────────────────────────────────────────────────────
+export interface EmailOutboxItem {
+  id: string
+  to_email: string
+  subject: string
+  body_text?: string
+  status: 'pending' | 'sent' | 'failed'
+  error_message?: string
+  created_at: string
+  sent_at?: string
+}
+
+export interface EmailOutboxResponse {
+  emails: any[]
+  total_count: number
+  smtp_configured: boolean
+}
+
+export const getEmailOutbox = async (params: { status?: string; limit?: number } = {}): Promise<EmailOutboxResponse> => {
+  const res = await api.get('/email-admin/outbox', { params })
+  return res.data
+}
+
+export const sendTestEmail = async (to_email: string) => {
+  const res = await api.post('/email-admin/test', { to_email })
+  return res.data
+}
+
+export const resendPendingEmails = async () => {
+  const res = await api.post('/email-admin/resend-pending')
+  return res.data
+}
+
+// ── Messaging Hub ────────────────────────────────────────────────────────────
+export interface DealMessageThreadItem {
+  thread_id: string
+  deal_id: string
+  deal_name: string
+  account_name: string
+  forecast_acv_amount: number
+  subject: string
+  priority: string
+  thread_status: string
+  sender_name: string
+  recipient_name: string
+  message_count: number
+  unread_count: number
+  latest_message_at?: string
+  created_at?: string
+}
+
+export interface DealMessageDetail {
+  id: string
+  parent_id?: string
+  sender_name: string
+  sender_role: string
+  is_me: boolean
+  subject: string
+  body: string
+  priority: string
+  is_read: boolean
+  created_at: string
+}
+
+export const getMessageThreads = async (params: { deal_id?: string; thread_status?: string } = {}) => {
+  const res = await api.get('/messages/threads', { params })
+  return res.data
+}
+
+export const getDealMessages = async (dealId: string): Promise<{ messages: DealMessageDetail[]; opportunity?: any }> => {
+  const res = await api.get(`/messages/deal/${dealId}`)
+  return res.data
+}
+
+export const sendDealMessage = async (data: {
+  deal_id: string
+  subject: string
+  body: string
+  priority?: string
+}) => {
+  const res = await api.post('/messages', data)
+  return res.data
+}
+
+export const replyDealMessage = async (messageId: string, body: string) => {
+  const res = await api.post(`/messages/${messageId}/reply`, { body })
+  return res.data
+}
+
+export const markMessageRead = async (messageId: string) => {
+  const res = await api.post(`/messages/${messageId}/read`)
+  return res.data
+}
+
+// ── KAM Portal Endpoints ─────────────────────────────────────────────────────
+export const getKamOverview = async (params: { as_of?: string; period?: string } = {}) => {
+  const res = await api.get('/kam/overview', { params })
+  return res.data
+}
+
+export const getKamDeals = async (params: {
+  category?: string
+  status?: string
+  stage?: string
+  search?: string
+  as_of?: string
+  period?: string
+} = {}) => {
+  const res = await api.get('/kam/deals', { params })
+  return res.data
+}
+
+
 
 

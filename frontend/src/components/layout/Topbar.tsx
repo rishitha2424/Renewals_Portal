@@ -23,10 +23,15 @@ import {
   AlertTriangle,
   Tag,
   Monitor,
+  User as UserIcon,
+  LogOut,
+  KeyRound,
+  MessageSquare,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
-import { getSnapshots, getFilterOptions, downloadReport } from '@/api/client'
+import { useAuthStore } from '@/store/authStore'
+import { getSnapshots, getFilterOptions, downloadReport, authChangePassword } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import AdminAuthModal from '@/components/common/AdminAuthModal'
@@ -68,6 +73,16 @@ export default function Topbar() {
   const viewsRef = useRef<HTMLDivElement>(null)
   const typeFilterRef = useRef<HTMLDivElement>(null)
   const [typeFilterOpen, setTypeFilterOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [changePwdOpen, setChangePwdOpen] = useState(false)
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+  const [pwdLoading, setPwdLoading] = useState(false)
+  const { currentUser, logout: authLogoutStore } = useAuthStore()
   const displaySizeRef = useRef<HTMLDivElement>(null)
   const [displaySizeOpen, setDisplaySizeOpen] = useState(false)
   const [currentDisplaySize, setCurrentDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
@@ -117,6 +132,9 @@ export default function Topbar() {
       }
       if (displaySizeRef.current && !displaySizeRef.current.contains(target)) {
         setDisplaySizeOpen(false)
+      }
+      if (profileRef.current && !profileRef.current.contains(target)) {
+        setProfileOpen(false)
       }
     }
     document.addEventListener('mousedown', handleOutside)
@@ -952,10 +970,91 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* Admin sign in (Always visible!) */}
-            <div className="flex-shrink-0">
-              <AdminAuthModal />
-            </div>
+            {/* User Profile / Authentication Menu */}
+            {currentUser ? (
+              <div className="relative flex-shrink-0" ref={profileRef}>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((prev) => !prev)}
+                  className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-all text-xs font-semibold"
+                >
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${
+                    currentUser.role === 'admin'
+                      ? 'bg-rose-600'
+                      : currentUser.role === 'management'
+                      ? 'bg-amber-600'
+                      : 'bg-teal-600'
+                  }`}>
+                    {currentUser.name?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-[var(--text-primary)] max-w-[100px] truncate hidden md:inline">
+                    {currentUser.name}
+                  </span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                    currentUser.role === 'admin'
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                      : currentUser.role === 'management'
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                      : 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                  }`}>
+                    {currentUser.role}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+                </button>
+
+                {profileOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl z-50 py-2 overflow-hidden">
+                    <div className="px-3.5 py-2.5 border-b border-[var(--border)]">
+                      <div className="font-bold text-xs text-[var(--text-primary)]">{currentUser.name}</div>
+                      <div className="text-[11px] text-[var(--text-muted)] truncate">{currentUser.email}</div>
+                      {currentUser.owner_name && (
+                        <div className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-1">
+                          Owner: {currentUser.owner_name}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false)
+                          setChangePwdOpen(true)
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        <span>Change Password</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setProfileOpen(false)
+                          await authLogoutStore()
+                          window.location.href = '/login'
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href="/login"
+                  className="h-9 sm:h-10 px-3 rounded-xl flex items-center gap-1.5 bg-[#12284C] text-white hover:bg-[#1a386b] text-xs font-semibold shadow-sm transition-all"
+                >
+                  <UserIcon className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </a>
+                <AdminAuthModal />
+              </div>
+            )}
 
             {/* Display Size selector */}
             <div className="relative flex-shrink-0" ref={displaySizeRef} id="topbar-display-size">
@@ -1416,6 +1515,112 @@ export default function Topbar() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Change Password Modal */}
+      {changePwdOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-sm w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
+              <h3 className="font-bold text-sm text-[var(--text-primary)]">Change Password</h3>
+              <button onClick={() => { setChangePwdOpen(false); setPwdError(null); setPwdSuccess(false); }}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+            </div>
+
+            {pwdSuccess ? (
+              <div className="text-center py-4">
+                <div className="text-emerald-500 font-bold text-sm mb-2">Password Successfully Updated!</div>
+                <button
+                  onClick={() => { setChangePwdOpen(false); setPwdSuccess(false); }}
+                  className="px-4 py-1.5 text-xs font-semibold bg-[#12284C] text-white rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  setPwdError(null)
+                  if (newPassword.length < 8) {
+                    setPwdError('Password must be at least 8 characters.')
+                    return
+                  }
+                  if (newPassword !== confirmPassword) {
+                    setPwdError('Passwords do not match.')
+                    return
+                  }
+                  setPwdLoading(true)
+                  try {
+                    await authChangePassword(oldPassword, newPassword)
+                    setPwdSuccess(true)
+                    setOldPassword('')
+                    setNewPassword('')
+                    setConfirmPassword('')
+                  } catch (err: any) {
+                    setPwdError(err.response?.data?.detail || 'Failed to change password.')
+                  } finally {
+                    setPwdLoading(false)
+                  }
+                }}
+                className="space-y-3.5"
+              >
+                {pwdError && (
+                  <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-xs">
+                    {pwdError}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setChangePwdOpen(false); setPwdError(null); }}
+                    className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pwdLoading}
+                    className="px-4 py-1.5 text-xs font-semibold bg-[#12284C] text-white rounded-xl hover:bg-[#1a386b] disabled:opacity-50"
+                  >
+                    {pwdLoading ? 'Saving...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

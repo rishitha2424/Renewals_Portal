@@ -16,7 +16,7 @@ def _svc(db: Session = Depends(get_db)):
 @router.get("/summary")
 def get_delayed_summary(
     as_of: Optional[str] = Query(None),
-    compare: str = Query("yesterday", pattern="^(yesterday|last_week|period_start)$"),
+    compare: str = Query("yesterday"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2DelayedService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
@@ -30,6 +30,7 @@ def get_delayed_deals(
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     bu: Optional[str] = Query(None),
+    business_unit: Optional[str] = Query(None),
     ageing: Optional[str] = Query(None),
     owner: Optional[str] = Query(None),
     expiry_year: Optional[int] = Query(None),
@@ -38,7 +39,7 @@ def get_delayed_deals(
     split_key: Optional[str] = Query(None),
     review_type: Optional[str] = Query(None),
     as_of: Optional[str] = Query(None),
-    compare: Optional[str] = Query(None, pattern="^(yesterday|last_week|period_start)$"),
+    compare: Optional[str] = Query(None),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: V2DelayedService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context)
@@ -50,7 +51,7 @@ def get_delayed_deals(
         region=region,
         category=category,
         status=status,
-        bu=bu,
+        bu=bu or business_unit,
         ageing=ageing,
         owner=owner,
         expiry_year=expiry_year,

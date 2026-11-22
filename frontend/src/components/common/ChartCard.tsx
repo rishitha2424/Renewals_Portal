@@ -231,7 +231,14 @@ export default function ChartCard({
                 return data.map((d) => (
                   <div key={d.label} className="flex-1 flex flex-col items-center justify-end h-full max-w-[180px] min-w-0">
                     {/* Clean Group Header */}
-                    <div className="text-center mb-2 px-1">
+                    <div
+                      onClick={d.onClick}
+                      className={clsx(
+                        "text-center mb-2 px-1 select-none",
+                        d.onClick && "cursor-pointer hover:opacity-80 transition-opacity"
+                      )}
+                      title={d.onClick ? `Click to view all deals for ${d.label}` : undefined}
+                    >
                       <span className="text-xs sm:text-sm font-bold text-[var(--text-primary)] font-mono tabular-nums block">
                         {d.formattedValue}
                       </span>
@@ -281,7 +288,14 @@ export default function ChartCard({
                     </div>
 
                     {/* Group Label - ample room so letters never clip */}
-                    <div className="pt-2 text-center w-full">
+                    <div
+                      onClick={d.onClick}
+                      className={clsx(
+                        "pt-2 text-center w-full select-none",
+                        d.onClick && "cursor-pointer hover:text-[var(--brand-teal)] transition-colors"
+                      )}
+                      title={d.onClick ? `Click to view all deals for ${d.label}` : undefined}
+                    >
                       <span className="text-xs font-semibold text-[var(--text-primary)] block truncate" title={d.label}>
                         {d.label}
                       </span>
@@ -499,14 +513,18 @@ export default function ChartCard({
                           cx="50"
                           cy="50"
                           r="40"
-                          fill="transparent"
+                          fill="none"
                           stroke={d.color || toneDef.hex}
                           strokeWidth={isHovered ? "20" : "16"}
                           strokeDasharray={strokeDasharray}
                           strokeDashoffset={strokeDashoffset}
                           opacity={hoveredSlice === null || isHovered ? 1 : 0.45}
                           className="transition-all duration-200 cursor-pointer"
-                          onClick={d.onClick}
+                          style={{ pointerEvents: 'stroke' }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (d.onClick) d.onClick()
+                          }}
                           onMouseEnter={() => setHoveredSlice(idx)}
                           onMouseLeave={() => setHoveredSlice(null)}
                         >
