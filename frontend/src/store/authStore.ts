@@ -40,9 +40,10 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true, error: null })
           const res = await getAuthMe()
-          if (res && res.user) {
-            set({ currentUser: res.user, isAuthenticated: true, isLoading: false })
-            return res.user
+          const user = res?.user || (res?.id ? res : null)
+          if (user) {
+            set({ currentUser: user, isAuthenticated: true, isLoading: false })
+            return user
           }
           set({ currentUser: null, isAuthenticated: false, isLoading: false })
           return null

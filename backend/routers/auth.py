@@ -78,7 +78,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     # Check for legacy admin login using username 'admin' or owner email
     is_admin_password_match = False
     if settings.ADMIN_PASSWORD and req.password == settings.ADMIN_PASSWORD:
-        if clean_email in ("admin", "admin@mobileum.com", "rishitha@mobileum.com") or (user and user.is_owner):
+        if clean_email in ("admin", "admin@mobileum.com", "rishitha@mobileum.com", "rishithathoka@gmail.com") or (user and user.is_owner):
             is_admin_password_match = True
 
     if not user:
@@ -174,7 +174,7 @@ def get_current_user_profile(ctx: UserContext = Depends(require_authenticated), 
     """Return currently authenticated user information."""
     user = db.query(User).filter(User.id == ctx.user_id).first()
     aliases = [a.alias_name for a in user.aliases] if user and hasattr(user, "aliases") else ctx.owner_aliases
-    return {
+    user_data = {
         "id": ctx.user_id,
         "email": ctx.email or (user.email if user else ""),
         "name": ctx.display_name,
@@ -183,6 +183,10 @@ def get_current_user_profile(ctx: UserContext = Depends(require_authenticated), 
         "owner_name": ctx.owner_name,
         "owner_aliases": aliases,
         "must_change_password": bool(user.must_change_password if user else False),
+    }
+    return {
+        "user": user_data,
+        **user_data,
     }
 
 
@@ -327,5 +331,18 @@ def set_password_from_invite(req: SetPasswordRequest, response: Response, db: Se
 @router.post("/reset-password")
 def reset_password(req: SetPasswordRequest, response: Response, db: Session = Depends(get_db)):
     """Reset password using reset token."""
+    return set_password_from_invite(req, response, db)
+
+
+@router.get("/verify-reset-token")
+@router.get("/verify-invite-token")
+def verify_token_alias(token: str, db: Session = Depends(get_db)):
+    """Alias for verifying invite or reset token."""
+    return verify_invite_token(token, db)
+
+
+@router.post("/set-password")
+def set_password_alias(req: SetPasswordRequest, response: Response, db: Session = Depends(get_db)):
+    """Alias for setting password from token."""
     return set_password_from_invite(req, response, db)
 

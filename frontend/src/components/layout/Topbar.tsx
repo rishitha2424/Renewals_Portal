@@ -34,7 +34,6 @@ import { useAuthStore } from '@/store/authStore'
 import { getSnapshots, getFilterOptions, downloadReport, authChangePassword } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
-import AdminAuthModal from '@/components/common/AdminAuthModal'
 import {
   DisplaySizeOption,
   DISPLAY_SIZE_OPTIONS,
@@ -441,9 +440,9 @@ export default function Topbar() {
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
       <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
-        <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
+          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -1052,7 +1051,6 @@ export default function Topbar() {
                   <UserIcon className="w-3.5 h-3.5" />
                   <span>Sign In</span>
                 </a>
-                <AdminAuthModal />
               </div>
             )}
 
@@ -1483,11 +1481,6 @@ export default function Topbar() {
                       ))}
                     </div>
                   )}
-                </div>
-
-                {/* Mobile Admin Sign in button */}
-                <div className="pt-2 sm:hidden border-t border-[var(--border)]">
-                  <AdminAuthModal />
                 </div>
               </div>
 

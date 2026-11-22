@@ -194,7 +194,7 @@ def get_user_context(request: Request, db: Session = Depends(get_db)) -> UserCon
         user_name = legacy_payload.get("name") or "admin"
         return UserContext(
             user_id="admin",
-            email="rishitha@mobileum.com",
+            email="rishithathoka@gmail.com",
             display_name=user_name,
             role="admin",
             roles=["admin", "management", "viewer"],

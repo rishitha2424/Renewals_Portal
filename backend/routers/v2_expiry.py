@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.services.context import UserContext
+from backend.services.context import UserContext, get_user_context
 from backend.services.v2_expiry_service import V2ExpiryService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
@@ -16,9 +16,9 @@ def get_summary(
     exclude_deleted_lost: bool = Query(False),
     period_type: str = Query("fiscal"),
     filter_spec: FilterSpec = Depends(get_filter_spec),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    ctx = UserContext()
     svc = V2ExpiryService(db)
     return svc.get_summary(ctx, as_of=as_of, compare=compare, exclude_deleted_lost=exclude_deleted_lost, period_type=period_type, filter_spec=filter_spec)
 
@@ -32,8 +32,8 @@ def get_deals(
     period_type: str = Query("fiscal"),
     kind: Optional[str] = None,
     filter_spec: FilterSpec = Depends(get_filter_spec),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    ctx = UserContext()
     svc = V2ExpiryService(db)
     return svc.get_deals(ctx, quarter=quarter, category=category, as_of=as_of, exclude_deleted_lost=exclude_deleted_lost, slippage=slippage, period_type=period_type, kind=kind, filter_spec=filter_spec)

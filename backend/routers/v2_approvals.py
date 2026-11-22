@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from backend.database import get_db
-from backend.services.context import UserContext
+from backend.services.context import UserContext, get_user_context
 from backend.services.v2_approvals_service import V2ApprovalsService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
@@ -17,9 +17,9 @@ def get_approvals_distribution(
     compare: Optional[str] = None,
     exclude_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    ctx = UserContext()
     svc = V2ApprovalsService(db)
     return svc.get_distribution(
         ctx=ctx,
@@ -42,9 +42,9 @@ def get_approvals_deals(
     kind: Optional[str] = None,
     exclude_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ):
-    ctx = UserContext()
     svc = V2ApprovalsService(db)
     parsed_deal_ids = [d.strip() for d in deal_ids.split(",") if d.strip()] if deal_ids else None
     return svc.get_deals(

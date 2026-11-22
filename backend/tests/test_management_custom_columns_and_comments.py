@@ -147,6 +147,7 @@ def client_and_users(test_db_session):
 
 def test_anonymous_gets_401(client_and_users):
     client = client_and_users["client"]
+    client.headers.pop("Authorization", None)
     deal_id = client_and_users["deal1"].opportunity_id_18
 
     # Create custom column without token

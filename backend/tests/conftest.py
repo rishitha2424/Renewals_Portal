@@ -41,6 +41,23 @@ def setup_test_admin_auth():
     os.environ.pop("TESTING", None)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def auto_auth_testclient():
+    from fastapi.testclient import TestClient
+    from backend.services.context import sign_admin_token
+
+    orig_init = TestClient.__init__
+
+    def patched_init(self, *args, **kwargs):
+        orig_init(self, *args, **kwargs)
+        token = sign_admin_token("Admin")
+        self.headers.setdefault("Authorization", f"Bearer {token}")
+
+    TestClient.__init__ = patched_init
+    yield
+    TestClient.__init__ = orig_init
+
+
 @pytest.fixture(scope="session")
 def db_engine():
     test_db_url = os.environ.get("TEST_DATABASE_URL")

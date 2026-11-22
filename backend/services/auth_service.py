@@ -316,14 +316,20 @@ def ensure_default_accounts(db: Session) -> dict[str, User]:
     Ensure the admin (Rishitha, is_owner=True) and default management account exist.
     Admin can always authenticate with ADMIN_PASSWORD from env or their own DB password.
     """
-    admin_email = "rishitha@mobileum.com"
+    admin_email = "rishithathoka@gmail.com"
     mgmt_email = "management@mobileum.com"
 
-    # 1. Admin Rishitha
+    # 1. Admin Rishitha (Owner)
     admin = db.query(User).filter(func.lower(User.email) == admin_email.lower()).first()
     if not admin:
-        # Check if there is any user marked as is_owner or with name Rishitha
-        admin = db.query(User).filter(or_(User.is_owner == True, User.name.ilike("%Rishitha%"))).first()
+        # Check if there is an existing user with rishitha@mobileum.com or is_owner or name Rishitha
+        admin = db.query(User).filter(
+            or_(
+                func.lower(User.email) == "rishitha@mobileum.com",
+                User.is_owner == True,
+                User.name.ilike("%Rishitha%"),
+            )
+        ).first()
 
     if not admin:
         admin = User(
@@ -338,10 +344,13 @@ def ensure_default_accounts(db: Session) -> dict[str, User]:
         db.add(admin)
         db.commit()
         db.refresh(admin)
-        log.info(f"Created default admin account: {admin.email}")
+        log.info(f"Created default admin owner account: {admin.email}")
     else:
-        # Ensure Rishitha is always owner, admin, active
+        # Ensure Rishitha is always owner, admin, active, and email is rishithathoka@gmail.com
         changed = False
+        if admin.email.lower() != admin_email.lower():
+            admin.email = admin_email
+            changed = True
         if not admin.is_owner:
             admin.is_owner = True
             changed = True

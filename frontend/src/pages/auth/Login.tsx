@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { forgotPassword } from '@/api/client'
@@ -7,7 +7,7 @@ import { forgotPassword } from '@/api/client'
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError, clearError } = useAuthStore()
+  const { login, error: authError, clearError, isAuthenticated, currentUser } = useAuthStore()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,6 +21,12 @@ export default function Login() {
   const [forgotSuccess, setForgotSuccess] = useState(false)
   const [forgotLoading, setForgotLoading] = useState(false)
 
+  // Redirect if already authenticated
+  if (isAuthenticated && currentUser) {
+    const landing = currentUser.role === 'kam' ? '/kam/overview' : '/'
+    return <Navigate to={landing} replace />
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLocalError(null)
@@ -29,18 +35,19 @@ export default function Login() {
 
     try {
       const user = await login(email.trim(), password, rememberMe)
-      // If user must change password, redirect to change password
-      if (user.must_change_password) {
-        // user will be prompted
-      }
-      
       const from = (location.state as any)?.from?.pathname
-      if (from && from !== '/login') {
-        navigate(from, { replace: true })
-      } else if (user.role === 'kam') {
-        navigate('/kam/overview', { replace: true })
+      if (user.role === 'kam') {
+        if (from && from.startsWith('/kam')) {
+          navigate(from, { replace: true })
+        } else {
+          navigate('/kam/overview', { replace: true })
+        }
       } else {
-        navigate('/', { replace: true })
+        if (from && from !== '/login') {
+          navigate(from, { replace: true })
+        } else {
+          navigate('/', { replace: true })
+        }
       }
     } catch (err: any) {
       setLocalError(err.message || 'Authentication failed. Please verify your credentials.')

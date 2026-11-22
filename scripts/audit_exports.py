@@ -32,6 +32,15 @@ from backend.services.scopes import FilterSpec
 
 def audit_exports():
     client = TestClient(app)
+    from backend.config import settings
+    from backend.services.auth_service import ensure_default_accounts
+    with SessionLocal() as db_init:
+        ensure_default_accounts(db_init)
+    login_resp = client.post("/api/auth/login", json={"email": "rishithathoka@gmail.com", "password": settings.ADMIN_PASSWORD})
+    if login_resp.status_code == 200:
+        token = login_resp.json().get("token")
+        client.headers["Authorization"] = f"Bearer {token}"
+
     db = SessionLocal()
     snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
     if not snap:

@@ -148,6 +148,46 @@ LLM_SEND_MODE=aggregates                 # "aggregates" (default) | "full"
 
 ---
 
+## How to Test Each Role
+
+Mobileum Horizon enforces strict role-based access control with three primary roles: **Admin**, **Management**, and **KAM** (Opportunity Owner).
+
+### 1. Admin Login (Owner)
+1. Open `http://localhost:5173/login`.
+2. Sign in with the owner email:
+   - **Email**: `rishithathoka@gmail.com` (or `admin`)
+   - **Password**: Your configured `ADMIN_PASSWORD` from `.env`.
+3. Admin lands on the primary **Overview Dashboard** (`/`). Admin has full access to all pages, User Governance (`/admin/users`), Email Outbox (`/admin/email-outbox`), and Data Uploads.
+
+### 2. Creating a Management User
+1. In the admin session, navigate to **User Governance** (`/admin/users`).
+2. Click **Add User**, enter the user's name and email, and select role **Management**.
+3. Copy the generated one-time invite link, or open a separate private/incognito window to complete password setup.
+4. **Management capabilities**: Management can view all data and dashboards across all periods, create and edit custom columns and comments on any deal, send deal inquiries in the Messages Hub (`/messages`), but cannot access Settings, User Governance, or Data Uploads.
+
+### 3. Uploading the KAM List & Linking Opportunity Owners
+1. In **User Governance** (`/admin/users`), click **Upload KAM Roster (CSV / Excel)** to import KAM accounts, or click **Add User** and choose role **KAM (Opportunity Owner)**.
+2. Select or enter the exact Opportunity Owner name as it appears in Salesforce/renewals workbook (e.g. `Raphael Roale`, `Esteban Aguerre`).
+3. Copy the one-time invite link for each KAM user.
+
+### 4. Testing Roles in Separate Private/Incognito Windows
+To test multiple roles concurrently without cookie conflicts:
+1. **Window 1 (Regular)**: Admin (`rishithathoka@gmail.com`).
+2. **Window 2 (Incognito / Private Window A)**: Management user.
+3. **Window 3 (Incognito / Private Window B or separate profile)**: KAM user.
+   - When a KAM logs in via `/login`, they are automatically routed to **My Portfolio** (`/kam/overview`).
+   - KAMs only see their assigned deals, cannot see internal custom columns/comments, and only see messages for their deals.
+   - Replies sent by KAM in the Messages Hub immediately reach Management/Admin and log in the Email Outbox.
+
+### 5. Automated Local Test Account Seeding
+For rapid local testing without manual creation, run:
+```bash
+python scripts/seed_test_users.py --confirm-local
+```
+This script safely generates 1 Management user and 2 KAM users linked to real opportunity owners and outputs their one-time invite setup links.
+
+---
+
 ## Folder Structure
 
 ```

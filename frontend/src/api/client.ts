@@ -1086,6 +1086,11 @@ export const getKamDeals = async (params: {
   return res.data
 }
 
+export const searchGlobal = async (params: { q: string; as_of?: string; limit?: number }) => {
+  const res = await api.get('/search', { params })
+  return res.data
+}
+
 
 
 

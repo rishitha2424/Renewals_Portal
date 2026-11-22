@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Shell from '@/components/layout/Shell'
 import Dashboard from '@/pages/Dashboard'
@@ -25,6 +25,21 @@ import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
 import { useAdminSession } from '@/hooks/useAdminSession'
 import { computeScale, applyScale, getSavedDisplaySize } from '@/config/layoutScale'
+
+function ProtectedRoute({ children }: { children?: React.ReactNode }) {
+  const { isAuthenticated, isLoading, currentUser } = useAuthStore()
+  const location = useLocation()
+
+  if (isLoading && !currentUser) {
+    return <LoadingScreen />
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  return children ? <>{children}</> : <Outlet />
+}
 
 export default function App() {
   useAdminSession()
@@ -133,50 +148,53 @@ export default function App() {
         <Route path="/invite/:token" element={<SetPassword />} />
         <Route path="/reset-password/:token" element={<SetPassword />} />
         <Route path="/loading" element={<LoadingScreen />} />
-        <Route
-          path="/executive"
-          element={
-            <ErrorBoundary>
-              <ExecutiveView />
-            </ErrorBoundary>
-          }
-        />
-        <Route element={<Shell />}>
+        {/* Protected Application Routes */}
+        <Route element={<ProtectedRoute />}>
           <Route
-            path="/"
+            path="/executive"
             element={
-              currentUser?.role === 'kam' ? (
-                <Navigate to="/kam/overview" replace />
-              ) : (
-                <Dashboard />
-              )
+              <ErrorBoundary>
+                <ExecutiveView />
+              </ErrorBoundary>
             }
           />
-          <Route path="/expiry" element={<Expiry />} />
-          <Route path="/approvals" element={<Approvals />} />
-          <Route path="/business-units" element={<BusinessUnits />} />
-          <Route path="/bu" element={<BusinessUnits />} />
-          <Route path="/regions" element={<Regions />} />
-          <Route path="/delayed" element={<Delayed />} />
-          <Route path="/opportunities" element={<Opportunities />} />
-          <Route path="/explore" element={<Opportunities />} />
-          <Route path="/data-uploads" element={<DataUploads />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route element={<Shell />}>
+            <Route
+              path="/"
+              element={
+                currentUser?.role === 'kam' ? (
+                  <Navigate to="/kam/overview" replace />
+                ) : (
+                  <Dashboard />
+                )
+              }
+            />
+            <Route path="/expiry" element={<Expiry />} />
+            <Route path="/approvals" element={<Approvals />} />
+            <Route path="/business-units" element={<BusinessUnits />} />
+            <Route path="/bu" element={<BusinessUnits />} />
+            <Route path="/regions" element={<Regions />} />
+            <Route path="/delayed" element={<Delayed />} />
+            <Route path="/opportunities" element={<Opportunities />} />
+            <Route path="/explore" element={<Opportunities />} />
+            <Route path="/data-uploads" element={<DataUploads />} />
+            <Route path="/settings" element={<Settings />} />
 
-          {/* KAM Portal Routes */}
-          <Route path="/kam/overview" element={<KamOverview />} />
-          <Route path="/kam/deals" element={<KamDeals />} />
+            {/* KAM Portal Routes */}
+            <Route path="/kam/overview" element={<KamOverview />} />
+            <Route path="/kam/deals" element={<KamDeals />} />
 
-          {/* Messaging Hub */}
-          <Route path="/messages" element={<MessagesHub />} />
+            {/* Messaging Hub */}
+            <Route path="/messages" element={<MessagesHub />} />
 
-          {/* Admin Governance Routes */}
-          <Route path="/admin/users" element={<UserManagement />} />
-          <Route path="/admin/email-outbox" element={<EmailOutbox />} />
+            {/* Admin Governance Routes */}
+            <Route path="/admin/users" element={<UserManagement />} />
+            <Route path="/admin/email-outbox" element={<EmailOutbox />} />
 
-          {/* Redirects from old routes */}
-          <Route path="/upload" element={<Navigate to="/data-uploads" replace />} />
-          <Route path="/history" element={<Navigate to="/data-uploads" replace />} />
+            {/* Redirects from old routes */}
+            <Route path="/upload" element={<Navigate to="/data-uploads" replace />} />
+            <Route path="/history" element={<Navigate to="/data-uploads" replace />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
