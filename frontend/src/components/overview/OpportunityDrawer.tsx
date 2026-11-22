@@ -68,6 +68,9 @@ export interface DealComment {
   author: string
   text: string
   createdAt: string
+  visibility?: 'internal' | 'shared_with_owner' | 'shared'
+  authorId?: string
+  authorRole?: string
 }
 
 const EMPTY_COLS: CustomColumnItem[] = []
@@ -156,8 +159,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     return localStorage.getItem('deal_commenter_name') || 'Reviewer'
   })
   const [commentText, setCommentText] = useState('')
+  const [commentVisibility, setCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentText, setEditingCommentText] = useState('')
+  const [editingCommentVisibility, setEditingCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
 
   // ── Custom Columns & Deal Annotations Queries ────────────────────────────
   const { data: customCols = EMPTY_COLS, refetch: refetchCols } = useQuery<CustomColumnItem[]>({
@@ -179,7 +184,18 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [showAddCol, setShowAddCol] = useState(false)
   const [newColLabel, setNewColLabel] = useState('')
   const [newColType, setNewColType] = useState('text')
+  const [newColVisibility, setNewColVisibility] = useState<'internal' | 'visible_to_owner'>('internal')
   const [isCreatingCol, setIsCreatingCol] = useState(false)
+
+  // Permission helpers
+  const canEditComment = (c: DealComment) => {
+    if (!currentUser) return false
+    if (currentUser.role === 'admin') return true
+    if (c.authorRole === 'admin') return false
+    if (c.authorId && String(c.authorId) === String(currentUser.id)) return true
+    if (c.author && (c.author === currentUser.name || c.author === currentUser.email)) return true
+    return false
+  }
 
   // ── Comments Server Query ───────────────────────────────────────────────
   const { data: serverComments, refetch: refetchComments } = useQuery({
@@ -203,6 +219,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
           author: c.author,
           text: c.text,
           createdAt: c.created_at,
+          visibility: c.visibility,
+          authorId: c.author_id,
+          authorRole: c.author_role,
         }))
       )
     } else if (serverComments && serverComments.length === 0) {
@@ -215,7 +234,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
           // Automatically migrate local comments to server in background
           if (oppId && localList.length > 0) {
             localList.forEach((lc) => {
-              addDealComment(oppId, lc.text, lc.author).catch(() => {})
+              addDealComment(oppId, lc.text, lc.author, (lc.visibility as any) || 'internal').catch(() => {})
             })
             localStorage.removeItem(`deal_comments_${oppId}`)
           }
@@ -241,8 +260,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     const trimmed = commentText.trim()
     if (!trimmed || !oppId) return
 
-    const author = commentAuthor.trim() || adminName || 'Reviewer'
+    const author = commentAuthor.trim() || adminName || currentUser?.name || 'Reviewer'
     localStorage.setItem('deal_commenter_name', author)
+    const effectiveVis = isKam ? 'shared_with_owner' : commentVisibility
 
     const tempComment: DealComment = {
       id: `comm_${Date.now()}`,
@@ -251,6 +271,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       author,
       text: trimmed,
       createdAt: new Date().toISOString(),
+      visibility: effectiveVis,
+      authorRole: currentUser?.role || 'admin',
+      authorId: currentUser?.id,
     }
 
     // Optimistic update
@@ -258,7 +281,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     setCommentText('')
 
     try {
-      await addDealComment(oppId, trimmed, author)
+      await addDealComment(oppId, trimmed, author, effectiveVis)
       await refetchComments()
       showToast.success('Comment saved')
     } catch (err: any) {
@@ -271,6 +294,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const handleStartEditComment = (c: DealComment) => {
     setEditingCommentId(c.id)
     setEditingCommentText(c.text)
+    setEditingCommentVisibility((c.visibility as any) || 'internal')
   }
 
   const handleSaveEditComment = async () => {
@@ -286,7 +310,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     setEditingCommentText('')
 
     try {
-      await updateDealComment(oppId, targetId, trimmed)
+      await updateDealComment(oppId, targetId, trimmed, editingCommentVisibility)
       await refetchComments()
       showToast.success('Comment updated')
     } catch (err: any) {
@@ -338,7 +362,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   }, [oppId, opp, customCols, annotationsMap])
 
   const handleSaveCol = async (col: CustomColumnItem) => {
-    if (!oppId || col.type.startsWith('auto:')) return
+    if (!oppId || col.type.startsWith('auto:') || isKam) return
     const rawVal = draftCols[col.key] ?? ''
     const currentAnnot = annotationsMap[col.key]
     const trimmed = rawVal.trim()
@@ -371,7 +395,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   }
 
   const handleClearCol = async (col: CustomColumnItem) => {
-    if (!oppId || col.type.startsWith('auto:')) return
+    if (!oppId || col.type.startsWith('auto:') || isKam) return
     setSavingColKey(col.key)
     try {
       await deleteDealAnnotation(oppId, col.key)
@@ -387,14 +411,15 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     }
   }
 
-  const handleCreateColumn = async (labelToCreate?: string, typeToCreate?: string) => {
+  const handleCreateColumn = async (labelToCreate?: string, typeToCreate?: string, visToCreate?: 'internal' | 'visible_to_owner') => {
     const label = (labelToCreate || newColLabel).trim()
     const colType = typeToCreate || newColType
+    const visibility = visToCreate || newColVisibility
     if (!label) return
 
     setIsCreatingCol(true)
     try {
-      await createCustomColumn({ label, type: colType })
+      await createCustomColumn({ label, type: colType, visibility })
       await refetchCols()
       setNewColLabel('')
       setShowAddCol(false)
@@ -980,64 +1005,140 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                 </div>
 
                 {/* Section 4: Custom Columns (Cols) */}
-                {customCols.length > 0 && (
+                {(customCols.length > 0 || !isKam) && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
                         <Sliders className="w-3.5 h-3.5 text-indigo-500" />
                         Custom Deal Columns ({customCols.length})
                       </h4>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddCol(!showAddCol)}
-                        className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" /> Add Column
-                      </button>
+                      {!isKam && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCol(!showAddCol)}
+                          className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> Add Column
+                        </button>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                      {customCols.map((col) => {
-                        const val = draftCols[col.key] ?? ''
-                        const isSaving = savingColKey === col.key
-                        return (
-                          <div
-                            key={col.key}
-                            className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-1.5"
+                    {/* Inline Column Creation Form (Management & Admin) */}
+                    {showAddCol && !isKam && (
+                      <div className="p-3 mb-3 rounded-xl border border-teal-500/30 bg-teal-500/5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-[var(--text-primary)]">Add Custom Column</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddCol(false)}
+                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold text-[var(--text-primary)] text-xs">
-                                {col.label}
-                              </span>
-                              <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)]">
-                                {col.type}
-                              </span>
+                            Cancel
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Column Name"
+                            value={newColLabel}
+                            onChange={(e) => setNewColLabel(e.target.value)}
+                            className="px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                          <select
+                            value={newColType}
+                            onChange={(e) => setNewColType(e.target.value)}
+                            className="px-2 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="date">Date</option>
+                            <option value="dropdown">Dropdown</option>
+                          </select>
+                          <select
+                            value={newColVisibility}
+                            onChange={(e) => setNewColVisibility(e.target.value as any)}
+                            className="px-2 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          >
+                            <option value="internal">🔒 Internal</option>
+                            <option value="visible_to_owner">👥 Visible to KAM</option>
+                          </select>
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleCreateColumn()}
+                            disabled={isCreatingCol || !newColLabel.trim()}
+                            className="px-3 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-md flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                          >
+                            {isCreatingCol ? 'Creating...' : 'Create Column'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {customCols.length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)] italic">No custom columns added yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                        {customCols.map((col) => {
+                          const val = draftCols[col.key] ?? ''
+                          const isSaving = savingColKey === col.key
+                          return (
+                            <div
+                              key={col.key}
+                              className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-[var(--text-primary)] text-xs">
+                                    {col.label}
+                                  </span>
+                                  {col.visibility === 'visible_to_owner' ? (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" title="Visible to KAM">
+                                      👥 KAM
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title="Internal only">
+                                      🔒 Internal
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)]">
+                                  {col.type}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  disabled={isKam}
+                                  type={col.type === 'date' ? 'date' : col.type === 'number' ? 'number' : 'text'}
+                                  value={val}
+                                  onChange={(e) => setDraftCols({ ...draftCols, [col.key]: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !isKam) handleSaveCol(col)
+                                  }}
+                                  placeholder={isKam ? '(Read-only)' : `Enter ${col.label}...`}
+                                  className={clsx(
+                                    'flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none',
+                                    isKam ? 'opacity-70 cursor-not-allowed bg-[var(--bg-secondary)]' : 'focus:ring-1 focus:ring-teal-500'
+                                  )}
+                                />
+                                {!isKam && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveCol(col)}
+                                    disabled={isSaving}
+                                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <Save className="w-3 h-3" />
+                                    {isSaving ? '...' : 'Save'}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type={col.type === 'date' ? 'date' : col.type === 'number' ? 'number' : 'text'}
-                                value={val}
-                                onChange={(e) => setDraftCols({ ...draftCols, [col.key]: e.target.value })}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveCol(col)
-                                }}
-                                placeholder={`Enter ${col.label}...`}
-                                className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveCol(col)}
-                                disabled={isSaving}
-                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1 shadow-xs cursor-pointer"
-                              >
-                                <Save className="w-3 h-3" />
-                                {isSaving ? '...' : 'Save'}
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1081,15 +1182,45 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                       className="w-full p-2.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
                     />
 
-                    <div className="flex items-center justify-between pt-0.5">
-                      <span className="text-[10px] text-[var(--text-muted)]">
-                        Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[9px] font-mono">Ctrl+Enter</kbd> to save
-                      </span>
+                    {/* Visibility Selector & Submit */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      {!isKam ? (
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="text-[11px] font-semibold text-[var(--text-muted)]">Visibility:</span>
+                          <label className="inline-flex items-center gap-1 cursor-pointer text-xs font-medium text-[var(--text-secondary)]">
+                            <input
+                              type="radio"
+                              name="comment_vis_tab1"
+                              value="internal"
+                              checked={commentVisibility === 'internal'}
+                              onChange={() => setCommentVisibility('internal')}
+                              className="text-teal-600 focus:ring-teal-500"
+                            />
+                            <span>🔒 Internal (admin &amp; mgmt)</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1 cursor-pointer text-xs font-medium text-[var(--text-secondary)]">
+                            <input
+                              type="radio"
+                              name="comment_vis_tab1"
+                              value="shared_with_owner"
+                              checked={commentVisibility === 'shared_with_owner'}
+                              onChange={() => setCommentVisibility('shared_with_owner')}
+                              className="text-teal-600 focus:ring-teal-500"
+                            />
+                            <span>👥 Shared with owner</span>
+                          </label>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          👥 Visible to owner, management &amp; admin
+                        </span>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => handleAddComment()}
                         disabled={!commentText.trim()}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer ml-auto"
                       >
                         <Send className="w-3 h-3" />
                         Save Comment
@@ -1113,19 +1244,35 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-[var(--text-primary)]">{c.author}</span>
+                              {c.authorRole && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded uppercase font-bold bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-muted)]">
+                                  {c.authorRole}
+                                </span>
+                              )}
+                              {c.visibility === 'shared_with_owner' || c.visibility === 'shared' ? (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                  👥 Shared
+                                </span>
+                              ) : (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                  🔒 Internal
+                                </span>
+                              )}
                               <span className="text-[10px] text-[var(--text-muted)]">
                                 {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteComment(c.id)}
-                                className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 cursor-pointer"
-                                title="Delete comment"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canEditComment(c) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 cursor-pointer"
+                                  title="Delete comment"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </div>
                           <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{c.text}</p>
@@ -1481,15 +1628,44 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                     className="w-full p-2.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500 resize-none"
                   />
 
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[10px] text-[var(--text-muted)]">
-                      Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[9px] font-mono">Ctrl+Enter</kbd> to save
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    {!isKam ? (
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-[11px] font-semibold text-[var(--text-muted)]">Visibility:</span>
+                        <label className="inline-flex items-center gap-1 cursor-pointer text-xs font-medium text-[var(--text-secondary)]">
+                          <input
+                            type="radio"
+                            name="comment_vis_tab3"
+                            value="internal"
+                            checked={commentVisibility === 'internal'}
+                            onChange={() => setCommentVisibility('internal')}
+                            className="text-teal-600 focus:ring-teal-500"
+                          />
+                          <span>🔒 Internal (admin &amp; mgmt)</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1 cursor-pointer text-xs font-medium text-[var(--text-secondary)]">
+                          <input
+                            type="radio"
+                            name="comment_vis_tab3"
+                            value="shared_with_owner"
+                            checked={commentVisibility === 'shared_with_owner'}
+                            onChange={() => setCommentVisibility('shared_with_owner')}
+                            className="text-teal-600 focus:ring-teal-500"
+                          />
+                          <span>👥 Shared with owner</span>
+                        </label>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        👥 Visible to owner, management &amp; admin
+                      </span>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => handleAddComment()}
                       disabled={!commentText.trim()}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer ml-auto"
                     >
                       <Send className="w-3 h-3" />
                       Save Comment
@@ -1524,16 +1700,32 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                               {c.author.substring(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <span className="font-bold text-[var(--text-primary)] text-xs">
-                                {c.author}
-                              </span>
-                              <span className="text-[10px] text-[var(--text-muted)] ml-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-[var(--text-primary)] text-xs">
+                                  {c.author}
+                                </span>
+                                {c.authorRole && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded uppercase font-bold bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-muted)]">
+                                    {c.authorRole}
+                                  </span>
+                                )}
+                                {c.visibility === 'shared_with_owner' || c.visibility === 'shared' ? (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    👥 Shared
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                    🔒 Internal
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-[var(--text-muted)]">
                                 {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
-                            {editingCommentId !== c.id && (
+                            {canEditComment(c) && editingCommentId !== c.id && (
                               <button
                                 type="button"
                                 onClick={() => handleStartEditComment(c)}
@@ -1543,14 +1735,16 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                                 <Edit2 className="w-3 h-3" />
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteComment(c.id)}
-                              className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
-                              title="Delete comment"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canEditComment(c) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(c.id)}
+                                className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Delete comment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1562,6 +1756,31 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                               onChange={(e) => setEditingCommentText(e.target.value)}
                               className="w-full p-2 text-xs rounded-lg border border-teal-500 bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none resize-none"
                             />
+                            {!isKam && (
+                              <div className="flex items-center gap-3 text-xs">
+                                <span className="text-[10px] text-[var(--text-muted)]">Visibility:</span>
+                                <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-[var(--text-secondary)]">
+                                  <input
+                                    type="radio"
+                                    name={`edit_vis_${c.id}`}
+                                    value="internal"
+                                    checked={editingCommentVisibility === 'internal'}
+                                    onChange={() => setEditingCommentVisibility('internal')}
+                                  />
+                                  <span>🔒 Internal</span>
+                                </label>
+                                <label className="inline-flex items-center gap-1 cursor-pointer text-xs text-[var(--text-secondary)]">
+                                  <input
+                                    type="radio"
+                                    name={`edit_vis_${c.id}`}
+                                    value="shared_with_owner"
+                                    checked={editingCommentVisibility === 'shared_with_owner'}
+                                    onChange={() => setEditingCommentVisibility('shared_with_owner')}
+                                  />
+                                  <span>👥 Shared</span>
+                                </label>
+                              </div>
+                            )}
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 type="button"

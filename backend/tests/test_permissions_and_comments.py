@@ -118,14 +118,19 @@ def test_admin_can_manage_custom_columns(admin_headers, test_opp_id):
 
 
 def test_comments_persistence_and_audit(db, test_opp_id, admin_headers):
-    # Ensure viewer comments are enabled
-    SettingsService.set_setting(db, "allow_viewer_comments", "true")
+    # Anonymous comment without authentication gets 401
+    r_anon = client.post(
+        f"/api/custom-columns/deals/{test_opp_id}/comments",
+        json={"text": "Anonymous comment attempt", "author": "Analyst Alice"},
+    )
+    assert r_anon.status_code == 401
 
-    # Add comment as Viewer
-    test_comment = f"Audited viewer comment {test_opp_id}"
+    # Add comment with authenticated admin headers
+    test_comment = f"Audited comment {test_opp_id}"
     r_add = client.post(
         f"/api/custom-columns/deals/{test_opp_id}/comments",
         json={"text": test_comment, "author": "Analyst Alice"},
+        headers=admin_headers,
     )
     assert r_add.status_code == 200, f"Failed add comment: {r_add.text}"
     c_data = r_add.json()["comment"]
@@ -134,35 +139,17 @@ def test_comments_persistence_and_audit(db, test_opp_id, admin_headers):
     assert c_data["author"] == "Analyst Alice"
 
     # Verify comment persists when queried by another session
-    r_list = client.get(f"/api/custom-columns/deals/{test_opp_id}/comments")
+    r_list = client.get(f"/api/custom-columns/deals/{test_opp_id}/comments", headers=admin_headers)
     assert r_list.status_code == 200
     texts = [c["text"] for c in r_list.json()["comments"]]
     assert test_comment in texts
 
     # Verify comment appears in global Audit Log
-    r_audit = client.get("/api/custom-columns/audit")
+    r_audit = client.get("/api/custom-columns/audit", headers=admin_headers)
     assert r_audit.status_code == 200
     audit_entries = r_audit.json()["audit"]
     found = any(e.get("entity_id") == c_id and e.get("new_value") == test_comment for e in audit_entries)
     assert found, "Comment creation audit entry not found in global audit log"
-
-    # Test viewer comments setting toggle
-    SettingsService.set_setting(db, "allow_viewer_comments", "false")
-    r_blocked = client.post(
-        f"/api/custom-columns/deals/{test_opp_id}/comments",
-        json={"text": "Should be blocked", "author": "Viewer Bob"},
-    )
-    assert r_blocked.status_code == 403, "Viewer should receive 403 when comments disabled"
-
-    # Admin can still add comments even when viewer comments are false
-    r_admin_add = client.post(
-        f"/api/custom-columns/deals/{test_opp_id}/comments",
-        json={"text": "Admin override comment", "author": "Admin Super"},
-        headers=admin_headers,
-    )
-    assert r_admin_add.status_code == 200
-
-    # Reset setting back to true
     SettingsService.set_setting(db, "allow_viewer_comments", "true")
 
     # Clean up test comment

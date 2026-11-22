@@ -82,6 +82,7 @@ class FullExcelExportService:
         snapshot_id: str | None = None,
         opp_ids: list[str] | None = None,
         export_format: str = "xlsx",
+        user_context: Optional[Any] = None,
     ) -> tuple[io.BytesIO, str, str]:
         """
         Generate export for a snapshot in either 'xlsx' or 'csv' format.
@@ -122,12 +123,12 @@ class FullExcelExportService:
 
         col_order_set = {c.strip().lower() for c in col_order}
 
-        # 3. Retrieve added custom columns (excluding deleted)
-        custom_cols = self.annot_svc.list_columns(include_deleted=False)
+        # 3. Retrieve added custom columns (filtered for KAMs to visible_to_owner)
+        custom_cols = self.annot_svc.list_columns(include_deleted=False, user_context=user_context)
 
         # 4. Fetch annotations for all deals
         all_opp_ids = [o.opportunity_id_18 for o in opps if o.opportunity_id_18]
-        deal_annots = self.annot_svc.enrich_deals_with_annotations(all_opp_ids)
+        deal_annots = self.annot_svc.enrich_deals_with_annotations(all_opp_ids, user_context=user_context)
 
         # Header definitions: original columns followed by added custom columns
         custom_header_labels: list[str] = []

@@ -215,7 +215,7 @@ class ExplorerService:
             return cols
         return []
 
-    def get_columns_meta(self, snap: UploadSnapshot) -> List[Dict[str, Any]]:
+    def get_columns_meta(self, snap: UploadSnapshot, user_context: Optional[Any] = None) -> List[Dict[str, Any]]:
         col_names = self.get_column_order(snap)
         if not col_names:
             return []
@@ -232,12 +232,14 @@ class ExplorerService:
                 "type": inferred_type,
             })
 
-        # Append custom columns
+        # Append custom columns (filtered for KAM to visible_to_owner only)
         try:
             from backend.models.custom_column import CustomColumn
+            q_cols = self.db.query(CustomColumn).filter(CustomColumn.is_deleted == False)
+            if user_context and getattr(user_context, "is_kam", False):
+                q_cols = q_cols.filter(CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
             custom_cols = (
-                self.db.query(CustomColumn)
-                .filter(CustomColumn.is_deleted == False)
+                q_cols
                 .order_by(CustomColumn.sort_order.asc(), CustomColumn.created_at.asc())
                 .all()
             )
@@ -265,6 +267,8 @@ class ExplorerService:
                     "is_clash": is_clash,
                     "custom_type": cc.type,
                     "dropdown_options": cc.dropdown_options or [],
+                    "visibility": cc.visibility or "internal",
+                    "creator_role": cc.creator_role or "admin",
                 })
                 cur_pos += 1
         except Exception as exc:
@@ -659,13 +663,14 @@ class ExplorerService:
         col_order = self.get_column_order(snap)
         rows_data = []
 
-        # Annotations enrichment
+        # Annotations enrichment (filtered for KAM to visible_to_owner only)
         try:
             from backend.services.annotation_service import AnnotationService
             annot_svc = AnnotationService(self.db)
             opp_ids = [o.opportunity_id_18 for o in opps if o.opportunity_id_18]
-            deal_annots = annot_svc.enrich_deals_with_annotations(opp_ids)
-            custom_cols = annot_svc.list_columns(include_deleted=False)
+            user_ctx = getattr(filter_spec, "user_context", None) if filter_spec else None
+            deal_annots = annot_svc.enrich_deals_with_annotations(opp_ids, user_context=user_ctx)
+            custom_cols = annot_svc.list_columns(include_deleted=False, user_context=user_ctx)
         except Exception:
             deal_annots = {}
             custom_cols = []

@@ -582,6 +582,8 @@ export interface CustomColumnItem {
   values_count?: number
   created_by: string
   created_at: string
+  visibility?: 'internal' | 'visible_to_owner'
+  creator_role?: string
 }
 
 export interface DealAnnotationItem {
@@ -621,13 +623,14 @@ export const createCustomColumn = async (data: {
   type: string
   dropdown_options?: string[]
   sort_order?: number
+  visibility?: 'internal' | 'visible_to_owner'
 }): Promise<CustomColumnItem> => {
   const res = await api.post('/custom-columns', data)
   return res.data.column
 }
 
 export const bulkCreateCustomColumns = async (
-  columns: { label: string; type: string; dropdown_options?: string[] }[]
+  columns: { label: string; type: string; dropdown_options?: string[]; visibility?: 'internal' | 'visible_to_owner' }[]
 ): Promise<CustomColumnItem[]> => {
   const res = await api.post('/custom-columns/bulk', { columns })
   return res.data.columns || []
@@ -640,6 +643,7 @@ export const updateCustomColumn = async (
     type?: string
     dropdown_options?: string[]
     sort_order?: number
+    visibility?: 'internal' | 'visible_to_owner'
   }
 ): Promise<CustomColumnItem> => {
   const res = await api.patch(`/custom-columns/${columnId}`, data)
@@ -778,6 +782,9 @@ export interface DealCommentItem {
   is_deleted?: boolean
   created_at: string
   updated_at: string
+  visibility?: 'internal' | 'shared_with_owner' | 'shared'
+  author_id?: string
+  author_role?: string
 }
 
 export const getDealComments = async (opportunityId: string): Promise<DealCommentItem[]> => {
@@ -788,11 +795,13 @@ export const getDealComments = async (opportunityId: string): Promise<DealCommen
 export const addDealComment = async (
   opportunityId: string,
   text: string,
-  author?: string
+  author?: string,
+  visibility?: 'internal' | 'shared_with_owner'
 ): Promise<DealCommentItem> => {
   const res = await api.post(`/custom-columns/deals/${opportunityId}/comments`, {
     text,
     author,
+    visibility,
   })
   return res.data.comment
 }
@@ -800,10 +809,12 @@ export const addDealComment = async (
 export const updateDealComment = async (
   opportunityId: string,
   commentId: string,
-  text: string
+  text: string,
+  visibility?: 'internal' | 'shared_with_owner'
 ): Promise<DealCommentItem> => {
   const res = await api.put(`/custom-columns/deals/${opportunityId}/comments/${commentId}`, {
     text,
+    visibility,
   })
   return res.data.comment
 }

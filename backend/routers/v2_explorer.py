@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.services.context import UserContext, get_user_context
 from backend.services.explorer_service import (
     ExplorerService,
     ExplorerRowsRequest,
@@ -26,12 +27,13 @@ router = APIRouter(prefix="/api/v2/explorer", tags=["v2-explorer"])
 def get_explorer_columns(
     as_of: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ):
     svc = ExplorerService(db)
     snap = svc.resolve_snapshot(as_of)
     if not snap:
         raise HTTPException(status_code=404, detail="No snapshot found for requested as_of date.")
-    columns = svc.get_columns_meta(snap)
+    columns = svc.get_columns_meta(snap, user_context=ctx)
     return {
         "snapshot_id": snap.id,
         "snapshot_date": snap.snapshot_date.isoformat(),
