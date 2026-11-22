@@ -6,7 +6,6 @@ Handles message posting, replies, read receipts, and thread resolution.
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,7 +21,7 @@ from backend.services.context import (
     require_management_or_admin,
 )
 from backend.services.audit_service import log_audit_event
-from backend.services.mail_service import MailService, template_new_message, template_reply_message
+from backend.services.mail_service import MailService
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +78,7 @@ def send_deal_message(
         )
 
     # 3. Create DealMessage
+    import uuid
     caller_uid = ctx.user_id if ctx.user_id != "admin" else db.query(User.id).filter(User.role == "admin").first()[0]
     sender_user = db.query(User).filter(User.id == caller_uid).first()
     sender_name = sender_user.name if sender_user else ctx.display_name
@@ -107,24 +107,7 @@ def send_deal_message(
 
     # 4. Queue email notification
     deal_title = opp.opportunity_name or opp.opportunity_id_18
-    subj, html, text = template_new_message(
-        recipient_name=kam_user.name or kam_user.email,
-        sender_name=sender_name,
-        deal_name=deal_title,
-        deal_id=req.deal_id,
-        subject_text=req.subject,
-        body=req.body,
-        thread_link=f"/messages?deal={req.deal_id}",
-    )
-    MailService.queue_email(
-        db=db,
-        recipient_email=kam_user.email,
-        subject=subj,
-        body_html=html,
-        body_text=text,
-        recipient_name=kam_user.name or kam_user.email,
-        template_type="new_message",
-    )
+    MailService.template_new_message(db, kam_user, sender_name, deal_title, req.deal_id, req.body)
 
     log_audit_event(
         db,
@@ -173,6 +156,7 @@ def reply_to_message(
         if opp and (opp.opportunity_owner or "").strip() not in ctx.all_owner_names:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
+    import uuid
     reply_id = str(uuid.uuid4())
     caller_user = db.query(User).filter(User.id == caller_uid).first()
     sender_name = caller_user.name if caller_user else ctx.display_name
@@ -204,23 +188,7 @@ def reply_to_message(
     # Queue email notification
     opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == parent.deal_id).first()
     deal_title = opp.opportunity_name if opp else parent.deal_id
-    subj, html, text = template_reply_message(
-        recipient_name=recipient_user.name or recipient_user.email,
-        sender_name=sender_name,
-        deal_name=deal_title,
-        deal_id=parent.deal_id,
-        body=req.body,
-        thread_link=f"/messages?deal={parent.deal_id}",
-    )
-    MailService.queue_email(
-        db=db,
-        recipient_email=recipient_user.email,
-        subject=subj,
-        body_html=html,
-        body_text=text,
-        recipient_name=recipient_user.name or recipient_user.email,
-        template_type="reply",
-    )
+    MailService.template_reply_message(db, recipient_user, sender_name, deal_title, parent.deal_id, req.body)
 
     log_audit_event(
         db,
@@ -250,7 +218,7 @@ def list_message_threads(
     - Admin: all threads.
     Supports filtering by deal_id, thread_status, q (search text), owner, and sender.
     """
-    query = db.query(DealMessage).filter(DealMessage.id == DealMessage.thread_id)
+    query = db.query(DealMessage).filter(DealMessage.parent_id == None)
 
     if deal_id:
         query = query.filter(DealMessage.deal_id == deal_id)
@@ -273,7 +241,7 @@ def list_message_threads(
         # Count replies and unread
         replies = (
             db.query(DealMessage)
-            .filter(DealMessage.thread_id == rm.id, DealMessage.id != rm.id)
+            .filter(DealMessage.parent_id == rm.id)
             .order_by(DealMessage.created_at.asc())
             .all()
         )
@@ -354,8 +322,7 @@ def get_deal_thread(
         recipient = db.query(User).filter(User.id == m.recipient_id).first()
         results.append({
             "id": m.id,
-            "thread_id": m.thread_id,
-            "parent_id": m.thread_id if m.thread_id != m.id else None,
+            "parent_id": m.parent_id,
             "deal_id": m.deal_id,
             "subject": m.subject,
             "body": m.body,
@@ -394,13 +361,14 @@ def mark_message_read(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found.")
 
     msg.is_read = True
+    msg.read_at = func.now()
 
     # Also mark all messages in thread addressed to current user as read
-    root_id = msg.thread_id or msg.id
+    root_id = msg.parent_id or msg.id
     db.query(DealMessage).filter(
-        DealMessage.thread_id == root_id,
+        or_(DealMessage.id == root_id, DealMessage.parent_id == root_id),
         DealMessage.recipient_id == ctx.user_id,
-    ).update({"is_read": True})
+    ).update({"is_read": True, "read_at": func.now()})
 
     db.commit()
     return {"status": "marked_read"}
@@ -421,8 +389,9 @@ def resolve_thread(
     root.thread_status = new_status
 
     # Update all child messages
-    db.query(DealMessage).filter(DealMessage.thread_id == root.id).update({"thread_status": new_status})
+    db.query(DealMessage).filter(DealMessage.parent_id == root.id).update({"thread_status": new_status})
     db.commit()
 
     log_audit_event(db, "thread_status_toggle", user_id=ctx.user_id, details={"thread_id": thread_id, "new_status": new_status})
     return {"status": "success", "thread_status": new_status}
+

@@ -33,18 +33,20 @@ import {
   AdminUserItem 
 } from '@/api/client'
 import { formatDate } from '@/utils/format'
+import { useAuthStore } from '@/store/authStore'
 
 export default function UserManagement() {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { currentUser } = useAuthStore()
+  const isCurrentUserOwner = !!currentUser?.is_owner || currentUser?.email?.toLowerCase() === 'rishithathoka@gmail.com'
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('All')
 
   // Modals
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [showLinkModal, setShowLinkModal] = useState<{ title: string; link: string } | null>(null)
-  const [showEditUserModal, setShowEditUserModal] = useState<AdminUserItem | null>(null)
+  const [showLinkModal, setShowLinkModal] = useState<{ title: string; link: string; expiresIn?: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -56,8 +58,71 @@ export default function UserManagement() {
   const [inviteOwnerName, setInviteOwnerName] = useState('')
   const [inviteAliases, setInviteAliases] = useState('')
 
-  // Alias addition in edit modal
-  const [newAliasText, setNewAliasText] = useState('')
+  // Edit User Form State
+  const [editingUser, setEditingUser] = useState<AdminUserItem | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editRole, setEditRole] = useState<'admin' | 'management' | 'kam'>('kam')
+  const [editStatus, setEditStatus] = useState<'active' | 'disabled' | 'invited'>('active')
+  const [editOwnerName, setEditOwnerName] = useState('')
+  const [editAliases, setEditAliases] = useState<string[]>([])
+  const [editNewAlias, setEditNewAlias] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSuccess, setEditSuccess] = useState<string | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+
+  const openEditModal = (u: AdminUserItem) => {
+    setEditingUser(u)
+    setEditName(u.name || '')
+    setEditEmail(u.email || '')
+    setEditRole(u.role)
+    setEditStatus((u.status as any) || 'active')
+    setEditOwnerName(u.owner_name || '')
+    setEditAliases(u.aliases ? [...u.aliases] : [])
+    setEditNewAlias('')
+    setEditError(null)
+    setEditSuccess(null)
+  }
+
+  const handleSaveEditUser = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setEditError(null)
+    setEditSuccess(null)
+
+    if (!editName.trim()) {
+      setEditError('Name is required.')
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!editEmail.trim() || !emailRegex.test(editEmail.trim())) {
+      setEditError('Please enter a valid email address.')
+      return
+    }
+
+    if (!editingUser) return
+    setEditSaving(true)
+
+    try {
+      await updateAdminUser(editingUser.id, {
+        name: editName.trim(),
+        email: editEmail.trim(),
+        role: editRole,
+        status: editStatus,
+        owner_name: editRole === 'kam' ? editOwnerName.trim() : undefined,
+        aliases: editRole === 'kam' ? editAliases : undefined,
+      })
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setEditSuccess('User saved successfully.')
+      setTimeout(() => {
+        setEditingUser(null)
+      }, 1200)
+    } catch (err: any) {
+      setEditError(err.response?.data?.detail || err.message || 'Failed to update user.')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -354,9 +419,13 @@ export default function UserManagement() {
                           onClick={async () => {
                             try {
                               const res = await getUserResetLink(u.id)
-                              setShowLinkModal({ title: `Password Reset Link for ${u.name}`, link: res.reset_url })
+                              setShowLinkModal({
+                                title: `Password Reset / Setup Link for ${u.name}`,
+                                link: res.reset_url || res.invite_url || '',
+                                expiresIn: res.expires_in_hours || 24,
+                              })
                             } catch (e: any) {
-                              setErrorMsg(e.response?.data?.detail || 'Failed to get reset link.')
+                              setErrorMsg(e.response?.data?.detail || e.message || 'Failed to get reset link.')
                             }
                           }}
                           className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -365,9 +434,9 @@ export default function UserManagement() {
                           <KeyRound className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => setShowEditUserModal(u)}
+                          onClick={() => openEditModal(u)}
                           className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                          title="Edit User & Aliases"
+                          title="Edit User"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -513,6 +582,11 @@ export default function UserManagement() {
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3">
               Copy this link and send it directly to the user so they can set their password:
+              {showLinkModal.expiresIn && (
+                <span className="block mt-1 font-semibold text-[var(--text-primary)]">
+                  Expires in {showLinkModal.expiresIn} hours (single-use).
+                </span>
+              )}
             </p>
             <div className="p-3 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] flex items-center gap-2 mb-4">
               <input
@@ -524,6 +598,7 @@ export default function UserManagement() {
               <button
                 onClick={() => handleCopyLink(showLinkModal.link)}
                 className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-teal-600 hover:text-teal-700 shrink-0"
+                title="Copy link to clipboard"
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
               </button>
@@ -540,99 +615,210 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Edit User Modal */}
-      {showEditUserModal && (
+      {/* Edit User Modal (Redesigned by Role) */}
+      {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-md w-full p-6 shadow-2xl">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
-              <h3 className="font-bold text-sm text-[var(--text-primary)]">Edit User: {showEditUserModal.name}</h3>
-              <button onClick={() => setShowEditUserModal(null)}><X className="w-4 h-4 text-[var(--text-muted)]" /></button>
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">
+                  Edit User: {editingUser.name}
+                </h3>
+              </div>
+              <button onClick={() => setEditingUser(null)}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
             </div>
-            <div className="space-y-4">
+
+            {/* In-Dialog Alerts */}
+            {editError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+            {editSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{editSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditUser} className="space-y-4">
+              {/* Full Name */}
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Opportunity Owner Name</label>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Full Name
+                </label>
                 <input
                   type="text"
-                  value={showEditUserModal.owner_name || ''}
-                  onChange={(e) => setShowEditUserModal({ ...showEditUserModal, owner_name: e.target.value })}
-                  placeholder="Exact report name"
-                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Jane Doe"
+                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
                 />
               </div>
 
+              {/* Email Address */}
               <div>
-                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Active Aliases</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {showEditUserModal.aliases?.map((al) => (
-                    <span key={al} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[11px]">
-                      <span>{al}</span>
-                      <button
-                        onClick={async () => {
-                          await deleteUserAlias(showEditUserModal.id, al)
-                          queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-                          setShowEditUserModal({
-                            ...showEditUserModal,
-                            aliases: showEditUserModal.aliases.filter((a) => a !== al),
-                          })
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newAliasText}
-                    onChange={(e) => setNewAliasText(e.target.value)}
-                    placeholder="Add alias..."
-                    className="flex-1 px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!newAliasText.trim()) return
-                      await addUserAlias(showEditUserModal.id, newAliasText.trim())
-                      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-                      setShowEditUserModal({
-                        ...showEditUserModal,
-                        aliases: [...(showEditUserModal.aliases || []), newAliasText.trim()],
-                      })
-                      setNewAliasText('')
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-card)]"
-                  >
-                    Add
-                  </button>
-                </div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="e.g. jane.doe@mobileum.com"
+                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
+                />
               </div>
 
+              {/* Role */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Role
+                </label>
+                {editingUser.is_owner ? (
+                  <div className="px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-muted)] flex items-center justify-between">
+                    <span>Admin (Owner Account)</span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Protected</span>
+                  </div>
+                ) : editingUser.role === 'admin' && !isCurrentUserOwner ? (
+                  <div className="px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-muted)] flex items-center justify-between">
+                    <span>Administrator</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">Only owner can change</span>
+                  </div>
+                ) : (
+                  <select
+                    value={editRole}
+                    onChange={(e: any) => setEditRole(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                  >
+                    {isCurrentUserOwner && <option value="admin">Administrator - Full Platform Control</option>}
+                    <option value="management">Management - Full Analytics &amp; Messaging</option>
+                    <option value="kam">KAM (Opportunity Owner) - Own Deals Only</option>
+                  </select>
+                )}
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Status
+                </label>
+                {editingUser.is_owner ? (
+                  <div className="px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-muted)] flex items-center justify-between">
+                    <span>Active</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Permanent</span>
+                  </div>
+                ) : (
+                  <select
+                    value={editStatus}
+                    onChange={(e: any) => setEditStatus(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                  >
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                    <option value="invited">Invited (Pending Activation)</option>
+                  </select>
+                )}
+              </div>
+
+              {/* KAM ONLY: Opportunity Owner Name & Aliases */}
+              {editRole === 'kam' && (
+                <div className="pt-2 border-t border-[var(--border)] space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-primary)] mb-0.5">
+                      Opportunity Owner Name
+                    </label>
+                    <p className="text-[11px] text-[var(--text-muted)] mb-1.5">
+                      Owner name: the exact name as written in the Excel report. Used to link this user to their deals.
+                    </p>
+                    <input
+                      type="text"
+                      value={editOwnerName}
+                      onChange={(e) => setEditOwnerName(e.target.value)}
+                      placeholder="e.g. John Doe"
+                      className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text-primary)] mb-0.5">
+                      Aliases
+                    </label>
+                    <p className="text-[11px] text-[var(--text-muted)] mb-1.5">
+                      Aliases: other spellings of the same name in the Excel, so the deals still match.
+                    </p>
+
+                    {editAliases.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {editAliases.map((al) => (
+                          <span
+                            key={al}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)] text-[11px] font-medium"
+                          >
+                            <span>{al}</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditAliases(editAliases.filter((a) => a !== al))}
+                              className="text-red-500 hover:text-red-700 font-bold ml-0.5"
+                              title={`Remove alias ${al}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={editNewAlias}
+                        onChange={(e) => setEditNewAlias(e.target.value)}
+                        placeholder="Add alternative spelling..."
+                        className="flex-1 px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!editNewAlias.trim()) return
+                          if (!editAliases.includes(editNewAlias.trim())) {
+                            setEditAliases([...editAliases, editNewAlias.trim()])
+                          }
+                          setEditNewAlias('')
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl hover:bg-[var(--bg-card)] transition-colors"
+                      >
+                        Add Alias
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Actions */}
               <div className="pt-3 border-t border-[var(--border)] flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowEditUserModal(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)]"
+                  onClick={() => setEditingUser(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   Close
                 </button>
                 <button
-                  type="button"
-                  onClick={async () => {
-                    await updateAdminUser(showEditUserModal.id, {
-                      owner_name: showEditUserModal.owner_name,
-                    })
-                    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-                    setShowEditUserModal(null)
-                    setSuccessMsg('User updated.')
-                  }}
-                  className="px-4 py-1.5 text-xs font-semibold bg-[#12284C] text-white rounded-xl hover:bg-[#1a386b]"
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-4 py-2 text-xs font-semibold bg-[#12284C] text-white rounded-xl hover:bg-[#1a386b] disabled:opacity-50 transition-all shadow-sm"
                 >
-                  Save Changes
+                  {editSaving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

@@ -34,7 +34,7 @@ from backend.services.context import (
     get_user_context,
     require_authenticated,
 )
-from backend.services.mail_service import MailService
+from backend.services.mail_service import MailService, template_password_reset
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class ChangePasswordRequest(BaseModel):
 class SetPasswordRequest(BaseModel):
     token: str
     password: str
-    confirm_password: str
+    confirm_password: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -249,7 +249,21 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
     user = db.query(User).filter(func.lower(User.email) == clean_email).first()
     if user and user.status != "disabled":
         raw_token, _ = create_user_token(db, user, token_type="reset")
-        MailService.template_password_reset(db, user, raw_token)
+        app_base_url = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        reset_url = f"{app_base_url}/reset-password/{raw_token}"
+        try:
+            subj, html, text = template_password_reset(user.name or user.email, reset_url)
+            MailService.queue_email(
+                db=db,
+                recipient_email=user.email,
+                subject=subj,
+                body_html=html,
+                body_text=text,
+                recipient_name=user.name,
+                template_type="reset",
+            )
+        except Exception as exc:
+            log.warning(f"Could not queue password reset email: {exc}")
         log_audit_event(db, "password_reset_requested", user_id=user.id, user_email=user.email, ip_address=client_ip)
     else:
         log_audit_event(db, "password_reset_requested_unknown", user_email=clean_email, ip_address=client_ip)
@@ -281,7 +295,7 @@ def verify_invite_token(token: str, db: Session = Depends(get_db)):
 @router.post("/invite/set-password")
 def set_password_from_invite(req: SetPasswordRequest, response: Response, db: Session = Depends(get_db)):
     """Activate invited account by setting the initial password."""
-    if req.password != req.confirm_password:
+    if req.confirm_password is not None and req.password != req.confirm_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match.")
 
     valid, err_msg = validate_password_strength(req.password)

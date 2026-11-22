@@ -866,13 +866,21 @@ export const verifyInviteToken = async (token: string) => {
   return res.data
 }
 
-export const setInvitePassword = async (token: string, password: string) => {
-  const res = await api.post('/auth/invite/set-password', { token, password })
+export const setInvitePassword = async (token: string, password: string, confirmPassword?: string) => {
+  const res = await api.post('/auth/invite/set-password', {
+    token,
+    password,
+    confirm_password: confirmPassword || password,
+  })
   return res.data
 }
 
-export const resetPasswordWithToken = async (token: string, password: string) => {
-  const res = await api.post('/auth/reset-password', { token, password })
+export const resetPasswordWithToken = async (token: string, password: string, confirmPassword?: string) => {
+  const res = await api.post('/auth/reset-password', {
+    token,
+    password,
+    confirm_password: confirmPassword || password,
+  })
   return res.data
 }
 
@@ -913,7 +921,9 @@ export const updateAdminUser = async (
     name?: string
     email?: string
     role?: 'admin' | 'management' | 'kam'
+    status?: 'active' | 'disabled' | 'invited'
     owner_name?: string
+    aliases?: string[]
   }
 ) => {
   const res = await api.put(`/admin/users/${userId}`, data)
@@ -930,12 +940,16 @@ export const deleteAdminUser = async (userId: string) => {
   return res.data
 }
 
-export const getUserInviteLink = async (userId: string): Promise<{ invite_url: string; expires_at: string }> => {
+export const getUserInviteLink = async (
+  userId: string
+): Promise<{ invite_url: string; expires_at: string; expires_in_hours?: number }> => {
   const res = await api.post(`/admin/users/${userId}/invite-link`)
   return res.data
 }
 
-export const getUserResetLink = async (userId: string): Promise<{ reset_url: string; expires_at: string }> => {
+export const getUserResetLink = async (
+  userId: string
+): Promise<{ reset_url: string; expires_at: string; expires_in_hours?: number; invite_url?: string }> => {
   const res = await api.post(`/admin/users/${userId}/reset-link`)
   return res.data
 }

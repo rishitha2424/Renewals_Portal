@@ -367,22 +367,32 @@ def ensure_default_accounts(db: Session) -> dict[str, User]:
             db.commit()
             db.refresh(admin)
 
-    # 2. Management account
+    # 2. Management account (Shared management account)
+    # Starts in status "invited" with NO default password until the admin generates a link.
     mgmt = db.query(User).filter(func.lower(User.email) == mgmt_email.lower()).first()
     if not mgmt:
         mgmt = User(
             name="Management",
             email=mgmt_email,
             role="management",
-            status="active",
+            status="invited",
             is_owner=False,
-            must_change_password=False,
-            password_hash=hash_password(settings.ADMIN_PASSWORD) if settings.ADMIN_PASSWORD else None,
+            must_change_password=True,
+            password_hash=None,
         )
         db.add(mgmt)
         db.commit()
         db.refresh(mgmt)
-        log.info(f"Created default management account: {mgmt.email}")
+        log.info(f"Created default management account: {mgmt.email} (invited, no default password)")
+    else:
+        # If it was previously created with active status and no user login or default password, reset to invited
+        if mgmt.last_login is None and (mgmt.status == "active" or (settings.ADMIN_PASSWORD and mgmt.password_hash and verify_password(settings.ADMIN_PASSWORD, mgmt.password_hash))):
+            mgmt.status = "invited"
+            mgmt.password_hash = None
+            mgmt.must_change_password = True
+            db.commit()
+            db.refresh(mgmt)
+            log.info("Reset default management account to invited with no default password")
 
     return {"admin": admin, "management": mgmt}
 

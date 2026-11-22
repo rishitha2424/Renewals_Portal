@@ -4,11 +4,14 @@ import { Lock, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck, KeyRound } fr
 import { verifyInviteToken, setInvitePassword, resetPasswordWithToken } from '@/api/client'
 
 export default function SetPassword() {
-  const { token } = useParams<{ token: string }>()
+  const routeParams = useParams<{ token?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
 
-  const isInvite = location.pathname.includes('/invite')
+  const queryToken = new URLSearchParams(location.search).get('token')
+  const token = routeParams.token || queryToken || ''
+
+  const isInvite = location.pathname.includes('/invite') || new URLSearchParams(location.search).get('type') === 'invite'
   const [tokenValid, setTokenValid] = useState<boolean | null>(null)
   const [userInfo, setUserInfo] = useState<{ name?: string; email?: string } | null>(null)
   const [password, setPassword] = useState('')
@@ -24,21 +27,16 @@ export default function SetPassword() {
       return
     }
 
-    if (isInvite) {
-      verifyInviteToken(token)
-        .then((res) => {
-          setTokenValid(true)
-          setUserInfo({ name: res.name, email: res.email })
-        })
-        .catch((err) => {
-          setTokenValid(false)
-          setError(err.response?.data?.detail || 'This invitation link has expired or has already been used.')
-        })
-    } else {
-      // For reset token, we consider it valid initially until submission or verify
-      setTokenValid(true)
-    }
-  }, [token, isInvite])
+    verifyInviteToken(token)
+      .then((res) => {
+        setTokenValid(true)
+        setUserInfo({ name: res.name, email: res.email })
+      })
+      .catch((err) => {
+        setTokenValid(false)
+        setError(err.response?.data?.detail || 'This link has expired or has already been used.')
+      })
+  }, [token])
 
   const validatePassword = () => {
     if (password.length < 8) return 'Password must be at least 8 characters long.'
@@ -63,9 +61,9 @@ export default function SetPassword() {
 
     try {
       if (isInvite) {
-        await setInvitePassword(token, password)
+        await setInvitePassword(token, password, confirmPassword)
       } else {
-        await resetPasswordWithToken(token, password)
+        await resetPasswordWithToken(token, password, confirmPassword)
       }
       setSuccess(true)
       setTimeout(() => {

@@ -6,6 +6,7 @@ Protected by require_admin_context.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -21,7 +22,7 @@ from backend.services.context import UserContext, require_admin_context
 from backend.services.auth_service import create_user_token
 from backend.services.audit_service import log_audit_event
 from backend.services.kam_sync_service import KamSyncService, parse_kam_file
-from backend.services.mail_service import MailService
+from backend.services.mail_service import MailService, template_invite, template_password_reset
 
 log = logging.getLogger(__name__)
 
@@ -40,8 +41,10 @@ class UpdateUserRequest(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    status: Optional[str] = None  # "active" | "disabled" | "invited"
     owner_name: Optional[str] = None
     mobileum_id: Optional[str] = None
+    aliases: Optional[List[str]] = None
 
 
 class ToggleStatusRequest(BaseModel):
@@ -156,13 +159,24 @@ def create_user(
     db.refresh(user)
 
     # Generate one-time invite token
-    raw_token, _ = create_user_token(db, user, token_type="invite")
-    MailService.template_invite(db, user, raw_token)
+    raw_token, token_rec = create_user_token(db, user, token_type="invite")
+    app_base_url = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+    invite_url = f"{app_base_url}/invite/{raw_token}"
+    try:
+        subj, html, text = template_invite(user.name or user.email, invite_url)
+        MailService.queue_email(
+            db=db,
+            recipient_email=user.email,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            recipient_name=user.name,
+            template_type="invite",
+        )
+    except Exception as exc:
+        log.warning(f"Could not queue invite email: {exc}")
 
     log_audit_event(db, "user_created", user_id=user.id, user_email=user.email, details={"created_by": ctx.email, "role": user.role})
-
-    app_base_url = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
-    invite_url = f"{app_base_url}/set-password?token={raw_token}"
 
     return {
         "status": "created",
@@ -179,34 +193,80 @@ def update_user(
     ctx: UserContext = Depends(require_admin_context),
     db: Session = Depends(get_db),
 ):
-    """Update user attributes (name, email, role, owner_name)."""
+    """Update user attributes (name, email, role, status, owner_name, aliases)."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    if req.role and req.role != user.role:
-        check_last_admin_or_owner_protection(db, user, "change the role of")
-        user.role = req.role
+    changes: dict[str, dict[str, Any]] = {}
 
-    if req.email and req.email.strip().lower() != user.email.lower():
+    if req.name is not None and req.name.strip() and req.name.strip() != user.name:
+        changes["name"] = {"old": user.name, "new": req.name.strip()}
+        user.name = req.name.strip()
+
+    if req.email is not None and req.email.strip().lower() != user.email.lower():
         clean_email = req.email.strip().lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_email):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format.")
         existing = db.query(User).filter(func.lower(User.email) == clean_email, User.id != user_id).first()
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already in use by another user.")
+        changes["email"] = {"old": user.email, "new": clean_email}
         user.email = clean_email
         if user.status == "pending_email":
             user.status = "invited"
 
-    if req.name is not None:
-        user.name = req.name.strip()
+    if req.role is not None and req.role.strip().lower() != user.role:
+        new_role = req.role.strip().lower()
+        if (user.role == "admin" or new_role == "admin") and not ctx.is_owner:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the system owner (Rishitha) can change administrator roles.")
+        check_last_admin_or_owner_protection(db, user, "change the role of")
+        changes["role"] = {"old": user.role, "new": new_role}
+        user.role = new_role
+
+    if req.status is not None and req.status != user.status:
+        if req.status == "disabled":
+            check_last_admin_or_owner_protection(db, user, "disable")
+        changes["status"] = {"old": user.status, "new": req.status}
+        user.status = req.status
+
     if req.owner_name is not None:
-        user.owner_name = req.owner_name.strip() if req.owner_name else None
+        clean_owner = req.owner_name.strip() if req.owner_name else None
+        if clean_owner != user.owner_name:
+            changes["owner_name"] = {"old": user.owner_name, "new": clean_owner}
+            user.owner_name = clean_owner
+
     if req.mobileum_id is not None:
-        user.mobileum_id = req.mobileum_id.strip() if req.mobileum_id else None
+        clean_id = req.mobileum_id.strip() if req.mobileum_id else None
+        if clean_id != user.mobileum_id:
+            changes["mobileum_id"] = {"old": user.mobileum_id, "new": clean_id}
+            user.mobileum_id = clean_id
+
+    if req.aliases is not None and user.role == "kam":
+        current_aliases = [a.alias_name for a in user.aliases] if hasattr(user, "aliases") else []
+        new_aliases = [a.strip() for a in req.aliases if a.strip()]
+        if set(current_aliases) != set(new_aliases):
+            changes["aliases"] = {"old": current_aliases, "new": new_aliases}
+            db.query(UserAlias).filter(UserAlias.user_id == user.id).delete()
+            for al in new_aliases:
+                db.add(UserAlias(user_id=user.id, alias_name=al))
 
     db.commit()
-    log_audit_event(db, "user_updated", user_id=user.id, user_email=user.email, details={"updated_by": ctx.email})
-    return {"status": "updated"}
+    db.refresh(user)
+
+    log_audit_event(db, "user_updated", user_id=user.id, user_email=user.email, details={"updated_by": ctx.email, "changes": changes})
+    aliases = [a.alias for a in user.aliases] if hasattr(user, "aliases") else []
+    return {
+        "status": "updated",
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "status": user.status,
+        "owner_name": user.owner_name,
+        "aliases": aliases,
+        "changes": changes,
+    }
 
 
 @router.post("/users/{user_id}/status")
@@ -260,12 +320,31 @@ def generate_invite_link(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    raw_token, _ = create_user_token(db, user, token_type="invite")
-    MailService.template_invite(db, user, raw_token)
-
+    raw_token, token_rec = create_user_token(db, user, token_type="invite")
     app_base_url = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
-    invite_url = f"{app_base_url}/set-password?token={raw_token}"
-    return {"invite_url": invite_url}
+    invite_url = f"{app_base_url}/invite/{raw_token}"
+    try:
+        subj, html, text = template_invite(user.name or user.email, invite_url)
+        MailService.queue_email(
+            db=db,
+            recipient_email=user.email,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            recipient_name=user.name,
+            template_type="invite",
+        )
+    except Exception as exc:
+        log.warning(f"Could not queue invite email: {exc}")
+
+    log_audit_event(db, "invite_link_generated", user_id=user.id, user_email=user.email, details={"generated_by": ctx.email})
+    return {
+        "status": "success",
+        "invite_url": invite_url,
+        "token": raw_token,
+        "expires_in_hours": getattr(settings, "INVITE_TOKEN_EXPIRE_HOURS", 72),
+        "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,
+    }
 
 
 @router.post("/users/{user_id}/reset-link")
@@ -279,12 +358,31 @@ def generate_reset_link(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    raw_token, _ = create_user_token(db, user, token_type="reset")
-    MailService.template_password_reset(db, user, raw_token)
-
+    raw_token, token_rec = create_user_token(db, user, token_type="reset")
     app_base_url = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
-    reset_url = f"{app_base_url}/reset-password?token={raw_token}"
-    return {"reset_url": reset_url}
+    reset_url = f"{app_base_url}/reset-password/{raw_token}"
+    try:
+        subj, html, text = template_password_reset(user.name or user.email, reset_url)
+        MailService.queue_email(
+            db=db,
+            recipient_email=user.email,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            recipient_name=user.name,
+            template_type="reset",
+        )
+    except Exception as exc:
+        log.warning(f"Could not queue password reset email: {exc}")
+
+    log_audit_event(db, "reset_link_generated", user_id=user.id, user_email=user.email, details={"generated_by": ctx.email})
+    return {
+        "status": "success",
+        "reset_url": reset_url,
+        "token": raw_token,
+        "expires_in_hours": getattr(settings, "RESET_TOKEN_EXPIRE_HOURS", 24),
+        "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,
+    }
 
 
 @router.post("/users/{user_id}/aliases")

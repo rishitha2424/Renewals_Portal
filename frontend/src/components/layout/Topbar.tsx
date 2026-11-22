@@ -82,8 +82,6 @@ export default function Topbar() {
   const [pwdSuccess, setPwdSuccess] = useState(false)
   const [pwdLoading, setPwdLoading] = useState(false)
   const { currentUser, logout: authLogoutStore } = useAuthStore()
-  const displaySizeRef = useRef<HTMLDivElement>(null)
-  const [displaySizeOpen, setDisplaySizeOpen] = useState(false)
   const [currentDisplaySize, setCurrentDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
 
   const location = useLocation()
@@ -128,9 +126,6 @@ export default function Topbar() {
       }
       if (typeFilterRef.current && !typeFilterRef.current.contains(target)) {
         setTypeFilterOpen(false)
-      }
-      if (displaySizeRef.current && !displaySizeRef.current.contains(target)) {
-        setDisplaySizeOpen(false)
       }
       if (profileRef.current && !profileRef.current.contains(target)) {
         setProfileOpen(false)
@@ -439,10 +434,10 @@ export default function Topbar() {
   return (
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
-      <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
-        <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2">
+      <div className="w-full max-w-[3840px] mx-auto px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2">
+        <div className="flex flex-nowrap items-center justify-between gap-1 xl:gap-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
+          <div className="flex flex-nowrap items-center gap-1 xl:gap-1.5 min-w-0 flex-1">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -453,38 +448,41 @@ export default function Topbar() {
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* 1. Search (Always shows full prompt like 67% view) */}
-            <div className="min-w-[130px] sm:min-w-[160px] max-w-[200px] xl:max-w-[240px] 2xl:max-w-xs flex-1 sm:flex-initial flex-shrink">
+            {/* 1. Search */}
+            <div className="min-w-[100px] max-w-[140px] xl:max-w-[200px] 2xl:max-w-xs flex-1 flex-shrink">
               <button
                 type="button"
                 onClick={() => setCommandPaletteOpen(true)}
-                className="w-full h-9 sm:h-10 px-2 sm:px-2.5 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
+                className="w-full h-9 px-2 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
                 id="topbar-search-btn"
                 title="Global search (⌘K)"
               >
-                <div className="inline-flex items-center gap-1.5 sm:gap-2 truncate">
-                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                  <span className="truncate inline">Search opportunities, regions, accounts...</span>
+                <div className="inline-flex items-center gap-1.5 truncate">
+                  <Search className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+                  <span className="truncate inline">Search...</span>
                 </div>
-                <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
+                <kbd className="hidden 2xl:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
                   ⌘K
                 </kbd>
               </button>
             </div>
 
-            {/* 2. As of (Always visible with label) */}
-            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
+            {/* 2. As of */}
+            <div
+              id="topbar-as-of-pill"
+              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 transition-colors flex-shrink"
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
                 As of:
               </span>
               <select
                 value={activeSnap?.id ?? ''}
                 onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[85px] xl:max-w-[110px] truncate"
                 id="topbar-view-as-of-select"
               >
-                {snapshotsLoading && <option>Loading dates...</option>}
+                {snapshotsLoading && <option>Loading...</option>}
                 {asOfOptions.map((opt: any) => (
                   <option key={opt.id} value={opt.id}>
                     {opt.label}
@@ -493,19 +491,20 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 3. vs (compare selector - always visible with label) */}
+            {/* 3. vs */}
             <div
-              className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
+              id="topbar-vs-pill"
+              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 transition-colors flex-shrink"
               title={getCompareLabel()}
             >
-              <GitCompare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
+              <GitCompare className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
                 vs:
               </span>
               <select
                 value={compareSnapshotId ?? ''}
                 onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[70px] sm:max-w-[80px] xl:max-w-[110px] truncate"
                 id="topbar-compare-with-select"
               >
                 {vsOptions.map((opt: any) => (
@@ -516,16 +515,19 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 4. Period (Always visible with label) */}
-            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
+            {/* 4. Period */}
+            <div
+              id="topbar-period-pill"
+              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 transition-colors flex-shrink"
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
                 Period:
               </span>
               <select
                 value={globalFilters.period}
                 onChange={(e) => setGlobalFilters({ period: e.target.value })}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] sm:max-w-[120px] md:max-w-[140px] truncate"
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[90px] xl:max-w-[120px] truncate"
                 id="filter-period-select"
               >
                 <option value="current_quarter">Current Quarter (Default)</option>
@@ -545,21 +547,21 @@ export default function Topbar() {
               </select>
             </div>
 
-            {/* 5. Type Filter (Multi-select dropdown, always visible) */}
-            <div className="relative inline-flex flex-shrink-0" ref={typeFilterRef}>
+            {/* 5. Type Filter */}
+            <div className="relative inline-flex flex-shrink" ref={typeFilterRef}>
               <button
                 type="button"
                 onClick={() => setTypeFilterOpen(!typeFilterOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-type-btn"
                 title="Filter by Deal Type"
               >
-                <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                <span className="font-medium text-[var(--text-muted)] inline">Type:</span>
-                <span className="font-medium truncate max-w-[50px] sm:max-w-[65px] xl:max-w-[90px]">
+                <Tag className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+                <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">Type:</span>
+                <span className="font-medium truncate max-w-[40px] sm:max-w-[55px] xl:max-w-[80px]">
                   {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3 h-3 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {/* Type Popover */}
@@ -623,22 +625,22 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* More Filters (Always visible like 67% view) */}
-            <div className="relative block flex-shrink-0" ref={moreRef}>
+            {/* More Filters */}
+            <div className="relative inline-flex flex-shrink-0" ref={moreRef}>
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-more-btn"
               >
-                <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <Filter className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
                 <span className="whitespace-nowrap">More Filters</span>
                 {moreFiltersActiveCount > 0 && (
                   <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold leading-none">
                     {moreFiltersActiveCount}
                   </span>
                 )}
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {/* More Filters popover */}
@@ -779,17 +781,17 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* 8. Saved Views (Always visible like 67% view) */}
-            <div className="relative block flex-shrink-0" ref={viewsRef}>
+            {/* 8. Saved Views */}
+            <div className="relative inline-flex flex-shrink-0" ref={viewsRef}>
               <button
                 type="button"
                 onClick={() => setSavedViewsOpen(!savedViewsOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-saved-views-btn"
               >
-                <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <Bookmark className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
                 <span className="whitespace-nowrap">Saved Views</span>
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {savedViewsOpen && (
@@ -857,22 +859,22 @@ export default function Topbar() {
             </div>
           </div>
 
-          {/* ── Right Utility Controls (Always visible, never pushed off-screen) ── */}
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
+          {/* ── Right Utility Controls (Always visible in single row) ── */}
+          <div className="flex flex-nowrap items-center gap-1 xl:gap-1.5 flex-shrink-0 ml-auto">
             {/* Download report Menu */}
             <div className="relative flex-shrink-0" ref={downloadRef}>
               <button
                 type="button"
                 disabled={!!downloadingFormat}
                 onClick={() => setDownloadOpen(!downloadOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 xl:px-3 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                className="h-9 px-2 xl:px-2.5 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 id="topbar-download-btn"
                 title="Download report"
               >
                 {downloadingFormat ? (
-                  <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
                 ) : (
-                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <Download className="w-3.5 h-3.5 flex-shrink-0" />
                 )}
                 <span className="hidden xl:inline whitespace-nowrap">
                   {downloadingFormat
@@ -969,15 +971,16 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* User Profile / Authentication Menu */}
+            {/* User Profile / Authentication Menu (With Display Size inside) */}
             {currentUser ? (
               <div className="relative flex-shrink-0" ref={profileRef}>
                 <button
                   type="button"
                   onClick={() => setProfileOpen((prev) => !prev)}
-                  className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-all text-xs font-semibold"
+                  className="h-9 px-2 xl:px-2.5 rounded-md flex items-center gap-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-all text-xs font-semibold focus:outline-none"
+                  id="topbar-user-menu-btn"
                 >
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
                     currentUser.role === 'admin'
                       ? 'bg-rose-600'
                       : currentUser.role === 'management'
@@ -986,7 +989,7 @@ export default function Topbar() {
                   }`}>
                     {currentUser.name?.[0]?.toUpperCase() || 'U'}
                   </div>
-                  <span className="text-[var(--text-primary)] max-w-[100px] truncate hidden md:inline">
+                  <span className="text-[var(--text-primary)] max-w-[80px] truncate hidden md:inline">
                     {currentUser.name}
                   </span>
                   <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
@@ -998,19 +1001,47 @@ export default function Topbar() {
                   }`}>
                     {currentUser.role}
                   </span>
-                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)] flex-shrink-0" />
                 </button>
 
                 {profileOpen && (
                   <div className="absolute right-0 top-full mt-1.5 w-60 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl z-50 py-2 overflow-hidden">
-                    <div className="px-3.5 py-2.5 border-b border-[var(--border)]">
+                    <div className="px-3.5 py-2 border-b border-[var(--border)]">
                       <div className="font-bold text-xs text-[var(--text-primary)]">{currentUser.name}</div>
                       <div className="text-[11px] text-[var(--text-muted)] truncate">{currentUser.email}</div>
                       {currentUser.owner_name && (
-                        <div className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-1">
+                        <div className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-0.5">
                           Owner: {currentUser.owner_name}
                         </div>
                       )}
+                    </div>
+
+                    {/* Display Size inside User Menu */}
+                    <div className="py-1.5 border-b border-[var(--border)]" id="topbar-display-size-menu">
+                      <div className="px-3.5 py-1 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
+                        <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
+                        <span>Display Size</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 px-2.5 py-1">
+                        {DISPLAY_SIZE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              saveDisplaySize(opt.value)
+                              setCurrentDisplaySize(opt.value)
+                            }}
+                            className={`px-2 py-1 text-xs rounded-md text-left transition-colors flex items-center justify-between ${
+                              currentDisplaySize === opt.value
+                                ? 'bg-[#00A3AD]/15 text-[#00A3AD] font-bold'
+                                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
+                            }`}
+                          >
+                            <span className="truncate">{opt.label.replace(' (fit to screen)', '')}</span>
+                            {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="py-1">
@@ -1046,7 +1077,7 @@ export default function Topbar() {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <a
                   href="/login"
-                  className="h-9 sm:h-10 px-3 rounded-xl flex items-center gap-1.5 bg-[#12284C] text-white hover:bg-[#1a386b] text-xs font-semibold shadow-sm transition-all"
+                  className="h-9 px-3 rounded-md flex items-center gap-1.5 bg-[#12284C] text-white hover:bg-[#1a386b] text-xs font-semibold shadow-sm transition-all"
                 >
                   <UserIcon className="w-3.5 h-3.5" />
                   <span>Sign In</span>
@@ -1054,58 +1085,11 @@ export default function Topbar() {
               </div>
             )}
 
-            {/* Display Size selector */}
-            <div className="relative flex-shrink-0" ref={displaySizeRef} id="topbar-display-size">
-              <button
-                type="button"
-                onClick={() => setDisplaySizeOpen((prev) => !prev)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0 text-xs font-medium"
-                id="topbar-display-size-btn"
-                title="Display size (fit to screen / zoom)"
-              >
-                <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
-                <span className="hidden xl:inline">
-                  {DISPLAY_SIZE_OPTIONS.find((o) => o.value === currentDisplaySize)?.label.replace(' (fit to screen)', '') || 'Auto'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
-              </button>
-
-              {displaySizeOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1.5 w-44 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 py-1"
-                  id="topbar-display-size-menu"
-                >
-                  <div className="px-3 py-1.5 border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                    Display Size
-                  </div>
-                  {DISPLAY_SIZE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => {
-                        saveDisplaySize(opt.value)
-                        setCurrentDisplaySize(opt.value)
-                        setDisplaySizeOpen(false)
-                      }}
-                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
-                        currentDisplaySize === opt.value
-                          ? 'bg-[#00A3AD]/10 text-[#00A3AD] font-semibold'
-                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Theme toggle */}
             <button
               type="button"
               onClick={toggleDarkMode}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
+              className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
               id="topbar-theme-toggle"
               title={darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >

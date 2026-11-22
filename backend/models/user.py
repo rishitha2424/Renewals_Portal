@@ -11,7 +11,7 @@ from sqlalchemy import (
     String, Integer, Boolean, DateTime, Text, ForeignKey,
     Index, UniqueConstraint, func
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from backend.database import Base
 
@@ -47,9 +47,15 @@ class UserAlias(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     alias: Mapped[str] = mapped_column(String(256), index=True, nullable=False)
+    alias_name = synonym("alias")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user: Mapped[User] = relationship("User", back_populates="aliases")
+
+    def __init__(self, *args, **kwargs):
+        if "alias_name" in kwargs and "alias" not in kwargs:
+            kwargs["alias"] = kwargs.pop("alias_name")
+        super().__init__(*args, **kwargs)
 
     __table_args__ = (
         UniqueConstraint("user_id", "alias", name="uq_user_alias"),

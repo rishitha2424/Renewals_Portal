@@ -146,7 +146,11 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/invite/:token" element={<SetPassword />} />
+        <Route path="/invite" element={<SetPassword />} />
         <Route path="/reset-password/:token" element={<SetPassword />} />
+        <Route path="/reset-password" element={<SetPassword />} />
+        <Route path="/set-password/:token" element={<SetPassword />} />
+        <Route path="/set-password" element={<SetPassword />} />
         <Route path="/loading" element={<LoadingScreen />} />
         {/* Protected Application Routes */}
         <Route element={<ProtectedRoute />}>
