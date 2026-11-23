@@ -9,6 +9,7 @@ import {
   Calendar,
   GitCompare,
   FileSpreadsheet,
+  FileText,
   Presentation,
   Filter,
   Bookmark,
@@ -31,7 +32,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
-import { getSnapshots, getFilterOptions, downloadReport, authChangePassword } from '@/api/client'
+import { getSnapshots, getFilterOptions, downloadReport, downloadKamReport, authChangePassword } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
 import {
@@ -60,7 +61,7 @@ export default function Topbar() {
   } = useAppStore()
 
   const [downloadOpen, setDownloadOpen] = useState(false)
-  const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
+  const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | 'pdf' | null>(null)
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false)
   const [savedViewsOpen, setSavedViewsOpen] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -278,13 +279,24 @@ export default function Topbar() {
     return `${scopeName} · ${qLabel} · as of ${formattedDate}`
   }
 
-  const handleDownload = async (type: 'pptx' | 'xlsx', scope: string = 'renewals') => {
+  const handleDownload = async (type: 'pptx' | 'xlsx' | 'pdf', scope: string = 'renewals') => {
     if (downloadingFormat) return
     setDownloadingFormat(type)
     setDownloadOpen(false)
     try {
-      const { filename } = await downloadReport(type, activeSnapshotId, compareSnapshotId, scope)
-      showToast.success('Report downloaded', filename)
+      if (currentUser?.role === 'kam') {
+        const kamType = type === 'xlsx' ? 'pptx' : (type as 'pptx' | 'pdf')
+        const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
+        const { filename } = await downloadKamReport(kamType, {
+          as_of: activeSnap?.snapshot_date,
+          period: globalFilters.period,
+          types: typesStr,
+        })
+        showToast.success('Report downloaded', filename)
+      } else {
+        const { filename } = await downloadReport(type as 'pptx' | 'xlsx', activeSnapshotId, compareSnapshotId, scope)
+        showToast.success('Report downloaded', filename)
+      }
     } catch (err: any) {
       showToast.error(
         'Download failed',
@@ -869,7 +881,7 @@ export default function Topbar() {
                 onClick={() => setDownloadOpen(!downloadOpen)}
                 className="h-9 px-2 xl:px-2.5 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 id="topbar-download-btn"
-                title="Download report"
+                title={currentUser?.role === 'kam' ? 'My report' : 'Download report'}
               >
                 {downloadingFormat ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
@@ -880,7 +892,11 @@ export default function Topbar() {
                   {downloadingFormat
                     ? downloadingFormat === 'pptx'
                       ? 'Generating PPTX...'
+                      : downloadingFormat === 'pdf'
+                      ? 'Generating PDF...'
                       : 'Generating Excel...'
+                    : currentUser?.role === 'kam'
+                    ? 'My report'
                     : 'Download report'}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 opacity-80 flex-shrink-0 hidden sm:inline" />
@@ -888,79 +904,124 @@ export default function Topbar() {
 
               {downloadOpen && (
                 <div className="absolute right-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-[100] divide-y divide-[var(--border)]">
-                  <div className="py-1">
-                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                      Renewals Scope (Default)
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('pptx', 'renewals')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-pptx-btn"
-                    >
-                      {downloadingFormat === 'pptx' ? (
-                        <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
-                      ) : (
-                        <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                      )}
-                      <div className="flex-1">
-                        <p className="font-medium">PowerPoint (.pptx)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
-                      </div>
-                    </button>
+                  {currentUser?.role === 'kam' ? (
+                    <div className="py-1">
+                      <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        My Portfolio Report
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!!downloadingFormat}
+                        onClick={() => handleDownload('pdf')}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        id="topbar-download-pdf-btn"
+                      >
+                        {downloadingFormat === 'pdf' ? (
+                          <Loader2 className="w-4 h-4 text-rose-500 animate-spin flex-shrink-0" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">PDF (.pdf)</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">Branded executive summary</p>
+                        </div>
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('xlsx', 'renewals')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-excel-btn"
-                    >
-                      {downloadingFormat === 'xlsx' ? (
-                        <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
-                      ) : (
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      )}
-                      <div className="flex-1">
-                        <p className="font-medium">Excel (.xlsx)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
-                      </div>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        disabled={!!downloadingFormat}
+                        onClick={() => handleDownload('pptx')}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        id="topbar-download-pptx-btn"
+                      >
+                        {downloadingFormat === 'pptx' ? (
+                          <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                        ) : (
+                          <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">PowerPoint (.pptx)</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">My portfolio deck (5 slides)</p>
+                        </div>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="py-1">
+                        <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                          Renewals Scope (Default)
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('pptx', 'renewals')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-pptx-btn"
+                        >
+                          {downloadingFormat === 'pptx' ? (
+                            <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                          ) : (
+                            <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <p className="font-medium">PowerPoint (.pptx)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
+                          </div>
+                        </button>
 
-                  <div className="py-1">
-                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                      Full Sheet (All Sales Types)
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('pptx', 'full')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-pptx-full-btn"
-                    >
-                      <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="font-medium">PowerPoint (Full Sheet)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('xlsx', 'renewals')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-excel-btn"
+                        >
+                          {downloadingFormat === 'xlsx' ? (
+                            <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
+                          ) : (
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <p className="font-medium">Excel (.xlsx)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
+                          </div>
+                        </button>
                       </div>
-                    </button>
 
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('xlsx', 'full')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-excel-full-btn"
-                    >
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="font-medium">Excel (Full Sheet)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      <div className="py-1">
+                        <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                          Full Sheet (All Sales Types)
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('pptx', 'full')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-pptx-full-btn"
+                        >
+                          <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium">PowerPoint (Full Sheet)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('xlsx', 'full')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-excel-full-btn"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium">Excel (Full Sheet)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                          </div>
+                        </button>
                       </div>
-                    </button>
-                  </div>
+                    </>
+                  )}
 
                   <div className="px-2.5 py-1.5 bg-[var(--bg-secondary)]/50 rounded-b-lg">
                     <p className="text-[10px] font-medium text-[var(--text-muted)] text-center">

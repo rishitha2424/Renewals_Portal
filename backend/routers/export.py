@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, require_management_or_admin
 from backend.services.pptx_export_service import PptxExportService
 from backend.services.excel_export_service import ExcelExportService
 
@@ -45,7 +45,7 @@ def export_pptx(
     approval_statuses: Optional[List[str]] = Query(None),
     approval_statuses_bracket: Optional[List[str]] = Query(None, alias="approval_statuses[]"),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """
     Generate and stream PowerPoint presentation (.pptx) populated with renewals data.
@@ -101,7 +101,7 @@ def export_excel(
     approval_statuses: Optional[List[str]] = Query(None),
     approval_statuses_bracket: Optional[List[str]] = Query(None, alias="approval_statuses[]"),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """
     Generate and stream multi-sheet formatted Excel workbook (.xlsx).

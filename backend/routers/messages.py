@@ -107,7 +107,7 @@ def send_deal_message(
 
     # 4. Queue email notification
     deal_title = opp.opportunity_name or opp.opportunity_id_18
-    MailService.template_new_message(db, kam_user, sender_name, deal_title, req.deal_id, req.body)
+    MailService.template_new_message(db, kam_user, sender_name, deal_title, req.deal_id, req.body, subject=req.subject)
 
     log_audit_event(
         db,
@@ -218,16 +218,28 @@ def list_message_threads(
     - Admin: all threads.
     Supports filtering by deal_id, thread_status, q (search text), owner, and sender.
     """
-    query = db.query(DealMessage).filter(DealMessage.parent_id == None)
+    query = db.query(DealMessage).filter(DealMessage.thread_id == DealMessage.id)
 
     if deal_id:
         query = query.filter(DealMessage.deal_id == deal_id)
     if thread_status:
         query = query.filter(DealMessage.thread_status == thread_status)
 
+    owned_deal_ids = []
     if ctx.is_kam:
-        # Must involve the KAM
-        query = query.filter(or_(DealMessage.recipient_id == ctx.user_id, DealMessage.sender_id == ctx.user_id))
+        owned_deal_ids = [
+            r[0] for r in db.query(Opportunity.opportunity_id_18)
+            .filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
+            .distinct()
+            .all()
+        ]
+        kam_conds = [
+            DealMessage.recipient_id == ctx.user_id,
+            DealMessage.sender_id == ctx.user_id,
+        ]
+        if owned_deal_ids:
+            kam_conds.append(DealMessage.deal_id.in_(owned_deal_ids))
+        query = query.filter(or_(*kam_conds))
     elif ctx.is_management:
         # Management sees threads they started or where they are recipient
         query = query.filter(or_(DealMessage.sender_id == ctx.user_id, DealMessage.recipient_id == ctx.user_id))
@@ -241,12 +253,18 @@ def list_message_threads(
         # Count replies and unread
         replies = (
             db.query(DealMessage)
-            .filter(DealMessage.parent_id == rm.id)
+            .filter(DealMessage.thread_id == rm.id, DealMessage.id != rm.id)
             .order_by(DealMessage.created_at.asc())
             .all()
         )
         all_msgs = [rm] + replies
-        unread_count = sum(1 for m in all_msgs if not m.is_read and str(m.recipient_id) == ctx.user_id)
+        if ctx.is_kam:
+            unread_count = sum(
+                1 for m in all_msgs
+                if not m.is_read and (str(m.recipient_id) == ctx.user_id or (m.deal_id in owned_deal_ids and m.sender_role != "kam"))
+            )
+        else:
+            unread_count = sum(1 for m in all_msgs if not m.is_read and str(m.recipient_id) == ctx.user_id)
 
         # Resolve opp title and owner
         opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == rm.deal_id).first()
@@ -307,7 +325,10 @@ def get_deal_thread(
     opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == deal_id).first()
     if ctx.is_kam:
         if opp and (opp.opportunity_owner or "").strip() not in ctx.all_owner_names:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access forbidden: You do not have access to this opportunity.",
+            )
 
     msgs = (
         db.query(DealMessage)
@@ -322,7 +343,8 @@ def get_deal_thread(
         recipient = db.query(User).filter(User.id == m.recipient_id).first()
         results.append({
             "id": m.id,
-            "parent_id": m.parent_id,
+            "thread_id": m.thread_id,
+            "parent_id": m.thread_id,
             "deal_id": m.deal_id,
             "subject": m.subject,
             "body": m.body,
@@ -361,14 +383,13 @@ def mark_message_read(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found.")
 
     msg.is_read = True
-    msg.read_at = func.now()
 
     # Also mark all messages in thread addressed to current user as read
-    root_id = msg.parent_id or msg.id
+    root_id = msg.thread_id or msg.id
     db.query(DealMessage).filter(
-        or_(DealMessage.id == root_id, DealMessage.parent_id == root_id),
+        DealMessage.thread_id == root_id,
         DealMessage.recipient_id == ctx.user_id,
-    ).update({"is_read": True, "read_at": func.now()})
+    ).update({"is_read": True})
 
     db.commit()
     return {"status": "marked_read"}
@@ -389,7 +410,7 @@ def resolve_thread(
     root.thread_status = new_status
 
     # Update all child messages
-    db.query(DealMessage).filter(DealMessage.parent_id == root.id).update({"thread_status": new_status})
+    db.query(DealMessage).filter(DealMessage.thread_id == root.id).update({"thread_status": new_status})
     db.commit()
 
     log_audit_event(db, "thread_status_toggle", user_id=ctx.user_id, details={"thread_id": thread_id, "new_status": new_status})

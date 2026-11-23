@@ -15,9 +15,11 @@ from sqlalchemy import func
 from backend.database import get_db
 from backend.models.snapshot import UploadSnapshot
 from backend.models.opportunity import Opportunity
+from backend.services.context import UserContext, get_user_context
 from backend.services.scopes import (
     ScopeService,
     REGION_MAP,
+    CANONICAL_TO_REV,
     CANONICAL_FORECAST_CATEGORIES,
     CANONICAL_APPROVAL_STATUSES,
 )
@@ -29,6 +31,7 @@ router = APIRouter(prefix="/api/v2/filters", tags=["v2-filters"])
 def get_filter_options(
     as_of: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
 ) -> Dict[str, Any]:
     # 1. Resolve snapshot
     snap_q = db.query(UploadSnapshot)
@@ -85,6 +88,8 @@ def get_filter_options(
 
     # Query all opportunities in active snapshot
     opps_q = db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+    if ctx and ctx.is_kam:
+        opps_q = opps_q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
     if exclude_recon:
         opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
     opps = opps_q.all()
@@ -133,15 +138,25 @@ def get_filter_options(
         "Other": 0,
     }
     for o in opps:
-        sub = (o.revised_sub_region or "").strip()
-        can = REGION_MAP.get(sub, "Other")
+        sub = (o.revised_sub_region or o.sub_region or "").strip()
+        if sub in CANONICAL_TO_REV:
+            can = sub
+        else:
+            can = REGION_MAP.get(sub, "Other")
         reg_counts[can] = reg_counts.get(can, 0) + 1
 
-    regions = [
-        {"key": r, "value": r, "label": r, "count": count}
-        for r, count in reg_counts.items()
-        if count > 0 or r != "Other"
-    ]
+    if ctx and ctx.is_kam:
+        regions = [
+            {"key": r, "value": r, "label": r, "count": count}
+            for r, count in reg_counts.items()
+            if count > 0
+        ]
+    else:
+        regions = [
+            {"key": r, "value": r, "label": r, "count": count}
+            for r, count in reg_counts.items()
+            if count > 0 or r != "Other"
+        ]
 
     # 4. Business Units (Atomic pieces and raw combinations)
     atomic_bu_counts: Dict[str, int] = {}

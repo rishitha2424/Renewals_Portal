@@ -38,6 +38,14 @@ def round19_db():
 
     # 1. Seed accounts
     ensure_default_accounts(db)
+    mgmt = db.query(User).filter(User.role == "management").first()
+    if mgmt:
+        mgmt.status = "active"
+        from datetime import datetime, timezone
+        mgmt.last_login = datetime.now(timezone.utc)
+        from backend.services.auth_service import hash_password
+        mgmt.password_hash = hash_password(settings.ADMIN_PASSWORD)
+        db.commit()
 
     # 2. Seed Snapshot
     snap = UploadSnapshot(

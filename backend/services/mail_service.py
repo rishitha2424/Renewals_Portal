@@ -346,6 +346,7 @@ class MailService:
         deal_title: str,
         deal_id: str,
         body: str,
+        subject: Optional[str] = None,
     ) -> Optional[EmailOutbox]:
         """Queue notification email for a new deal message."""
         email = getattr(recipient_user, "email", None)
@@ -358,7 +359,7 @@ class MailService:
             sender_name=sender_name,
             deal_name=deal_title,
             deal_id=deal_id,
-            subject_text=body[:50] if body else "New Message",
+            subject_text=subject or (body[:50] if body else "New Message"),
             body=body,
             thread_link=thread_link,
         )

@@ -8,6 +8,7 @@ import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -338,7 +339,7 @@ def get_global_audit_log(
     return {"audit": entries, "count": len(entries)}
 
 
-@router.get("/audit/export")
+@router.get("/audit/export", dependencies=[Depends(require_management_or_admin)])
 def export_global_audit_log(
     user: Optional[str] = Query(None),
     column: Optional[str] = Query(None),
@@ -346,7 +347,7 @@ def export_global_audit_log(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """Download the change log as CSV."""
     import csv
@@ -525,6 +526,61 @@ def add_deal_comment(
             author_role=author_role,
             user_display=user_disp,
         )
+
+        # When management/admin adds a comment shared with owner, notify the KAM and queue email
+        if vis in ("shared", "shared_with_owner") and author_role != "kam":
+            try:
+                opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+                if opp and opp.opportunity_owner:
+                    owner_clean = opp.opportunity_owner.strip()
+                    from backend.models.user import User, UserAlias, DealMessage
+                    from backend.services.mail_service import MailService
+                    import uuid
+
+                    kam_user = (
+                        db.query(User)
+                        .filter(func.lower(User.owner_name) == owner_clean.lower())
+                        .first()
+                    )
+                    if not kam_user:
+                        alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
+                        if alias:
+                            kam_user = alias.user
+
+                    if kam_user:
+                        msg_id = str(uuid.uuid4())
+                        deal_title = opp.opportunity_name or opportunity_id
+                        admin_first = db.query(User.id).filter(User.role == "admin").first()
+                        caller_uid = ctx.user_id if ctx.user_id and ctx.user_id != "admin" else (admin_first[0] if admin_first else None)
+                        msg = DealMessage(
+                            id=msg_id,
+                            deal_id=opportunity_id,
+                            thread_id=msg_id,
+                            sender_id=caller_uid,
+                            sender_name=author_name,
+                            sender_role=author_role,
+                            recipient_id=kam_user.id,
+                            recipient_name=kam_user.name or kam_user.email,
+                            subject=f"New comment on {deal_title}",
+                            body=f"{author_name} added a comment: {body.text.strip()}",
+                            priority="normal",
+                            is_read=False,
+                            thread_status="open",
+                        )
+                        db.add(msg)
+                        db.commit()
+                        MailService.template_new_message(
+                            db,
+                            kam_user,
+                            author_name,
+                            deal_title,
+                            opportunity_id,
+                            f"{author_name} added a comment on your deal:\n\n\"{body.text.strip()}\"",
+                        )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to queue notification for shared comment: %s", e)
+
         return {"comment": comment}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -641,11 +697,11 @@ def run_daily_backup(
     return {"status": "success", "file": filepath}
 
 
-@router.get("/export-full-excel")
+@router.get("/export-full-excel", dependencies=[Depends(require_management_or_admin)])
 def export_full_excel(
     snapshot_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """Download full Excel with original columns and custom columns for a snapshot."""
     from backend.services.full_excel_export_service import FullExcelExportService

@@ -2,12 +2,16 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, get_user_context, require_management_or_admin
 from backend.services.v2_expiry_service import V2ExpiryService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
 
-router = APIRouter(prefix="/api/v2/expiry", tags=["v2_expiry"])
+router = APIRouter(
+    prefix="/api/v2/expiry",
+    tags=["v2_expiry"],
+    dependencies=[Depends(require_management_or_admin)],
+)
 
 @router.get("/summary")
 def get_summary(

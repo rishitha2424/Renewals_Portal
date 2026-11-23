@@ -13,14 +13,18 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, get_user_context, require_management_or_admin
 from backend.services.explorer_service import (
     ExplorerService,
     ExplorerRowsRequest,
     ExplorerExportRequest,
 )
 
-router = APIRouter(prefix="/api/v2/explorer", tags=["v2-explorer"])
+router = APIRouter(
+    prefix="/api/v2/explorer",
+    tags=["v2-explorer"],
+    dependencies=[Depends(require_management_or_admin)],
+)
 
 
 @router.get("/columns")

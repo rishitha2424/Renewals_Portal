@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, get_user_context, require_management_or_admin, require_authenticated
 from backend.services.opportunity_service import OpportunityService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
@@ -36,7 +36,7 @@ def list_opportunities(
     include_deleted_lost: bool = Query(False),
     filter_spec: FilterSpec = Depends(get_filter_spec),
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_authenticated),
 ):
     return svc.list_opportunities(
         ctx,
@@ -77,7 +77,7 @@ def export_opportunities(
     scope: str = Query("renewals"),
     include_deleted_lost: bool = Query(False),
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     csv_data = svc.export_opportunities_csv(
         ctx,
@@ -107,7 +107,7 @@ def export_opportunities(
 def filter_options(
     snapshot_id: Optional[str] = Query(None),
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_authenticated),
 ):
     return svc.get_filter_options(ctx, snapshot_id)
 
@@ -116,7 +116,7 @@ def filter_options(
 def opportunity_history(
     opp_id: str,
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_authenticated),
 ):
     return svc.get_opportunity_history(ctx, opp_id)
 
@@ -125,7 +125,7 @@ def opportunity_history(
 def opportunity_changelog(
     opp_id: str,
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_authenticated),
 ):
     return svc.get_opportunity_changelog(ctx, opp_id)
 
@@ -135,7 +135,7 @@ def get_opportunity(
     opp_id: str,
     snapshot_id: Optional[str] = Query(None),
     svc: OpportunityService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_authenticated),
 ):
     result = svc.get_opportunity(ctx, opp_id, snapshot_id)
     if result is None:

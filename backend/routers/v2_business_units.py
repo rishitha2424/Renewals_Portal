@@ -3,12 +3,16 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from backend.database import get_db
-from backend.services.context import get_user_context, UserContext
+from backend.services.context import get_user_context, UserContext, require_management_or_admin
 from backend.services.v2_business_units_service import V2BusinessUnitsService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
 
-router = APIRouter(prefix="/api/v2/business-units", tags=["business-units-v2"])
+router = APIRouter(
+    prefix="/api/v2/business-units",
+    tags=["business-units-v2"],
+    dependencies=[Depends(require_management_or_admin)],
+)
 
 
 @router.get("/summary")

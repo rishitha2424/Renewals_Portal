@@ -1127,9 +1127,47 @@ export const markMessageRead = async (messageId: string) => {
 }
 
 // ── KAM Portal Endpoints ─────────────────────────────────────────────────────
-export const getKamOverview = async (params: { as_of?: string; period?: string } = {}) => {
-  const res = await api.get('/kam/overview', { params })
+export const getKamOverview = async (params: { as_of?: string | null; period?: string | null; types?: string | null } = {}) => {
+  const p: any = {}
+  if (params.as_of) p.as_of = params.as_of
+  if (params.period) p.period = params.period
+  if (params.types) p.types = params.types
+  const res = await api.get('/kam/overview', { params: p })
   return res.data
+}
+
+export const downloadKamReport = async (
+  format: 'pptx' | 'pdf',
+  params: { as_of?: string | null; period?: string | null; types?: string | null } = {}
+): Promise<{ blob: Blob; filename: string }> => {
+  const p: any = {}
+  if (params.as_of) p.as_of = params.as_of
+  if (params.period) p.period = params.period
+  if (params.types) p.types = params.types
+  const res = await api.get(`/kam/report/${format}`, {
+    params: p,
+    responseType: 'blob',
+  })
+  const disposition = res.headers['content-disposition'] || ''
+  let filename = `KAM_Report.${format}`
+  const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+  if (match && match[1]) {
+    filename = match[1].replace(/['"]/g, '')
+  }
+  const blob = new Blob([res.data], {
+    type: format === 'pptx'
+      ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      : 'application/pdf',
+  })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+  return { blob, filename }
 }
 
 export const getKamDeals = async (params: {

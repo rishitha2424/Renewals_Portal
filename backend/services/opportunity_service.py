@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
@@ -313,7 +314,10 @@ class OpportunityService:
         if ctx and ctx.is_kam:
             owner = (opp.opportunity_owner or "").strip()
             if owner not in ctx.all_owner_names:
-                return None
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access forbidden: You do not have access to this opportunity.",
+                )
         data = self._to_dict(opp)
         from backend.services.risk_service import RiskService
         risk_svc = RiskService(self.db)
@@ -328,7 +332,12 @@ class OpportunityService:
         """Return field values across all snapshots for a single opportunity."""
         if ctx and ctx.is_kam:
             opp_check = self.db.query(Opportunity.opportunity_owner).filter(Opportunity.opportunity_id_18 == opp_id).first()
-            if not opp_check or (opp_check[0] or "").strip() not in ctx.all_owner_names:
+            if opp_check and (opp_check[0] or "").strip() not in ctx.all_owner_names:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access forbidden: You do not have access to this opportunity.",
+                )
+            if not opp_check:
                 return []
         opps = (
             self.db.query(Opportunity, UploadSnapshot)
@@ -346,7 +355,12 @@ class OpportunityService:
         """Return all changelog entries for a single opportunity."""
         if ctx and ctx.is_kam:
             opp_check = self.db.query(Opportunity.opportunity_owner).filter(Opportunity.opportunity_id_18 == opp_id).first()
-            if not opp_check or (opp_check[0] or "").strip() not in ctx.all_owner_names:
+            if opp_check and (opp_check[0] or "").strip() not in ctx.all_owner_names:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access forbidden: You do not have access to this opportunity.",
+                )
+            if not opp_check:
                 return []
         changes = (
             self.db.query(ChangeLog)
@@ -376,6 +390,8 @@ class OpportunityService:
 
         from backend.services.settings_service import SettingsService
         opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        if ctx and ctx.is_kam:
+            opps_q = opps_q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
         if SettingsService.get_exclude_reconciliation_entry(self.db):
             opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
         opps = opps_q.all()
