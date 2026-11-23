@@ -989,35 +989,79 @@ export const getAuditLogs = async (params: { page?: number; limit?: number; acti
 }
 
 // ── Email Admin & Outbox ─────────────────────────────────────────────────────
+export interface MailDiagnosticVariable {
+  set: boolean
+  value: string | boolean | number
+}
+
+export interface MailDiagnostics {
+  env_file_path: string
+  env_file_exists: boolean
+  mail_enabled: boolean
+  is_configured: boolean
+  inactive_reason: string
+  variables: Record<string, MailDiagnosticVariable>
+}
+
 export interface EmailOutboxItem {
   id: string
-  to_email: string
+  recipient_email: string
+  to_email?: string
+  recipient_name?: string
   subject: string
   body_text?: string
-  status: 'pending' | 'sent' | 'failed'
+  template?: string
+  template_type?: string
+  status: string
+  attempts?: number
+  retry_count?: number
   error_message?: string
   created_at: string
   sent_at?: string
 }
 
 export interface EmailOutboxResponse {
-  emails: any[]
+  emails: EmailOutboxItem[]
+  outbox?: EmailOutboxItem[]
   total_count: number
   smtp_configured: boolean
+  inactive_reason?: string
+  config?: any
+  diagnostics?: MailDiagnostics
 }
 
 export const getEmailOutbox = async (params: { status?: string; limit?: number } = {}): Promise<EmailOutboxResponse> => {
-  const res = await api.get('/email-admin/outbox', { params })
+  const res = await api.get('/admin/email/outbox', { params })
   return res.data
 }
 
-export const sendTestEmail = async (to_email: string) => {
-  const res = await api.post('/email-admin/test', { to_email })
+export const getEmailDiagnostics = async (): Promise<MailDiagnostics> => {
+  const res = await api.get('/admin/email/diagnostics')
   return res.data
 }
 
-export const resendPendingEmails = async () => {
-  const res = await api.post('/email-admin/resend-pending')
+export const sendTestEmail = async (to_email: string): Promise<{ status: string; delivered: boolean; detail: string }> => {
+  const res = await api.post('/admin/email/test', { recipient_email: to_email, to_email })
+  return res.data
+}
+
+export const resendPendingEmails = async (): Promise<{ status: string; dispatched: number; sent_count: number; retried_count: number; failed_count: number }> => {
+  const res = await api.post('/admin/email/resend-pending')
+  return res.data
+}
+
+export const cancelOutboxEmail = async (itemId: string): Promise<{ status: string; id: string; item_status: string }> => {
+  const res = await api.post(`/admin/email/outbox/${itemId}/cancel`)
+  return res.data
+}
+
+export const deleteOutboxEmail = async (itemId: string): Promise<{ status: string; deleted_id: string }> => {
+  const res = await api.delete(`/admin/email/outbox/${itemId}`)
+  return res.data
+}
+
+export const sendOutboxEmailNow = async (itemId: string): Promise<{ status: string; delivered: boolean; detail: string; item_status: string }> => {
+  const res = await api.post(`/admin/email/outbox/${itemId}/send-now`)
   return res.data
 }
 

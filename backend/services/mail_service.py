@@ -9,28 +9,76 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import socket
+import ssl
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 
-from backend.config import settings
+from backend.config import settings, get_env_file_path
 from backend.models.user import EmailOutbox
 
 log = logging.getLogger(__name__)
 
 
+def _sanitize_error(err_str: str) -> str:
+    """Mask any passwords, auth tokens, or sensitive credentials in error strings."""
+    if not err_str:
+        return ""
+    res = str(err_str)
+    if settings.SMTP_PASSWORD and settings.SMTP_PASSWORD in res:
+        res = res.replace(settings.SMTP_PASSWORD, "***")
+    if settings.ADMIN_PASSWORD and settings.ADMIN_PASSWORD in res:
+        res = res.replace(settings.ADMIN_PASSWORD, "***")
+    if settings.ADMIN_SECRET_KEY and settings.ADMIN_SECRET_KEY in res:
+        res = res.replace(settings.ADMIN_SECRET_KEY, "***")
+    return res
+
+
 class MailService:
-    @staticmethod
-    def is_configured() -> bool:
-        """Returns True if MAIL_ENABLED is True and required SMTP fields are populated."""
-        return bool(
-            settings.MAIL_ENABLED
-            and settings.SMTP_HOST
-            and settings.SMTP_PORT
-            and settings.MAIL_FROM
-        )
+    @classmethod
+    def is_configured(cls) -> bool:
+        """Returns True if MAIL_ENABLED is True and all required SMTP fields are populated."""
+        if not bool(settings.MAIL_ENABLED):
+            return False
+        if not (settings.SMTP_HOST and str(settings.SMTP_HOST).strip()):
+            return False
+        if not settings.SMTP_PORT:
+            return False
+        if not (settings.MAIL_FROM and str(settings.MAIL_FROM).strip()):
+            return False
+        if settings.SMTP_USER and not (settings.SMTP_PASSWORD and str(settings.SMTP_PASSWORD).strip()):
+            return False
+        return True
+
+    @classmethod
+    def get_inactive_reason(cls) -> str:
+        """Returns the specific human-readable reason why mail is inactive or active."""
+        env_path = get_env_file_path()
+        if not env_path.exists():
+            return f".env file not found at {env_path}"
+        if not bool(settings.MAIL_ENABLED):
+            return "MAIL_ENABLED is false"
+        if not (settings.SMTP_HOST and str(settings.SMTP_HOST).strip()):
+            return "SMTP_HOST missing"
+        if not settings.SMTP_PORT:
+            return "SMTP_PORT missing or invalid"
+        if not (settings.MAIL_FROM and str(settings.MAIL_FROM).strip()):
+            return "MAIL_FROM missing"
+        if settings.SMTP_USER and not (settings.SMTP_PASSWORD and str(settings.SMTP_PASSWORD).strip()):
+            return "SMTP_PASSWORD missing"
+        return "Mail is active and configured"
+
+    @classmethod
+    def get_diagnostics(cls) -> dict:
+        """Return safe mail diagnostics with secrets masked."""
+        settings.reload_from_env()
+        diag = settings.get_mail_diagnostics()
+        diag["is_configured"] = cls.is_configured()
+        diag["inactive_reason"] = cls.get_inactive_reason()
+        return diag
 
     @classmethod
     def queue_email(
@@ -78,11 +126,12 @@ class MailService:
     def dispatch_outbox_item(cls, db: Session, outbox_id: str) -> bool:
         """Synchronously deliver a single queued email from outbox by ID with error tracking."""
         item = db.query(EmailOutbox).filter(EmailOutbox.id == outbox_id).first()
-        if not item:
+        if not item or item.status == "cancelled":
             return False
 
         if not cls.is_configured():
             item.status = "pending – email not configured"
+            item.error_message = cls.get_inactive_reason()
             db.commit()
             return False
 
@@ -100,7 +149,7 @@ class MailService:
             item.sent_at = datetime.now(timezone.utc)
         else:
             item.status = "failed"
-            item.error_message = err_msg
+            item.error_message = _sanitize_error(err_msg or "Delivery failed")
             item.retry_count = (item.retry_count or 0) + 1
 
         db.commit()
@@ -108,9 +157,11 @@ class MailService:
 
     @classmethod
     def send_test_email(cls, to_email: str) -> tuple[bool, str]:
-        """Send a test email to verify SMTP configuration."""
+        """Send a test email to verify SMTP configuration with clear, sanitized error reporting."""
+        settings.reload_from_env()
         if not cls.is_configured():
-            return False, "SMTP is not configured or MAIL_ENABLED is false in settings."
+            reason = cls.get_inactive_reason()
+            return False, f"SMTP transport is not active ({reason})."
 
         subject = "Mobileum Horizon — SMTP Test Email"
         body_html = f"""
@@ -122,33 +173,55 @@ class MailService:
         """
         body_text = f"Mobileum Horizon SMTP Test Email. Verification successful at {datetime.now(timezone.utc).isoformat()}."
 
-        return cls._send_smtp(
+        success, err_msg = cls._send_smtp(
             to_addr=to_email,
             subject=subject,
             body_html=body_html,
             body_text=body_text,
         )
+        if success:
+            return True, f"Test email delivered successfully to {to_email} via SMTP."
+        return False, _sanitize_error(err_msg or "SMTP delivery failed.")
 
     @classmethod
-    def resend_pending_emails(cls, db: Session, limit: int = 50) -> int:
+    def resend_pending_emails(cls, db: Session, limit: int = 50) -> dict:
         """Attempt sending items in pending or failed status once SMTP is configured."""
+        settings.reload_from_env()
         if not cls.is_configured():
-            return 0
+            return {
+                "dispatched": 0,
+                "sent_count": 0,
+                "retried_count": 0,
+                "failed_count": 0,
+                "reason": cls.get_inactive_reason(),
+            }
 
         pending_items = (
             db.query(EmailOutbox)
-            .filter(EmailOutbox.status.in_(["pending", "pending – email not configured", "failed"]))
+            .filter(
+                EmailOutbox.status.in_(["pending", "pending – email not configured", "failed"]),
+                EmailOutbox.status != "cancelled",
+            )
             .order_by(EmailOutbox.created_at.asc())
             .limit(limit)
             .all()
         )
 
         sent_count = 0
+        failed_count = 0
         for item in pending_items:
             success = cls.dispatch_outbox_item(db, item.id)
             if success:
                 sent_count += 1
-        return sent_count
+            else:
+                failed_count += 1
+
+        return {
+            "dispatched": sent_count,
+            "sent_count": sent_count,
+            "retried_count": len(pending_items),
+            "failed_count": failed_count,
+        }
 
     @classmethod
     def _send_smtp(
@@ -159,7 +232,11 @@ class MailService:
         body_text: str,
         recipient_name: Optional[str] = None,
     ) -> tuple[bool, Optional[str]]:
-        """Low-level SMTP connection and delivery with STARTTLS or SSL."""
+        """Low-level SMTP connection and delivery with STARTTLS or SSL, without leaking secrets."""
+        if getattr(settings, "TESTING", False):
+            log.info("TESTING mode: simulated successful SMTP delivery to %s", to_addr)
+            return True, None
+
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
@@ -189,10 +266,175 @@ class MailService:
 
             log.info("Email delivered successfully to %s", to_addr)
             return True, None
+        except smtplib.SMTPAuthenticationError as exc:
+            code = getattr(exc, "smtp_code", 535)
+            detail = getattr(exc, "smtp_error", b"")
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", errors="ignore")
+            err = f"SMTP authentication failed ({code}): Invalid credentials or app password required."
+            log.warning("SMTP auth failed for %s: %s", to_addr, err)
+            return False, err
+        except (smtplib.SMTPConnectError, ConnectionRefusedError) as exc:
+            err = f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+            log.warning("SMTP connect failed for %s: %s", to_addr, err)
+            return False, err
+        except (socket.timeout, TimeoutError):
+            err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+            log.warning("SMTP timeout for %s: %s", to_addr, err)
+            return False, err
+        except ssl.SSLError as exc:
+            err = f"TLS/SSL error communicating with {settings.SMTP_HOST}: {exc.reason if hasattr(exc, 'reason') else str(exc)}"
+            log.warning("SMTP SSL error for %s: %s", to_addr, err)
+            return False, _sanitize_error(err)
+        except socket.gaierror:
+            err = f"DNS lookup failed for SMTP host: {settings.SMTP_HOST}"
+            log.warning("SMTP DNS lookup failed: %s", err)
+            return False, err
         except Exception as exc:
-            err_msg = str(exc)
+            err_msg = _sanitize_error(str(exc))
             log.warning("Failed to send email to %s: %s", to_addr, err_msg)
             return False, err_msg
+
+    # =====================================================================
+    # Email Template Methods on MailService
+    # =====================================================================
+
+    @classmethod
+    def template_invite(cls, db: Session, user: Any, raw_token: str) -> Optional[EmailOutbox]:
+        """Queue invitation email for a user."""
+        email = getattr(user, "email", None)
+        if not email:
+            return None
+        name = getattr(user, "name", email)
+        invite_link = f"{settings.APP_BASE_URL}/set-password/{raw_token}"
+        subj, html, text = template_invite(name, invite_link)
+        return cls.queue_email(
+            db,
+            recipient_email=email,
+            recipient_name=name,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="invite",
+        )
+
+    @classmethod
+    def template_password_reset(cls, db: Session, user: Any, raw_token: str) -> Optional[EmailOutbox]:
+        """Queue password reset email for a user."""
+        email = getattr(user, "email", None)
+        if not email:
+            return None
+        name = getattr(user, "name", email)
+        reset_link = f"{settings.APP_BASE_URL}/reset-password/{raw_token}"
+        subj, html, text = template_password_reset(name, reset_link)
+        return cls.queue_email(
+            db,
+            recipient_email=email,
+            recipient_name=name,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="reset",
+        )
+
+    @classmethod
+    def template_new_message(
+        cls,
+        db: Session,
+        recipient_user: Any,
+        sender_name: str,
+        deal_title: str,
+        deal_id: str,
+        body: str,
+    ) -> Optional[EmailOutbox]:
+        """Queue notification email for a new deal message."""
+        email = getattr(recipient_user, "email", None)
+        if not email or not getattr(recipient_user, "email_notifications", True):
+            return None
+        name = getattr(recipient_user, "name", email)
+        thread_link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}"
+        subj, html, text = template_new_message(
+            recipient_name=name,
+            sender_name=sender_name,
+            deal_name=deal_title,
+            deal_id=deal_id,
+            subject_text=body[:50] if body else "New Message",
+            body=body,
+            thread_link=thread_link,
+        )
+        return cls.queue_email(
+            db,
+            recipient_email=email,
+            recipient_name=name,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="new_message",
+        )
+
+    @classmethod
+    def template_reply_message(
+        cls,
+        db: Session,
+        recipient_user: Any,
+        sender_name: str,
+        deal_title: str,
+        deal_id: str,
+        body: str,
+    ) -> Optional[EmailOutbox]:
+        """Queue notification email for a message thread reply."""
+        email = getattr(recipient_user, "email", None)
+        if not email or not getattr(recipient_user, "email_notifications", True):
+            return None
+        name = getattr(recipient_user, "name", email)
+        thread_link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}"
+        subj, html, text = template_reply_message(
+            recipient_name=name,
+            sender_name=sender_name,
+            deal_name=deal_title,
+            deal_id=deal_id,
+            body=body,
+            thread_link=thread_link,
+        )
+        return cls.queue_email(
+            db,
+            recipient_email=email,
+            recipient_name=name,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="reply_message",
+        )
+
+    @classmethod
+    def template_new_owner_alert(cls, db: Session, owner_name: str, deal_count: int) -> Optional[EmailOutbox]:
+        """Queue alert to admin when an unmatched owner is found in an upload."""
+        admin_email = settings.ADMIN_ALERT_EMAIL or settings.MAIL_FROM
+        admin_link = f"{settings.APP_BASE_URL}/admin/users"
+        subj, html, text = template_new_owner_alert(owner_name, deal_count, admin_link)
+        return cls.queue_email(
+            db,
+            recipient_email=admin_email,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="new_owner_alert",
+        )
+
+    @classmethod
+    def template_owner_missing_alert(cls, db: Session, owner_name: str) -> Optional[EmailOutbox]:
+        """Queue alert to admin when a known owner is missing from an upload."""
+        admin_email = settings.ADMIN_ALERT_EMAIL or settings.MAIL_FROM
+        admin_link = f"{settings.APP_BASE_URL}/admin/users"
+        subj, html, text = template_owner_missing_alert(owner_name, admin_link)
+        return cls.queue_email(
+            db,
+            recipient_email=admin_email,
+            subject=subj,
+            body_html=html,
+            body_text=text,
+            template_type="owner_missing_alert",
+        )
 
 
 # =====================================================================

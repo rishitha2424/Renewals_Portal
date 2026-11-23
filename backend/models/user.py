@@ -108,6 +108,7 @@ class EmailOutbox(Base):
     status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", nullable=False)  # 'sent', 'failed', 'pending – email not configured'
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    attempts = synonym("retry_count")
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 

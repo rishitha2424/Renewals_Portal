@@ -12,9 +12,21 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
+def get_env_file_path() -> Path:
+    """Return the absolute path to the .env file."""
+    candidates = [
+        ROOT_DIR / ".env",
+        Path.cwd() / ".env",
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return p.resolve()
+    return (ROOT_DIR / ".env").resolve()
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(ROOT_DIR / ".env"),
+        env_file=str(get_env_file_path()),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -125,6 +137,114 @@ class Settings(BaseSettings):
     MAIL_FROM: str = "renewals@mobileum.com"
     APP_BASE_URL: str = "http://localhost:5173"
     ADMIN_ALERT_EMAIL: str = "rishitha@mobileum.com"
+
+    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", mode="before")
+    @classmethod
+    def parse_bool_env(cls, v: Any) -> bool:
+        """Parse boolean values case-insensitively, handling string representations and whitespace."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        if isinstance(v, str):
+            cleaned = v.strip().strip("'\"").lower()
+            return cleaned in ("true", "1", "yes", "t", "on")
+        return bool(v)
+
+    @field_validator("SMTP_PORT", mode="before")
+    @classmethod
+    def parse_int_env(cls, v: Any) -> int:
+        """Parse port number integer safely from string representations."""
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str):
+            cleaned = v.strip().strip("'\"")
+            try:
+                return int(cleaned)
+            except ValueError:
+                return 587
+        return int(v)
+
+    def reload_from_env(self) -> None:
+        """Reload settings from .env and environment into this instance in-place."""
+        new_inst = Settings()
+        for k, v in new_inst.__dict__.items():
+            if not k.startswith("_"):
+                setattr(self, k, v)
+
+    def get_mail_diagnostics(self) -> dict:
+        """Return safe mail diagnostics with secrets masked."""
+        env_path = get_env_file_path()
+        file_exists = env_path.exists()
+
+        def _is_set(val: Any) -> bool:
+            if val is None:
+                return False
+            if isinstance(val, str):
+                return bool(val.strip())
+            return True
+
+        variables = {
+            "MAIL_ENABLED": {
+                "set": _is_set(self.MAIL_ENABLED),
+                "value": bool(self.MAIL_ENABLED),
+            },
+            "SMTP_HOST": {
+                "set": _is_set(self.SMTP_HOST),
+                "value": self.SMTP_HOST or "(not set)",
+            },
+            "SMTP_PORT": {
+                "set": _is_set(self.SMTP_PORT),
+                "value": self.SMTP_PORT,
+            },
+            "SMTP_USER": {
+                "set": _is_set(self.SMTP_USER),
+                "value": self.SMTP_USER or "(not set)",
+            },
+            "SMTP_PASSWORD": {
+                "set": _is_set(self.SMTP_PASSWORD),
+                "value": "***" if _is_set(self.SMTP_PASSWORD) else "(not set)",
+            },
+            "SMTP_STARTTLS": {
+                "set": _is_set(self.SMTP_STARTTLS),
+                "value": bool(self.SMTP_STARTTLS),
+            },
+            "SMTP_SSL": {
+                "set": _is_set(self.SMTP_SSL),
+                "value": bool(self.SMTP_SSL),
+            },
+            "MAIL_FROM": {
+                "set": _is_set(self.MAIL_FROM),
+                "value": self.MAIL_FROM or "(not set)",
+            },
+        }
+
+        # Determine exact reason why mail is active or inactive
+        if not file_exists:
+            inactive_reason = f".env file not found at {env_path}"
+        elif not self.MAIL_ENABLED:
+            inactive_reason = "MAIL_ENABLED is false"
+        elif not (self.SMTP_HOST and self.SMTP_HOST.strip()):
+            inactive_reason = "SMTP_HOST missing"
+        elif not self.SMTP_PORT:
+            inactive_reason = "SMTP_PORT missing or invalid"
+        elif not (self.MAIL_FROM and self.MAIL_FROM.strip()):
+            inactive_reason = "MAIL_FROM missing"
+        elif self.SMTP_USER and not (self.SMTP_PASSWORD and self.SMTP_PASSWORD.strip()):
+            inactive_reason = "SMTP_PASSWORD missing"
+        else:
+            inactive_reason = "Mail is active and configured"
+
+        is_configured = (inactive_reason == "Mail is active and configured")
+
+        return {
+            "env_file_path": str(env_path),
+            "env_file_exists": file_exists,
+            "mail_enabled": bool(self.MAIL_ENABLED),
+            "is_configured": is_configured,
+            "inactive_reason": inactive_reason,
+            "variables": variables,
+        }
 
     @property
     def is_cookie_secure(self) -> bool:
