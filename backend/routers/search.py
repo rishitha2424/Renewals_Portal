@@ -15,6 +15,7 @@ from backend.database import get_db
 from backend.models.opportunity import Opportunity
 from backend.models.snapshot import UploadSnapshot
 from backend.services.context import UserContext, require_authenticated
+from backend.services.scopes import ScopeService
 from backend.config import settings
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -31,8 +32,8 @@ def global_search(
 ) -> Dict[str, Any]:
     """
     Search opportunities, accounts, and regions matching term `q`.
-    Respects snapshot scope, excluded stages, reconciliation entry = False,
-    and strict KAM ownership isolation.
+    Respects snapshot scope, Sales Type = Renewals, excluded stages,
+    reconciliation entry = False, and strict KAM ownership isolation.
     """
     clean_q = q.strip()
     pattern = f"%{clean_q}%"
@@ -53,16 +54,20 @@ def global_search(
 
     snapshot_id = snap.id if snap else None
 
-    # Base query for opportunities on this snapshot
-    opp_q = db.query(Opportunity).filter(Opportunity.is_reconciliation_entry == False)
+    # Base query for opportunities on this snapshot:
+    # Must be Renewals and NOT Reconciliation Entry
+    opp_q = db.query(Opportunity).filter(
+        Opportunity.sales_type == "Renewals",
+        func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
+    )
     if snapshot_id:
         opp_q = opp_q.filter(Opportunity.snapshot_id == snapshot_id)
 
     # Excluded stages / deleted or lost filter
     if not include_deleted_lost:
-        opp_q = opp_q.filter(Opportunity.is_deleted_or_lost == False)
+        opp_q = opp_q.filter(func.coalesce(Opportunity.is_deleted_or_lost, False) == False)
 
-    # KAM isolation
+    # KAM isolation: KAMs only search their own deals; management and admin search all
     if ctx.is_kam:
         opp_q = opp_q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
 
@@ -80,8 +85,17 @@ def global_search(
         .all()
     )
 
-    deals = [
-        {
+    deals = []
+    for o in matching_opps:
+        close_d_str = ""
+        if o.close_date:
+            if hasattr(o.close_date, "isoformat"):
+                close_d_str = o.close_date.isoformat()
+            else:
+                close_d_str = str(o.close_date).split("T")[0].split(" ")[0]
+
+        period_lbl = ScopeService.quarter_label(o.fiscal_period) if o.fiscal_period else ""
+        deals.append({
             "id": o.opportunity_id_18,
             "opportunity_id_18": o.opportunity_id_18,
             "opportunity_name": o.opportunity_name or o.opportunity_id_18,
@@ -92,21 +106,25 @@ def global_search(
             "stage_number": o.stage_number or "",
             "forecast_acv_amount": float(o.forecast_acv_amount or 0.0),
             "sub_region": o.sub_region or "",
+            "close_date": close_d_str,
+            "fiscal_period": o.fiscal_period or "",
+            "period_label": period_lbl,
             "type": "deal",
-        }
-        for o in matching_opps
-    ]
+        })
 
     # Search Distinct Accounts
     acc_q = (
         db.query(Opportunity.account_name)
-        .filter(Opportunity.is_reconciliation_entry == False)
+        .filter(
+            Opportunity.sales_type == "Renewals",
+            func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
+        )
         .filter(Opportunity.account_name.ilike(pattern))
     )
     if snapshot_id:
         acc_q = acc_q.filter(Opportunity.snapshot_id == snapshot_id)
     if not include_deleted_lost:
-        acc_q = acc_q.filter(Opportunity.is_deleted_or_lost == False)
+        acc_q = acc_q.filter(func.coalesce(Opportunity.is_deleted_or_lost, False) == False)
     if ctx.is_kam:
         acc_q = acc_q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
 
@@ -118,13 +136,16 @@ def global_search(
     # Search Distinct Regions
     reg_q = (
         db.query(Opportunity.sub_region)
-        .filter(Opportunity.is_reconciliation_entry == False)
+        .filter(
+            Opportunity.sales_type == "Renewals",
+            func.coalesce(Opportunity.is_reconciliation_entry, False) == False,
+        )
         .filter(Opportunity.sub_region.ilike(pattern))
     )
     if snapshot_id:
         reg_q = reg_q.filter(Opportunity.snapshot_id == snapshot_id)
     if not include_deleted_lost:
-        reg_q = reg_q.filter(Opportunity.is_deleted_or_lost == False)
+        reg_q = reg_q.filter(func.coalesce(Opportunity.is_deleted_or_lost, False) == False)
     if ctx.is_kam:
         reg_q = reg_q.filter(Opportunity.opportunity_owner.in_(ctx.all_owner_names))
 

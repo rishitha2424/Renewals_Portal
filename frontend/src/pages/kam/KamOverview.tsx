@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -38,13 +38,19 @@ import EmptyState from '@/components/ui/EmptyState'
 
 export default function KamOverview() {
   const { currentUser } = useAuthStore()
-  const { snapshots, activeSnapshotId, globalFilters } = useAppStore()
+  const { snapshots, activeSnapshotId, globalFilters, setGlobalFilters } = useAppStore()
   const activeSnap = snapshots.find((s: any) => s.id === activeSnapshotId)
 
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [modalDeals, setModalDeals] = useState<any[] | null>(null)
   const [modalTitle, setModalTitle] = useState<string>('')
   const [activeActionTab, setActiveActionTab] = useState<'immediate' | 'delayed' | 'not_submitted' | 'slippage' | 'missing_dates'>('immediate')
+
+  useEffect(() => {
+    if (currentUser?.role === 'kam' && (!globalFilters.period || globalFilters.period === 'current_quarter')) {
+      setGlobalFilters({ period: 'all_open' })
+    }
+  }, [currentUser?.role])
 
   const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
 
@@ -272,6 +278,46 @@ export default function KamOverview() {
           </Link>
         </div>
       </div>
+
+      {/* Scope / Period Information Line (Round 24) */}
+      {(() => {
+        const pInfo = data?.period_info
+        const count = pInfo?.showing_count ?? kpis.total_count ?? 0
+        const acv = pInfo?.showing_acv ?? kpis.total_acv ?? 0
+        const periodLbl = pInfo?.period_label || data.resolved_quarter || globalFilters.period || 'current period'
+        const otherCount = pInfo?.other_periods_count ?? 0
+        const otherAcv = pInfo?.other_periods_acv ?? 0
+
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#00A3AD] shrink-0" />
+              <span>
+                Showing <strong className="text-[var(--text-primary)] font-bold">{count} deals ({formatCurrency(acv)})</strong> for <strong>{periodLbl}</strong>.
+                {otherCount > 0 ? (
+                  <>
+                    {' '}<span className="text-[var(--text-muted)]">{otherCount} more deals ({formatCurrency(otherAcv)}) in other periods.</span>
+                  </>
+                ) : (
+                  <>
+                    {' '}<span className="text-emerald-600 dark:text-emerald-400 font-medium">All active renewal deals are currently displayed.</span>
+                  </>
+                )}
+              </span>
+            </div>
+            {otherCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setGlobalFilters({ period: 'all_open' })}
+                className="font-semibold text-[#00A3AD] hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <span>Switch to All open deals ({pInfo?.total_all_count || count + otherCount})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Movements Banner (vs Yesterday & vs Last Week) */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xs">
@@ -540,55 +586,50 @@ export default function KamOverview() {
                 <button
                   type="button"
                   onClick={() => setActiveActionTab('immediate')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    activeActionTab === 'immediate'
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'immediate'
                       ? 'bg-[#12284C] text-white shadow-xs'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Immediate Attention ({(actionLists.immediate_attention || []).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveActionTab('delayed')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    activeActionTab === 'delayed'
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'delayed'
                       ? 'bg-[#12284C] text-white shadow-xs'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Delayed Renewals ({(actionLists.delayed_deals || []).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveActionTab('not_submitted')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    activeActionTab === 'not_submitted'
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'not_submitted'
                       ? 'bg-[#12284C] text-white shadow-xs'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Not Submitted ({(actionLists.not_submitted_deals || []).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveActionTab('slippage')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    activeActionTab === 'slippage'
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'slippage'
                       ? 'bg-[#12284C] text-white shadow-xs'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Slippage ({(actionLists.slippage_deals || []).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveActionTab('missing_dates')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    activeActionTab === 'missing_dates'
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'missing_dates'
                       ? 'bg-[#12284C] text-white shadow-xs'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Missing Dates ({(actionLists.missing_service_dates || []).length})
                 </button>
@@ -601,12 +642,12 @@ export default function KamOverview() {
                 activeActionTab === 'immediate'
                   ? actionLists.immediate_attention || []
                   : activeActionTab === 'delayed'
-                  ? actionLists.delayed_deals || []
-                  : activeActionTab === 'not_submitted'
-                  ? actionLists.not_submitted_deals || []
-                  : activeActionTab === 'slippage'
-                  ? actionLists.slippage_deals || []
-                  : actionLists.missing_service_dates || []
+                    ? actionLists.delayed_deals || []
+                    : activeActionTab === 'not_submitted'
+                      ? actionLists.not_submitted_deals || []
+                      : activeActionTab === 'slippage'
+                        ? actionLists.slippage_deals || []
+                        : actionLists.missing_service_dates || []
 
               if (currentList.length === 0) {
                 return (
@@ -657,13 +698,12 @@ export default function KamOverview() {
                             </span>
                           </td>
                           <td className="py-2.5 pr-3">
-                            <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-semibold ${
-                              d.approval_status === 'Approved'
+                            <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-semibold ${d.approval_status === 'Approved'
                                 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                 : d.approval_status === 'Pending Approval'
-                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                            }`}>
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                              }`}>
                               {getApprovalStatusLabel(d.approval_status)}
                             </span>
                           </td>

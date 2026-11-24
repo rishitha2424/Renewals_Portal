@@ -255,6 +255,7 @@ def get_filter_options(
         "current_date": current_date_val.isoformat(),
         "current_quarter": cq,
         "current_quarter_label": ScopeService.quarter_label(cq),
+        "kam_default_period": SettingsService.get_kam_default_period(db),
         "total_deals": total_deals,
         "snapshot_dates": snapshot_dates,
         "quarters": quarters,

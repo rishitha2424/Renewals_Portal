@@ -1,13 +1,17 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Download, FilterX, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react'
+import { Search, Download, FilterX, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Calendar, ArrowRight } from 'lucide-react'
 import { getKamDeals } from '@/api/client'
 import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import { getDealStage } from '@/components/common/DealListModal'
+import { useAppStore } from '@/store/appStore'
+import { useAuthStore } from '@/store/authStore'
 
 export default function KamDeals() {
+  const { globalFilters, setGlobalFilters } = useAppStore()
+  const { currentUser } = useAuthStore()
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filterFC, setFilterFC] = useState('All')
@@ -16,10 +20,22 @@ export default function KamDeals() {
   const [sortField, setSortField] = useState<string>('forecast_acv_amount')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  useEffect(() => {
+    if (currentUser?.role === 'kam' && (!globalFilters.period || globalFilters.period === 'current_quarter')) {
+      setGlobalFilters({ period: 'all_open' })
+    }
+  }, [currentUser?.role])
+
+  const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
+
   const { data, isLoading } = useQuery({
-    queryKey: ['kam-deals'],
+    queryKey: ['kam-deals', currentUser?.id, globalFilters.period, globalFilters.as_of, typesStr],
     queryFn: async () => {
-      return await getKamDeals()
+      return await getKamDeals({
+        period: globalFilters.period,
+        as_of: globalFilters.as_of,
+        types: typesStr,
+      })
     },
   })
 
@@ -144,6 +160,46 @@ export default function KamDeals() {
           <span>Export CSV</span>
         </button>
       </div>
+
+      {/* Scope / Period Information Line (Round 24) */}
+      {(() => {
+        const pInfo = data?.period_info
+        const count = pInfo?.showing_count ?? filteredDeals.length ?? 0
+        const acv = pInfo?.showing_acv ?? totalAcv ?? 0
+        const periodLbl = pInfo?.period_label || data?.period || globalFilters.period || 'current period'
+        const otherCount = pInfo?.other_periods_count ?? 0
+        const otherAcv = pInfo?.other_periods_acv ?? 0
+
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#00A3AD] shrink-0" />
+              <span>
+                Showing <strong className="text-[var(--text-primary)] font-bold">{count} deals ({formatCurrency(acv)})</strong> for <strong>{periodLbl}</strong>.
+                {otherCount > 0 ? (
+                  <>
+                    {' '}<span className="text-[var(--text-muted)]">{otherCount} more deals ({formatCurrency(otherAcv)}) in other periods.</span>
+                  </>
+                ) : (
+                  <>
+                    {' '}<span className="text-emerald-600 dark:text-emerald-400 font-medium">All active renewal deals are currently displayed.</span>
+                  </>
+                )}
+              </span>
+            </div>
+            {otherCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setGlobalFilters({ period: 'all_open' })}
+                className="font-semibold text-[#00A3AD] hover:underline cursor-pointer flex items-center gap-1 shrink-0"
+              >
+                <span>Switch to All open deals ({pInfo?.total_all_count || count + otherCount})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Filter Bar */}
       <div className="p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-wrap items-center gap-2.5 shadow-sm">

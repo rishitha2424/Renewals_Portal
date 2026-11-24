@@ -1175,10 +1175,19 @@ export const getKamDeals = async (params: {
   status?: string
   stage?: string
   search?: string
-  as_of?: string
-  period?: string
+  as_of?: string | null
+  period?: string | null
+  types?: string | null
 } = {}) => {
-  const res = await api.get('/kam/deals', { params })
+  const p: any = {}
+  if (params.category) p.category = params.category
+  if (params.status) p.status = params.status
+  if (params.stage) p.stage = params.stage
+  if (params.search) p.search = params.search
+  if (params.as_of) p.as_of = params.as_of
+  if (params.period) p.period = params.period
+  if (params.types) p.types = params.types
+  const res = await api.get('/kam/deals', { params: p })
   return res.data
 }
 

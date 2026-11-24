@@ -144,6 +144,15 @@ export default function Topbar() {
     return () => window.removeEventListener('display-size-change', handleSizeChange)
   }, [])
 
+  useEffect(() => {
+    if (currentUser?.role === 'kam') {
+      const defaultPeriod = filterOpts?.kam_default_period || 'all_open'
+      if (!globalFilters.period || globalFilters.period === 'current_quarter') {
+        setGlobalFilters({ period: defaultPeriod })
+      }
+    }
+  }, [currentUser?.role, filterOpts?.kam_default_period])
+
   // Helper to parse date string YYYY-MM-DD into UTC date for exact difference
   const parseISODate = (str: string | undefined | null): Date | null => {
     if (!str) return null
@@ -538,24 +547,31 @@ export default function Topbar() {
               </span>
               <select
                 value={globalFilters.period}
-                onChange={(e) => setGlobalFilters({ period: e.target.value })}
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    const customRange = window.prompt('Enter custom date range (YYYY-MM-DD:YYYY-MM-DD):', '2026-01-01:2026-12-31')
+                    if (customRange && customRange.includes(':')) {
+                      setGlobalFilters({ period: customRange.trim() })
+                    }
+                  } else {
+                    setGlobalFilters({ period: e.target.value })
+                  }
+                }}
                 className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[90px] xl:max-w-[120px] truncate"
                 id="filter-period-select"
               >
-                <option value="current_quarter">Current Quarter (Default)</option>
-                <option value="previous_quarter">Previous Quarter</option>
-                <option value="next_quarter">Next Quarter</option>
-                <option value="all_periods">All Periods</option>
-                {filterOpts?.quarters?.map((q: any) => (
-                  <option key={q.key} value={q.key}>
-                    {q.label} ({q.count})
-                  </option>
-                ))}
+                <option value="all_open">All open deals</option>
+                <option value="current_quarter">Current quarter</option>
+                <option value="next_quarter">Next quarter</option>
                 {filterOpts?.fiscal_years?.map((fy: any) => (
                   <option key={fy.key} value={fy.key}>
                     {fy.label} ({fy.count})
                   </option>
                 ))}
+                {globalFilters.period && (globalFilters.period.includes(':') || globalFilters.period === 'custom') && (
+                  <option value={globalFilters.period}>Custom ({globalFilters.period})</option>
+                )}
+                <option value="custom">Custom...</option>
               </select>
             </div>
 
@@ -1292,23 +1308,30 @@ export default function Topbar() {
                   </label>
                   <select
                     value={globalFilters.period}
-                    onChange={(e) => setGlobalFilters({ period: e.target.value })}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        const customRange = window.prompt('Enter custom date range (YYYY-MM-DD:YYYY-MM-DD):', '2026-01-01:2026-12-31')
+                        if (customRange && customRange.includes(':')) {
+                          setGlobalFilters({ period: customRange.trim() })
+                        }
+                      } else {
+                        setGlobalFilters({ period: e.target.value })
+                      }
+                    }}
                     className="w-full h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] outline-none font-medium"
                   >
-                    <option value="current_quarter">Current Quarter (Default)</option>
-                    <option value="previous_quarter">Previous Quarter</option>
-                    <option value="next_quarter">Next Quarter</option>
-                    <option value="all_periods">All Periods</option>
-                    {filterOpts?.quarters?.map((q: any) => (
-                      <option key={q.key} value={q.key}>
-                        {q.label} ({q.count})
-                      </option>
-                    ))}
+                    <option value="all_open">All open deals</option>
+                    <option value="current_quarter">Current quarter</option>
+                    <option value="next_quarter">Next quarter</option>
                     {filterOpts?.fiscal_years?.map((fy: any) => (
                       <option key={fy.key} value={fy.key}>
                         {fy.label} ({fy.count})
                       </option>
                     ))}
+                    {globalFilters.period && (globalFilters.period.includes(':') || globalFilters.period === 'custom') && (
+                      <option value={globalFilters.period}>Custom ({globalFilters.period})</option>
+                    )}
+                    <option value="custom">Custom...</option>
                   </select>
                 </div>
 

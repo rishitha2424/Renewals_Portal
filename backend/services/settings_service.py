@@ -53,6 +53,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": "true",
         "description": "Allow viewers to add comments to opportunities. If false, only admins may comment.",
     },
+    "kam_default_period": {
+        "value": "all_open",
+        "description": "Default period filter for KAM portal views (My Overview and My Opportunities). Options: all_open, current_quarter, next_quarter, FY2026, etc.",
+    },
 }
 
 
@@ -161,6 +165,23 @@ class SettingsService:
             return SettingsService.get_setting(db, "timezone", "").strip()
         except Exception:
             return ""
+
+    @staticmethod
+    def get_kam_default_period(db: Optional[Session] = None) -> str:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_kam_default_period(session)
+                session.close()
+                return res
+            except Exception:
+                return "all_open"
+        try:
+            val = SettingsService.get_setting(db, "kam_default_period", "all_open")
+            return val.strip() if val else "all_open"
+        except Exception:
+            return "all_open"
 
     @staticmethod
     def get_exclude_reconciliation_entry(db: Optional[Session] = None) -> bool:

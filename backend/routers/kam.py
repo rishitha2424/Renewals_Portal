@@ -61,7 +61,7 @@ def _resolve_snapshot(db: Session, as_of: Optional[str] = None) -> UploadSnapsho
 @router.get("/overview")
 def get_kam_overview(
     as_of: Optional[str] = Query(None),
-    period: Optional[str] = Query("current_quarter"),
+    period: Optional[str] = Query(None),
     compare: Optional[str] = Query("yesterday"),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
@@ -117,8 +117,9 @@ def get_kam_overview(
         return {"error": "no_snapshot"}
 
     # Sanitize Query defaults if called programmatically
-    if not isinstance(period, str):
-        period = getattr(period, "default", "current_quarter") or "current_quarter"
+    kam_default = SettingsService.get_kam_default_period(db)
+    if not isinstance(period, str) or not period:
+        period = getattr(period, "default", kam_default) or kam_default
     if not isinstance(compare, str):
         compare = getattr(compare, "default", "yesterday") or "yesterday"
     if not isinstance(as_of, str):
@@ -398,9 +399,38 @@ def get_kam_overview(
         "unread_messages": unread_msg_count,
     }
 
+    # All open deals totals across all periods for this KAM
+    all_fs = FilterSpec.from_params(
+        as_of=as_of,
+        period="all_open",
+        types=types,
+        allowed_owners=allowed_owners,
+        user_context=ctx,
+    )
+    all_res = ScopeService.resolve(all_fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
+    all_opps = (
+        db.query(Opportunity)
+        .filter(Opportunity.snapshot_id == snap.id, *all_res.conditions)
+        .all()
+    )
+    total_all_count = len(all_opps)
+    total_all_acv = round(float(sum(o.forecast_acv_amount or 0.0 for o in all_opps)), 2)
+    other_periods_count = max(0, total_all_count - total_count)
+    other_periods_acv = round(max(0.0, total_all_acv - total_acv), 2)
+
     return {
         "period": res.data_slice,
         "resolved_quarter": res.resolved_quarter,
+        "period_info": {
+            "selected_period": period,
+            "period_label": res.data_slice,
+            "showing_count": total_count,
+            "showing_acv": round(total_acv, 2),
+            "total_all_count": total_all_count,
+            "total_all_acv": total_all_acv,
+            "other_periods_count": other_periods_count,
+            "other_periods_acv": other_periods_acv,
+        },
         "as_of": snap.snapshot_date.isoformat(),
         "owner_name": effective_owner_name,
         "kpis": kpis_dict,
@@ -438,7 +468,7 @@ def get_kam_overview(
 @router.get("/deals")
 def get_kam_deals(
     as_of: Optional[str] = Query(None),
-    period: Optional[str] = Query("current_quarter"),
+    period: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None),
@@ -457,11 +487,15 @@ def get_kam_deals(
         allowed_owners = [owner_override.strip()]
 
     if not allowed_owners:
-        return {"count": 0, "acv": 0.0, "deals": []}
+        return {"count": 0, "acv": 0.0, "deals": [], "period_info": {}}
 
     snap = _resolve_snapshot(db, as_of)
     if not snap:
-        return {"count": 0, "acv": 0.0, "deals": []}
+        return {"count": 0, "acv": 0.0, "deals": [], "period_info": {}}
+
+    kam_default = SettingsService.get_kam_default_period(db)
+    if not isinstance(period, str) or not period:
+        period = getattr(period, "default", kam_default) or kam_default
 
     fs = FilterSpec.from_params(
         as_of=as_of,
@@ -497,9 +531,42 @@ def get_kam_deals(
 
     deals.sort(key=lambda d: float(d.get("forecast_acv_amount") or 0.0), reverse=True)
 
+    cur_count = len(deals)
+    cur_acv = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in deals), 2)
+
+    # Calculate all-periods totals for "M more deals in other periods" banner
+    all_fs = FilterSpec.from_params(
+        as_of=as_of,
+        period="all_open",
+        types=types,
+        allowed_owners=allowed_owners,
+        user_context=ctx,
+    )
+    all_res = ScopeService.resolve(all_fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
+    all_opps = (
+        db.query(Opportunity)
+        .filter(Opportunity.snapshot_id == snap.id, *all_res.conditions)
+        .all()
+    )
+    total_all_count = len(all_opps)
+    total_all_acv = round(float(sum(o.forecast_acv_amount or 0.0 for o in all_opps)), 2)
+    other_periods_count = max(0, total_all_count - cur_count)
+    other_periods_acv = round(max(0.0, total_all_acv - cur_acv), 2)
+
     return {
-        "count": len(deals),
-        "acv": round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in deals), 2),
+        "count": cur_count,
+        "acv": cur_acv,
+        "period": res.data_slice,
+        "period_info": {
+            "selected_period": period,
+            "period_label": res.data_slice,
+            "showing_count": cur_count,
+            "showing_acv": cur_acv,
+            "total_all_count": total_all_count,
+            "total_all_acv": total_all_acv,
+            "other_periods_count": other_periods_count,
+            "other_periods_acv": other_periods_acv,
+        },
         "deals": deals,
     }
 
@@ -507,7 +574,7 @@ def get_kam_deals(
 @router.get("/report/pptx")
 def get_kam_report_pptx(
     as_of: Optional[str] = Query(None),
-    period: Optional[str] = Query("current_quarter"),
+    period: Optional[str] = Query(None),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
     ctx: UserContext = Depends(_require_kam_or_management),
@@ -516,6 +583,10 @@ def get_kam_report_pptx(
     """
     Download a branded 4-6 slide PowerPoint report scoped strictly to the KAM's deals.
     """
+    kam_default = SettingsService.get_kam_default_period(db)
+    if not isinstance(period, str) or not period:
+        period = getattr(period, "default", kam_default) or kam_default
+
     overview_data = get_kam_overview(
         as_of=as_of,
         period=period,
@@ -535,14 +606,14 @@ def get_kam_report_pptx(
     buf = KamReportService.generate_pptx_report(
         kam_name=kam_name,
         owner_name=owner_name,
-        period=overview_data.get("period") or period or "Q4-2026",
+        period=overview_data.get("period") or period or "All open deals",
         as_of_date=overview_data.get("as_of") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         overview_data=overview_data,
         deals=deals,
     )
 
     clean_owner = owner_name.replace(" ", "_").replace("/", "_")
-    filename = f"KAM_Report_{clean_owner}_{overview_data.get('period') or 'Q4'}.pptx"
+    filename = f"KAM_Report_{clean_owner}_{overview_data.get('period') or 'all_open'}.pptx"
 
     return StreamingResponse(
         buf,
@@ -557,7 +628,7 @@ def get_kam_report_pptx(
 @router.get("/report/pdf")
 def get_kam_report_pdf(
     as_of: Optional[str] = Query(None),
-    period: Optional[str] = Query("current_quarter"),
+    period: Optional[str] = Query(None),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
     ctx: UserContext = Depends(_require_kam_or_management),
@@ -566,6 +637,9 @@ def get_kam_report_pdf(
     """
     Download a branded multi-page PDF report scoped strictly to the KAM's deals.
     """
+    kam_default = SettingsService.get_kam_default_period(db)
+    if not isinstance(period, str) or not period:
+        period = getattr(period, "default", kam_default) or kam_default
     overview_data = get_kam_overview(
         as_of=as_of,
         period=period,

@@ -496,7 +496,7 @@ export default function MessagesHub() {
                         {selectedDealForNewMsg.opportunity_name}
                       </p>
                       <p className="text-[11px] text-[var(--text-muted)]">
-                        {selectedDealForNewMsg.account_name} · Owner: {selectedDealForNewMsg.opportunity_owner} · {formatCurrency(selectedDealForNewMsg.forecast_acv_amount)}
+                        {selectedDealForNewMsg.account_name} · Owner: {selectedDealForNewMsg.opportunity_owner} · {formatCurrency(selectedDealForNewMsg.forecast_acv_amount)} · Close: {selectedDealForNewMsg.close_date ? formatDate(selectedDealForNewMsg.close_date) : '—'} · {selectedDealForNewMsg.period_label || selectedDealForNewMsg.fiscal_period || '—'}
                       </p>
                     </div>
                     <button
@@ -537,7 +537,7 @@ export default function MessagesHub() {
                               {d.opportunity_name}
                             </p>
                             <p className="text-[11px] text-[var(--text-muted)] truncate">
-                              {d.account_name} · Owner: {d.opportunity_owner} · {formatCurrency(d.forecast_acv_amount)}
+                              {d.account_name} · Owner: {d.opportunity_owner} · {formatCurrency(d.forecast_acv_amount)} · Close: {d.close_date ? formatDate(d.close_date) : '—'} · {d.period_label || d.fiscal_period || '—'}
                             </p>
                           </div>
                         ))}
