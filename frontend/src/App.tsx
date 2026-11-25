@@ -16,6 +16,7 @@ import LoadingScreen from '@/pages/LoadingScreen'
 import Login from '@/pages/auth/Login'
 import SetPassword from '@/pages/auth/SetPassword'
 import KamOverview from '@/pages/kam/KamOverview'
+import KamDealTracker from '@/pages/kam/KamDealTracker'
 import KamDeals from '@/pages/kam/KamDeals'
 import MessagesHub from '@/pages/MessagesHub'
 import UserManagement from '@/pages/admin/UserManagement'
@@ -119,6 +120,8 @@ export default function App() {
         '/executive': 'Executive Summary — Mobileum Horizon',
         '/login': 'Sign In — Mobileum Horizon',
         '/kam/overview': 'My Portfolio — Mobileum Horizon',
+        '/kam/tracker': 'Deal Tracker — Mobileum Horizon',
+        '/tracker': 'Deal Tracker — Mobileum Horizon',
         '/kam/deals': 'My Deals — Mobileum Horizon',
         '/messages': 'Messages Hub — Mobileum Horizon',
         '/admin/users': 'User Governance — Mobileum Horizon',
@@ -187,6 +190,8 @@ export default function App() {
 
             {/* KAM Portal Routes */}
             <Route path="/kam/overview" element={<KamOverview />} />
+            <Route path="/kam/tracker" element={<KamDealTracker />} />
+            <Route path="/tracker" element={<Navigate to="/kam/tracker" replace />} />
             <Route path="/kam/deals" element={<KamDeals />} />
 
             {/* Messaging Hub */}

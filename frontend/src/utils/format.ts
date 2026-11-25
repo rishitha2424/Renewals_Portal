@@ -131,9 +131,29 @@ export function formatDelta(
   const formatted = `${arrow}${sign}${base}`
   if (countDelta != null) {
     const cSign = countDelta >= 0 ? '+' : ''
-    return `${formatted} (${cSign}${countDelta} deals)`
+    const noun = Math.abs(countDelta) === 1 ? 'deal' : 'deals'
+    return `${formatted} (${cSign}${countDelta} ${noun})`
   }
   return formatted
+}
+
+/** Format Year-Month (e.g. "2026-01" -> "Jan 2026") */
+export function formatYearMonth(ym: string | null | undefined): string {
+  if (!ym) return '—'
+  const trimmed = ym.trim()
+  if (['unscheduled', 'no date', 'unknown', '—'].includes(trimmed.toLowerCase())) {
+    return 'Unscheduled'
+  }
+  const match = trimmed.match(/^(\d{4})-(\d{2})/)
+  if (match) {
+    const year = parseInt(match[1], 10)
+    const month = parseInt(match[2], 10) - 1
+    const d = new Date(year, month, 1)
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    }
+  }
+  return trimmed
 }
 
 /** Format exact currency with standard USD locale formatting. Zero shows "$0" */

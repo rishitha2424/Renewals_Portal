@@ -5,6 +5,7 @@ import {
   Building2,
   Clock,
   Calendar,
+  CalendarDays,
   Table2,
   Upload,
   Printer,
@@ -34,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const KAM_NAV_ITEMS: NavItem[] = [
   { to: '/kam/overview', icon: LayoutDashboard, label: 'My Overview' },
+  { to: '/kam/tracker', icon: CalendarDays, label: 'Deal Tracker' },
   { to: '/kam/deals', icon: Table2, label: 'My Opportunities' },
   { to: '/messages', icon: MessageSquare, label: 'Messages Hub' },
 ]
