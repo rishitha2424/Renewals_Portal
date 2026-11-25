@@ -18,6 +18,7 @@ export interface UserProfile {
 
 interface AuthState {
   currentUser: UserProfile | null
+  token: string | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       currentUser: null,
+      token: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -45,11 +47,11 @@ export const useAuthStore = create<AuthState>()(
             set({ currentUser: user, isAuthenticated: true, isLoading: false })
             return user
           }
-          set({ currentUser: null, isAuthenticated: false, isLoading: false })
+          set({ currentUser: null, token: null, isAuthenticated: false, isLoading: false })
           return null
         } catch {
           // If check fails (e.g. 401), clear auth
-          set({ currentUser: null, isAuthenticated: false, isLoading: false })
+          set({ currentUser: null, token: null, isAuthenticated: false, isLoading: false })
           return null
         }
       },
@@ -59,7 +61,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const res = await authLogin(email, password, rememberMe)
           const user = res.user
-          set({ currentUser: user, isAuthenticated: true, isLoading: false, error: null })
+          const token = res.token || null
+          set({ currentUser: user, token, isAuthenticated: true, isLoading: false, error: null })
           // Ensure fresh login always defaults to latest snapshot
           try {
             const { useAppStore } = await import('./appStore')
@@ -69,7 +72,7 @@ export const useAuthStore = create<AuthState>()(
           return user
         } catch (err: any) {
           const msg = err?.response?.data?.detail || err?.message || 'Login failed'
-          set({ error: msg, isLoading: false, isAuthenticated: false, currentUser: null })
+          set({ error: msg, isLoading: false, isAuthenticated: false, currentUser: null, token: null })
           throw new Error(msg)
         }
       },
@@ -80,14 +83,14 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore network errors on logout
         } finally {
-          set({ currentUser: null, isAuthenticated: false, error: null, isLoading: false })
+          set({ currentUser: null, token: null, isAuthenticated: false, error: null, isLoading: false })
           try {
             const { useAppStore } = await import('./appStore')
             useAppStore.getState().setActiveSnapshotId(null)
             useAppStore.getState().setCompareSnapshotId(null)
           } catch (_) {}
           // If in browser, redirect to login
-          if (typeof window !== 'undefined') {
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
             window.location.href = '/login'
           }
         }
@@ -98,7 +101,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'horizon_auth_state',
-      partialize: (state) => ({ currentUser: state.currentUser, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 )

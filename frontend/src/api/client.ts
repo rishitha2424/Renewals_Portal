@@ -3,37 +3,70 @@ import { useAppStore, FilterSpec } from '../store/appStore'
 
 const api = axios.create({
   baseURL: '/api',
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
   paramsSerializer: {
     indexes: null,
   },
 })
 
+// Helper to retrieve active auth token without circular import with authStore
+const getActiveAuthToken = (): string | null => {
+  try {
+    const raw = localStorage.getItem('horizon_auth_state')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.state?.token) return parsed.state.token
+    }
+  } catch (_) {}
+  const appState = useAppStore.getState()
+  return appState.adminToken || null
+}
+
 // Static hosts can return index.html for /api requests when their proxy is missing.
 // Treat that as a connection error instead of accepting it as empty application data.
-api.interceptors.response.use((response) => {
-  if (typeof response.data === 'string' &&
-      (String(response.headers['content-type'] || '').includes('text/html') ||
-       /^\s*(<!doctype html|<html)/i.test(response.data))) {
-    throw new Error('The app cannot reach the API. Check that the backend is running and /api is routed to it.')
+api.interceptors.response.use(
+  (response) => {
+    if (typeof response.data === 'string' &&
+        (String(response.headers['content-type'] || '').includes('text/html') ||
+         /^\s*(<!doctype html|<html)/i.test(response.data))) {
+      throw new Error('The app cannot reach the API. Check that the backend is running and /api is routed to it.')
+    }
+    return response
+  },
+  (error) => {
+    // 401 Unauthorized handling: clear auth and redirect to login
+    if (error?.response?.status === 401) {
+      const url = error.config?.url || ''
+      // Never intercept login, logout, or initial auth check endpoint
+      if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me')) {
+        try {
+          localStorage.removeItem('horizon_auth_state')
+        } catch (_) {}
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login?expired=1'
+        }
+      }
+    }
+    return Promise.reject(error)
   }
-  return response
-})
+)
 
 // Upload/commit/validate endpoints are body-only — they must NOT receive extra query params.
 const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
 
 api.interceptors.request.use((config) => {
-  const state = useAppStore.getState()
-  if (state.adminToken) {
+  const token = getActiveAuthToken()
+  if (token) {
     config.headers = config.headers || {}
-    config.headers.Authorization = `Bearer ${state.adminToken}`
+    config.headers.Authorization = `Bearer ${token}`
   }
 
   const url = config.url || ''
   const isExcluded = FILTER_EXCLUDED_PATHS.some((p) => url.includes(p))
   if (isExcluded) return config
 
+  const state = useAppStore.getState()
   config.params = config.params || {}
   if (config.params.include_deleted_lost === undefined && state.includeDeletedLost !== undefined) {
     config.params.include_deleted_lost = state.includeDeletedLost

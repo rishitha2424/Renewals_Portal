@@ -21,8 +21,10 @@ export default function Login() {
   const [forgotSuccess, setForgotSuccess] = useState(false)
   const [forgotLoading, setForgotLoading] = useState(false)
 
-  // Redirect if already authenticated
-  if (isAuthenticated && currentUser) {
+  const isExpired = new URLSearchParams(location.search).get('expired') === '1'
+
+  // Redirect if already authenticated (unless redirected here with expired session)
+  if (isAuthenticated && currentUser && !isExpired) {
     const landing = currentUser.role === 'kam' ? '/kam/overview' : '/'
     return <Navigate to={landing} replace />
   }
@@ -88,6 +90,13 @@ export default function Login() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-[var(--bg-card)] py-8 px-6 sm:px-10 shadow-xl rounded-2xl border border-[var(--border)]">
           <form className="space-y-5" onSubmit={handleSubmit}>
+            {isExpired && !localError && !authError && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Your session has expired. Please sign in again to continue.</span>
+              </div>
+            )}
+
             {(localError || authError) && (
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-start gap-2.5">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
