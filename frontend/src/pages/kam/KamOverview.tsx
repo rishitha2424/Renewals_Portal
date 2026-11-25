@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -243,7 +243,7 @@ export default function KamOverview() {
     : 0
 
   // ── 1. Renewal Timeline Groups ──────────────────────────────────────────
-  const monthlyTimelineGroups = useMemo(() => {
+  const monthlyTimelineGroups = (() => {
     const map = new Map<string, any[]>()
     allDeals.forEach((d: any) => {
       const cd = d.close_date || ''
@@ -258,10 +258,10 @@ export default function KamOverview() {
         totalAcv: deals.reduce((sum, d) => sum + (parseFloat(d.forecast_acv_amount) || 0), 0),
         deals: deals.sort((a, b) => (a.close_date || '').localeCompare(b.close_date || '')),
       }))
-  }, [allDeals])
+  })()
 
   // ── 2. Deal Board by Stage ──────────────────────────────────────────────
-  const stageColumns = useMemo(() => {
+  const stageColumns = (() => {
     const map = new Map<string, any[]>()
     allDeals.forEach((d: any) => {
       const st = (d.stage_number || d.stage || 'Unassigned').trim() || 'Unassigned'
@@ -275,20 +275,18 @@ export default function KamOverview() {
         totalAcv: deals.reduce((sum, d) => sum + (parseFloat(d.forecast_acv_amount) || 0), 0),
         deals: deals.sort((a, b) => (parseFloat(b.forecast_acv_amount) || 0) - (parseFloat(a.forecast_acv_amount) || 0)),
       }))
-  }, [allDeals])
+  })()
 
   // ── 3. Approval Tracker per Deal ────────────────────────────────────────
-  const approvalTrackerDeals = useMemo(() => {
-    return [...allDeals].sort((a, b) => {
-      const aNeed = (a.approval_status !== 'Approved' && a.approval_status !== 'Approved - 2nd') ? 1 : 0
-      const bNeed = (b.approval_status !== 'Approved' && b.approval_status !== 'Approved - 2nd') ? 1 : 0
-      if (aNeed !== bNeed) return bNeed - aNeed
-      return (parseFloat(b.forecast_acv_amount) || 0) - (parseFloat(a.forecast_acv_amount) || 0)
-    })
-  }, [allDeals])
+  const approvalTrackerDeals = [...allDeals].sort((a, b) => {
+    const aNeed = (a.approval_status !== 'Approved' && a.approval_status !== 'Approved - 2nd') ? 1 : 0
+    const bNeed = (b.approval_status !== 'Approved' && b.approval_status !== 'Approved - 2nd') ? 1 : 0
+    if (aNeed !== bNeed) return bNeed - aNeed
+    return (parseFloat(b.forecast_acv_amount) || 0) - (parseFloat(a.forecast_acv_amount) || 0)
+  })
 
   // ── 4. Accounts Section ─────────────────────────────────────────────────
-  const accountCards = useMemo(() => {
+  const accountCards = (() => {
     const map = new Map<string, any[]>()
     allDeals.forEach((d: any) => {
       const acc = (d.account_name || 'Unknown Account').trim() || 'Unknown Account'
@@ -315,10 +313,10 @@ export default function KamOverview() {
         }
       })
       .sort((a, b) => b.totalAcv - a.totalAcv)
-  }, [allDeals])
+  })()
 
   // ── 5. What to Do Next Action List ──────────────────────────────────────
-  const prioritizedActions = useMemo(() => {
+  const prioritizedActions = (() => {
     const items: {
       id: string
       oppId: string
@@ -382,10 +380,10 @@ export default function KamOverview() {
     })
 
     return items.slice(0, 8)
-  }, [allDeals, activeSnap?.snapshot_date])
+  })()
 
   // ── 6. Key Dates Strip ──────────────────────────────────────────────────
-  const keyDatesList = useMemo(() => {
+  const keyDatesList = (() => {
     const events: {
       date: string
       type: 'Renewal Close' | 'Service Expiry'
@@ -422,7 +420,7 @@ export default function KamOverview() {
     return events
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 10)
-  }, [allDeals])
+  })()
 
   // ── 7. Conditional Small Charts (>= 2 active categories only) ─────────────
   const activeForecastCats = forecastChartData.filter(d => d.value > 0)
