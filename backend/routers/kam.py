@@ -270,13 +270,14 @@ def get_kam_overview(
         diff_acv = round(total_acv - b_acv, 2)
         cnt_prefix = "+" if diff_cnt > 0 else ""
         acv_prefix = "+" if diff_acv > 0 else ""
+        deal_noun = "deal" if abs(diff_cnt) == 1 else "deals"
         return {
             "count": diff_cnt,
             "acv": diff_acv,
             "available": True,
             "date": base_snap.snapshot_date.isoformat(),
             "date_formatted": base_snap.snapshot_date.strftime("%b %d, %Y"),
-            "label": f"{cnt_prefix}{diff_cnt} deals ({acv_prefix}${diff_acv:,.2f})",
+            "label": f"{cnt_prefix}{diff_cnt} {deal_noun} ({acv_prefix}${diff_acv:,.2f})",
         }
 
     delta_compare = _compute_delta(compare_snap)
@@ -666,7 +667,7 @@ def get_kam_overview(
         .all()
     )
     total_all_count = len(all_opps)
-    total_all_acv = round(float(sum(o.forecast_acv_amount or 0.0 for o in all_opps)), 2)
+    total_all_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in all_opps), 2)
     other_periods_count = max(0, total_all_count - total_count)
     other_periods_acv = round(max(0.0, total_all_acv - total_acv), 2)
 

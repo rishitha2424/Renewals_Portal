@@ -136,16 +136,21 @@ class KamReportService:
             f"{owner_name} — Key health metrics, executive observations, and regional footprint for {period_display}",
         )
 
-        # 8 KPI Tiles (2 rows of 4)
+        # 8 KPI Tiles (2 rows of 4 - Restored First-Edition Tiles)
+        appr_2nd_count = kpis.get("approved_2nd_count", 0)
+        appr_cnt_str = f"{kpis.get('approved_count', 0)} deals"
+        if appr_2nd_count > 0:
+            appr_cnt_str += f" (incl. {appr_2nd_count} 2nd)"
+
         tile_defs = [
-            ("TOTAL PORTFOLIO", str(tot_count), _format_currency(tot_acv), COLOR_NAVY),
+            ("MY PORTFOLIO", f"{tot_count} {'deal' if tot_count == 1 else 'deals'}", _format_currency(tot_acv), COLOR_NAVY),
             ("COMMIT COVERAGE", f"{kpis.get('commit_coverage_count', 0)} deals", _format_currency(kpis.get('commit_coverage_acv', 0)), COLOR_BLUE),
-            ("COMMIT", f"{kpis.get('commit_count', 0)} deals", _format_currency(kpis.get('commit_acv', 0)), COLOR_DARK_BLUE),
-            ("CLOSED", f"{kpis.get('closed_count', 0)} deals", _format_currency(kpis.get('closed_acv', 0)), COLOR_EMERALD),
-            ("BEST CASE", f"{kpis.get('best_case_count', 0)} deals", _format_currency(kpis.get('best_case_acv', 0)), COLOR_BLUE),
-            ("PIPELINE", f"{kpis.get('pipeline_count', 0)} deals", _format_currency(kpis.get('pipeline_acv', 0)), COLOR_GRAY),
+            ("APPROVED", appr_cnt_str, _format_currency(kpis.get('approved_acv', 0)), COLOR_EMERALD),
+            ("PENDING APPROVAL", f"{kpis.get('pending_approval_count', 0)} deals", _format_currency(kpis.get('pending_approval_acv', 0)), COLOR_AMBER),
+            ("NOT SUBMITTED", f"{kpis.get('not_submitted_count', 0)} deals", _format_currency(kpis.get('not_submitted_acv', 0)), COLOR_GRAY),
             ("DELAYED RENEWALS", f"{kpis.get('delayed_count', 0)} deals", _format_currency(kpis.get('delayed_acv', 0)), COLOR_ROSE),
-            ("APPROVALS NEEDED", f"{kpis.get('pending_approval_count', 0) + kpis.get('not_submitted_count', 0)} deals", _format_currency(kpis.get('pending_approval_acv', 0) + kpis.get('not_submitted_acv', 0)), COLOR_AMBER),
+            ("SLIPPAGE", f"{kpis.get('slippage_count', 0)} deals", _format_currency(kpis.get('slippage_acv', 0)), COLOR_AMBER),
+            ("NEEDS REVIEW", f"{kpis.get('needs_review_count', 0)} deals", _format_currency(kpis.get('needs_review_acv', 0)), COLOR_DARK_BLUE),
         ]
 
         left_base = 0.8
@@ -354,7 +359,80 @@ class KamReportService:
         )
 
         # -------------------------------------------------------------
-        # Slide 5: What Changed (Conditional if changes exist)
+        # Slide 5: Deal Tracker (Monthly Calendar & Closing Milestones)
+        # -------------------------------------------------------------
+        s_dt = prs.slides.add_slide(blank_slide_layout)
+        cls._add_slide_header(
+            s_dt,
+            "Deal Tracker & Closing Milestones",
+            f"{owner_name} — Monthly renewal schedule, upcoming close deadlines, and overdue portfolio items",
+        )
+
+        # Compute monthly calendar
+        month_summary: Dict[str, Dict[str, Any]] = {}
+        for d in deals:
+            cd = (d.get("close_date") or "")[:7] or "Unscheduled"
+            if cd not in month_summary:
+                month_summary[cd] = {"count": 0, "acv": 0.0, "approved_acv": 0.0}
+            month_summary[cd]["count"] += 1
+            amt = float(d.get("forecast_acv_amount") or 0.0)
+            month_summary[cd]["acv"] += amt
+            if d.get("approval_status") in ("Approved", "Approved - 2nd"):
+                month_summary[cd]["approved_acv"] += amt
+
+        sorted_months = sorted(month_summary.keys(), key=lambda x: (1 if x == "Unscheduled" else 0, x))
+        cal_rows = []
+        for m in sorted_months[:7]:
+            info = month_summary[m]
+            lbl = m
+            if m != "Unscheduled":
+                try:
+                    lbl = datetime.fromisoformat(f"{m}-01").strftime("%b %Y")
+                except Exception:
+                    pass
+            cal_rows.append([lbl, str(info["count"]), _format_currency(info["approved_acv"]), _format_currency(info["acv"])])
+
+        cls._add_table(
+            s_dt,
+            left=0.8,
+            top=1.8,
+            width=5.6,
+            height=5.0,
+            headers=["Renewal Month", "Deals", "Approved ACV", "Total ACV"],
+            rows=cal_rows or [["No dates scheduled", "0", "$0.00", "$0.00"]],
+        )
+
+        # Compute closing soon (next 30 days) and overdue
+        ref_d_str = as_of_date[:10] if as_of_date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        soon_rows = []
+        try:
+            ref_dt = datetime.fromisoformat(ref_d_str)
+            for d in sorted(deals, key=lambda x: x.get("close_date") or "9999"):
+                cd = (d.get("close_date") or "")[:10]
+                if cd:
+                    try:
+                        diff = (datetime.fromisoformat(cd) - ref_dt).days
+                        if 0 <= diff <= 30:
+                            soon_rows.append([str(d.get("opportunity_name", ""))[:22], str(d.get("account_name", ""))[:14], _format_currency(d.get("forecast_acv_amount")), f"{diff}d left"])
+                        elif diff < 0 and d.get("approval_status") != "Closed":
+                            soon_rows.append([str(d.get("opportunity_name", ""))[:22], str(d.get("account_name", ""))[:14], _format_currency(d.get("forecast_acv_amount")), f"{abs(diff)}d overdue"])
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        cls._add_table(
+            s_dt,
+            left=6.8,
+            top=1.8,
+            width=5.6,
+            height=5.0,
+            headers=["Opportunity", "Account", "ACV", "Timeline Status"],
+            rows=soon_rows[:8] or [["No near-term closes", "—", "$0.00", "All clear"]],
+        )
+
+        # -------------------------------------------------------------
+        # Slide 6: What Changed (Conditional if changes exist)
         # -------------------------------------------------------------
         what_changed = overview_data.get("what_changed") or {}
         if what_changed.get("has_changes"):
@@ -478,16 +556,21 @@ class KamReportService:
             ax.text(0.06, 0.94, "MOBILEUM HORIZON RENEWALS — PORTFOLIO REPORT", transform=ax.transAxes, color="#00A3AD", fontsize=11, fontweight="bold")
             ax.text(0.06, 0.90, f"Owner: {owner_name} ({kam_name})   |   Period: {period_display}   |   Data date: {as_of_formatted}   |   Compare to: {compare_formatted}", transform=ax.transAxes, color="#CBD5E1", fontsize=8.5)
 
-            # 8 Tiles (2 rows of 4)
+            # 8 Tiles (2 rows of 4 - Restored First-Edition Tiles)
+            appr_2nd_count = kpis.get("approved_2nd_count", 0)
+            appr_cnt_str = f"{kpis.get('approved_count', 0)} deals"
+            if appr_2nd_count > 0:
+                appr_cnt_str += f" (incl. {appr_2nd_count} 2nd)"
+
             tile_specs = [
-                ("Total Portfolio", str(tot_count), _format_currency(tot_acv), "#12284C"),
-                ("Commit Coverage", f"{kpis.get('commit_coverage_count', 0)} deals", _format_currency(kpis.get('commit_coverage_acv', 0)), "#00A3AD"),
-                ("Commit", f"{kpis.get('commit_count', 0)} deals", _format_currency(kpis.get('commit_acv', 0)), "#1B365D"),
-                ("Closed", f"{kpis.get('closed_count', 0)} deals", _format_currency(kpis.get('closed_acv', 0)), "#10B981"),
-                ("Best Case", f"{kpis.get('best_case_count', 0)} deals", _format_currency(kpis.get('best_case_acv', 0)), "#0284C7"),
-                ("Pipeline", f"{kpis.get('pipeline_count', 0)} deals", _format_currency(kpis.get('pipeline_acv', 0)), "#64748B"),
-                ("Delayed Renewals", f"{kpis.get('delayed_count', 0)} deals", _format_currency(kpis.get('delayed_acv', 0)), "#E11D48"),
-                ("Approvals Needed", f"{kpis.get('pending_approval_count', 0) + kpis.get('not_submitted_count', 0)} deals", _format_currency(kpis.get('pending_approval_acv', 0) + kpis.get('not_submitted_acv', 0)), "#D97706"),
+                ("MY PORTFOLIO", f"{tot_count} {'deal' if tot_count == 1 else 'deals'}", _format_currency(tot_acv), "#12284C"),
+                ("COMMIT COVERAGE", f"{kpis.get('commit_coverage_count', 0)} deals", _format_currency(kpis.get('commit_coverage_acv', 0)), "#2563EB"),
+                ("APPROVED", appr_cnt_str, _format_currency(kpis.get('approved_acv', 0)), "#16A34A"),
+                ("PENDING APPROVAL", f"{kpis.get('pending_approval_count', 0)} deals", _format_currency(kpis.get('pending_approval_acv', 0)), "#D97706"),
+                ("NOT SUBMITTED", f"{kpis.get('not_submitted_count', 0)} deals", _format_currency(kpis.get('not_submitted_acv', 0)), "#64748B"),
+                ("DELAYED RENEWALS", f"{kpis.get('delayed_count', 0)} deals", _format_currency(kpis.get('delayed_acv', 0)), "#E11D48"),
+                ("SLIPPAGE", f"{kpis.get('slippage_count', 0)} deals", _format_currency(kpis.get('slippage_acv', 0)), "#F59E0B"),
+                ("NEEDS REVIEW", f"{kpis.get('needs_review_count', 0)} deals", _format_currency(kpis.get('needs_review_acv', 0)), "#1B365D"),
             ]
 
             for i, (title, cnt_txt, acv_txt, accent_color) in enumerate(tile_specs):
@@ -678,7 +761,100 @@ class KamReportService:
             plt.close(fig)
 
             # -------------------------------------------------------------
-            # Page 4: What Changed (Conditional if changes exist)
+            # Page 4: Deal Tracker (Renewal Calendar & Closing Milestones)
+            # -------------------------------------------------------------
+            fig, ax = plt.subplots(figsize=(11, 8.5))
+            ax.axis("off")
+
+            ax.text(0.04, 0.94, f"Deal Tracker & Milestones — {owner_name}", color="#12284C", fontsize=15, fontweight="bold")
+            ax.text(0.04, 0.91, "Monthly renewal calendar breakdown and near-term closing deadlines", color="#64748B", fontsize=9)
+
+            # Monthly summary table
+            month_summary_pdf: Dict[str, Dict[str, Any]] = {}
+            for d in deals:
+                cd = (d.get("close_date") or "")[:7] or "Unscheduled"
+                if cd not in month_summary_pdf:
+                    month_summary_pdf[cd] = {"count": 0, "acv": 0.0, "approved_acv": 0.0}
+                month_summary_pdf[cd]["count"] += 1
+                amt = float(d.get("forecast_acv_amount") or 0.0)
+                month_summary_pdf[cd]["acv"] += amt
+                if d.get("approval_status") in ("Approved", "Approved - 2nd"):
+                    month_summary_pdf[cd]["approved_acv"] += amt
+
+            sorted_m_pdf = sorted(month_summary_pdf.keys(), key=lambda x: (1 if x == "Unscheduled" else 0, x))
+            cal_pdf_data = [["Month", "Deals", "Approved ACV", "Total ACV"]]
+            for m in sorted_m_pdf[:8]:
+                info = month_summary_pdf[m]
+                lbl = m
+                if m != "Unscheduled":
+                    try:
+                        lbl = datetime.fromisoformat(f"{m}-01").strftime("%b %Y")
+                    except Exception:
+                        pass
+                cal_pdf_data.append([lbl, str(info["count"]), _format_currency(info["approved_acv"]), _format_currency(info["acv"])])
+
+            if len(cal_pdf_data) == 1:
+                cal_pdf_data.append(["No dates scheduled", "0", "$0.00", "$0.00"])
+
+            t_cal = ax.table(
+                cellText=cal_pdf_data,
+                colWidths=[0.14, 0.08, 0.13, 0.13],
+                loc="upper left",
+                bbox=[0.04, 0.12, 0.44, 0.74],
+            )
+            t_cal.auto_set_font_size(False)
+            t_cal.set_fontsize(8)
+            for (r, c), cell in t_cal.get_celld().items():
+                if r == 0:
+                    cell.set_facecolor("#12284C")
+                    cell.get_text().set_color("white")
+                    cell.get_text().set_fontweight("bold")
+                elif r % 2 == 0:
+                    cell.set_facecolor("#F8FAFC")
+
+            # Closing soon / Overdue table
+            soon_pdf_data = [["Opportunity", "Account", "ACV", "Timeline"]]
+            ref_d_str = as_of_date[:10] if as_of_date else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            try:
+                ref_dt = datetime.fromisoformat(ref_d_str)
+                for d in sorted(deals, key=lambda x: x.get("close_date") or "9999"):
+                    cd = (d.get("close_date") or "")[:10]
+                    if cd:
+                        try:
+                            diff = (datetime.fromisoformat(cd) - ref_dt).days
+                            if 0 <= diff <= 30:
+                                soon_pdf_data.append([str(d.get("opportunity_name", ""))[:20], str(d.get("account_name", ""))[:14], _format_currency(d.get("forecast_acv_amount")), f"{diff}d left"])
+                            elif diff < 0 and d.get("approval_status") != "Closed":
+                                soon_pdf_data.append([str(d.get("opportunity_name", ""))[:20], str(d.get("account_name", ""))[:14], _format_currency(d.get("forecast_acv_amount")), f"{abs(diff)}d overdue"])
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            if len(soon_pdf_data) == 1:
+                soon_pdf_data.append(["No near-term closes", "—", "$0.00", "All clear"])
+
+            t_soon = ax.table(
+                cellText=soon_pdf_data[:12],
+                colWidths=[0.18, 0.14, 0.11, 0.09],
+                loc="upper left",
+                bbox=[0.52, 0.12, 0.44, 0.74],
+            )
+            t_soon.auto_set_font_size(False)
+            t_soon.set_fontsize(8)
+            for (r, c), cell in t_soon.get_celld().items():
+                if r == 0:
+                    cell.set_facecolor("#1B365D")
+                    cell.get_text().set_color("white")
+                    cell.get_text().set_fontweight("bold")
+                elif r % 2 == 0:
+                    cell.set_facecolor("#F8FAFC")
+
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+
+            # -------------------------------------------------------------
+            # Page 5: What Changed (Conditional if changes exist)
             # -------------------------------------------------------------
             what_changed = overview_data.get("what_changed") or {}
             if what_changed.get("has_changes"):
