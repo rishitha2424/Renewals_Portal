@@ -19,6 +19,7 @@ import KamOverview from '@/pages/kam/KamOverview'
 import KamDealTracker from '@/pages/kam/KamDealTracker'
 import KamDeals from '@/pages/kam/KamDeals'
 import MessagesHub from '@/pages/MessagesHub'
+import CommentsLog from '@/pages/CommentsLog'
 import UserManagement from '@/pages/admin/UserManagement'
 import EmailOutbox from '@/pages/admin/EmailOutbox'
 import NotificationsPage from '@/pages/NotificationsPage'
@@ -124,6 +125,8 @@ export default function App() {
         '/tracker': 'Deal Tracker — Mobileum Horizon',
         '/kam/deals': 'My Deals — Mobileum Horizon',
         '/messages': 'Messages Hub — Mobileum Horizon',
+        '/comments-log': 'Comments Log — Mobileum Horizon',
+        '/comments': 'Comments Log — Mobileum Horizon',
         '/admin/users': 'User Governance — Mobileum Horizon',
         '/admin/email-outbox': 'Email Outbox — Mobileum Horizon',
       }
@@ -196,6 +199,10 @@ export default function App() {
 
             {/* Messaging Hub */}
             <Route path="/messages" element={<MessagesHub />} />
+
+            {/* Comments Log */}
+            <Route path="/comments-log" element={<CommentsLog />} />
+            <Route path="/comments" element={<Navigate to="/comments-log" replace />} />
 
             {/* Notification Centre */}
             <Route path="/notifications" element={<NotificationsPage />} />

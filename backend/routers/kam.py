@@ -882,7 +882,14 @@ def get_kam_overview(
     other_periods_count = max(0, total_all_count - total_count)
     other_periods_acv = round(max(0.0, total_all_acv - total_acv), 2)
 
-    eff_period_label = "All periods" if period == "all_open" or res.data_slice == "all_open" else res.data_slice
+    if period in ("all_open", "all_open_deals", "all_periods", "all", "All open deals", "All periods") or res.data_slice == "all_open":
+        eff_period_label = "All periods"
+    elif period in ("current_quarter", None, ""):
+        eff_period_label = f"Current quarter ({res.data_slice})"
+    elif period == "next_quarter":
+        eff_period_label = f"Next quarter ({res.data_slice})"
+    else:
+        eff_period_label = res.data_slice
 
     return {
         "period": eff_period_label,
@@ -1033,13 +1040,22 @@ def get_kam_deals(
     other_periods_count = max(0, total_all_count - cur_count)
     other_periods_acv = round(max(0.0, total_all_acv - cur_acv), 2)
 
+    if period in ("all_open", "all_open_deals", "all_periods", "all", "All open deals", "All periods") or res.data_slice == "all_open":
+        eff_period_label = "All periods"
+    elif period in ("current_quarter", None, ""):
+        eff_period_label = f"Current quarter ({res.data_slice})"
+    elif period == "next_quarter":
+        eff_period_label = f"Next quarter ({res.data_slice})"
+    else:
+        eff_period_label = res.data_slice
+
     return {
         "count": cur_count,
         "acv": cur_acv,
-        "period": res.data_slice,
+        "period": eff_period_label,
         "period_info": {
             "selected_period": period,
-            "period_label": res.data_slice,
+            "period_label": eff_period_label,
             "showing_count": cur_count,
             "showing_acv": cur_acv,
             "total_all_count": total_all_count,

@@ -1322,6 +1322,50 @@ export const getEmailLog = async (limit = 100): Promise<{ log: EmailLogItem[] }>
   return res.data
 }
 
+export interface CommentLogItem {
+  id: string
+  deal_id: string
+  deal_name: string
+  account_name: string
+  text: string
+  visibility: 'internal' | 'shared'
+  author: string
+  author_role: string
+  created_at: string | null
+  created_at_formatted: string
+  recipients: string[]
+  email_status: 'emailed' | 'queued' | 'failed'
+}
+
+export interface CommentsLogResponse {
+  items: CommentLogItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  tab: string
+}
+
+export const getCommentsLog = async (params: {
+  page?: number
+  page_size?: number
+  tab?: 'my' | 'all'
+  search?: string
+  visibility?: string
+  author?: string
+  author_role?: string
+  deal?: string
+  account?: string
+  start_date?: string
+  end_date?: string
+  limit_to_period?: boolean
+  period?: string
+  as_of?: string | null
+}): Promise<CommentsLogResponse> => {
+  const res = await api.get('/comments/log', { params })
+  return res.data
+}
+
 
 
 

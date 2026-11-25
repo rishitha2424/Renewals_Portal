@@ -146,15 +146,6 @@ export default function Topbar() {
     return () => window.removeEventListener('display-size-change', handleSizeChange)
   }, [])
 
-  useEffect(() => {
-    if (currentUser?.role === 'kam') {
-      const defaultPeriod = filterOpts?.kam_default_period || 'all_open'
-      if (!globalFilters.period || globalFilters.period === 'current_quarter') {
-        setGlobalFilters({ period: defaultPeriod })
-      }
-    }
-  }, [currentUser?.role, filterOpts?.kam_default_period])
-
   // Helper to parse date string YYYY-MM-DD into UTC date for exact difference
   const parseISODate = (str: string | undefined | null): Date | null => {
     if (!str) return null

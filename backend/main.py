@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import settings
 from backend.routers import snapshots, analytics, opportunities, export, health, admin_auth, settings as system_settings_router, custom_columns
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters, v2_explorer
-from backend.routers import auth, admin_users, messages, email_admin, kam, search, notifications
+from backend.routers import auth, admin_users, messages, email_admin, kam, search, notifications, comments
 
 logging.basicConfig(
     level=logging.INFO,
@@ -302,6 +302,7 @@ app.include_router(v2_filters.router)
 app.include_router(v2_explorer.router)
 app.include_router(system_settings_router.router)
 app.include_router(custom_columns.router)
+app.include_router(comments.router)
 
 from fastapi import Query, Depends
 from sqlalchemy.orm import Session

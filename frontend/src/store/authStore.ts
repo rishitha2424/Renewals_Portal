@@ -63,9 +63,11 @@ export const useAuthStore = create<AuthState>()(
           const user = res.user
           const token = res.token || null
           set({ currentUser: user, token, isAuthenticated: true, isLoading: false, error: null })
-          // Ensure fresh login always defaults to latest snapshot
+          // Ensure fresh login always defaults to latest snapshot and defaults
           try {
-            const { useAppStore } = await import('./appStore')
+            const { useAppStore, clearSessionFilters } = await import('./appStore')
+            clearSessionFilters()
+            useAppStore.getState().resetGlobalFilters()
             useAppStore.getState().setActiveSnapshotId(null)
             useAppStore.getState().setCompareSnapshotId(null)
           } catch (_) {}
@@ -85,7 +87,9 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           set({ currentUser: null, token: null, isAuthenticated: false, error: null, isLoading: false })
           try {
-            const { useAppStore } = await import('./appStore')
+            const { useAppStore, clearSessionFilters } = await import('./appStore')
+            clearSessionFilters()
+            useAppStore.getState().resetGlobalFilters()
             useAppStore.getState().setActiveSnapshotId(null)
             useAppStore.getState().setCompareSnapshotId(null)
           } catch (_) {}

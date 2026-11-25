@@ -25,6 +25,7 @@ import { FORECAST_COLORS } from '@/design/tokens'
 import { useAuthStore } from '@/store/authStore'
 import { useAppStore } from '@/store/appStore'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
+import KamPeriodBanner from '@/components/kam/KamPeriodBanner'
 import DealListModal from '@/components/common/DealListModal'
 import ChartCard, { ChartDatum } from '@/components/common/ChartCard'
 import { Tile } from '@/components/common/Tile'
@@ -41,12 +42,6 @@ export default function KamOverview() {
   const [modalTitle, setModalTitle] = useState<string>('')
   const [activeActionTab, setActiveActionTab] = useState<'immediate' | 'delayed' | 'not_submitted' | 'slippage' | 'needs_review'>('immediate')
 
-  // Auto-set KAM default period to "all_open"
-  useEffect(() => {
-    if (currentUser?.role === 'kam' && (!globalFilters.period || globalFilters.period === 'current_quarter')) {
-      setGlobalFilters({ period: 'all_open' })
-    }
-  }, [currentUser?.role])
 
   const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
 
@@ -279,34 +274,13 @@ export default function KamOverview() {
         </div>
       </div>
 
-      {/* 2. Scope / Period Information Line */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-[#00A3AD] shrink-0" />
-          <span>
-            Showing <strong className="text-[var(--text-primary)] font-bold">{countShowing} {countShowing === 1 ? 'deal' : 'deals'} ({formatCurrency(acvShowing)})</strong> for <strong>{periodLabel}</strong>.
-            {otherCount > 0 ? (
-              <>
-                {' '}<span className="text-[var(--text-muted)]">{otherCount} more {otherCount === 1 ? 'deal' : 'deals'} ({formatCurrency(otherAcv)}) in other periods.</span>
-              </>
-            ) : (
-              <>
-                {' '}<span className="text-emerald-600 dark:text-emerald-400 font-medium">All active renewal deals are currently displayed.</span>
-              </>
-            )}
-          </span>
-        </div>
-        {otherCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setGlobalFilters({ period: 'all_open' })}
-            className="font-semibold text-[#00A3AD] hover:underline cursor-pointer flex items-center gap-1 shrink-0"
-          >
-            <span>Switch to All open deals ({periodInfo.total_all_count || countShowing + otherCount})</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
+      {/* 2. Scope / Period Information Line (Round 30) */}
+      <KamPeriodBanner
+        periodInfo={periodInfo}
+        defaultPeriod={data.period || data.resolved_quarter}
+        fallbackCount={countShowing}
+        fallbackAcv={acvShowing}
+      />
 
       {/* 2b. Renewal Progress Slim Strip */}
       {data.renewal_progress && (

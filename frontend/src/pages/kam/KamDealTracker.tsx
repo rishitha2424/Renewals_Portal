@@ -25,6 +25,7 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { useAppStore } from '@/store/appStore'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
+import KamPeriodBanner from '@/components/kam/KamPeriodBanner'
 import DealListModal from '@/components/common/DealListModal'
 
 export default function KamDealTracker() {
@@ -41,12 +42,6 @@ export default function KamDealTracker() {
   // Calendar toggle: 'close_date' | 'service_expiry'
   const [calendarGrouping, setCalendarGrouping] = useState<'close_date' | 'service_expiry'>('close_date')
 
-  // Auto-set KAM default period to "all_open"
-  useEffect(() => {
-    if (currentUser?.role === 'kam' && (!globalFilters.period || globalFilters.period === 'current_quarter')) {
-      setGlobalFilters({ period: 'all_open' })
-    }
-  }, [currentUser?.role])
 
   const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
 
@@ -248,6 +243,14 @@ export default function KamDealTracker() {
           </Link>
         </div>
       </div>
+
+      {/* Scope / Period Information Line (Round 30) */}
+      <KamPeriodBanner
+        periodInfo={data.period_info}
+        defaultPeriod={data.period || data.resolved_quarter}
+        fallbackCount={totalCount}
+        fallbackAcv={totalAcv}
+      />
 
       {/* Section A: Summary Strip (4 Compact Stats) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

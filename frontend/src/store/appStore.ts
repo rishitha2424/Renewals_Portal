@@ -116,6 +116,49 @@ const DEFAULT_FILTERS = {
   search: '',
 }
 
+const SESSION_STORAGE_KEY = 'horizon_session_kam_filters'
+
+export const getSessionFilters = () => {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+      if (raw) return JSON.parse(raw)
+    }
+  } catch (_) {}
+  return null
+}
+
+export const saveSessionFilters = (data: Record<string, any>) => {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const current = getSessionFilters() || {}
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
+    }
+  } catch (_) {}
+}
+
+export const clearSessionFilters = () => {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    }
+  } catch (_) {}
+}
+
+const getInitialFilterSpec = (): FilterSpec => {
+  const session = getSessionFilters()
+  if (session) {
+    return {
+      ...DEFAULT_FILTER_SPEC,
+      period: session.period || DEFAULT_FILTER_SPEC.period,
+      types: session.types || DEFAULT_FILTER_SPEC.types,
+      as_of: session.as_of ?? session.activeSnapshotId ?? DEFAULT_FILTER_SPEC.as_of,
+      compare: session.compare ?? session.compareSnapshotId ?? DEFAULT_FILTER_SPEC.compare,
+    }
+  }
+  return DEFAULT_FILTER_SPEC
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -131,13 +174,25 @@ export const useAppStore = create<AppState>()(
       toggleSidebarCollapsed: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-      globalFilters: DEFAULT_FILTER_SPEC,
+      globalFilters: getInitialFilterSpec(),
       setGlobalFilters: (f) =>
-        set((s) => ({
-          globalFilters: { ...s.globalFilters, ...f, sales_types: ['Renewals'] },
-          includeDeletedLost: f.include_deleted_lost !== undefined ? f.include_deleted_lost : s.includeDeletedLost,
-        })),
-      resetGlobalFilters: () => set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: false }),
+        set((s) => {
+          const next = { ...s.globalFilters, ...f, sales_types: ['Renewals'] }
+          saveSessionFilters({
+            period: next.period,
+            types: next.types,
+            as_of: next.as_of,
+            compare: next.compare,
+          })
+          return {
+            globalFilters: next,
+            includeDeletedLost: f.include_deleted_lost !== undefined ? f.include_deleted_lost : s.includeDeletedLost,
+          }
+        }),
+      resetGlobalFilters: () => {
+        clearSessionFilters()
+        set({ globalFilters: DEFAULT_FILTER_SPEC, includeDeletedLost: false, activeSnapshotId: null, compareSnapshotId: null })
+      },
 
       includeDeletedLost: false,
       setIncludeDeletedLost: (includeDeletedLost) =>
@@ -149,12 +204,15 @@ export const useAppStore = create<AppState>()(
       metricMode: 'Amount',
       setMetricMode: (metricMode) => set({ metricMode }),
 
-      activeSnapshotId: null,
+      activeSnapshotId: getSessionFilters()?.activeSnapshotId ?? null,
       setActiveSnapshotId: (id) =>
-        set((s) => ({
-          activeSnapshotId: id,
-          globalFilters: { ...s.globalFilters, as_of: id },
-        })),
+        set((s) => {
+          saveSessionFilters({ activeSnapshotId: id, as_of: id })
+          return {
+            activeSnapshotId: id,
+            globalFilters: { ...s.globalFilters, as_of: id },
+          }
+        }),
 
       isAdmin: false,
       adminName: null,
@@ -163,11 +221,15 @@ export const useAppStore = create<AppState>()(
       setIsAdmin: (isAdmin, token = null, name = null, warnings = []) =>
         set({ isAdmin, adminToken: token, adminName: name, securityWarnings: warnings }),
 
-      compareSnapshotId: null,
+      compareSnapshotId: getSessionFilters()?.compareSnapshotId ?? null,
       setCompareSnapshotId: (id) =>
-        set(() => ({
-          compareSnapshotId: id,
-        })),
+        set((s) => {
+          saveSessionFilters({ compareSnapshotId: id, compare: id })
+          return {
+            compareSnapshotId: id,
+            globalFilters: { ...s.globalFilters, compare: id || 'yesterday' },
+          }
+        }),
 
       snapshots: [],
       setSnapshots: (snapshots) => set({ snapshots }),

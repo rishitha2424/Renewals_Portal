@@ -292,6 +292,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       await refetchComments()
       setCommentRecipients([])
       showToast.success('Comment saved')
+      setActiveTab('comments')
     } catch (err: any) {
       await refetchComments()
       const msg = err?.response?.data?.detail || 'Failed to save comment'
@@ -737,7 +738,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              All Comments & Activity ({comments.length + customCols.length})
+              <span>Comments</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                {comments.length}
+              </span>
               {activeTab === 'comments' && (
                 <motion.div
                   layoutId="tab-underline"
@@ -1247,74 +1251,6 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                     )}
                   </div>
                 </div>
-
-                {/* Recent Comments Log for this deal */}
-                {comments.length > 0 && (
-                  <div className="space-y-2">
-                    <h5 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                      Recent Deal Comments ({comments.length})
-                    </h5>
-                    <div className="space-y-2">
-                      {comments.slice(0, 3).map((c) => (
-                        <div
-                          key={c.id}
-                          className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-xs flex flex-col gap-1.5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-[var(--text-primary)]">{c.author}</span>
-                              {c.authorRole && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded uppercase font-bold bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-muted)]">
-                                  {c.authorRole}
-                                </span>
-                              )}
-                              {c.visibility === 'shared_with_owner' || c.visibility === 'shared' ? (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                  👥 Shared
-                                </span>
-                              ) : (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                  🔒 Internal
-                                </span>
-                              )}
-                              <span className="text-[10px] text-[var(--text-muted)]">
-                                {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {canEditComment(c) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteComment(c.id)}
-                                  className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 cursor-pointer"
-                                  title="Delete comment"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{c.text}</p>
-                          {c.delivery_status && (
-                            <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium">
-                              <Check className="w-3 h-3 shrink-0" />
-                              <span>{c.delivery_status}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {comments.length > 3 && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('comments')}
-                          className="text-xs font-semibold text-teal-600 dark:text-teal-400 hover:underline pt-1 block cursor-pointer"
-                        >
-                          View all {comments.length} comments →
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}

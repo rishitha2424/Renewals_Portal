@@ -10,6 +10,7 @@ import {
   Upload,
   Printer,
   MessageSquare,
+  MessageCircle,
   Users,
   Mail,
   type LucideIcon,
@@ -31,6 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/expiry', icon: Calendar, label: 'Expiry' },
   { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
   { to: '/messages', icon: MessageSquare, label: 'Messages Hub' },
+  { to: '/comments-log', icon: MessageCircle, label: 'Comments log' },
 ]
 
 export const KAM_NAV_ITEMS: NavItem[] = [
@@ -38,6 +40,7 @@ export const KAM_NAV_ITEMS: NavItem[] = [
   { to: '/kam/tracker', icon: CalendarDays, label: 'Deal Tracker' },
   { to: '/kam/deals', icon: Table2, label: 'My Opportunities' },
   { to: '/messages', icon: MessageSquare, label: 'Messages Hub' },
+  { to: '/comments-log', icon: MessageCircle, label: 'Comments log' },
 ]
 
 export const ADMIN_NAV_ITEMS: NavItem[] = [

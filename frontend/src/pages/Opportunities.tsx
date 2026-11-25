@@ -197,6 +197,7 @@ export default function Opportunities() {
 
   // UI state
   const isAdmin = useAppStore((s) => s.isAdmin)
+  const setSelectedOppId = useAppStore((s) => s.setSelectedOppId)
   const [showFilterBuilder, setShowFilterBuilder] = useState<boolean>(false)
   const [showColPicker, setShowColPicker] = useState<boolean>(false)
   const [colSearchQuery, setColSearchQuery] = useState<string>('')
@@ -1597,7 +1598,11 @@ export default function Opportunities() {
                   return (
                     <tr
                       key={row._id || rIdx}
-                      onClick={() => setSelectedRowData(row)}
+                      onClick={() => {
+                        const oppId = row._opp_id_18 || row['Opportunity ID 18 Digit']
+                        if (oppId) setSelectedOppId(oppId)
+                        else setSelectedRowData(row)
+                      }}
                       className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                     >
                       {/* Pinned first column with Notes button */}
@@ -1608,11 +1613,16 @@ export default function Opportunities() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setNotesDeal(row)
-                              setShowNotesDrawer(true)
+                              const oppId = row._opp_id_18 || row['Opportunity ID 18 Digit']
+                              if (oppId) {
+                                setSelectedOppId(oppId)
+                              } else {
+                                setNotesDeal(row)
+                                setShowNotesDrawer(true)
+                              }
                             }}
                             className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[#00A3AD] hover:text-[#008f98] transition-colors"
-                            title="Notes & Custom Fields"
+                            title="Notes, Comments & Custom Fields"
                             id={`row-notes-btn-${row._opp_id_18 || rowNum}`}
                           >
                             <FileText className="w-3.5 h-3.5" />

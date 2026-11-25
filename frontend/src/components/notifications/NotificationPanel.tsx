@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, NotificationItem } from '@/api/client'
 import { formatDate } from '@/utils/format'
+import { useAppStore } from '@/store/appStore'
 
 interface NotificationPanelProps {
   onSelectDealId?: (dealId: string) => void
@@ -76,10 +77,9 @@ export default function NotificationPanel({ onSelectDealId }: NotificationPanelP
       } else {
         navigate('/messages')
       }
-    } else if (notif.deal_id && onSelectDealId) {
-      onSelectDealId(notif.deal_id)
     } else if (notif.deal_id) {
-      navigate(`/opportunities?deal_id=${notif.deal_id}&tab=comments`)
+      useAppStore.getState().setSelectedOppId(notif.deal_id)
+      if (onSelectDealId) onSelectDealId(notif.deal_id)
     }
   }
 

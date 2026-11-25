@@ -94,7 +94,7 @@ class KamReportService:
 
         as_of_formatted = _format_date_with_year(as_of_date)
         compare_formatted = _format_date_with_year(compare_as_of_date or overview_data.get("compare_as_of"))
-        period_display = "All periods" if period in ("all_open", "All open deals", "All periods") else period
+        period_display = overview_data.get("period") or ("All periods" if period in ("all_open", "All open deals", "All periods") else period)
 
         # -------------------------------------------------------------
         # Slide 1: Cover Slide
@@ -761,7 +761,7 @@ class KamReportService:
 
         as_of_formatted = _format_date_with_year(as_of_date)
         compare_formatted = _format_date_with_year(compare_as_of_date or overview_data.get("compare_as_of"))
-        period_display = "All periods" if period in ("all_open", "All open deals", "All periods") else period
+        period_display = overview_data.get("period") or ("All periods" if period in ("all_open", "All open deals", "All periods") else period)
 
         pdf_buf = io.BytesIO()
 
