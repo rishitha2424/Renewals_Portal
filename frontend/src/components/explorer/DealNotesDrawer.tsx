@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   X,
@@ -96,7 +97,29 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
     }
   }, [deal, columns, annotationsMap])
 
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isOpen])
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   if (!isOpen || !deal) return null
+  if (typeof document === 'undefined') return null
 
   const handleSaveField = async (col: CustomColumnItem) => {
     if (!isAdmin || col.type.startsWith('auto:')) return
@@ -158,9 +181,9 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
     }
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-hidden bg-black/50 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
       id="deal-notes-drawer-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -171,7 +194,7 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
         id="deal-notes-drawer"
       >
         {/* Drawer Header */}
-        <div className="p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3">
+        <div className="p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
@@ -512,7 +535,7 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
 
         {/* Long Text Clear Confirmation Modal */}
         {confirmClearCol && (
-          <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="w-full max-w-sm bg-[var(--bg-card)] rounded-2xl p-5 border border-[var(--border)] shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
               <div className="flex items-center gap-3 text-rose-600">
                 <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -544,7 +567,8 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

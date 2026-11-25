@@ -11,6 +11,8 @@ from backend.services.context import UserContext
 from backend.services.scopes import ScopeService
 from backend.config import settings
 
+from backend.constants import get_approval_group, is_approved_2nd, normalize_approval_status
+
 def _sum(df: pd.DataFrame, col: str) -> float:
     if df.empty or col not in df.columns:
         return 0.0
@@ -24,12 +26,10 @@ FUNNEL_STAGES = ["Approved", "Pending Approval", "Blank"]
 def _norm_approval(s: str | None) -> str:
     if not s or str(s).strip() in ("", "nan", "None", "Blank"):
         return "Blank"
-    s = s.strip()
-    if s in ("Approved", "Approved - 2nd"):
-        return "Approved"
-    if s in ("Pending Approval", "Pending-Approval"):
-        return "Pending Approval"
-    return s
+    grp = get_approval_group(s)
+    if grp == "Not submitted":
+        return "Blank"
+    return grp
 
 def _norm_fc(s: str | None) -> str:
     if not s or str(s).strip() in ("", "nan", "None"):
@@ -122,6 +122,8 @@ class V2ApprovalsService:
                 "forecast_category": fc,
                 "forecast_acv_amount": float(o.forecast_acv_amount or 0),
                 "approval_status": status,
+                "raw_approval_status": o.approval_status,
+                "is_approved_2nd": is_approved_2nd(o.approval_status),
                 "reason_for_approval": o.extra_attributes.get("Reason for approval") if o.extra_attributes else None,
                 "close_date": o.close_date,
                 "sub_region": o.sub_region,
@@ -206,6 +208,13 @@ class V2ApprovalsService:
             delta_lw = get_delta(df_lw)
             delta_comp = get_delta(comp_df) if comp_snap else None
             
+            app_2nd_c = 0
+            app_2nd_a = 0.0
+            if st == "Approved" and not st_df.empty and "is_approved_2nd" in st_df.columns:
+                app_2nd_df = st_df[st_df["is_approved_2nd"] == True]
+                app_2nd_c = len(app_2nd_df)
+                app_2nd_a = round(_sum(app_2nd_df, "forecast_acv_amount"), 2)
+
             statuses_list.append({
                 "status": st,
                 "count": c,
@@ -214,7 +223,10 @@ class V2ApprovalsService:
                 "pct_acv": pct_a,
                 "delta_yesterday": delta_yest,
                 "delta_lastweek": delta_lw,
-                "delta_custom": delta_comp
+                "delta_custom": delta_comp,
+                "approved_2nd_count": app_2nd_c,
+                "approved_2nd_acv": app_2nd_a,
+                "breakdown_text": f"incl. {app_2nd_c} Approved 2nd (${app_2nd_a:,.2f})" if app_2nd_c > 0 else None,
             })
             
             row_matrix = {}
@@ -361,14 +373,23 @@ class V2ApprovalsService:
                 if pd.notna(c_date):
                     c_dt = c_date.date() if hasattr(c_date, "date") else pd.to_datetime(c_date).date()
                     days_to_close = (c_dt - snap_dt).days
+                st_val = str(r.get("stage_number") or r.get("stage") or "").strip()
+                ow_val = str(r.get("opportunity_owner") or r.get("owner") or "Unassigned").strip()
+                bu_val = str(r.get("business_unit_primary") or r.get("business_unit") or "").strip()
                 commit_not_approved_deals.append({
+                    "id": r["opportunity_id_18"],
                     "opportunity_id_18": r["opportunity_id_18"],
                     "opportunity_name": r["opportunity_name"],
                     "account_name": r["account_name"],
                     "forecast_acv_amount": round(float(r["forecast_acv_amount"] or 0), 2),
                     "approval_status": "Not submitted" if r["approval_status"] == "Blank" else r["approval_status"],
                     "approval_status_key": r["approval_status"],
-                    "owner": str(r.get("opportunity_owner")) if pd.notna(r.get("opportunity_owner")) else "Unassigned",
+                    "owner": ow_val,
+                    "opportunity_owner": ow_val,
+                    "stage": st_val,
+                    "stage_number": st_val,
+                    "business_unit_primary": bu_val,
+                    "business_unit": bu_val,
                     "region": str(r.get("sub_region")) if pd.notna(r.get("sub_region")) else "Unmapped",
                     "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
                     "days_to_close": days_to_close
@@ -424,14 +445,23 @@ class V2ApprovalsService:
                 days_pending = (snap_dt - earliest_pending_date).days
                 c_date = r["close_date"]
                 reason_val = r.get("reason_for_approval")
+                st_val = str(r.get("stage_number") or r.get("stage") or "").strip()
+                ow_val = str(r.get("opportunity_owner") or r.get("owner") or "Unassigned").strip()
+                bu_val = str(r.get("business_unit_primary") or r.get("business_unit") or "").strip()
                 pending_ageing_deals.append({
+                    "id": oid,
                     "opportunity_id_18": oid,
                     "opportunity_name": r["opportunity_name"],
                     "account_name": r["account_name"],
                     "forecast_acv_amount": round(float(r["forecast_acv_amount"] or 0), 2),
                     "days_pending": max(0, days_pending),
                     "pending_since": earliest_pending_date.isoformat(),
-                    "owner": str(r.get("opportunity_owner")) if pd.notna(r.get("opportunity_owner")) else "Unassigned",
+                    "owner": ow_val,
+                    "opportunity_owner": ow_val,
+                    "stage": st_val,
+                    "stage_number": st_val,
+                    "business_unit_primary": bu_val,
+                    "business_unit": bu_val,
                     "region": str(r.get("sub_region")) if pd.notna(r.get("sub_region")) else "Unmapped",
                     "reason_for_approval": str(reason_val) if pd.notna(reason_val) else None,
                     "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
@@ -623,9 +653,19 @@ class V2ApprovalsService:
             "movements_lastweek": movements_lastweek,
             "movements_custom": movements_custom,
             "pending_deals": [{
+                "id": r["opportunity_id_18"],
+                "opportunity_id_18": r["opportunity_id_18"],
                 "opportunity_name": r["opportunity_name"],
                 "account_name": r["account_name"],
                 "forecast_acv_amount": float(r["forecast_acv_amount"] or 0),
+                "approval_status": r["approval_status"],
+                "owner": str(r.get("opportunity_owner") or r.get("owner") or "Unassigned").strip(),
+                "opportunity_owner": str(r.get("opportunity_owner") or r.get("owner") or "Unassigned").strip(),
+                "stage": str(r.get("stage_number") or r.get("stage") or "").strip(),
+                "stage_number": str(r.get("stage_number") or r.get("stage") or "").strip(),
+                "business_unit_primary": str(r.get("business_unit_primary") or r.get("business_unit") or "").strip(),
+                "business_unit": str(r.get("business_unit_primary") or r.get("business_unit") or "").strip(),
+                "region": str(r.get("sub_region") or "").strip(),
                 "close_date": r["close_date"].isoformat() if r["close_date"] else None,
                 "reason_for_approval": r["reason_for_approval"] if "reason_for_approval" in r and pd.notna(r["reason_for_approval"]) else None
             } for _, r in pending_df.sort_values("forecast_acv_amount", ascending=False).iterrows()] if not pending_df.empty else []
@@ -745,10 +785,10 @@ class V2ApprovalsService:
                 "reason_for_approval": _clean(r["reason_for_approval"]),
                 "sub_region": _clean(r["sub_region"]),
                 "business_unit_primary": _clean(r["business_unit_primary"]),
-                "opportunity_owner": _clean(r.get("opportunity_owner")),
-                "owner": _clean(r.get("opportunity_owner")),
-                "stage": _clean(r.get("stage_number")),
-                "stage_number": _clean(r.get("stage_number")),
+                "opportunity_owner": _clean(r.get("opportunity_owner") or r.get("owner")),
+                "owner": _clean(r.get("opportunity_owner") or r.get("owner")),
+                "stage": _clean(r.get("stage_number") or r.get("stage")),
+                "stage_number": _clean(r.get("stage_number") or r.get("stage")),
                 "close_date": c_date.strftime("%Y-%m-%d") if pd.notna(c_date) and hasattr(c_date, "strftime") else (str(c_date)[:10] if pd.notna(c_date) else None),
                 "days_to_close": days_to_close
             })

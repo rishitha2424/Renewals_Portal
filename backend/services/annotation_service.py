@@ -10,10 +10,10 @@ import uuid
 from datetime import datetime, timezone, date
 from typing import Any, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session
 
-from backend.models.custom_column import CustomColumn, DealAnnotation, AnnotationAudit
+from backend.models.custom_column import CustomColumn, DealAnnotation, AnnotationAudit, DealComment
 from backend.models.snapshot import UploadSnapshot
 from backend.models.opportunity import Opportunity
 
@@ -88,10 +88,12 @@ class AnnotationService:
     # -------------------------------------------------------------
     # Custom Columns Configuration (Added Columns Only)
     # -------------------------------------------------------------
-    def list_columns(self, include_deleted: bool = False) -> list[CustomColumn]:
+    def list_columns(self, include_deleted: bool = False, user_context: Optional[Any] = None) -> list[CustomColumn]:
         q = self.db.query(CustomColumn)
         if not include_deleted:
             q = q.filter(CustomColumn.is_deleted == False)
+        if user_context and getattr(user_context, "is_kam", False):
+            q = q.filter(CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
         return q.order_by(CustomColumn.sort_order.asc(), CustomColumn.created_at.asc()).all()
 
     def get_column_by_id(self, col_id: str) -> CustomColumn | None:
@@ -124,6 +126,9 @@ class AnnotationService:
         dropdown_options: list[str] | None = None,
         sort_order: int | None = None,
         user_id: str = "admin",
+        visibility: str = "internal",
+        creator_role: str = "admin",
+        user_display: str | None = None,
     ) -> CustomColumn:
         label_clean = str(label or "").strip()
         if not label_clean:
@@ -132,6 +137,12 @@ class AnnotationService:
         type_clean = str(col_type or "").strip().lower()
         if type_clean not in ALLOWED_COLUMN_TYPES:
             raise ValidationError(f"Invalid column type '{col_type}'. Allowed types: {sorted(ALLOWED_COLUMN_TYPES)}")
+
+        vis_clean = str(visibility or "internal").strip().lower()
+        if vis_clean not in ("internal", "visible_to_owner", "visible to owner", "shared"):
+            vis_clean = "internal"
+        if vis_clean in ("visible_to_owner", "visible to owner", "shared"):
+            vis_clean = "visible_to_owner"
 
         # Deduplicate key and isolate if matching an Excel column
         raw_slug = slugify_key(label_clean)
@@ -164,6 +175,8 @@ class AnnotationService:
             is_deleted=False,
             created_by=user_id,
             created_at=datetime.now(timezone.utc),
+            visibility=vis_clean,
+            creator_role=creator_role or "admin",
         )
         self.db.add(col)
 
@@ -176,9 +189,9 @@ class AnnotationService:
             action="column added",
             old_value=None,
             new_value=label_clean,
-            user_id=user_id,
+            user_id=user_display or user_id,
             timestamp=datetime.now(timezone.utc),
-            extra_info={"type": type_clean},
+            extra_info={"type": type_clean, "role": creator_role, "visibility": vis_clean},
         )
         self.db.add(audit)
         self.db.commit()
@@ -193,6 +206,9 @@ class AnnotationService:
         dropdown_options: list[str] | None = None,
         sort_order: int | None = None,
         user_id: str = "admin",
+        visibility: str | None = None,
+        user_role: str = "admin",
+        user_display: str | None = None,
     ) -> CustomColumn:
         col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
         if not col:
@@ -200,7 +216,7 @@ class AnnotationService:
                 raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
             raise ValidationError(f"Column '{col_id_or_key}' not found.")
 
-        old_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}"
+        old_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}, visibility={col.visibility}"
 
         if label is not None:
             label_clean = str(label).strip()
@@ -220,7 +236,14 @@ class AnnotationService:
         if sort_order is not None:
             col.sort_order = sort_order
 
-        new_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}"
+        if visibility is not None:
+            vis_clean = str(visibility).strip().lower()
+            if vis_clean in ("visible_to_owner", "visible to owner", "shared"):
+                col.visibility = "visible_to_owner"
+            elif vis_clean == "internal":
+                col.visibility = "internal"
+
+        new_desc = f"label={col.label}, type={col.type}, sort_order={col.sort_order}, visibility={col.visibility}"
 
         audit = AnnotationAudit(
             id=str(uuid.uuid4()),
@@ -230,15 +253,16 @@ class AnnotationService:
             action="column edited",
             old_value=old_desc,
             new_value=new_desc,
-            user_id=user_id,
+            user_id=user_display or user_id,
             timestamp=datetime.now(timezone.utc),
+            extra_info={"role": user_role, "visibility": col.visibility},
         )
         self.db.add(audit)
         self.db.commit()
         self.db.refresh(col)
         return col
 
-    def rename_column(self, col_id_or_key: str, new_label: str, user_id: str = "admin") -> CustomColumn:
+    def rename_column(self, col_id_or_key: str, new_label: str, user_id: str = "admin", user_role: str = "admin", user_display: str | None = None) -> CustomColumn:
         col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
         if not col:
             if self.is_excel_column(col_id_or_key):
@@ -260,15 +284,16 @@ class AnnotationService:
             action="column renamed",
             old_value=old_label,
             new_value=label_clean,
-            user_id=user_id,
+            user_id=user_display or user_id,
             timestamp=datetime.now(timezone.utc),
+            extra_info={"role": user_role},
         )
         self.db.add(audit)
         self.db.commit()
         self.db.refresh(col)
         return col
 
-    def move_column(self, col_id_or_key: str, direction: str, user_id: str = "admin") -> list[CustomColumn]:
+    def move_column(self, col_id_or_key: str, direction: str, user_id: str = "admin", user_role: str = "admin", user_display: str | None = None) -> list[CustomColumn]:
         dir_clean = str(direction or "").strip().lower()
         if dir_clean not in ("left", "right"):
             raise ValidationError("Direction must be 'left' or 'right'.")
@@ -302,15 +327,16 @@ class AnnotationService:
                 action="column moved",
                 old_value=f"position {idx + 1}",
                 new_value=f"position {swap_idx + 1} ({dir_clean})",
-                user_id=user_id,
+                user_id=user_display or user_id,
                 timestamp=datetime.now(timezone.utc),
+                extra_info={"role": user_role},
             )
             self.db.add(audit)
             self.db.commit()
 
         return self.list_columns(include_deleted=False)
 
-    def delete_column(self, col_id_or_key: str, user_id: str = "admin") -> tuple[CustomColumn, int]:
+    def delete_column(self, col_id_or_key: str, user_id: str = "admin", user_role: str = "admin", user_display: str | None = None) -> tuple[CustomColumn, int]:
         col = self.get_column_by_id_or_key(col_id_or_key, include_deleted=False)
         if not col:
             if self.is_excel_column(col_id_or_key):
@@ -339,9 +365,10 @@ class AnnotationService:
             action="column deleted",
             old_value=col.label,
             new_value="DELETED",
-            user_id=user_id,
+            user_id=user_display or user_id,
             timestamp=datetime.now(timezone.utc),
             extra_info={
+                "role": user_role,
                 "values_count": n_values,
                 "removed_values_sample": removed_snapshot,
             },
@@ -450,8 +477,17 @@ class AnnotationService:
 
         return val_str
 
-    def get_deal_annotations(self, opportunity_id_18: str) -> dict[str, Any]:
+    def get_deal_annotations(self, opportunity_id_18: str, user_context: Optional[Any] = None) -> dict[str, Any]:
         """Return dict of { column_key: { value, source, updated_by, updated_at, version } } plus auto-columns."""
+        visible_keys = None
+        if user_context and getattr(user_context, "is_kam", False):
+            visible_cols = (
+                self.db.query(CustomColumn.key)
+                .filter(CustomColumn.is_deleted == False, CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
+                .all()
+            )
+            visible_keys = {c[0] for c in visible_cols}
+
         rows = (
             self.db.query(DealAnnotation)
             .filter(DealAnnotation.opportunity_id_18 == opportunity_id_18)
@@ -462,17 +498,18 @@ class AnnotationService:
         latest_user: str | None = None
 
         for r in rows:
+            if visible_keys is not None and r.column_key not in visible_keys:
+                continue
             res[r.column_key] = r.to_dict()
             if latest_time is None or r.updated_at > latest_time:
                 latest_time = r.updated_at
                 latest_user = r.updated_by
 
         # Include auto columns for display
-        auto_cols = (
-            self.db.query(CustomColumn)
-            .filter(CustomColumn.is_deleted == False, CustomColumn.type.startswith("auto:"))
-            .all()
-        )
+        q_auto = self.db.query(CustomColumn).filter(CustomColumn.is_deleted == False, CustomColumn.type.startswith("auto:"))
+        if visible_keys is not None:
+            q_auto = q_auto.filter(CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
+        auto_cols = q_auto.all()
         for ac in auto_cols:
             if ac.type == "auto: edited by":
                 res[ac.key] = {
@@ -505,6 +542,8 @@ class AnnotationService:
         user_id: str = "admin",
         source: str = "app",
         expected_version: int | None = None,
+        user_role: str = "admin",
+        user_display: str | None = None,
     ) -> dict[str, Any]:
         """Save a deal annotation with validation, concurrency check, and audit logging."""
         opp_id = str(opportunity_id_18 or "").strip()
@@ -512,7 +551,7 @@ class AnnotationService:
             raise ValidationError("Opportunity ID cannot be empty.")
 
         if self.is_excel_column(column_key):
-            raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
+            raise ValidationError("Original Excel-derived columns are read-only and cannot be edited.")
 
         col = self.get_column_by_key(column_key)
         if not col or col.is_deleted:
@@ -549,8 +588,9 @@ class AnnotationService:
                     action="value cleared",
                     old_value=old_val,
                     new_value=None,
-                    user_id=user_id,
+                    user_id=user_display or user_id,
                     timestamp=now,
+                    extra_info={"role": user_role},
                 )
                 self.db.add(audit)
                 self.db.commit()
@@ -565,7 +605,7 @@ class AnnotationService:
 
             old_val = existing.value
             existing.value = clean_val
-            existing.updated_by = user_id
+            existing.updated_by = user_display or user_id
             existing.updated_at = now
             existing.source = source
             existing.version += 1
@@ -579,8 +619,9 @@ class AnnotationService:
                 action="value edited",
                 old_value=old_val,
                 new_value=clean_val,
-                user_id=user_id,
+                user_id=user_display or user_id,
                 timestamp=now,
+                extra_info={"role": user_role},
             )
             self.db.add(audit)
             self.db.commit()
@@ -594,7 +635,7 @@ class AnnotationService:
             column_key=column_key,
             value=clean_val,
             source=source,
-            updated_by=user_id,
+            updated_by=user_display or user_id,
             updated_at=now,
             version=1,
         )
@@ -609,19 +650,34 @@ class AnnotationService:
             action="value added",
             old_value=None,
             new_value=clean_val,
-            user_id=user_id,
+            user_id=user_display or user_id,
             timestamp=now,
+            extra_info={"role": user_role},
         )
         self.db.add(audit)
         self.db.commit()
         self.db.refresh(new_annot)
         return new_annot.to_dict()
 
-    def delete_deal_value(self, opportunity_id_18: str, column_key: str, user_id: str = "admin") -> bool:
+    def delete_deal_value(
+        self,
+        opportunity_id_18: str,
+        column_key: str,
+        user_id: str = "admin",
+        user_role: str = "admin",
+        user_display: str | None = None,
+    ) -> bool:
         """Clear a deal annotation value."""
         if self.is_excel_column(column_key):
-            raise ValidationError("Excel columns are read-only and cannot be modified, renamed, moved, or deleted.")
-        return self.set_deal_value(opportunity_id_18, column_key, None, user_id=user_id).get("cleared", False)
+            raise ValidationError("Original Excel-derived columns are read-only and cannot be edited.")
+        return self.set_deal_value(
+            opportunity_id_18,
+            column_key,
+            None,
+            user_id=user_id,
+            user_role=user_role,
+            user_display=user_display,
+        ).get("cleared", False)
 
     def get_deal_audit(self, opportunity_id_18: str) -> list[dict]:
         """Return history for a single deal from the audit log."""
@@ -732,10 +788,19 @@ class AnnotationService:
     # -------------------------------------------------------------
     # Batch Deal Enrichment for Data Explorer
     # -------------------------------------------------------------
-    def enrich_deals_with_annotations(self, opp_ids: list[str]) -> dict[str, dict[str, Any]]:
+    def enrich_deals_with_annotations(self, opp_ids: list[str], user_context: Optional[Any] = None) -> dict[str, dict[str, Any]]:
         """Return a mapping of { opp_id: { column_key: value_or_meta } } for all requested deals."""
         if not opp_ids:
             return {}
+
+        visible_keys = None
+        if user_context and getattr(user_context, "is_kam", False):
+            visible_cols = (
+                self.db.query(CustomColumn.key)
+                .filter(CustomColumn.is_deleted == False, CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
+                .all()
+            )
+            visible_keys = {c[0] for c in visible_cols}
 
         clean_ids = [str(i).strip() for i in opp_ids if str(i).strip()]
         annotations = (
@@ -748,17 +813,18 @@ class AnnotationService:
         latest_meta: dict[str, tuple[datetime, str]] = {}
 
         for a in annotations:
+            if visible_keys is not None and a.column_key not in visible_keys:
+                continue
             res[a.opportunity_id_18][a.column_key] = a.to_dict()
             cur = latest_meta.get(a.opportunity_id_18)
             if cur is None or a.updated_at > cur[0]:
                 latest_meta[a.opportunity_id_18] = (a.updated_at, a.updated_by)
 
         # Dynamic auto columns
-        auto_cols = (
-            self.db.query(CustomColumn)
-            .filter(CustomColumn.is_deleted == False, CustomColumn.type.startswith("auto:"))
-            .all()
-        )
+        q_auto = self.db.query(CustomColumn).filter(CustomColumn.is_deleted == False, CustomColumn.type.startswith("auto:"))
+        if visible_keys is not None:
+            q_auto = q_auto.filter(CustomColumn.visibility.in_(["visible_to_owner", "Visible to owner"]))
+        auto_cols = q_auto.all()
         if auto_cols:
             for opp_id in clean_ids:
                 meta = latest_meta.get(opp_id)
@@ -938,6 +1004,201 @@ class AnnotationService:
 
         self.db.commit()
         return summary
+
+    # -------------------------------------------------------------
+    # Deal Comments
+    # -------------------------------------------------------------
+    def list_comments(self, opportunity_id_18: str, user_context: Optional[Any] = None) -> list[dict]:
+        import json
+        opp_id = str(opportunity_id_18 or "").strip()
+        if not opp_id:
+            return []
+        q = (
+            self.db.query(DealComment)
+            .filter(DealComment.opportunity_id_18 == opp_id, DealComment.is_deleted == False)
+        )
+        if user_context and getattr(user_context, "is_kam", False):
+            # KAM only sees comments shared with owner or written by themselves
+            q = q.filter(
+                or_(
+                    DealComment.visibility.in_(["shared", "shared_with_owner", "Shared with owner", "visible_to_owner"]),
+                    DealComment.author_id == str(getattr(user_context, "user_id", "")),
+                    DealComment.author_role == "kam",
+                )
+            )
+        comments = q.order_by(DealComment.created_at.asc()).all()
+        out = []
+        for c in comments:
+            d = c.to_dict()
+            rec_ids = []
+            if getattr(c, "recipient_ids", None):
+                try:
+                    rec_ids = json.loads(c.recipient_ids)
+                except Exception:
+                    rec_ids = []
+            rec_names = []
+            is_caller_admin = getattr(user_context, "is_admin", False) if user_context else False
+            if rec_ids:
+                from backend.models.user import User
+                users = self.db.query(User).filter(User.id.in_(rec_ids)).all()
+                rec_names = [("Admin" if u.role == "admin" and not is_caller_admin else u.name) for u in users]
+
+            if not is_caller_admin and (c.author_role == "admin" or str(c.author_id) == "admin"):
+                d["author"] = "Admin"
+                d["user_display"] = "Admin"
+
+            d["recipients"] = rec_names
+            time_str = c.created_at.strftime("%H:%M") if c.created_at else ""
+            if rec_names:
+                d["delivery_status"] = f"Emailed to {', '.join(rec_names)} – sent {time_str}"
+            else:
+                d["delivery_status"] = f"Sent {time_str}" if time_str else "Sent"
+            out.append(d)
+        return out
+
+    def add_comment(
+        self,
+        opportunity_id_18: str,
+        text: str,
+        author: str = "Viewer",
+        user_id: str = "Viewer",
+        visibility: str = "internal",
+        author_role: str = "admin",
+        user_display: str | None = None,
+        recipient_ids: Optional[list[str]] = None,
+        batch_id: Optional[str] = None,
+    ) -> dict:
+        opp_id = str(opportunity_id_18 or "").strip()
+        cleaned_text = str(text or "").strip()
+        if not opp_id:
+            raise ValidationError("Opportunity ID cannot be empty.")
+        if not cleaned_text:
+            raise ValidationError("Comment text cannot be empty.")
+
+        vis_clean = str(visibility or "internal").strip().lower()
+        if vis_clean in ("shared", "shared_with_owner", "shared with owner", "visible to owner", "visible_to_owner"):
+            vis_clean = "shared_with_owner"
+        else:
+            vis_clean = "internal"
+
+        # If author is KAM, comments are always visible to owner and management/admin
+        if author_role == "kam":
+            vis_clean = "shared_with_owner"
+
+        now = datetime.now(timezone.utc)
+        import json
+        rec_ids_str = json.dumps(recipient_ids) if recipient_ids else None
+        comment = DealComment(
+            id=str(uuid.uuid4()),
+            opportunity_id_18=opp_id,
+            author=author.strip() if author else "Viewer",
+            text=cleaned_text,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+            visibility=vis_clean,
+            author_id=user_id,
+            author_role=author_role or "admin",
+            recipient_ids=rec_ids_str,
+            batch_id=batch_id,
+        )
+        self.db.add(comment)
+
+        # Audit Log entry visible in Data Explorer > Audit Log
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=opp_id,
+            action="create",
+            old_value=None,
+            new_value=cleaned_text,
+            user_id=user_display or author.strip() if author else user_id,
+            timestamp=now,
+            extra_info={"author": comment.author, "role": author_role, "visibility": vis_clean},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment.to_dict()
+
+    def update_comment(
+        self,
+        comment_id: str,
+        text: str,
+        user_id: str = "Viewer",
+        visibility: str | None = None,
+        user_role: str = "admin",
+        user_display: str | None = None,
+    ) -> dict:
+        cleaned_text = str(text or "").strip()
+        if not cleaned_text:
+            raise ValidationError("Comment text cannot be empty.")
+        comment = self.db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+        if not comment:
+            raise ValidationError("Comment not found.")
+
+        old_val = comment.text
+        now = datetime.now(timezone.utc)
+        comment.text = cleaned_text
+        if visibility is not None:
+            vis_clean = str(visibility).strip().lower()
+            if vis_clean in ("shared", "shared_with_owner", "shared with owner"):
+                comment.visibility = "shared_with_owner"
+            elif vis_clean == "internal":
+                comment.visibility = "internal"
+        comment.updated_at = now
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=comment.opportunity_id_18,
+            action="update",
+            old_value=old_val,
+            new_value=cleaned_text,
+            user_id=user_display or user_id,
+            timestamp=now,
+            extra_info={"author": comment.author, "role": user_role, "visibility": comment.visibility},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment.to_dict()
+
+    def delete_comment(
+        self,
+        comment_id: str,
+        user_id: str = "Viewer",
+        user_role: str = "admin",
+        user_display: str | None = None,
+    ) -> bool:
+        comment = self.db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+        if not comment:
+            raise ValidationError("Comment not found.")
+
+        now = datetime.now(timezone.utc)
+        comment.is_deleted = True
+        comment.updated_at = now
+
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            column_key="comment",
+            opportunity_id_18=comment.opportunity_id_18,
+            action="delete",
+            old_value=comment.text,
+            new_value=None,
+            user_id=user_display or user_id,
+            timestamp=now,
+            extra_info={"author": comment.author, "role": user_role, "visibility": comment.visibility},
+        )
+        self.db.add(audit)
+        self.db.commit()
+        return True
 
 
 def pd_is_null(val: Any) -> bool:

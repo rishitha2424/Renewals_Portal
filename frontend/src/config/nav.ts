@@ -5,9 +5,14 @@ import {
   Building2,
   Clock,
   Calendar,
+  CalendarDays,
   Table2,
   Upload,
   Printer,
+  MessageSquare,
+  MessageCircle,
+  Users,
+  Mail,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -26,6 +31,20 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/delayed', icon: Clock, label: 'Delayed Renewals' },
   { to: '/expiry', icon: Calendar, label: 'Expiry' },
   { to: '/opportunities', icon: Table2, label: 'Data Explorer' },
-  { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
+  { to: '/messages', icon: MessageSquare, label: 'Messages Hub' },
+  { to: '/comments-log', icon: MessageCircle, label: 'Comments log' },
 ]
 
+export const KAM_NAV_ITEMS: NavItem[] = [
+  { to: '/kam/overview', icon: LayoutDashboard, label: 'My Overview' },
+  { to: '/kam/tracker', icon: CalendarDays, label: 'Deal Tracker' },
+  { to: '/kam/deals', icon: Table2, label: 'My Opportunities' },
+  { to: '/messages', icon: MessageSquare, label: 'Messages Hub' },
+  { to: '/comments-log', icon: MessageCircle, label: 'Comments log' },
+]
+
+export const ADMIN_NAV_ITEMS: NavItem[] = [
+  { to: '/admin/users', icon: Users, label: 'User Governance' },
+  { to: '/admin/email-outbox', icon: Mail, label: 'Email Dispatch' },
+  { to: '/data-uploads', icon: Upload, label: 'Data Uploads' },
+]

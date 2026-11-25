@@ -94,18 +94,18 @@ export function Drawer({
             {/* Sticky Header with prominent title, subtitle, and close button */}
             <div
               className={clsx(
-                'sticky top-0 z-30 flex items-center justify-between px-5 sm:px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] shadow-xs',
+                'sticky top-0 z-30 flex items-center justify-between px-6 sm:px-8 py-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm shrink-0',
                 position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl'
               )}
             >
-              <div className="min-w-0 pr-3">
+              <div className="min-w-0 pr-4">
                 {title && (
-                  <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)] truncate" title={title}>
+                  <h3 className="font-extrabold text-base sm:text-lg text-[var(--text-primary)] truncate leading-tight" title={title}>
                     {title}
                   </h3>
                 )}
                 {subtitle && (
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate font-mono">
+                  <p className="text-xs sm:text-sm font-semibold text-teal-600 dark:text-teal-400 mt-1 truncate font-mono">
                     {subtitle}
                   </p>
                 )}
@@ -113,10 +113,10 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none flex-shrink-0 cursor-pointer border border-transparent hover:border-[var(--border)]"
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors focus:outline-none flex-shrink-0 cursor-pointer border border-[var(--border)] shadow-xs"
                 aria-label="Close drawer"
               >
-                <X className="w-5 h-5" strokeWidth={1.75} />
+                <X className="w-5 h-5" strokeWidth={2} />
               </button>
             </div>
 
@@ -138,7 +138,7 @@ export function Drawer({
   )
 
   if (typeof document === 'undefined') return null
-  const target = document.getElementById('root') || document.body
+  const target = document.body || document.getElementById('root')
   return createPortal(content, target)
 }
 

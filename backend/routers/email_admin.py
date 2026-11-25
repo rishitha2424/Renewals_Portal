@@ -1,0 +1,202 @@
+"""
+Admin Email Configuration, Diagnostics, and Outbox Router.
+Endpoints to view email outbox, diagnostics, send test emails, retry pending deliveries, and manage items.
+Protected by require_admin_context.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from backend.config import settings
+from backend.database import get_db
+from backend.models.user import EmailOutbox
+from backend.services.context import UserContext, require_admin_context
+from backend.services.mail_service import MailService
+from backend.services.audit_service import log_audit_event
+
+log = logging.getLogger(__name__)
+
+router = APIRouter(tags=["admin-email"])
+
+
+class TestEmailRequest(BaseModel):
+    recipient_email: Optional[str] = None
+    to_email: Optional[str] = None
+
+
+@router.get("/diagnostics")
+def get_email_diagnostics(
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Safe email transport diagnostics (admin only). Secrets are never returned."""
+    diag = MailService.get_diagnostics()
+    return diag
+
+
+@router.get("/outbox")
+def list_email_outbox(
+    status_filter: Optional[str] = None,
+    limit: int = 50,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """List recent outbox emails with delivery status, timestamp, and transport diagnostics."""
+    q = db.query(EmailOutbox)
+    if status_filter:
+        q = q.filter(EmailOutbox.status == status_filter)
+    emails = q.order_by(EmailOutbox.created_at.desc()).limit(limit).all()
+
+    diag = MailService.get_diagnostics()
+
+    outbox_items = [
+        {
+            "id": m.id,
+            "recipient_email": m.recipient_email,
+            "to_email": m.recipient_email,
+            "recipient_name": m.recipient_name,
+            "subject": m.subject,
+            "template": m.template_type,
+            "template_type": m.template_type,
+            "status": m.status,
+            "attempts": m.retry_count,
+            "retry_count": m.retry_count,
+            "error_message": m.error_message,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
+        }
+        for m in emails
+    ]
+
+    return {
+        "config": diag,
+        "diagnostics": diag,
+        "smtp_configured": diag["is_configured"],
+        "inactive_reason": diag["inactive_reason"],
+        "total_count": len(outbox_items),
+        "outbox": outbox_items,
+        "emails": outbox_items,
+    }
+
+
+@router.post("/test")
+def send_test_email(
+    req: TestEmailRequest,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """Send a test email to verify SMTP configuration and report real errors safely."""
+    target_email = (req.recipient_email or req.to_email or "").strip()
+    if not target_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Recipient email address is required.",
+        )
+
+    success, msg = MailService.send_test_email(target_email)
+    log_audit_event(
+        db,
+        "test_email_sent",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={"recipient": target_email, "success": success, "result": msg},
+    )
+    return {
+        "status": "success" if success else "failed",
+        "delivered": success,
+        "detail": msg,
+    }
+
+
+@router.post("/resend-pending")
+def resend_pending_emails(
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """Retry sending all pending outbox items."""
+    res = MailService.resend_pending_emails(db)
+    log_audit_event(db, "resend_pending_emails", user_id=ctx.user_id, details=res)
+    return {
+        "status": "success",
+        "dispatched": res.get("dispatched", 0),
+        "sent_count": res.get("sent_count", 0),
+        "retried_count": res.get("retried_count", 0),
+        "failed_count": res.get("failed_count", 0),
+    }
+
+
+@router.post("/outbox/{item_id}/cancel")
+def cancel_outbox_email(
+    item_id: str,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending outbox item so it won't be sent."""
+    item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+    item.status = "cancelled"
+    db.commit()
+    log_audit_event(
+        db,
+        "outbox_email_cancelled",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={"item_id": item_id, "recipient": item.recipient_email},
+    )
+    return {"status": "success", "id": item_id, "item_status": "cancelled"}
+
+
+@router.delete("/outbox/{item_id}")
+def delete_outbox_email(
+    item_id: str,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """Delete an outbox item."""
+    item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+    recipient = item.recipient_email
+    db.delete(item)
+    db.commit()
+    log_audit_event(
+        db,
+        "outbox_email_deleted",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={"item_id": item_id, "recipient": recipient},
+    )
+    return {"status": "success", "deleted_id": item_id}
+
+
+@router.post("/outbox/{item_id}/send-now")
+def send_outbox_email_now(
+    item_id: str,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """Attempt immediate delivery of a single outbox item."""
+    item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+    success = MailService.dispatch_outbox_item(db, item_id)
+    db.refresh(item)
+    log_audit_event(
+        db,
+        "outbox_email_send_now",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={"item_id": item_id, "recipient": item.recipient_email, "success": success},
+    )
+    return {
+        "status": "success" if success else "failed",
+        "delivered": success,
+        "detail": "Email delivered" if success else (item.error_message or "Delivery failed"),
+        "item_status": item.status,
+    }
+
+

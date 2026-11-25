@@ -123,7 +123,7 @@ function RegionsContent() {
   })
 
   // Fetch Deals for Modal
-  const { data: dealsData } = useQuery({
+  const { data: dealsData, isLoading: isDealsLoading } = useQuery({
     queryKey: ['v2-regions-deals', activeSnapshotId, modalFilters],
     queryFn: async () => {
       const res = await api.get('/v2/regions/deals', {
@@ -1718,6 +1718,7 @@ function RegionsContent() {
       {modalOpen && (
         <DealListModal
           title={modalTitle}
+          isLoading={!modalFilters.deals && isDealsLoading}
           deals={(modalFilters.deals || dealsData?.deals || []).map((d: any) => ({
             ...d,
             owner: d.opportunity_owner || d.owner,

@@ -305,6 +305,8 @@ class V2OverviewService:
             ap_prev = str(pr_row["approval_status"]) if pd.notna(pr_row["approval_status"]) else "Blank"
             c_date  = tr_row["close_date"]
             close_date_str = (c_date.isoformat() if hasattr(c_date, "isoformat") else str(c_date)[:10]) if (c_date is not None and not pd.isna(c_date)) else None
+            st_val  = str(tr_row.get("stage_number") or tr_row.get("stage") or "").strip()
+            ow_val  = str(tr_row.get("opportunity_owner") or tr_row.get("owner") or "").strip()
 
             base_deal = {
                 "opportunity_id_18": opp_id,
@@ -320,6 +322,10 @@ class V2OverviewService:
                 "approval_status": ap_now,
                 "region": region,
                 "sub_region": region,
+                "owner": ow_val,
+                "opportunity_owner": ow_val,
+                "stage": st_val,
+                "stage_number": st_val,
             }
 
             fc_prev_mapped = fc_prev if fc_prev in CATEGORY_CONFIG_ORDER else "Other"
@@ -407,17 +413,28 @@ class V2OverviewService:
                     if not t_fp or '-' not in t_fp: continue
                     t_parsed = _parse_fp(t_fp)
                     
+                    st_val = str(t_opp.get("stage_number") if isinstance(t_opp, pd.Series) else t_opp.iloc[0].get("stage_number") or t_opp.get("stage") if isinstance(t_opp, pd.Series) else t_opp.iloc[0].get("stage") or "").strip()
+                    ow_val = str(t_opp.get("opportunity_owner") if isinstance(t_opp, pd.Series) else t_opp.iloc[0].get("opportunity_owner") or t_opp.get("owner") if isinstance(t_opp, pd.Series) else t_opp.iloc[0].get("owner") or "").strip()
                     deal = {
+                        "id": opp_id,
                         "opportunity_id_18": opp_id,
                         "opportunity_name": str(t_opp["opportunity_name"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["opportunity_name"]),
                         "account_name": str(t_opp["account_name"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["account_name"]),
                         "canonical_region": str(t_opp["canonical_region"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["canonical_region"]),
+                        "region": str(t_opp["canonical_region"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["canonical_region"]),
+                        "sub_region": str(t_opp["canonical_region"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["canonical_region"]),
                         "forecast_category": str(t_opp["forecast_category"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["forecast_category"]),
                         "forecast_acv_amount": float(t_opp["forecast_acv_amount"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["forecast_acv_amount"]),
+                        "acv": float(t_opp["forecast_acv_amount"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["forecast_acv_amount"]),
                         "approval_status": str(t_opp["approval_status"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["approval_status"]),
                         "business_unit_primary": str(t_opp["business_unit_primary"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["business_unit_primary"]),
+                        "business_unit": str(t_opp["business_unit_primary"] if isinstance(t_opp, pd.Series) else t_opp.iloc[0]["business_unit_primary"]),
                         "fiscal_period": t_fp,
                         "close_date": (t_opp["close_date"].isoformat() if hasattr(t_opp["close_date"], "isoformat") else str(t_opp["close_date"])) if (t_opp["close_date"] is not None and not pd.isna(t_opp["close_date"])) else None,
+                        "owner": ow_val,
+                        "opportunity_owner": ow_val,
+                        "stage": st_val,
+                        "stage_number": st_val,
                     }
 
                     
@@ -1486,6 +1503,8 @@ class V2OverviewService:
             # Map deal fields consistently
             records = []
             for d in raw_deals:
+                ow_val = str(d.get("opportunity_owner") or d.get("owner") or "").strip()
+                st_val = str(d.get("stage_number") or d.get("stage") or "").strip()
                 records.append({
                     "id": str(d.get("opportunity_id_18", "")),
                     "opportunity_id_18": str(d.get("opportunity_id_18", "")),
@@ -1497,6 +1516,10 @@ class V2OverviewService:
                     "sub_region": str(d.get("canonical_region") or d.get("region") or ""),
                     "business_unit_primary": str(d.get("business_unit_primary", "")),
                     "close_date": d.get("close_date"),
+                    "owner": ow_val,
+                    "opportunity_owner": ow_val,
+                    "stage": st_val,
+                    "stage_number": st_val,
                 })
             return {
                 "count": slip.get("count", len(records)),
@@ -1522,6 +1545,8 @@ class V2OverviewService:
                 added_deals = []
                 for oid, tr in t_map.items():
                     if oid not in p_map:
+                        ow_val = str(tr.get("opportunity_owner") or tr.get("owner") or "").strip()
+                        st_val = str(tr.get("stage_number") or tr.get("stage") or "").strip()
                         deal = {
                             "id": str(tr["opportunity_id_18"]),
                             "opportunity_id_18": str(tr["opportunity_id_18"]),
@@ -1535,12 +1560,18 @@ class V2OverviewService:
                             "close_date": tr["close_date"].isoformat() if hasattr(tr["close_date"], "isoformat") else str(tr["close_date"]) if tr["close_date"] else None,
                             "delta_group": f"Added to {res.data_slice}",
                             "delta_acv_change": float(tr["forecast_acv_amount"] or 0),
+                            "owner": ow_val,
+                            "opportunity_owner": ow_val,
+                            "stage": st_val,
+                            "stage_number": st_val,
                         }
                         added_deals.append(deal)
 
                 left_deals = []
                 for oid, pr in p_map.items():
                     if oid not in t_map:
+                        ow_val = str(pr.get("opportunity_owner") or pr.get("owner") or "").strip()
+                        st_val = str(pr.get("stage_number") or pr.get("stage") or "").strip()
                         deal = {
                             "id": str(pr["opportunity_id_18"]),
                             "opportunity_id_18": str(pr["opportunity_id_18"]),
@@ -1554,6 +1585,10 @@ class V2OverviewService:
                             "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
                             "delta_group": f"Left {res.data_slice} – moved or lost",
                             "delta_acv_change": -float(pr["forecast_acv_amount"] or 0),
+                            "owner": ow_val,
+                            "opportunity_owner": ow_val,
+                            "stage": st_val,
+                            "stage_number": st_val,
                         }
                         left_deals.append(deal)
 
@@ -1564,6 +1599,8 @@ class V2OverviewService:
                         pr = p_map[oid]
                         diff = round(float(tr["forecast_acv_amount"] or 0) - float(pr["forecast_acv_amount"] or 0), 2)
                         if abs(diff) > 0.001:
+                            ow_val = str(tr.get("opportunity_owner") or tr.get("owner") or "").strip()
+                            st_val = str(tr.get("stage_number") or tr.get("stage") or "").strip()
                             deal = {
                                 "id": str(tr["opportunity_id_18"]),
                                 "opportunity_id_18": str(tr["opportunity_id_18"]),
@@ -1577,6 +1614,10 @@ class V2OverviewService:
                                 "close_date": tr["close_date"].isoformat() if hasattr(tr["close_date"], "isoformat") else str(tr["close_date"]) if tr["close_date"] else None,
                                 "delta_group": "Amount changed",
                                 "delta_acv_change": diff,
+                                "owner": ow_val,
+                                "opportunity_owner": ow_val,
+                                "stage": st_val,
+                                "stage_number": st_val,
                             }
                             changed_deals.append(deal)
 
@@ -1682,6 +1723,8 @@ class V2OverviewService:
                 drop_records = []
                 for oid, pr in p_map.items():
                     prev_acv = float(pr["forecast_acv_amount"] or 0)
+                    ow_val = str(pr.get("opportunity_owner") or pr.get("owner") or "").strip()
+                    st_val = str(pr.get("stage_number") or pr.get("stage") or "").strip()
                     if oid not in t_map:
                         drop_records.append({
                             "id": str(oid),
@@ -1695,10 +1738,16 @@ class V2OverviewService:
                             "business_unit_primary": str(pr.get("business_unit_primary", "")),
                             "close_date": pr["close_date"].isoformat() if hasattr(pr["close_date"], "isoformat") else str(pr["close_date"]) if pr["close_date"] else None,
                             "delta_acv_change": -float(prev_acv),
+                            "owner": ow_val,
+                            "opportunity_owner": ow_val,
+                            "stage": st_val,
+                            "stage_number": st_val,
                         })
                     else:
                         curr_acv = float(t_map[oid]["forecast_acv_amount"] or 0)
                         if prev_acv - curr_acv > 0.01:
+                            t_ow_val = str(t_map[oid].get("opportunity_owner") or t_map[oid].get("owner") or ow_val).strip()
+                            t_st_val = str(t_map[oid].get("stage_number") or t_map[oid].get("stage") or st_val).strip()
                             drop_records.append({
                                 "id": str(oid),
                                 "opportunity_id_18": str(oid),
@@ -1711,6 +1760,10 @@ class V2OverviewService:
                                 "business_unit_primary": str(t_map[oid].get("business_unit_primary", "")),
                                 "close_date": t_map[oid]["close_date"].isoformat() if hasattr(t_map[oid]["close_date"], "isoformat") else str(t_map[oid]["close_date"]) if t_map[oid]["close_date"] else None,
                                 "delta_acv_change": round(curr_acv - prev_acv, 2),
+                                "owner": t_ow_val,
+                                "opportunity_owner": t_ow_val,
+                                "stage": t_st_val,
+                                "stage_number": t_st_val,
                             })
                 drop_records.sort(key=lambda x: abs(x.get("delta_acv_change", 0)), reverse=True)
                 if deal_ids:

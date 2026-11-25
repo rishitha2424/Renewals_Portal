@@ -3,12 +3,16 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context
+from backend.services.context import UserContext, get_user_context, require_management_or_admin
 from backend.services.v2_regions_service import V2RegionsService
 from backend.services.scopes import FilterSpec
 from backend.routers.deps import get_filter_spec
 
-router = APIRouter(prefix="/api/v2/regions", tags=["v2-regions"])
+router = APIRouter(
+    prefix="/api/v2/regions",
+    tags=["v2-regions"],
+    dependencies=[Depends(require_management_or_admin)],
+)
 
 
 def _svc(db: Session = Depends(get_db)) -> V2RegionsService:

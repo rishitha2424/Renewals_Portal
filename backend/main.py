@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import settings
 from backend.routers import snapshots, analytics, opportunities, export, health, admin_auth, settings as system_settings_router, custom_columns
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters, v2_explorer
+from backend.routers import auth, admin_users, messages, email_admin, kam, search, notifications, comments
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,6 +99,15 @@ async def lifespan(app: FastAPI):
     except Exception as log_err:
         log.info(f"Database: {dialect} ({migrations_status})")
 
+    # Seed default user accounts (admin Rishitha and management)
+    try:
+        from backend.database import SessionLocal
+        from backend.services.auth_service import ensure_default_accounts
+        with SessionLocal() as db_init:
+            ensure_default_accounts(db_init)
+    except Exception as exc:
+        log.warning("Could not seed default accounts on startup: %s", exc)
+
     # Security check on startup
     from backend.routers.admin_auth import get_security_warnings
     sec_warnings = get_security_warnings()
@@ -163,12 +173,124 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+EXEMPT_API_PATHS = {
+    "/api/health",
+    "/api/health/db",
+    "/health",
+    "/api/auth/login",
+    "/api/admin/login",
+    "/api/auth/logout",
+    "/api/admin/logout",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/verify-reset-token",
+    "/api/auth/verify-invite-token",
+    "/api/auth/set-password",
+    "/api/auth/invite/verify",
+    "/api/auth/invite/set-password",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+}
+
+
+class AuthenticationRequiredMiddleware:
+    """
+    Round 19: Universal Authentication Enforcement Middleware.
+    Enforces login required for all /api/* routes.
+    Returns HTTP 401 Unauthorized for anonymous requests.
+    Streaming and file downloads remain completely unaffected (pure ASGI passthrough).
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        path: str = scope.get("path", "")
+        method: str = scope.get("method", "GET")
+
+        # Allow CORS preflight requests
+        if method == "OPTIONS":
+            return await self.app(scope, receive, send)
+
+        # Allow non-API routes (static files, index.html, spa assets, /health)
+        if not path.startswith("/api/"):
+            return await self.app(scope, receive, send)
+
+        clean_path = path.rstrip("/")
+        if clean_path in EXEMPT_API_PATHS or path in EXEMPT_API_PATHS:
+            return await self.app(scope, receive, send)
+
+        # Extract token from headers or cookies
+        token = None
+        headers = dict(scope.get("headers", []))
+        auth_header = headers.get(b"authorization")
+        if auth_header:
+            auth_val = auth_header.decode("latin1").strip()
+            if auth_val.lower().startswith("bearer "):
+                token = auth_val[7:].strip()
+
+        if not token:
+            cookie_header = headers.get(b"cookie")
+            if cookie_header:
+                cookie_str = cookie_header.decode("latin1")
+                for c in cookie_str.split(";"):
+                    c = c.strip()
+                    if c.startswith("auth_token="):
+                        token = c.split("=", 1)[1].strip()
+                        break
+                    elif c.startswith("admin_token="):
+                        token = c.split("=", 1)[1].strip()
+                        break
+
+        # Validate token signature and expiry
+        is_valid = False
+        if token:
+            from backend.services.auth_service import decode_session_token
+            from backend.services.context import decode_admin_token
+            if decode_session_token(token) or decode_admin_token(token):
+                is_valid = True
+
+        if not is_valid:
+            response_body = b'{"detail": "Authentication required. Please log in."}'
+            response_headers = [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(response_body)).encode("ascii")),
+                (b"www-authenticate", b"Bearer"),
+            ]
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": response_headers,
+            })
+            await send({
+                "type": "http.response.body",
+                "body": response_body,
+                "more_body": False,
+            })
+            return
+
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(AuthenticationRequiredMiddleware)
+
 # API routes (Mounted exactly once under /api)
 app.include_router(snapshots.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(opportunities.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(admin_auth.router, prefix="/api")
+app.include_router(auth.router)
+app.include_router(admin_users.router)
+app.include_router(messages.router)
+app.include_router(notifications.router)
+app.include_router(email_admin.router, prefix="/api/admin/email")
+app.include_router(email_admin.router, prefix="/api/email-admin")
+app.include_router(kam.router)
+app.include_router(search.router)
 app.include_router(health.router)
 app.include_router(v2_overview.router)
 app.include_router(v2_expiry.router)
@@ -180,6 +302,7 @@ app.include_router(v2_filters.router)
 app.include_router(v2_explorer.router)
 app.include_router(system_settings_router.router)
 app.include_router(custom_columns.router)
+app.include_router(comments.router)
 
 from fastapi import Query, Depends
 from sqlalchemy.orm import Session

@@ -16,6 +16,7 @@ export interface TileProps {
   dealsLabel?: string
   badge?: React.ReactNode
   subtitle?: React.ReactNode
+  breakdown?: React.ReactNode
   deltaYesterday?: DeltaValue | null | React.ReactNode
   deltaLastWeek?: DeltaValue | null | React.ReactNode
   polarity?: MetricPolarity
@@ -38,6 +39,7 @@ export const Tile: React.FC<TileProps> = ({
   dealsLabel = 'deals',
   badge,
   subtitle,
+  breakdown,
   deltaYesterday,
   deltaLastWeek,
   polarity,
@@ -67,7 +69,7 @@ export const Tile: React.FC<TileProps> = ({
     const d = delta as DeltaValue | null | undefined
     if (!d || (d.count == null && d.acv == null)) {
       return (
-        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
+        <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-muted)] opacity-60">
           <span>{label}</span>
           <span className="tabular-nums text-slate-400 dark:text-slate-500 font-normal">n/a</span>
         </div>
@@ -80,7 +82,7 @@ export const Tile: React.FC<TileProps> = ({
 
     if (countVal === 0 && acvVal === 0) {
       return (
-        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] opacity-60">
+        <div className="flex items-center justify-between text-xs sm:text-sm text-[var(--text-muted)] opacity-60">
           <span>{label}</span>
           <span className="tabular-nums">—</span>
         </div>
@@ -100,9 +102,9 @@ export const Tile: React.FC<TileProps> = ({
     }
 
     return (
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-[var(--text-muted)] font-normal">{label}</span>
-        <span className={`tabular-nums ${colorClass}`}>{text}</span>
+      <div className="flex items-center justify-between text-xs sm:text-sm">
+        <span className="text-[var(--text-secondary)] font-medium">{label}</span>
+        <span className={`tabular-nums font-semibold ${colorClass}`}>{text}</span>
       </div>
     )
   }
@@ -115,7 +117,7 @@ export const Tile: React.FC<TileProps> = ({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       style={{ borderLeft: `4px solid ${borderCol}` }}
-      className={`card p-3.5 text-left flex flex-col justify-between gap-2.5 transition-all rounded-xl border border-[var(--border)] bg-[var(--bg-card)] ${
+      className={`card p-4 sm:p-5 text-left flex flex-col justify-between gap-3 transition-all rounded-xl border border-[var(--border)] bg-[var(--bg-card)] ${
         onClick ? 'cursor-pointer hover:border-[var(--brand-teal)]' : ''
       } ${
         isSelected
@@ -123,11 +125,11 @@ export const Tile: React.FC<TileProps> = ({
           : ''
       } ${className}`}
     >
-      <div className="space-y-1.5 w-full">
+      <div className="space-y-2 w-full">
         {/* Title and Deals Badge Row */}
         <div className="flex justify-between items-center gap-2">
           <span
-            className={`text-xs font-bold uppercase tracking-wider truncate ${accentColor ? '' : conceptDef.titleClass}`}
+            className={`text-sm font-bold uppercase tracking-wider truncate ${accentColor ? '' : conceptDef.titleClass}`}
             style={accentColor ? { color: accentColor } : undefined}
             title={title}
           >
@@ -137,14 +139,14 @@ export const Tile: React.FC<TileProps> = ({
             <div className="flex-shrink-0">{badge}</div>
           ) : count != null ? (
             <span
-              className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded border tabular-nums ${
+              className={`text-xs sm:text-sm font-semibold flex-shrink-0 px-2.5 py-1 rounded-md border tabular-nums ${
                 accentColor
                   ? 'border-[var(--border-subtle)]'
                   : `${conceptDef.badgeBgClass} ${conceptDef.badgeTextClass} ${conceptDef.badgeBorderClass}`
               }`}
               style={accentColor ? { backgroundColor: `${accentColor}18`, color: accentColor, borderColor: `${accentColor}35` } : undefined}
             >
-              {typeof count === 'number' ? `${formatCount(count)} ${dealsLabel}` : count}
+              {typeof count === 'number' ? `${formatCount(count)} ${count === 1 && dealsLabel === 'deals' ? 'deal' : dealsLabel}` : count}
             </span>
           ) : null}
         </div>
@@ -154,11 +156,18 @@ export const Tile: React.FC<TileProps> = ({
           {isNA ? <span className="text-slate-400 font-normal text-xl">n/a</span> : amount}
         </div>
 
+        {/* Breakdown line, e.g. incl. n Approved 2nd ($X) */}
+        {breakdown && (
+          <div className="text-xs text-[var(--text-secondary)] font-medium -mt-1">
+            {breakdown}
+          </div>
+        )}
+
         {/* Subtitle / View Deals */}
         {(subtitle || viewDealsText || onDealsClick) && (
-          <div className="flex items-center justify-between pt-0.5 min-h-[18px]">
+          <div className="flex items-center justify-between pt-0.5 min-h-[20px]">
             {subtitle && (
-              <div className="text-[11px] text-[var(--text-muted)] truncate">
+              <div className="text-xs sm:text-sm text-[var(--text-secondary)] truncate">
                 {subtitle}
               </div>
             )}
@@ -166,7 +175,7 @@ export const Tile: React.FC<TileProps> = ({
               <span
                 role="button"
                 tabIndex={0}
-                className="text-[11px] text-[var(--brand-teal)] hover:underline font-medium cursor-pointer ml-auto flex-shrink-0"
+                className="text-xs sm:text-sm text-[var(--brand-teal)] hover:underline font-semibold cursor-pointer ml-auto flex-shrink-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   onDealsClick(e)
@@ -181,7 +190,7 @@ export const Tile: React.FC<TileProps> = ({
 
       {/* Deltas / Comparison Footer */}
       {(deltaYesterday !== undefined || deltaLastWeek !== undefined || footer) && (
-        <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1 w-full">
+        <div className="pt-2.5 border-t border-[var(--border-subtle)] space-y-1.5 w-full">
           {footer}
           {deltaYesterday !== undefined && renderDeltaItem('vs yesterday', deltaYesterday)}
           {deltaLastWeek !== undefined && renderDeltaItem('vs last week', deltaLastWeek)}

@@ -30,6 +30,8 @@ class CustomColumn(Base):
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[str] = mapped_column(String(128), default="system", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    visibility: Mapped[str] = mapped_column(String(32), default="internal", nullable=False)
+    creator_role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
 
     __table_args__ = (
         Index("ix_custom_columns_is_deleted_sort", "is_deleted", "sort_order"),
@@ -47,6 +49,8 @@ class CustomColumn(Base):
             "is_deleted": self.is_deleted,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "visibility": self.visibility or "internal",
+            "creator_role": self.creator_role or "admin",
         }
 
 
@@ -114,4 +118,43 @@ class AnnotationAudit(Base):
             "user_id": self.user_id,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "extra_info": self.extra_info,
+        }
+
+
+class DealComment(Base):
+    __tablename__ = "deal_comments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    opportunity_id_18: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    author: Mapped[str] = mapped_column(String(128), default="Viewer", nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    visibility: Mapped[str] = mapped_column(String(32), default="internal", nullable=False)
+    author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    author_role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
+    recipient_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded array of recipient user IDs
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_deal_comments_opp_deleted", "opportunity_id_18", "is_deleted"),
+        Index("ix_deal_comments_created", "created_at"),
+        Index("ix_deal_comments_batch", "batch_id"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "opportunity_id_18": self.opportunity_id_18,
+            "author": self.author,
+            "text": self.text,
+            "is_deleted": self.is_deleted,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "visibility": self.visibility or "internal",
+            "author_id": self.author_id,
+            "author_role": self.author_role or "admin",
+            "recipient_ids": self.recipient_ids,
+            "batch_id": self.batch_id,
         }

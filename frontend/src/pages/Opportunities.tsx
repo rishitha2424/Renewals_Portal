@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Search,
@@ -196,10 +197,26 @@ export default function Opportunities() {
 
   // UI state
   const isAdmin = useAppStore((s) => s.isAdmin)
+  const setSelectedOppId = useAppStore((s) => s.setSelectedOppId)
   const [showFilterBuilder, setShowFilterBuilder] = useState<boolean>(false)
   const [showColPicker, setShowColPicker] = useState<boolean>(false)
   const [colSearchQuery, setColSearchQuery] = useState<string>('')
   const [selectedRowData, setSelectedRowData] = useState<Record<string, any> | null>(null)
+
+  // Lock body scroll and ESC listener for selected row detail drawer
+  useEffect(() => {
+    if (selectedRowData) {
+      document.body.style.overflow = 'hidden'
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setSelectedRowData(null)
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      return () => {
+        document.body.style.overflow = ''
+        window.removeEventListener('keydown', handleKeyDown)
+      }
+    }
+  }, [selectedRowData])
   const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false)
   const [drawerSearchQuery, setDrawerSearchQuery] = useState<string>('')
   const [isExporting, setIsExporting] = useState<boolean>(false)
@@ -1581,7 +1598,11 @@ export default function Opportunities() {
                   return (
                     <tr
                       key={row._id || rIdx}
-                      onClick={() => setSelectedRowData(row)}
+                      onClick={() => {
+                        const oppId = row._opp_id_18 || row['Opportunity ID 18 Digit']
+                        if (oppId) setSelectedOppId(oppId)
+                        else setSelectedRowData(row)
+                      }}
                       className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors group"
                     >
                       {/* Pinned first column with Notes button */}
@@ -1592,11 +1613,16 @@ export default function Opportunities() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setNotesDeal(row)
-                              setShowNotesDrawer(true)
+                              const oppId = row._opp_id_18 || row['Opportunity ID 18 Digit']
+                              if (oppId) {
+                                setSelectedOppId(oppId)
+                              } else {
+                                setNotesDeal(row)
+                                setShowNotesDrawer(true)
+                              }
                             }}
                             className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[#00A3AD] hover:text-[#008f98] transition-colors"
-                            title="Notes & Custom Fields"
+                            title="Notes, Comments & Custom Fields"
                             id={`row-notes-btn-${row._opp_id_18 || rowNum}`}
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -1716,11 +1742,16 @@ export default function Opportunities() {
       </Card>
 
       {/* ── Detail Drawer (Click any row) ─────────────────────────────────── */}
-      {selectedRowData && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-xs flex justify-end">
+      {selectedRowData && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[100] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedRowData(null)
+          }}
+        >
           <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
+            <div className="p-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between shrink-0">
               <div>
                 <h2 className="font-black text-sm sm:text-base text-[var(--text-primary)]">
                   {selectedRowData['Opportunity Name'] || 'Deal Detail'}
@@ -1732,7 +1763,7 @@ export default function Opportunities() {
               <button
                 type="button"
                 onClick={() => setSelectedRowData(null)}
-                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] cursor-pointer"
                 aria-label="Close deal detail"
               >
                 <X className="w-5 h-5" />
@@ -1740,7 +1771,7 @@ export default function Opportunities() {
             </div>
 
             {/* Drawer Field Search */}
-            <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+            <div className="p-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 shrink-0">
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[var(--bg-card)] border border-[var(--border)] text-xs">
                 <Search className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 <input
@@ -1767,7 +1798,8 @@ export default function Opportunities() {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Reconciliation Modal ─────────────────────────────────────────── */}

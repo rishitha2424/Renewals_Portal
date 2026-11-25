@@ -4,7 +4,7 @@ import re
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import Tuple, List, Optional, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_, and_, ColumnElement, func
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,17 @@ class FilterSpec(BaseModel):
     approval_statuses: List[str] = Field(default_factory=list)
     types: Optional[List[str]] = Field(default_factory=lambda: ["all"])
     include_deleted_lost: bool = False
+    allowed_owners: Optional[List[str]] = None
+    user_context: Optional[Any] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_none_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for k in ("sales_types", "regions", "business_units", "forecast_categories", "approval_statuses", "types"):
+                if k in data and data[k] is None:
+                    data[k] = ["all"] if k in ("sales_types", "types") else []
+        return data
 
     @classmethod
     def from_params(
@@ -66,6 +77,8 @@ class FilterSpec(BaseModel):
         approval_statuses: Optional[List[str] | str] = None,
         types: Optional[List[str] | str] = None,
         include_deleted_lost: Optional[bool] = False,
+        allowed_owners: Optional[List[str]] = None,
+        user_context: Optional[Any] = None,
     ) -> FilterSpec:
         def _parse_list(val: Any, default: Any) -> Any:
             if val is None:
@@ -101,6 +114,8 @@ class FilterSpec(BaseModel):
             approval_statuses=appr,
             types=tp,
             include_deleted_lost=False if include_deleted_lost is None else bool(include_deleted_lost),
+            allowed_owners=allowed_owners,
+            user_context=user_context,
         )
 
 
@@ -412,9 +427,9 @@ class ScopeService:
             except Exception:
                 pass
 
-        elif period == "all_periods" or period == "all":
-            data_slice = "All Periods"
-            resolved_quarter = cq
+        elif period in ("all_open", "all_open_deals", "all_periods", "all", "All open deals", "All Open Deals", "All periods", "All Periods"):
+            data_slice = "All periods"
+            resolved_quarter = "All periods"
 
         else:
             resolved_quarter = cq
@@ -454,7 +469,7 @@ class ScopeService:
             if reg_conds:
                 conditions.append(or_(*reg_conds))
 
-        # 4. Business Units (supports exact BU raw matches)
+        # 4. Business Units (supports exact BU raw matches or primary BU)
         bus = filter_spec.business_units
         if bus and not ("all" in [b.lower() for b in bus] or "" in bus):
             bu_conds = []
@@ -469,9 +484,28 @@ class ScopeService:
                         )
                     )
                 elif b_clean and b_clean not in ("All", "Total", "Grand Total"):
-                    bu_conds.append(Opportunity.business_unit_raw == b_clean)
+                    bu_conds.append(
+                        or_(
+                            Opportunity.business_unit_raw == b_clean,
+                            Opportunity.business_unit_primary == b_clean,
+                            Opportunity.business_unit_raw.ilike(f"%{b_clean}%"),
+                        )
+                    )
             if bu_conds:
                 conditions.append(or_(*bu_conds))
+
+        # KAM Data Isolation: enforce owner match centrally
+        target_owners = None
+        if filter_spec.allowed_owners is not None:
+            target_owners = filter_spec.allowed_owners
+        elif filter_spec.user_context and getattr(filter_spec.user_context, "is_kam", False):
+            target_owners = getattr(filter_spec.user_context, "all_owner_names", [])
+
+        if target_owners is not None:
+            if len(target_owners) == 0:
+                conditions.append(Opportunity.id == "no_access_kam_unassigned")
+            else:
+                conditions.append(Opportunity.opportunity_owner.in_(target_owners))
 
         # 5. Forecast Categories
         fcs = filter_spec.forecast_categories
@@ -533,9 +567,11 @@ class ScopeService:
 
         # 8. Deal Types (shared global type filter)
         effective_types: Optional[list[str]] = None
-        if filter_spec.types is not None:
+        if filter_spec.types is not None and len(filter_spec.types) > 0:
             if not any(t.lower() == "all" for t in filter_spec.types):
                 effective_types = [t.upper().strip() for t in filter_spec.types if t.strip()]
+            else:
+                effective_types = None
         else:
             # Default to the "included types" Setting (default: All)
             from backend.services.settings_service import SettingsService

@@ -15,6 +15,47 @@ from backend.models.snapshot import UploadSnapshot, UploadedFile, SnapshotCheck
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
 
+@router.get("/calendar")
+def get_snapshot_calendar(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(get_user_context),
+):
+    """
+    Returns calendar availability data for uploaded snapshots.
+    Used by CalendarDatePicker to highlight valid snapshot dates and disable missing dates.
+    """
+    snaps = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).all()
+    all_dates = [s.snapshot_date.isoformat() for s in snaps]
+    latest_date = all_dates[0] if all_dates else None
+    earliest_date = all_dates[-1] if all_dates else None
+
+    filtered_dates = all_dates
+    if year is not None and month is not None:
+        target_prefix = f"{year:04d}-{month:02d}"
+        filtered_dates = [d for d in all_dates if d.startswith(target_prefix)]
+    elif year is not None:
+        target_prefix = f"{year:04d}-"
+        filtered_dates = [d for d in all_dates if d.startswith(target_prefix)]
+
+    return {
+        "all_dates": sorted(list(set(all_dates))),
+        "available_dates": sorted(list(set(filtered_dates))),
+        "latest_date": latest_date,
+        "earliest_date": earliest_date,
+        "snapshots": [
+            {
+                "id": s.id,
+                "snapshot_date": s.snapshot_date.isoformat(),
+                "label": s.label,
+                "is_active_today": s.is_active_today,
+            }
+            for s in snaps
+        ],
+    }
+
+
 @router.get("")
 def list_snapshots(db: Session = Depends(get_db), ctx: UserContext = Depends(get_user_context)):
     snaps = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).all()

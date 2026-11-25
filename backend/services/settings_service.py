@@ -49,6 +49,18 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": "true",
         "description": "Exclude deals where Reconciliation Entry = Yes across the application.",
     },
+    "allow_viewer_comments": {
+        "value": "true",
+        "description": "Allow viewers to add comments to opportunities. If false, only admins may comment.",
+    },
+    "kam_default_period": {
+        "value": "current_quarter",
+        "description": "Default period filter for KAM portal views (My Overview and My Opportunities). Options: current_quarter, all_open, next_quarter, FY2026, etc.",
+    },
+    "max_comment_batch_size": {
+        "value": "50",
+        "description": "Maximum number of deals that can be commented on in a single batch operation from deal lists.",
+    },
 }
 
 
@@ -159,6 +171,40 @@ class SettingsService:
             return ""
 
     @staticmethod
+    def get_kam_default_period(db: Optional[Session] = None) -> str:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_kam_default_period(session)
+                session.close()
+                return res
+            except Exception:
+                return "current_quarter"
+        try:
+            val = SettingsService.get_setting(db, "kam_default_period", "current_quarter")
+            return val.strip() if val else "current_quarter"
+        except Exception:
+            return "current_quarter"
+
+    @staticmethod
+    def get_max_comment_batch_size(db: Optional[Session] = None) -> int:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_max_comment_batch_size(session)
+                session.close()
+                return res
+            except Exception:
+                return 50
+        try:
+            val = SettingsService.get_setting(db, "max_comment_batch_size", "50")
+            return max(1, int(val.strip())) if val else 50
+        except Exception:
+            return 50
+
+    @staticmethod
     def get_exclude_reconciliation_entry(db: Optional[Session] = None) -> bool:
         if db is None:
             try:
@@ -171,6 +217,23 @@ class SettingsService:
                 return True
         try:
             val = SettingsService.get_setting(db, "exclude_reconciliation_entry", "true")
+            return str(val).strip().lower() in ("true", "1", "yes")
+        except Exception:
+            return True
+
+    @staticmethod
+    def get_allow_viewer_comments(db: Optional[Session] = None) -> bool:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_allow_viewer_comments(session)
+                session.close()
+                return res
+            except Exception:
+                return True
+        try:
+            val = SettingsService.get_setting(db, "allow_viewer_comments", "true")
             return str(val).strip().lower() in ("true", "1", "yes")
         except Exception:
             return True

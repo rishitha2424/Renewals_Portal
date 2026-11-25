@@ -8,10 +8,20 @@ import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.services.context import UserContext, get_user_context, require_admin_context
+from backend.models.opportunity import Opportunity
+from backend.models.custom_column import DealComment
+from backend.services.context import (
+    UserContext,
+    get_user_context,
+    require_admin_context,
+    require_management_or_admin,
+    require_authenticated,
+)
+from backend.services.settings_service import SettingsService
 from backend.services.annotation_service import (
     AnnotationService,
     ValidationError,
@@ -30,12 +40,14 @@ class CreateColumnRequest(BaseModel):
     type: str = Field(..., description="Column type")
     dropdown_options: Optional[list[str]] = Field(None, description="Options for dropdown type")
     sort_order: Optional[int] = Field(None, description="Display sort order")
+    visibility: Optional[str] = Field("internal", description="Visibility flag: 'internal' or 'visible_to_owner'")
 
 
 class BulkCreateColumnItem(BaseModel):
     label: str = Field(..., description="Display label for column")
     type: str = Field("text", description="Column type")
     dropdown_options: Optional[list[str]] = Field(None, description="Options for dropdown type")
+    visibility: Optional[str] = Field("internal", description="Visibility flag: 'internal' or 'visible_to_owner'")
 
 
 class BulkCreateColumnRequest(BaseModel):
@@ -47,6 +59,7 @@ class UpdateColumnRequest(BaseModel):
     type: Optional[str] = None
     dropdown_options: Optional[list[str]] = None
     sort_order: Optional[int] = None
+    visibility: Optional[str] = None
 
 
 class RenameColumnRequest(BaseModel):
@@ -60,6 +73,18 @@ class MoveColumnRequest(BaseModel):
 class SetDealAnnotationRequest(BaseModel):
     value: Any = Field(None, description="Cell value")
     expected_version: Optional[int] = Field(None, description="Version for optimistic concurrency")
+
+
+class CreateDealCommentRequest(BaseModel):
+    text: str = Field(..., description="Comment text")
+    author: Optional[str] = Field(None, description="Author display name")
+    visibility: Optional[str] = Field("internal", description="Visibility flag: 'internal' or 'shared' / 'shared_with_owner'")
+    recipient_ids: Optional[List[str]] = Field(None, description="Selected recipient user IDs")
+
+
+class UpdateDealCommentRequest(BaseModel):
+    text: str = Field(..., description="Comment text")
+    visibility: Optional[str] = None
 
 
 def _svc(db: Session = Depends(get_db)) -> AnnotationService:
@@ -79,8 +104,8 @@ def list_custom_columns(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    """List custom columns in sort order."""
-    cols = svc.list_columns(include_deleted=include_deleted)
+    """List custom columns in sort order (filtered for KAMs to visible_to_owner only)."""
+    cols = svc.list_columns(include_deleted=include_deleted, user_context=ctx)
     result = []
     for c in cols:
         d = c.to_dict()
@@ -89,36 +114,41 @@ def list_custom_columns(
     return {"columns": result}
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_management_or_admin)])
 def create_custom_column(
     body: CreateColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Create a new custom column."""
+    """Create a new custom column (Admin or Management)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
         col = svc.create_column(
             label=body.label,
             col_type=body.type,
             dropdown_options=body.dropdown_options,
             sort_order=body.sort_order,
             user_id=user_id,
+            visibility=body.visibility or "internal",
+            creator_role=ctx.role,
+            user_display=user_disp,
         )
         return {"column": col.to_dict()}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/bulk", dependencies=[Depends(require_admin_context)])
+@router.post("/bulk", dependencies=[Depends(require_management_or_admin)])
 def bulk_create_custom_columns(
     body: BulkCreateColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Bulk create multiple custom columns at once (Admin only)."""
+    """Bulk create multiple custom columns at once (Admin or Management)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
         created = []
         for item in body.columns:
             if not item.label or not item.label.strip():
@@ -128,6 +158,9 @@ def bulk_create_custom_columns(
                 col_type=item.type,
                 dropdown_options=item.dropdown_options,
                 user_id=user_id,
+                visibility=item.visibility or "internal",
+                creator_role=ctx.role,
+                user_display=user_disp,
             )
             created.append(col.to_dict())
         return {"columns": created}
@@ -135,56 +168,101 @@ def bulk_create_custom_columns(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.patch("/{column_id}", dependencies=[Depends(require_admin_context)])
+@router.patch("/{column_id}", dependencies=[Depends(require_management_or_admin)])
 def update_custom_column(
     column_id: str,
     body: UpdateColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Update custom column definition (Admin only)."""
+    """Update custom column definition (Admin, or Management for their own columns)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
-        col = svc.update_column(
+        col = svc.get_column_by_id_or_key(column_id, include_deleted=False)
+        if not col:
+            if svc.is_excel_column(column_id):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Excel columns are read-only and cannot be modified.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Column '{column_id}' not found.")
+
+        # Management can only edit columns they created; cannot edit admin-created columns
+        if ctx.is_management and not ctx.is_admin:
+            if col.creator_role == "admin" or (col.created_by != str(ctx.user_id) and col.creator_role != "management"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Management users cannot edit admin-created custom columns.",
+                )
+
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
+        updated = svc.update_column(
             col_id_or_key=column_id,
             label=body.label,
             col_type=body.type,
             dropdown_options=body.dropdown_options,
             sort_order=body.sort_order,
             user_id=user_id,
+            visibility=body.visibility,
+            user_role=ctx.role,
+            user_display=user_disp,
         )
-        return {"column": col.to_dict()}
+        return {"column": updated.to_dict()}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/{column_id}/rename", dependencies=[Depends(require_admin_context)])
+@router.post("/{column_id}/rename", dependencies=[Depends(require_management_or_admin)])
 def rename_custom_column(
     column_id: str,
     body: RenameColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Rename custom column (Admin only)."""
+    """Rename custom column (Admin, or Management for columns they created)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
-        col = svc.rename_column(col_id_or_key=column_id, new_label=body.label, user_id=user_id)
-        return {"column": col.to_dict()}
+        col = svc.get_column_by_id_or_key(column_id, include_deleted=False)
+        if not col:
+            if svc.is_excel_column(column_id):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Excel columns are read-only and cannot be modified.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Column '{column_id}' not found.")
+
+        if ctx.is_management and not ctx.is_admin:
+            if col.creator_role == "admin" or (col.created_by != str(ctx.user_id) and col.creator_role != "management"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Management users cannot rename admin-created custom columns.",
+                )
+
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
+        col_res = svc.rename_column(
+            col_id_or_key=column_id,
+            new_label=body.label,
+            user_id=user_id,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
+        return {"column": col_res.to_dict()}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/{column_id}/move", dependencies=[Depends(require_admin_context)])
+@router.post("/{column_id}/move", dependencies=[Depends(require_management_or_admin)])
 def move_custom_column(
     column_id: str,
     body: MoveColumnRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Move custom column left or right (Admin only)."""
+    """Move custom column left or right (Admin or Management)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
-        cols = svc.move_column(col_id_or_key=column_id, direction=body.direction, user_id=user_id)
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
+        cols = svc.move_column(
+            col_id_or_key=column_id,
+            direction=body.direction,
+            user_id=user_id,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
         return {"columns": [c.to_dict() for c in cols]}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -205,17 +283,36 @@ def restore_custom_column(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.delete("/{column_id}", dependencies=[Depends(require_admin_context)])
+@router.delete("/{column_id}", dependencies=[Depends(require_management_or_admin)])
 def delete_custom_column(
     column_id: str,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(require_admin_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Soft delete custom column (Admin only)."""
+    """Soft delete custom column (Admin, or Management for columns they created)."""
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
-        col, n_values = svc.delete_column(column_id, user_id=user_id)
-        return {"deleted": True, "column": col.to_dict(), "values_count": n_values}
+        col = svc.get_column_by_id_or_key(column_id, include_deleted=False)
+        if not col:
+            if svc.is_excel_column(column_id):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Excel columns are read-only and cannot be modified.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Column '{column_id}' not found.")
+
+        if ctx.is_management and not ctx.is_admin:
+            if col.creator_role == "admin" or (col.created_by != str(ctx.user_id) and col.creator_role != "management"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Management users cannot delete admin-created custom columns.",
+                )
+
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
+        col_res, n_values = svc.delete_column(
+            column_id,
+            user_id=user_id,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
+        return {"deleted": True, "column": col_res.to_dict(), "values_count": n_values}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -243,7 +340,7 @@ def get_global_audit_log(
     return {"audit": entries, "count": len(entries)}
 
 
-@router.get("/audit/export")
+@router.get("/audit/export", dependencies=[Depends(require_management_or_admin)])
 def export_global_audit_log(
     user: Optional[str] = Query(None),
     column: Optional[str] = Query(None),
@@ -251,7 +348,7 @@ def export_global_audit_log(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """Download the change log as CSV."""
     import csv
@@ -305,22 +402,32 @@ def get_deal_annotations(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    """Get all annotations for a single deal."""
-    annots = svc.get_deal_annotations(opportunity_id)
+    """Get all annotations for a single deal (filtered for KAMs to visible_to_owner only)."""
+    if ctx.is_kam:
+        opp = svc.db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+        if opp and opp.opportunity_owner not in ctx.all_owner_names:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden: This deal is not assigned to you.")
+    annots = svc.get_deal_annotations(opportunity_id, user_context=ctx)
     return {"opportunity_id_18": opportunity_id, "annotations": annots}
 
 
-@router.put("/deals/{opportunity_id}/annotations/{column_key}")
+@router.put("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_management_or_admin)])
 def set_deal_annotation(
     opportunity_id: str,
     column_key: str,
     body: SetDealAnnotationRequest,
     svc: AnnotationService = Depends(_svc),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
-    """Set or update a deal annotation."""
+    """Set or update a deal annotation (Admin or Management; Excel columns read-only)."""
+    if svc.is_excel_column(column_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Original Excel-derived columns are read-only and cannot be edited.",
+        )
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
         res = svc.set_deal_value(
             opportunity_id_18=opportunity_id,
             column_key=column_key,
@@ -328,6 +435,8 @@ def set_deal_annotation(
             user_id=user_id,
             source="app",
             expected_version=body.expected_version,
+            user_role=ctx.role,
+            user_display=user_disp,
         )
         return res
     except ConcurrencyError as e:
@@ -336,18 +445,224 @@ def set_deal_annotation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.delete("/deals/{opportunity_id}/annotations/{column_key}")
+@router.delete("/deals/{opportunity_id}/annotations/{column_key}", dependencies=[Depends(require_management_or_admin)])
 def delete_deal_annotation(
     opportunity_id: str,
     column_key: str,
     svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_management_or_admin),
+):
+    """Clear a deal annotation (Admin or Management; Excel columns read-only)."""
+    if svc.is_excel_column(column_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Original Excel-derived columns are read-only and cannot be edited.",
+        )
+    try:
+        user_id = str(ctx.user_id) if ctx.user_id else "admin"
+        user_disp = ctx.display_name or ctx.email or user_id
+        cleared = svc.delete_deal_value(
+            opportunity_id,
+            column_key,
+            user_id=user_id,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
+        return {"cleared": cleared, "opportunity_id_18": opportunity_id, "column_key": column_key}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# -----------------------------------------------------------------
+# Deal Comments Endpoints
+# -----------------------------------------------------------------
+@router.get("/deals/{opportunity_id}/comments")
+def list_deal_comments(
+    opportunity_id: str,
+    svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    """Clear a deal annotation."""
+    """List comments for an opportunity (KAMs see shared + own comments only)."""
+    if ctx.is_kam:
+        opp = svc.db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+        if opp and opp.opportunity_owner not in ctx.all_owner_names:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden: This deal is not assigned to you.")
+    comments = svc.list_comments(opportunity_id, user_context=ctx)
+    return {"opportunity_id_18": opportunity_id, "comments": comments}
+
+
+@router.post("/deals/{opportunity_id}/comments", dependencies=[Depends(require_authenticated)])
+def add_deal_comment(
+    opportunity_id: str,
+    body: CreateDealCommentRequest,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_authenticated),
+):
+    """Add a comment to an opportunity (Admin, Management, or KAM for own deals)."""
+    if ctx.is_kam:
+        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+        if opp and opp.opportunity_owner not in ctx.all_owner_names:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access forbidden: KAMs can only comment on their own opportunities.",
+            )
+        author_name = ctx.display_name or (opp.opportunity_owner if opp else "Owner")
+        vis = "shared_with_owner"
+        author_role = "kam"
+    else:
+        author_name = ctx.display_name or ("Admin" if ctx.is_admin else "Management")
+        vis = body.visibility or "internal"
+        author_role = ctx.role
+
     try:
-        user_id = getattr(ctx, "user_id", "admin") or "admin"
-        cleared = svc.delete_deal_value(opportunity_id, column_key, user_id=user_id)
-        return {"cleared": cleared, "opportunity_id_18": opportunity_id, "column_key": column_key}
+        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
+        user_disp = ctx.display_name or ctx.email or author_name
+
+        # Resolve Recipients
+        from backend.models.user import User, UserAlias
+        from backend.services.notification_service import NotificationService
+        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+
+        recipients: list[User] = []
+        if body.recipient_ids:
+            raw_ids = list(body.recipient_ids)
+            if "admin" in raw_ids:
+                raw_ids.remove("admin")
+                admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
+                raw_ids.extend(admin_ids)
+            recipients = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
+        else:
+            mgmt_admin = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
+            recipients = list(mgmt_admin)
+            if vis in ("shared", "shared_with_owner") and opp and opp.opportunity_owner:
+                owner_clean = opp.opportunity_owner.strip()
+                kam_u = db.query(User).filter(func.lower(User.owner_name) == owner_clean.lower(), User.status != "disabled").first()
+                if not kam_u:
+                    alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
+                    if alias and alias.user.status != "disabled":
+                        kam_u = alias.user
+                if kam_u and kam_u.id not in [u.id for u in recipients]:
+                    recipients.append(kam_u)
+
+        # Filter out author
+        recipients = [u for u in recipients if str(u.id) != str(user_id)]
+
+        batch_id = str(uuid.uuid4())
+        comment = svc.add_comment(
+            opportunity_id_18=opportunity_id,
+            text=body.text,
+            author=author_name,
+            user_id=user_id,
+            visibility=vis,
+            author_role=author_role,
+            user_display=user_disp,
+            recipient_ids=[u.id for u in recipients],
+            batch_id=batch_id,
+        )
+
+        # Dispatch In-App Notifications & Emails for each recipient
+        deal_title = opp.opportunity_name if opp else opportunity_id
+        for r in recipients:
+            try:
+                NotificationService.create_notification(
+                    db=db,
+                    user_id=r.id,
+                    category="comment",
+                    title=f"New comment from {author_name}",
+                    message=body.text.strip(),
+                    deal_id=opportunity_id,
+                    deal_name=deal_title,
+                    target_type="deal_comment",
+                    target_id=comment.get("id"),
+                    send_email=True,
+                    email_sender_name=author_name,
+                    email_sender_role=author_role,
+                    account_name=opp.account_name if opp else None,
+                    acv_amount=float(opp.forecast_acv_amount or 0.0) if opp else None,
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to queue notification for shared comment: %s", e)
+
+        return {"comment": comment}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.put("/deals/{opportunity_id}/comments/{comment_id}", dependencies=[Depends(require_authenticated)])
+def update_deal_comment(
+    opportunity_id: str,
+    comment_id: str,
+    body: UpdateDealCommentRequest,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_authenticated),
+):
+    """Update a comment (Admin, or author for their own comments)."""
+    comment = db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
+
+    if not ctx.is_admin:
+        # Management and KAM can only edit their own comments
+        if comment.author_id != str(ctx.user_id) and comment.author != ctx.display_name:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{ctx.role.capitalize()} users can only edit their own comments.",
+            )
+
+    try:
+        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
+        user_disp = ctx.display_name or ctx.email or user_id
+        res = svc.update_comment(
+            comment_id=comment_id,
+            text=body.text,
+            user_id=user_id,
+            visibility=body.visibility,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
+        return {"comment": res}
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/deals/{opportunity_id}/comments/{comment_id}", dependencies=[Depends(require_authenticated)])
+def delete_deal_comment(
+    opportunity_id: str,
+    comment_id: str,
+    db: Session = Depends(get_db),
+    svc: AnnotationService = Depends(_svc),
+    ctx: UserContext = Depends(require_authenticated),
+):
+    """Delete a comment (Admin, or author for their own comments)."""
+    comment = db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
+
+    if not ctx.is_admin:
+        if comment.author_id != str(ctx.user_id) and comment.author != ctx.display_name:
+            if ctx.is_management and (comment.author_role == "admin" or not comment.author_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Management users cannot delete admin-created comments.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{ctx.role.capitalize()} users can only delete their own comments.",
+            )
+
+    try:
+        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
+        user_disp = ctx.display_name or ctx.email or user_id
+        deleted = svc.delete_comment(
+            comment_id=comment_id,
+            user_id=user_id,
+            user_role=ctx.role,
+            user_display=user_disp,
+        )
+        return {"deleted": deleted, "comment_id": comment_id}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -386,16 +701,16 @@ def run_daily_backup(
     return {"status": "success", "file": filepath}
 
 
-@router.get("/export-full-excel")
+@router.get("/export-full-excel", dependencies=[Depends(require_management_or_admin)])
 def export_full_excel(
     snapshot_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    ctx: UserContext = Depends(get_user_context),
+    ctx: UserContext = Depends(require_management_or_admin),
 ):
     """Download full Excel with original columns and custom columns for a snapshot."""
     from backend.services.full_excel_export_service import FullExcelExportService
     svc = FullExcelExportService(db)
-    buf, filename = svc.generate_full_excel(snapshot_id=snapshot_id)
+    buf, filename, _ = svc.generate_export(snapshot_id=snapshot_id, export_format="xlsx", user_context=ctx)
     return Response(
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

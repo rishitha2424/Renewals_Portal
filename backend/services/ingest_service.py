@@ -872,6 +872,12 @@ class IngestService:
             self.db.commit()
             _delete_session(session_id)
             log.info("Committed snapshot %s (%s) with %d rows (%d active)", snap.id, snap.snapshot_date, snap.row_count, snap.active_row_count)
+            # Automatic KAM owner sync on daily workbook upload (Round 18)
+            try:
+                from backend.services.kam_sync_service import KamSyncService
+                KamSyncService(self.db).run_owner_sync(snapshot_id=snap.id)
+            except Exception as sync_exc:
+                log.warning("Post-ingest KAM owner sync failed: %s", sync_exc)
             return snap
         except Exception as exc:
             self.db.rollback()

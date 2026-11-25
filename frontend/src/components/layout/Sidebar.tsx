@@ -2,21 +2,14 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard,
-  Clock,
-  Calendar,
-  CheckCircle2,
-  Building2,
-  Globe2,
-  Table2,
-  Printer,
   ChevronLeft,
   ChevronRight,
-  Upload,
   X,
+  Shield,
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
-import { NAV_ITEMS } from '@/config/nav'
+import { useAuthStore } from '@/store/authStore'
+import { NAV_ITEMS, KAM_NAV_ITEMS, ADMIN_NAV_ITEMS } from '@/config/nav'
 import clsx from 'clsx'
 
 export default function Sidebar() {
@@ -25,7 +18,9 @@ export default function Sidebar() {
     toggleSidebarCollapsed,
     mobileSidebarOpen,
     setMobileSidebarOpen,
+    isAdmin,
   } = useAppStore()
+  const { currentUser } = useAuthStore()
   const location = useLocation()
 
   // Track viewport breakpoint: compact (< 1280px e.g. tablets, 720p/768p/900p laptops, zoomed displays)
@@ -57,9 +52,79 @@ export default function Sidebar() {
     toggleSidebarCollapsed()
   }
 
+  const isKamUser = currentUser?.role === 'kam'
+  const isAdminUser = currentUser?.role === 'admin' || isAdmin
+
+  const primaryItems = isKamUser ? KAM_NAV_ITEMS : NAV_ITEMS
+  const adminItems = isAdminUser ? ADMIN_NAV_ITEMS : []
+
+  const renderNavLinks = (items: typeof NAV_ITEMS, isMobile = false) => {
+    return items.map(({ to, icon: Icon, label }) => {
+      if (to === '/executive') {
+        return (
+          <a
+            key={to}
+            href="/executive"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={isMobile ? () => setMobileSidebarOpen(false) : undefined}
+            title={effectiveCollapsed && !isMobile ? label : undefined}
+            className="flex items-center gap-3 px-2.5 py-2.5 min-h-[40px] rounded-sm text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors group relative"
+          >
+            <Icon
+              className="w-[18px] h-[18px] flex-shrink-0 text-slate-400 group-hover:text-slate-200"
+              strokeWidth={1.75}
+            />
+            {(!effectiveCollapsed || isMobile) && (
+              <span className="truncate whitespace-nowrap">{label}</span>
+            )}
+          </a>
+        )
+      }
+
+      const isHash = to.includes('#')
+      const basePath = to.split('#')[0]
+      const hash = to.split('#')[1]
+      const isActive = isHash
+        ? location.pathname === basePath && location.hash === `#${hash}`
+        : location.pathname === to
+
+      return (
+        <NavLink
+          key={to}
+          to={to}
+          onClick={isMobile ? () => setMobileSidebarOpen(false) : undefined}
+          title={effectiveCollapsed && !isMobile ? label : undefined}
+          className={clsx(
+            'flex items-center gap-3 px-2.5 py-2.5 min-h-[40px] rounded-sm text-xs font-medium transition-colors group relative',
+            isActive
+              ? 'bg-white/10 text-white'
+              : 'text-slate-300 hover:text-white hover:bg-white/5'
+          )}
+        >
+          {isActive && (
+            <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#00A3AD] rounded-r-sm" />
+          )}
+
+          <Icon
+            className={clsx(
+              'w-[18px] h-[18px] flex-shrink-0',
+              isActive ? 'text-[#00A3AD]' : 'text-slate-400 group-hover:text-slate-200'
+            )}
+            strokeWidth={1.75}
+          />
+
+          {(!effectiveCollapsed || isMobile) && (
+            <span className="truncate whitespace-nowrap">{label}</span>
+          )}
+        </NavLink>
+      )
+    })
+  }
+
   return (
     <>
-      {/* ── 1. Desktop & Tablet Persistent Sidebar (hidden on phone < 640px) ── */}
+      {/* ── 1. Desktop & Tablet Persistent Sidebar ── */}
       <motion.aside
         animate={{ width: effectiveWidth }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
@@ -84,7 +149,7 @@ export default function Sidebar() {
                 Horizon
               </p>
               <p className="text-slate-400 text-[11px] font-normal tracking-tight leading-none">
-                Renewals intelligence
+                {isKamUser ? 'KAM Renewals Portal' : 'Renewals Intelligence'}
               </p>
             </div>
           )}
@@ -92,68 +157,22 @@ export default function Sidebar() {
 
         {/* Nav List */}
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden">
-          {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
-            if (to === '/executive') {
-              return (
-                <a
-                  key={to}
-                  href="/executive"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={effectiveCollapsed ? label : undefined}
-                  className="flex items-center gap-3 px-2.5 py-2.5 min-h-[40px] rounded-sm text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors group relative"
-                >
-                  <Icon
-                    className="w-[18px] h-[18px] flex-shrink-0 text-slate-400 group-hover:text-slate-200"
-                    strokeWidth={1.75}
-                  />
-                  {!effectiveCollapsed && (
-                    <span className="truncate whitespace-nowrap">{label}</span>
-                  )}
-                </a>
-              )
-            }
+          {renderNavLinks(primaryItems)}
 
-            const isHash = to.includes('#')
-            const basePath = to.split('#')[0]
-            const hash = to.split('#')[1]
-            const isActive = isHash
-              ? location.pathname === basePath && location.hash === `#${hash}`
-              : location.pathname === to
-
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                title={effectiveCollapsed ? label : undefined}
-                className={clsx(
-                  'flex items-center gap-3 px-2.5 py-2.5 min-h-[40px] rounded-sm text-xs font-medium transition-colors group relative',
-                  isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
-                )}
-              >
-                {isActive && (
-                  <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#00A3AD] rounded-r-sm" />
-                )}
-
-                <Icon
-                  className={clsx(
-                    'w-[18px] h-[18px] flex-shrink-0',
-                    isActive ? 'text-[#00A3AD]' : 'text-slate-400 group-hover:text-slate-200'
-                  )}
-                  strokeWidth={1.75}
-                />
-
-                {!effectiveCollapsed && (
-                  <span className="truncate whitespace-nowrap">{label}</span>
-                )}
-              </NavLink>
-            )
-          })}
+          {adminItems.length > 0 && (
+            <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
+              {!effectiveCollapsed && (
+                <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield className="w-3 h-3 text-teal-400" />
+                  <span>Administration</span>
+                </div>
+              )}
+              {renderNavLinks(adminItems)}
+            </div>
+          )}
         </nav>
 
-        {/* Bottom Footer: Collapse toggle (always available) */}
+        {/* Bottom Footer: Collapse toggle */}
         <div className="p-3 border-t border-white/10 flex-shrink-0">
           <button
             type="button"
@@ -182,21 +201,20 @@ export default function Sidebar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
               onClick={() => setMobileSidebarOpen(false)}
               className="fixed inset-0 bg-black/60"
             />
 
-            {/* Slide-out drawer sheet */}
+            {/* Slide-out drawer */}
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="relative z-10 w-72 max-w-[80vw] h-full flex flex-col shadow-2xl select-none"
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="relative w-64 max-w-[80vw] h-full flex flex-col z-10"
               style={{ background: '#12284C' }}
             >
-              {/* Brand Header with Close Button */}
+              {/* Header */}
               <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
@@ -211,7 +229,7 @@ export default function Sidebar() {
                       Horizon
                     </p>
                     <p className="text-slate-400 text-[11px] font-normal tracking-tight leading-none">
-                      Renewals intelligence
+                      {isKamUser ? 'KAM Renewals' : 'Renewals intelligence'}
                     </p>
                   </div>
                 </div>
@@ -228,56 +246,16 @@ export default function Sidebar() {
 
               {/* Nav items list */}
               <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
-                {NAV_ITEMS.map(({ to, icon: Icon, label }) => {
-                  if (to === '/executive') {
-                    return (
-                      <a
-                        key={to}
-                        href="/executive"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setMobileSidebarOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
-                      >
-                        <Icon className="w-5 h-5 text-slate-400" strokeWidth={1.75} />
-                        <span>{label}</span>
-                      </a>
-                    )
-                  }
-
-                  const isHash = to.includes('#')
-                  const basePath = to.split('#')[0]
-                  const hash = to.split('#')[1]
-                  const isActive = isHash
-                    ? location.pathname === basePath && location.hash === `#${hash}`
-                    : location.pathname === to
-
-                  return (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      onClick={() => setMobileSidebarOpen(false)}
-                      className={clsx(
-                        'flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm font-medium transition-colors relative',
-                        isActive
-                          ? 'bg-white/15 text-white font-semibold'
-                          : 'text-slate-300 hover:text-white hover:bg-white/5'
-                      )}
-                    >
-                      {isActive && (
-                        <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[#00A3AD] rounded-r-sm" />
-                      )}
-                      <Icon
-                        className={clsx(
-                          'w-5 h-5 flex-shrink-0',
-                          isActive ? 'text-[#00A3AD]' : 'text-slate-400'
-                        )}
-                        strokeWidth={1.75}
-                      />
-                      <span>{label}</span>
-                    </NavLink>
-                  )
-                })}
+                {renderNavLinks(primaryItems, true)}
+                {adminItems.length > 0 && (
+                  <div className="pt-3 mt-3 border-t border-white/10 space-y-1.5">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-teal-400" />
+                      <span>Administration</span>
+                    </div>
+                    {renderNavLinks(adminItems, true)}
+                  </div>
+                )}
               </nav>
             </motion.div>
           </div>

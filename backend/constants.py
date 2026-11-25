@@ -31,9 +31,43 @@ def normalize_forecast_category(val: str | None) -> str:
         return "Pipeline"
     return cleaned.title()
 
+def is_approved_2nd(val: str | None) -> bool:
+    """Return True if status represents an Approved - 2nd stage."""
+    if not val:
+        return False
+    cleaned = re.sub(r"[\s\-_]+", " ", str(val).strip()).lower()
+    return cleaned in ("approved 2nd", "approved 2", "approved second")
+
+def get_approval_group(val: str | None) -> str:
+    """Normalize opportunity approval status into canonical approval groupings:
+    - 'Approved - 2nd' maps under 'Approved'
+    - 'Approved' maps under 'Approved'
+    - 'Pending Approval' maps under 'Pending Approval'
+    - Blanks / none / unassigned / 'Not submitted' map under 'Not submitted'
+    - 'Rejected' maps under 'Rejected'
+    """
+    if val is None:
+        return MISSING_APPROVAL_STATUS
+    s = str(val).strip()
+    if not s:
+        return MISSING_APPROVAL_STATUS
+    cleaned = re.sub(r"[\s\-_]+", " ", s)
+    cleaned_lower = cleaned.lower()
+    if cleaned_lower in ("blank", "(blank)", "none", "unassigned", "null", "nan", "not submitted", "not-submitted", "notsubmitted"):
+        return MISSING_APPROVAL_STATUS
+    if cleaned_lower in ("approved", "approve", "approved 2nd", "approved 2", "approved second"):
+        return "Approved"
+    if cleaned_lower in ("pending approval", "pending", "pending_approval", "pending-approval"):
+        return "Pending Approval"
+    if cleaned_lower in ("rejected", "reject"):
+        return "Rejected"
+    return cleaned.title()
+
 def normalize_approval_status(val: str | None) -> str:
-    """Normalize opportunity approval status string:
-    - trim, case-insensitively collapses whitespace, underscores, hyphens
+    """Normalize opportunity approval status string preserving specific raw status:
+    - 'Approved - 2nd' returns 'Approved - 2nd'
+    - 'Approved' returns 'Approved'
+    - 'Pending Approval' returns 'Pending Approval'
     - blanks/none/unassigned -> 'Not submitted'
     """
     if val is None:
@@ -47,6 +81,8 @@ def normalize_approval_status(val: str | None) -> str:
         return MISSING_APPROVAL_STATUS
     if cleaned_lower in ("not submitted", "not-submitted", "notsubmitted"):
         return MISSING_APPROVAL_STATUS
+    if cleaned_lower in ("approved 2nd", "approved 2", "approved second"):
+        return "Approved - 2nd"
     if cleaned_lower in ("approved", "approve"):
         return "Approved"
     if cleaned_lower in ("pending approval", "pending", "pending_approval", "pending-approval"):

@@ -9,6 +9,7 @@ import {
   Calendar,
   GitCompare,
   FileSpreadsheet,
+  FileText,
   Presentation,
   Filter,
   Bookmark,
@@ -23,13 +24,19 @@ import {
   AlertTriangle,
   Tag,
   Monitor,
+  User as UserIcon,
+  LogOut,
+  KeyRound,
+  MessageSquare,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, FilterSpec, DEFAULT_FILTER_SPEC } from '@/store/appStore'
-import { getSnapshots, getFilterOptions, downloadReport } from '@/api/client'
+import { useAuthStore } from '@/store/authStore'
+import { getSnapshots, getFilterOptions, downloadReport, downloadKamReport, authChangePassword } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
-import AdminAuthModal from '@/components/common/AdminAuthModal'
+import NotificationPanel from '@/components/notifications/NotificationPanel'
+import CalendarDatePicker from '@/components/common/CalendarDatePicker'
 import {
   DisplaySizeOption,
   DISPLAY_SIZE_OPTIONS,
@@ -56,7 +63,7 @@ export default function Topbar() {
   } = useAppStore()
 
   const [downloadOpen, setDownloadOpen] = useState(false)
-  const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | null>(null)
+  const [downloadingFormat, setDownloadingFormat] = useState<'pptx' | 'xlsx' | 'pdf' | null>(null)
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false)
   const [savedViewsOpen, setSavedViewsOpen] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -68,8 +75,16 @@ export default function Topbar() {
   const viewsRef = useRef<HTMLDivElement>(null)
   const typeFilterRef = useRef<HTMLDivElement>(null)
   const [typeFilterOpen, setTypeFilterOpen] = useState(false)
-  const displaySizeRef = useRef<HTMLDivElement>(null)
-  const [displaySizeOpen, setDisplaySizeOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [changePwdOpen, setChangePwdOpen] = useState(false)
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const [pwdSuccess, setPwdSuccess] = useState(false)
+  const [pwdLoading, setPwdLoading] = useState(false)
+  const { currentUser, logout: authLogoutStore } = useAuthStore()
   const [currentDisplaySize, setCurrentDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
 
   const location = useLocation()
@@ -115,8 +130,8 @@ export default function Topbar() {
       if (typeFilterRef.current && !typeFilterRef.current.contains(target)) {
         setTypeFilterOpen(false)
       }
-      if (displaySizeRef.current && !displaySizeRef.current.contains(target)) {
-        setDisplaySizeOpen(false)
+      if (profileRef.current && !profileRef.current.contains(target)) {
+        setProfileOpen(false)
       }
     }
     document.addEventListener('mousedown', handleOutside)
@@ -224,18 +239,24 @@ export default function Topbar() {
   // Auto-init active and compare snapshots
   useEffect(() => {
     if (snapshots.length > 0) {
+      const latestSnap = snapshots[0]
       const exists = snapshots.some((s: any) => s.id === activeSnapshotId)
       if (!activeSnapshotId || !exists) {
-        const todaySnap = snapshots.find((s: any) => s.is_active_today) ?? snapshots[0]
-        setActiveSnapshotId(todaySnap.id)
+        setActiveSnapshotId(latestSnap.id)
       }
-      const vsValid = vsOptions.some((v: any) => v.id === compareSnapshotId)
-      if ((!compareSnapshotId || !vsValid) && vsOptions.length > 0) {
-        const preferred = vsOptions.find((v: any) => v.isDefaultEarlier) || vsOptions[0]
-        setCompareSnapshotId(preferred.id)
+
+      const activeId = (!activeSnapshotId || !exists) ? latestSnap.id : activeSnapshotId
+      const activeObj = snapshots.find((s: any) => s.id === activeId) || latestSnap
+      
+      const earlierSnaps = snapshots.filter((s: any) => s.id !== activeObj.id && s.snapshot_date < activeObj.snapshot_date)
+      const defaultCompareSnap = earlierSnaps[0] || snapshots.find((s: any) => s.id !== activeObj.id) || null
+      
+      const vsValid = snapshots.some((s: any) => s.id === compareSnapshotId && s.id !== activeId)
+      if ((!compareSnapshotId || !vsValid) && defaultCompareSnap) {
+        setCompareSnapshotId(defaultCompareSnap.id)
       }
     }
-  }, [snapshots, activeSnapshotId, compareSnapshotId, vsOptions, setActiveSnapshotId, setCompareSnapshotId])
+  }, [snapshots, activeSnapshotId, compareSnapshotId, setActiveSnapshotId, setCompareSnapshotId])
 
   // Determine comparison tooltip label (e.g. "vs Fri 2 Oct")
   const getCompareLabel = () => {
@@ -266,13 +287,25 @@ export default function Topbar() {
     return `${scopeName} · ${qLabel} · as of ${formattedDate}`
   }
 
-  const handleDownload = async (type: 'pptx' | 'xlsx', scope: string = 'renewals') => {
+  const handleDownload = async (type: 'pptx' | 'xlsx' | 'pdf', scope: string = 'renewals') => {
     if (downloadingFormat) return
     setDownloadingFormat(type)
     setDownloadOpen(false)
     try {
-      const { filename } = await downloadReport(type, activeSnapshotId, compareSnapshotId, scope)
-      showToast.success('Report downloaded', filename)
+      if (currentUser?.role === 'kam') {
+        const kamType = type === 'xlsx' ? 'pptx' : (type as 'pptx' | 'pdf')
+        const typesStr = globalFilters.types?.length ? globalFilters.types.join(',') : undefined
+        const { filename } = await downloadKamReport(kamType, {
+          as_of: activeSnap?.snapshot_date,
+          period: globalFilters.period,
+          types: typesStr,
+          compare: compareSnap?.snapshot_date,
+        })
+        showToast.success('Report downloaded', filename)
+      } else {
+        const { filename } = await downloadReport(type as 'pptx' | 'xlsx', activeSnapshotId, compareSnapshotId, scope)
+        showToast.success('Report downloaded', filename)
+      }
     } catch (err: any) {
       showToast.error(
         'Download failed',
@@ -364,9 +397,18 @@ export default function Topbar() {
 
   // Period chip - only show if user changed from default
   if (globalFilters.period !== DEFAULT_FILTER_SPEC.period) {
-    const pLabel =
-      filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)?.label ||
-      globalFilters.period
+    let pLabel = 'All periods'
+    if (globalFilters.period === 'all_open') {
+      pLabel = 'All periods'
+    } else if (globalFilters.period === 'current_quarter') {
+      pLabel = 'Current quarter'
+    } else if (globalFilters.period === 'next_quarter') {
+      pLabel = 'Next quarter'
+    } else {
+      const match = filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)
+      pLabel = match?.label || globalFilters.period
+      if (pLabel === 'All open deals' || pLabel === 'all_open') pLabel = 'All periods'
+    }
     chips.push({
       key: `period-${globalFilters.period}`,
       label: `Period: ${pLabel}`,
@@ -422,10 +464,10 @@ export default function Topbar() {
   return (
     <div className="sticky top-0 z-40 flex flex-col bg-[var(--bg-card)] border-b border-[var(--border)] shadow-xs">
       {/* ── Single Unified Responsive Row ─────────────────────────────────── */}
-      <div className="w-full max-w-[2560px] mx-auto px-2.5 sm:px-4 lg:px-6 2xl:px-8 py-1.5 sm:py-2">
-        <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2">
+      <div className="w-full max-w-[3840px] mx-auto px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2">
+        <div className="flex flex-nowrap items-center justify-between gap-1 xl:gap-2">
           {/* ── Left & Center Filters Group ── */}
-          <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 min-w-0 flex-1 py-0.5">
+          <div className="flex flex-nowrap items-center gap-1 xl:gap-1.5 min-w-0 flex-1">
             {/* Mobile Hamburger Drawer Button (<640px) */}
             <button
               type="button"
@@ -436,113 +478,125 @@ export default function Topbar() {
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* 1. Search (Always shows full prompt like 67% view) */}
-            <div className="min-w-[130px] sm:min-w-[160px] max-w-[200px] xl:max-w-[240px] 2xl:max-w-xs flex-1 sm:flex-initial flex-shrink">
+            {/* 1. Search */}
+            <div className="min-w-[100px] max-w-[140px] xl:max-w-[200px] 2xl:max-w-xs flex-1 flex-shrink">
               <button
                 type="button"
                 onClick={() => setCommandPaletteOpen(true)}
-                className="w-full h-9 sm:h-10 px-2 sm:px-2.5 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
+                className="w-full h-9 px-2 rounded-md text-xs font-medium text-[var(--text-muted)] bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-colors inline-flex items-center justify-between focus:outline-none"
                 id="topbar-search-btn"
                 title="Global search (⌘K)"
               >
-                <div className="inline-flex items-center gap-1.5 sm:gap-2 truncate">
-                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                  <span className="truncate inline">Search opportunities, regions, accounts...</span>
+                <div className="inline-flex items-center gap-1.5 truncate">
+                  <Search className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+                  <span className="truncate inline">Search...</span>
                 </div>
-                <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
+                <kbd className="hidden 2xl:inline-block ml-1 px-1 py-0.5 rounded text-[10px] bg-[var(--bg-card)] border border-[var(--border)] font-mono text-[var(--text-muted)] flex-shrink-0">
                   ⌘K
                 </kbd>
               </button>
             </div>
 
-            {/* 2. As of (Always visible with label) */}
-            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
-                As of:
-              </span>
-              <select
-                value={activeSnap?.id ?? ''}
-                onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
-                id="topbar-view-as-of-select"
-              >
-                {snapshotsLoading && <option>Loading dates...</option>}
-                {asOfOptions.map((opt: any) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            {/* 2. Data date (formerly As of) */}
+            <div id="topbar-as-of-pill" className="inline-flex flex-shrink">
+              <CalendarDatePicker
+                mode="date"
+                label="Data date"
+                valueId={activeSnap?.id}
+                valueDate={activeSnap?.snapshot_date}
+                snapshots={snapshots}
+                onChange={(snapId) => setActiveSnapshotId(snapId)}
+              />
             </div>
 
-            {/* 3. vs (compare selector - always visible with label) */}
+            {/* 3. Compare to (formerly vs) */}
+            <div id="topbar-vs-pill" className="inline-flex flex-shrink" title={getCompareLabel()}>
+              <CalendarDatePicker
+                mode="compare"
+                label="Compare to"
+                valueId={compareSnapshotId}
+                valueDate={compareSnap?.snapshot_date}
+                snapshots={snapshots}
+                comparePreset={
+                  vsOptions.find((v: any) => v.id === compareSnapshotId)?.label?.toLowerCase().includes('yesterday')
+                    ? 'yesterday'
+                    : vsOptions.find((v: any) => v.id === compareSnapshotId)?.label?.toLowerCase().includes('last week')
+                    ? 'last_week'
+                    : undefined
+                }
+                onPresetChange={(preset) => {
+                  if (preset === 'yesterday') {
+                    const ySnap = vsOptions.find((v: any) => v.id === activeSnap?.yesterday_date || v.label?.toLowerCase().includes('yesterday'))
+                    if (ySnap) setCompareSnapshotId(ySnap.id)
+                  } else if (preset === 'last_week') {
+                    const lwSnap = vsOptions.find((v: any) => v.label?.toLowerCase().includes('last week'))
+                    if (lwSnap) setCompareSnapshotId(lwSnap.id)
+                  } else if (preset === 'previous_upload') {
+                    const prevSnap = snapshots.find((s: any) => s.id !== activeSnap?.id && s.snapshot_date < (activeSnap?.snapshot_date || ''))
+                    if (prevSnap) setCompareSnapshotId(prevSnap.id)
+                  } else {
+                    const prev = vsOptions[0]
+                    if (prev) setCompareSnapshotId(prev.id)
+                  }
+                }}
+                onChange={(snapId) => setCompareSnapshotId(snapId)}
+              />
+            </div>
+
+            {/* 4. Period */}
             <div
-              className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0"
-              title={getCompareLabel()}
+              id="topbar-period-pill"
+              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 transition-colors flex-shrink"
             >
-              <GitCompare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
-                vs:
-              </span>
-              <select
-                value={compareSnapshotId ?? ''}
-                onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[95px] sm:max-w-[110px] md:max-w-[130px] truncate"
-                id="topbar-compare-with-select"
-              >
-                {vsOptions.map((opt: any) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* 4. Period (Always visible with label) */}
-            <div className="inline-flex h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 sm:gap-1.5 transition-colors flex-shrink-0">
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline">
+              <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
                 Period:
               </span>
               <select
                 value={globalFilters.period}
-                onChange={(e) => setGlobalFilters({ period: e.target.value })}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[100px] sm:max-w-[120px] md:max-w-[140px] truncate"
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    const customRange = window.prompt('Enter custom date range (YYYY-MM-DD:YYYY-MM-DD):', '2026-01-01:2026-12-31')
+                    if (customRange && customRange.includes(':')) {
+                      setGlobalFilters({ period: customRange.trim() })
+                    }
+                  } else {
+                    setGlobalFilters({ period: e.target.value })
+                  }
+                }}
+                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[90px] xl:max-w-[120px] truncate"
                 id="filter-period-select"
               >
-                <option value="current_quarter">Current Quarter (Default)</option>
-                <option value="previous_quarter">Previous Quarter</option>
-                <option value="next_quarter">Next Quarter</option>
-                <option value="all_periods">All Periods</option>
-                {filterOpts?.quarters?.map((q: any) => (
-                  <option key={q.key} value={q.key}>
-                    {q.label} ({q.count})
-                  </option>
-                ))}
+                <option value="all_open" title="All deals for this owner, across all dates.">All periods</option>
+                <option value="current_quarter">Current quarter</option>
+                <option value="next_quarter">Next quarter</option>
                 {filterOpts?.fiscal_years?.map((fy: any) => (
                   <option key={fy.key} value={fy.key}>
                     {fy.label} ({fy.count})
                   </option>
                 ))}
+                {globalFilters.period && (globalFilters.period.includes(':') || globalFilters.period === 'custom') && (
+                  <option value={globalFilters.period}>Custom ({globalFilters.period})</option>
+                )}
+                <option value="custom">Custom...</option>
               </select>
             </div>
 
-            {/* 5. Type Filter (Multi-select dropdown, always visible) */}
-            <div className="relative inline-flex flex-shrink-0" ref={typeFilterRef}>
+            {/* 5. Type Filter */}
+            <div className="relative inline-flex flex-shrink" ref={typeFilterRef}>
               <button
                 type="button"
                 onClick={() => setTypeFilterOpen(!typeFilterOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-type-btn"
                 title="Filter by Deal Type"
               >
-                <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00A3AD] flex-shrink-0" />
-                <span className="font-medium text-[var(--text-muted)] inline">Type:</span>
-                <span className="font-medium truncate max-w-[50px] sm:max-w-[65px] xl:max-w-[90px]">
+                <Tag className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
+                <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">Type:</span>
+                <span className="font-medium truncate max-w-[40px] sm:max-w-[55px] xl:max-w-[80px]">
                   {isAllTypes ? 'All' : (currentTypes.length === 0 ? 'None' : currentTypes.join(', '))}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3 h-3 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {/* Type Popover */}
@@ -606,22 +660,22 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* More Filters (Always visible like 67% view) */}
-            <div className="relative block flex-shrink-0" ref={moreRef}>
+            {/* More Filters */}
+            <div className="relative inline-flex flex-shrink-0" ref={moreRef}>
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen(!moreFiltersOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-more-btn"
               >
-                <Filter className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <Filter className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
                 <span className="whitespace-nowrap">More Filters</span>
                 {moreFiltersActiveCount > 0 && (
                   <span className="px-1.5 py-0.5 rounded-sm bg-[#00A3AD] text-white flex items-center justify-center text-[10px] font-semibold leading-none">
                     {moreFiltersActiveCount}
                   </span>
                 )}
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {/* More Filters popover */}
@@ -762,17 +816,17 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* 8. Saved Views (Always visible like 67% view) */}
-            <div className="relative block flex-shrink-0" ref={viewsRef}>
+            {/* 8. Saved Views */}
+            <div className="relative inline-flex flex-shrink-0" ref={viewsRef}>
               <button
                 type="button"
                 onClick={() => setSavedViewsOpen(!savedViewsOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 sm:gap-1.5 focus:outline-none text-xs"
+                className="h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-card)] transition-colors inline-flex items-center gap-1 focus:outline-none text-xs"
                 id="filter-saved-views-btn"
               >
-                <Bookmark className="w-4 h-4 text-[#00A3AD] flex-shrink-0" />
+                <Bookmark className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
                 <span className="whitespace-nowrap">Saved Views</span>
-                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5" />
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] opacity-70 ml-0.5 flex-shrink-0" />
               </button>
 
               {savedViewsOpen && (
@@ -840,28 +894,32 @@ export default function Topbar() {
             </div>
           </div>
 
-          {/* ── Right Utility Controls (Always visible, never pushed off-screen) ── */}
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-auto">
+          {/* ── Right Utility Controls (Always visible in single row) ── */}
+          <div className="flex flex-nowrap items-center gap-1 xl:gap-1.5 flex-shrink-0 ml-auto">
             {/* Download report Menu */}
             <div className="relative flex-shrink-0" ref={downloadRef}>
               <button
                 type="button"
                 disabled={!!downloadingFormat}
                 onClick={() => setDownloadOpen(!downloadOpen)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 xl:px-3 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                className="h-9 px-2 xl:px-2.5 rounded-md text-xs font-medium bg-[#12284C] text-white hover:bg-[#1B365D] border border-transparent transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 id="topbar-download-btn"
-                title="Download report"
+                title={currentUser?.role === 'kam' ? 'My report' : 'Download report'}
               >
                 {downloadingFormat ? (
-                  <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin flex-shrink-0" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
                 ) : (
-                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <Download className="w-3.5 h-3.5 flex-shrink-0" />
                 )}
                 <span className="hidden xl:inline whitespace-nowrap">
                   {downloadingFormat
                     ? downloadingFormat === 'pptx'
                       ? 'Generating PPTX...'
+                      : downloadingFormat === 'pdf'
+                      ? 'Generating PDF...'
                       : 'Generating Excel...'
+                    : currentUser?.role === 'kam'
+                    ? 'My report'
                     : 'Download report'}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 opacity-80 flex-shrink-0 hidden sm:inline" />
@@ -869,79 +927,124 @@ export default function Topbar() {
 
               {downloadOpen && (
                 <div className="absolute right-0 mt-1 w-64 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xl p-1.5 z-[100] divide-y divide-[var(--border)]">
-                  <div className="py-1">
-                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                      Renewals Scope (Default)
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('pptx', 'renewals')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-pptx-btn"
-                    >
-                      {downloadingFormat === 'pptx' ? (
-                        <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
-                      ) : (
-                        <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                      )}
-                      <div className="flex-1">
-                        <p className="font-medium">PowerPoint (.pptx)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
-                      </div>
-                    </button>
+                  {currentUser?.role === 'kam' ? (
+                    <div className="py-1">
+                      <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        My Portfolio Report
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!!downloadingFormat}
+                        onClick={() => handleDownload('pdf')}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        id="topbar-download-pdf-btn"
+                      >
+                        {downloadingFormat === 'pdf' ? (
+                          <Loader2 className="w-4 h-4 text-rose-500 animate-spin flex-shrink-0" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">PDF (.pdf)</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">Branded executive summary</p>
+                        </div>
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('xlsx', 'renewals')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-excel-btn"
-                    >
-                      {downloadingFormat === 'xlsx' ? (
-                        <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
-                      ) : (
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      )}
-                      <div className="flex-1">
-                        <p className="font-medium">Excel (.xlsx)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
-                      </div>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        disabled={!!downloadingFormat}
+                        onClick={() => handleDownload('pptx')}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        id="topbar-download-pptx-btn"
+                      >
+                        {downloadingFormat === 'pptx' ? (
+                          <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                        ) : (
+                          <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">PowerPoint (.pptx)</p>
+                          <p className="text-[10px] text-[var(--text-muted)]">My portfolio deck (5 slides)</p>
+                        </div>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="py-1">
+                        <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                          Renewals Scope (Default)
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('pptx', 'renewals')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-pptx-btn"
+                        >
+                          {downloadingFormat === 'pptx' ? (
+                            <Loader2 className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+                          ) : (
+                            <Presentation className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <p className="font-medium">PowerPoint (.pptx)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Renewals deck (24 slides)</p>
+                          </div>
+                        </button>
 
-                  <div className="py-1">
-                    <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                      Full Sheet (All Sales Types)
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('pptx', 'full')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-pptx-full-btn"
-                    >
-                      <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="font-medium">PowerPoint (Full Sheet)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('xlsx', 'renewals')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-excel-btn"
+                        >
+                          {downloadingFormat === 'xlsx' ? (
+                            <Loader2 className="w-4 h-4 text-emerald-600 animate-spin flex-shrink-0" />
+                          ) : (
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <p className="font-medium">Excel (.xlsx)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">Renewals summaries (10 sheets)</p>
+                          </div>
+                        </button>
                       </div>
-                    </button>
 
-                    <button
-                      type="button"
-                      disabled={!!downloadingFormat}
-                      onClick={() => handleDownload('xlsx', 'full')}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      id="topbar-download-excel-full-btn"
-                    >
-                      <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="font-medium">Excel (Full Sheet)</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                      <div className="py-1">
+                        <p className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                          Full Sheet (All Sales Types)
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('pptx', 'full')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-pptx-full-btn"
+                        >
+                          <Presentation className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium">PowerPoint (Full Sheet)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!!downloadingFormat}
+                          onClick={() => handleDownload('xlsx', 'full')}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs text-left text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          id="topbar-download-excel-full-btn"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600/80 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-medium">Excel (Full Sheet)</p>
+                            <p className="text-[10px] text-[var(--text-muted)]">All sales types</p>
+                          </div>
+                        </button>
                       </div>
-                    </button>
-                  </div>
+                    </>
+                  )}
 
                   <div className="px-2.5 py-1.5 bg-[var(--bg-secondary)]/50 rounded-b-lg">
                     <p className="text-[10px] font-medium text-[var(--text-muted)] text-center">
@@ -952,63 +1055,130 @@ export default function Topbar() {
               )}
             </div>
 
-            {/* Admin sign in (Always visible!) */}
-            <div className="flex-shrink-0">
-              <AdminAuthModal />
-            </div>
+            {/* Notification Centre Bell */}
+            {currentUser && (
+              <NotificationPanel />
+            )}
 
-            {/* Display Size selector */}
-            <div className="relative flex-shrink-0" ref={displaySizeRef} id="topbar-display-size">
-              <button
-                type="button"
-                onClick={() => setDisplaySizeOpen((prev) => !prev)}
-                className="h-9 sm:h-10 px-2 sm:px-2.5 rounded-md flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0 text-xs font-medium"
-                id="topbar-display-size-btn"
-                title="Display size (fit to screen / zoom)"
-              >
-                <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
-                <span className="hidden xl:inline">
-                  {DISPLAY_SIZE_OPTIONS.find((o) => o.value === currentDisplaySize)?.label.replace(' (fit to screen)', '') || 'Auto'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
-              </button>
-
-              {displaySizeOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1.5 w-44 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-xl z-50 py-1"
-                  id="topbar-display-size-menu"
+            {/* User Profile / Authentication Menu (With Display Size inside) */}
+            {currentUser ? (
+              <div className="relative flex-shrink-0" ref={profileRef}>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((prev) => !prev)}
+                  className="h-9 px-2 xl:px-2.5 rounded-md flex items-center gap-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-all text-xs font-semibold focus:outline-none"
+                  id="topbar-user-menu-btn"
                 >
-                  <div className="px-3 py-1.5 border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                    Display Size
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                    currentUser.role === 'admin'
+                      ? 'bg-rose-600'
+                      : currentUser.role === 'management'
+                      ? 'bg-amber-600'
+                      : 'bg-teal-600'
+                  }`}>
+                    {currentUser.name?.[0]?.toUpperCase() || 'U'}
                   </div>
-                  {DISPLAY_SIZE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => {
-                        saveDisplaySize(opt.value)
-                        setCurrentDisplaySize(opt.value)
-                        setDisplaySizeOpen(false)
-                      }}
-                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
-                        currentDisplaySize === opt.value
-                          ? 'bg-[#00A3AD]/10 text-[#00A3AD] font-semibold'
-                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  <span className="text-[var(--text-primary)] max-w-[140px] truncate hidden md:inline font-medium" title={currentUser.name}>
+                    {currentUser.name}
+                  </span>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                    currentUser.role === 'admin'
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                      : currentUser.role === 'management'
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                      : 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                  }`}>
+                    {currentUser.role}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-[var(--text-muted)] flex-shrink-0" />
+                </button>
+
+                {profileOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl z-50 py-2 overflow-hidden">
+                    <div className="px-3.5 py-2 border-b border-[var(--border)]">
+                      <div className="font-bold text-xs text-[var(--text-primary)]">{currentUser.name}</div>
+                      <div className="text-[11px] text-[var(--text-muted)] truncate">{currentUser.email}</div>
+                      {currentUser.owner_name && (
+                        <div className="text-[10px] text-teal-600 dark:text-teal-400 font-medium mt-0.5">
+                          Owner: {currentUser.owner_name}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Display Size inside User Menu */}
+                    <div className="py-1.5 border-b border-[var(--border)]" id="topbar-display-size-menu">
+                      <div className="px-3.5 py-1 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1.5">
+                        <Monitor className="w-3.5 h-3.5 text-[#00A3AD]" />
+                        <span>Display Size</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 px-2.5 py-1">
+                        {DISPLAY_SIZE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              saveDisplaySize(opt.value)
+                              setCurrentDisplaySize(opt.value)
+                            }}
+                            className={`px-2 py-1 text-xs rounded-md text-left transition-colors flex items-center justify-between ${
+                              currentDisplaySize === opt.value
+                                ? 'bg-[#00A3AD]/15 text-[#00A3AD] font-bold'
+                                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
+                            }`}
+                          >
+                            <span className="truncate">{opt.label.replace(' (fit to screen)', '')}</span>
+                            {currentDisplaySize === opt.value && <span className="text-[#00A3AD] text-[10px]">✓</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileOpen(false)
+                          setChangePwdOpen(true)
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] flex items-center gap-2"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                        <span>Change Password</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setProfileOpen(false)
+                          await authLogoutStore()
+                          window.location.href = '/login'
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href="/login"
+                  className="h-9 px-3 rounded-md flex items-center gap-1.5 bg-[#12284C] text-white hover:bg-[#1a386b] text-xs font-semibold shadow-sm transition-all"
+                >
+                  <UserIcon className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </a>
+              </div>
+            )}
 
             {/* Theme toggle */}
             <button
               type="button"
               onClick={toggleDarkMode}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
+              className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] border border-[var(--border)] transition-colors focus:outline-none flex-shrink-0"
               id="topbar-theme-toggle"
               title={darkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
             >
@@ -1102,10 +1272,10 @@ export default function Topbar() {
 
               {/* Panel Body */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {/* As of Date */}
+                {/* Data date */}
                 <div>
                   <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
-                    As of Snapshot
+                    Data date
                   </label>
                   <select
                     value={activeSnap?.id ?? ''}
@@ -1150,23 +1320,30 @@ export default function Topbar() {
                   </label>
                   <select
                     value={globalFilters.period}
-                    onChange={(e) => setGlobalFilters({ period: e.target.value })}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        const customRange = window.prompt('Enter custom date range (YYYY-MM-DD:YYYY-MM-DD):', '2026-01-01:2026-12-31')
+                        if (customRange && customRange.includes(':')) {
+                          setGlobalFilters({ period: customRange.trim() })
+                        }
+                      } else {
+                        setGlobalFilters({ period: e.target.value })
+                      }
+                    }}
                     className="w-full h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] outline-none font-medium"
                   >
-                    <option value="current_quarter">Current Quarter (Default)</option>
-                    <option value="previous_quarter">Previous Quarter</option>
-                    <option value="next_quarter">Next Quarter</option>
-                    <option value="all_periods">All Periods</option>
-                    {filterOpts?.quarters?.map((q: any) => (
-                      <option key={q.key} value={q.key}>
-                        {q.label} ({q.count})
-                      </option>
-                    ))}
+                    <option value="all_open" title="All deals for this owner, across all dates.">All periods</option>
+                    <option value="current_quarter">Current quarter</option>
+                    <option value="next_quarter">Next quarter</option>
                     {filterOpts?.fiscal_years?.map((fy: any) => (
                       <option key={fy.key} value={fy.key}>
                         {fy.label} ({fy.count})
                       </option>
                     ))}
+                    {globalFilters.period && (globalFilters.period.includes(':') || globalFilters.period === 'custom') && (
+                      <option value={globalFilters.period}>Custom ({globalFilters.period})</option>
+                    )}
+                    <option value="custom">Custom...</option>
                   </select>
                 </div>
 
@@ -1385,11 +1562,6 @@ export default function Topbar() {
                     </div>
                   )}
                 </div>
-
-                {/* Mobile Admin Sign in button */}
-                <div className="pt-2 sm:hidden border-t border-[var(--border)]">
-                  <AdminAuthModal />
-                </div>
               </div>
 
               {/* Panel Footer */}
@@ -1416,6 +1588,112 @@ export default function Topbar() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Change Password Modal */}
+      {changePwdOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-sm w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
+              <h3 className="font-bold text-sm text-[var(--text-primary)]">Change Password</h3>
+              <button onClick={() => { setChangePwdOpen(false); setPwdError(null); setPwdSuccess(false); }}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+            </div>
+
+            {pwdSuccess ? (
+              <div className="text-center py-4">
+                <div className="text-emerald-500 font-bold text-sm mb-2">Password Successfully Updated!</div>
+                <button
+                  onClick={() => { setChangePwdOpen(false); setPwdSuccess(false); }}
+                  className="px-4 py-1.5 text-xs font-semibold bg-[#12284C] text-white rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  setPwdError(null)
+                  if (newPassword.length < 8) {
+                    setPwdError('Password must be at least 8 characters.')
+                    return
+                  }
+                  if (newPassword !== confirmPassword) {
+                    setPwdError('Passwords do not match.')
+                    return
+                  }
+                  setPwdLoading(true)
+                  try {
+                    await authChangePassword(oldPassword, newPassword)
+                    setPwdSuccess(true)
+                    setOldPassword('')
+                    setNewPassword('')
+                    setConfirmPassword('')
+                  } catch (err: any) {
+                    setPwdError(err.response?.data?.detail || 'Failed to change password.')
+                  } finally {
+                    setPwdLoading(false)
+                  }
+                }}
+                className="space-y-3.5"
+              >
+                {pwdError && (
+                  <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-xs">
+                    {pwdError}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setChangePwdOpen(false); setPwdError(null); }}
+                    className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pwdLoading}
+                    className="px-4 py-1.5 text-xs font-semibold bg-[#12284C] text-white rounded-xl hover:bg-[#1a386b] disabled:opacity-50"
+                  >
+                    {pwdLoading ? 'Saving...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

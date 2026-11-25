@@ -13,7 +13,7 @@ export function formatACV(val: number | null | undefined, showSign = false): str
   const sign = showSign ? (val >= 0 ? '+' : '') : ''
   const abs = Math.abs(val)
   if (abs >= 1_000_000) return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000_000).toFixed(2)}M`
-  if (abs >= 1_000)     return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000).toFixed(2)}K`
+  if (abs >= 1_000) return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000).toFixed(2)}K`
   return `${sign}${val < 0 ? '-' : ''}$${abs.toFixed(0)}`
 }
 
@@ -23,7 +23,7 @@ export function acvM(v: number | null | undefined): string {
   const abs = Math.abs(v)
   const sign = v < 0 ? '-' : ''
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`
-  if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(0)}K`
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
   return `${sign}$${abs.toFixed(0)}`
 }
 
@@ -131,9 +131,29 @@ export function formatDelta(
   const formatted = `${arrow}${sign}${base}`
   if (countDelta != null) {
     const cSign = countDelta >= 0 ? '+' : ''
-    return `${formatted} (${cSign}${countDelta} deals)`
+    const noun = Math.abs(countDelta) === 1 ? 'deal' : 'deals'
+    return `${formatted} (${cSign}${countDelta} ${noun})`
   }
   return formatted
+}
+
+/** Format Year-Month (e.g. "2026-01" -> "Jan 2026") */
+export function formatYearMonth(ym: string | null | undefined): string {
+  if (!ym) return '—'
+  const trimmed = ym.trim()
+  if (['unscheduled', 'no date', 'unknown', '—'].includes(trimmed.toLowerCase())) {
+    return 'Unscheduled'
+  }
+  const match = trimmed.match(/^(\d{4})-(\d{2})/)
+  if (match) {
+    const year = parseInt(match[1], 10)
+    const month = parseInt(match[2], 10) - 1
+    const d = new Date(year, month, 1)
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    }
+  }
+  return trimmed
 }
 
 /** Format exact currency with standard USD locale formatting. Zero shows "$0" */
@@ -151,6 +171,12 @@ export function formatCurrency(val: number | null | undefined): string {
 export function formatNumber(val: number | null | undefined): string {
   if (val == null) return '—'
   return val.toLocaleString('en-US')
+}
+
+/** Format deal count with singular/plural: 1 → "1 deal", 2 → "2 deals" */
+export function formatDealsCount(count: number | null | undefined): string {
+  if (count == null) return '—'
+  return `${formatCount(count)} ${count === 1 ? 'deal' : 'deals'}`
 }
 
 /** Display label for forecast category (Blank/null/empty/nan -> "Not yet proposed") */
@@ -177,13 +203,39 @@ export function getApprovalStatusLabel(status: string | null | undefined): strin
   if (['blank', '(blank)', 'none', 'unassigned', 'draft', 'null', 'nan', ''].includes(lower)) {
     return MISSING_APPROVAL_STATUS
   }
-  if (lower === 'not submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'not submitted' || lower === 'not-submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2') return 'Approved - 2nd'
   if (lower === 'approved' || lower === 'approve') return 'Approved'
   if (lower === 'pending approval' || lower === 'pending' || lower === 'pending_approval' || lower === 'pending-approval') {
     return 'Pending Approval'
   }
   if (lower === 'rejected' || lower === 'reject') return 'Rejected'
   return trimmed
+}
+
+/** Normalize approval status into canonical grouping */
+export function getApprovalGroup(status: string | null | undefined): string {
+  if (!status) return MISSING_APPROVAL_STATUS
+  const trimmed = status.trim()
+  const lower = trimmed.toLowerCase()
+  if (['blank', '(blank)', 'none', 'unassigned', 'draft', 'null', 'nan', ''].includes(lower)) {
+    return MISSING_APPROVAL_STATUS
+  }
+  if (lower === 'not submitted' || lower === 'not-submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'approved' || lower === 'approve' || lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2') {
+    return 'Approved'
+  }
+  if (lower === 'pending approval' || lower === 'pending' || lower === 'pending_approval' || lower === 'pending-approval') {
+    return 'Pending Approval'
+  }
+  if (lower === 'rejected' || lower === 'reject') return 'Rejected'
+  return trimmed
+}
+
+export function isApproved2nd(status: string | null | undefined): boolean {
+  if (!status) return false
+  const lower = status.trim().toLowerCase()
+  return lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2'
 }
 
 /** Derive quarter from date string (e.g. YYYY-MM-DD -> Qx-YYYY) */

@@ -14,6 +14,7 @@ interface ColumnEntry {
   label: string
   type: string
   optionsStr: string
+  visibility: 'internal' | 'visible_to_owner'
 }
 
 const COLUMN_TYPES = [
@@ -46,7 +47,7 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
 }) => {
   const [multiLineText, setMultiLineText] = useState('')
   const [entries, setEntries] = useState<ColumnEntry[]>([
-    { id: '1', label: '', type: 'text', optionsStr: '' },
+    { id: '1', label: '', type: 'text', optionsStr: '', visibility: 'internal' },
   ])
   const [submitting, setSubmitting] = useState(false)
 
@@ -65,6 +66,7 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
       label: line,
       type: inferTypeFromName(line),
       optionsStr: inferTypeFromName(line) === 'dropdown' ? 'Open, In Progress, Closed' : '',
+      visibility: 'internal',
     }))
     setEntries(newEntries)
     setMultiLineText('')
@@ -73,13 +75,13 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
   const handleAddRow = () => {
     setEntries([
       ...entries,
-      { id: `${Date.now()}`, label: '', type: 'text', optionsStr: '' },
+      { id: `${Date.now()}`, label: '', type: 'text', optionsStr: '', visibility: 'internal' },
     ])
   }
 
   const handleRemoveRow = (id: string) => {
     if (entries.length === 1) {
-      setEntries([{ id: '1', label: '', type: 'text', optionsStr: '' }])
+      setEntries([{ id: '1', label: '', type: 'text', optionsStr: '', visibility: 'internal' }])
       return
     }
     setEntries(entries.filter((e) => e.id !== id))
@@ -115,9 +117,10 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
     setSubmitting(true)
     try {
       const payload = valid.map((e) => {
-        const item: { label: string; type: string; dropdown_options?: string[] } = {
+        const item: { label: string; type: string; dropdown_options?: string[]; visibility: 'internal' | 'visible_to_owner' } = {
           label: e.label.trim(),
           type: e.type,
+          visibility: e.visibility || 'internal',
         }
         if (e.type === 'dropdown') {
           item.dropdown_options = e.optionsStr
@@ -221,7 +224,7 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
                       #{idx + 1}
                     </div>
 
-                    <div className="sm:col-span-6">
+                    <div className="sm:col-span-5">
                       <input
                         type="text"
                         placeholder="Column name (e.g. Risk Level)"
@@ -232,7 +235,7 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
                       />
                     </div>
 
-                    <div className="sm:col-span-4">
+                    <div className="sm:col-span-3">
                       <select
                         value={entry.type}
                         onChange={(e) => handleUpdateRow(entry.id, { type: e.target.value })}
@@ -243,6 +246,18 @@ export const AddColumnsModal: React.FC<AddColumnsModalProps> = ({
                             {t.label}
                           </option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <select
+                        value={entry.visibility}
+                        onChange={(e) => handleUpdateRow(entry.id, { visibility: e.target.value as any })}
+                        className="w-full text-[11px] px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        title="Column Visibility"
+                      >
+                        <option value="internal">🔒 Internal</option>
+                        <option value="visible_to_owner">👥 Visible to KAM</option>
                       </select>
                     </div>
 
