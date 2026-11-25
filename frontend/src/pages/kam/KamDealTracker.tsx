@@ -353,6 +353,12 @@ export default function KamDealTracker() {
             </div>
           </div>
 
+          {calendarGrouping === 'service_expiry' && (
+            <div className="px-3.5 py-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-700 dark:text-sky-300 font-medium">
+              Service expiry = end date of the current (expiring) contract. The renewal period starts the next day.
+            </div>
+          )}
+
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-4 text-xs pt-1 border-t border-[var(--border)]">
             <div className="flex items-center gap-1.5">
@@ -648,6 +654,61 @@ export default function KamDealTracker() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Section C2: Upcoming Service Expiry (Hidden if none) */}
+      {(data.upcoming_service_expiry || []).length > 0 && (
+        <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-sky-500" />
+              <h3 className="text-base font-bold text-[var(--text-primary)]">
+                Upcoming Service Expiry (Next 60 Days)
+              </h3>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              {data.upcoming_service_expiry.length} {data.upcoming_service_expiry.length === 1 ? 'deal' : 'deals'}
+            </span>
+          </div>
+
+          <div className="px-3.5 py-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-700 dark:text-sky-300 font-medium">
+            Service expiry = end date of the current (expiring) contract. The renewal period starts the next day.
+          </div>
+
+          <div className="divide-y divide-[var(--border)] max-h-72 overflow-y-auto pr-1">
+            {data.upcoming_service_expiry.slice(0, 8).map((item: any, i: number) => {
+              const d = item.deal || item
+              const amt = parseFloat(d.forecast_acv_amount) || 0
+              return (
+                <div
+                  key={i}
+                  onClick={() => openDrawer(d.opportunity_id_18 || d.id)}
+                  className="py-2.5 px-1 hover:bg-[var(--bg-secondary)] rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-[var(--text-primary)] truncate">
+                      {d.opportunity_name}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] truncate mt-0.5 flex items-center gap-1.5">
+                      <span>{d.account_name}</span>
+                      <span>·</span>
+                      <span>Expires: {formatDate(item.service_expiry_date)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-bold tabular-nums text-[var(--text-primary)]">
+                      {formatCurrency(amt)}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                      {item.days_label}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

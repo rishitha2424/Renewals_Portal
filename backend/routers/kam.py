@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, List, Dict, Any
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -19,13 +19,22 @@ from backend.database import get_db
 from backend.models.opportunity import Opportunity
 from backend.models.snapshot import UploadSnapshot
 from backend.models.user import User, DealMessage
+from backend.models.custom_column import DealComment
 from backend.services.context import UserContext, require_authenticated
 from backend.services.scopes import FilterSpec, ScopeService
-from backend.services.deal_serializer import serialize_opportunity, is_deal_missing_service_dates
+from backend.services.deal_serializer import (
+    serialize_opportunity,
+    is_deal_missing_service_dates,
+    is_deal_open,
+    is_deal_closed,
+    is_deal_overdue,
+    get_deal_needs_review_reasons,
+)
 from backend.services.v2_delayed_service import V2DelayedService
 from backend.services.kam_report_service import KamReportService
 from backend.services.settings_service import SettingsService
 from backend.constants import get_approval_group, is_approved_2nd, normalize_approval_status
+from backend.utils.excel_parser import parse_excel_date
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +52,7 @@ def _require_kam_or_management(ctx: UserContext = Depends(require_authenticated)
 
 def _resolve_snapshot(db: Session, as_of: Optional[str] = None) -> UploadSnapshot | None:
     snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
-    if as_of and isinstance(as_of, str) and as_of.strip():
+    if as_of:
         s_target = db.query(UploadSnapshot).filter(UploadSnapshot.id == as_of).first()
         if not s_target:
             try:
@@ -217,13 +226,20 @@ def get_kam_overview(
     slippage_count = len(slippage_deals)
     slippage_acv = round(float(slip_df["forecast_acv_amount"].sum()) if not slip_df.empty else 0.0, 2)
 
-    # 4. Needs Review (Missing service start or expiry date)
-    missing_dates_deals = [
-        d for d in deals
-        if is_deal_missing_service_dates(d)
-    ]
-    needs_review_count = len(missing_dates_deals)
-    needs_review_acv = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in missing_dates_deals), 2)
+    # 4. Needs Review (Alignd with admin V2DelayedService: missing dates, negative ACV, far ahead close date)
+    needs_review_deals = []
+    missing_dates_deals = []
+    for d in deals:
+        reasons = get_deal_needs_review_reasons(d, as_of=snap.snapshot_date)
+        if reasons:
+            d["review_reasons"] = reasons
+            d["review_reason"] = reasons[0]
+            needs_review_deals.append(d)
+        if is_deal_missing_service_dates(d):
+            missing_dates_deals.append(d)
+
+    needs_review_count = len(needs_review_deals)
+    needs_review_acv = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in needs_review_deals), 2)
 
     # 5. Unread Messages for this KAM
     owned_ids = [d["opportunity_id_18"] for d in deals if d.get("opportunity_id_18")]
@@ -269,15 +285,20 @@ def get_kam_overview(
         diff_cnt = total_count - b_cnt
         diff_acv = round(total_acv - b_acv, 2)
         cnt_prefix = "+" if diff_cnt > 0 else ""
-        acv_prefix = "+" if diff_acv > 0 else ""
         deal_noun = "deal" if abs(diff_cnt) == 1 else "deals"
+        if diff_acv < 0:
+            acv_label = f"-${abs(diff_acv):,.2f}"
+        elif diff_acv > 0:
+            acv_label = f"+${diff_acv:,.2f}"
+        else:
+            acv_label = "$0.00"
         return {
             "count": diff_cnt,
             "acv": diff_acv,
             "available": True,
             "date": base_snap.snapshot_date.isoformat(),
             "date_formatted": base_snap.snapshot_date.strftime("%b %d, %Y"),
-            "label": f"{cnt_prefix}{diff_cnt} {deal_noun} ({acv_prefix}${diff_acv:,.2f})",
+            "label": f"{cnt_prefix}{diff_cnt} {deal_noun} ({acv_label})",
         }
 
     delta_compare = _compute_delta(compare_snap)
@@ -478,7 +499,8 @@ def get_kam_overview(
         countries_summary = ", ".join([f"{c['country']} {c['count']}" for c in r0["countries"] if c["country"] != "Unknown"])
         if not countries_summary:
             countries_summary = ", ".join([f"{c['country']} {c['count']}" for c in r0["countries"]])
-        summary_sentence = f"All {total_count} deals are in {r0['region']}: {countries_summary}." if countries_summary else f"All {total_count} deals are in {r0['region']}."
+        deal_phrase = "1 deal is" if total_count == 1 else f"All {total_count} deals are"
+        summary_sentence = f"{deal_phrase} in {r0['region']}: {countries_summary}." if countries_summary else f"{deal_phrase} in {r0['region']}."
     else:
         single_region = False
         summary_sentence = ""
@@ -586,17 +608,19 @@ def get_kam_overview(
                 b["acv"] = round(b["acv"] + amt, 2)
                 break
 
-    # 10. Action Lists
+    # 10. Action Lists (Excluding Closed Deals from Immediate Attention)
     immediate_attention = [
         d for d in deals
-        if (d.get("forecast_category") == "Commit" and d.get("approval_status") != "Approved")
-        or (d.get("close_date") and d.get("close_date") < snap.snapshot_date.isoformat() and d.get("forecast_category") != "Closed")
+        if is_deal_open(d) and (
+            (d.get("forecast_category") == "Commit" and d.get("approval_status") not in ("Approved", "Approved - 2nd"))
+            or is_deal_overdue(d, snap.snapshot_date)
+        )
     ]
-    not_submitted_deals = [d for d in deals if d.get("approval_status") in ("Not submitted", "Blank", "", None)]
+    not_submitted_deals = [d for d in deals if is_deal_open(d) and d.get("approval_status") in ("Not submitted", "Blank", "", None)]
 
-    # 11. Plain Language Insight Statements (3 concise sentences)
+    # 11. Plain Language Insight Statements (3 concise sentences + Concentration)
     insights = []
-    unapproved_commit = [d for d in deals if d.get("forecast_category") == "Commit" and d.get("approval_status") != "Approved"]
+    unapproved_commit = [d for d in deals if is_deal_open(d) and d.get("forecast_category") == "Commit" and d.get("approval_status") not in ("Approved", "Approved - 2nd")]
     if unapproved_commit:
         u_acv = sum(float(d.get("forecast_acv_amount") or 0.0) for d in unapproved_commit)
         insights.append(f"{len(unapproved_commit)} Commit deal{'s' if len(unapproved_commit) > 1 else ''} worth ${u_acv:,.2f} {'are' if len(unapproved_commit) > 1 else 'is'} awaiting management approval.")
@@ -614,9 +638,196 @@ def get_kam_overview(
     elif slippage_count > 0:
         insights.append(f"Slippage risk: {slippage_count} deal{'s' if slippage_count > 1 else ''} totaling ${slippage_acv:,.2f} moved into next year.")
     elif needs_review_count > 0:
-        insights.append(f"Needs review: {needs_review_count} deal{'s' if needs_review_count > 1 else ''} missing service dates.")
+        insights.append(f"Needs review: {needs_review_count} deal{'s' if needs_review_count > 1 else ''} require review (missing service dates or negative ACV).")
     else:
         insights.append("No delayed renewals in your portfolio.")
+
+    # 12. Renewal Progress (Closed vs Open)
+    closed_deals = [d for d in deals if not is_deal_open(d)]
+    open_deals = [d for d in deals if is_deal_open(d)]
+    closed_cnt = len(closed_deals)
+    closed_val = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in closed_deals), 2)
+    open_cnt = len(open_deals)
+    open_val = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in open_deals), 2)
+    closed_pct = round((closed_val / total_acv) * 100) if total_acv > 0 else 0
+
+    def _fmt_strip_cur(val: float) -> str:
+        sign = "-" if val < 0 else ""
+        a = abs(val)
+        if a >= 1_000_000:
+            return f"{sign}${a / 1_000_000:.2f}M"
+        elif a >= 1_000:
+            return f"{sign}${a / 1_000:.0f}K"
+        return f"{sign}${a:,.2f}"
+
+    total_deal_word = "deal" if total_count == 1 else "deals"
+    open_deal_word = "deal" if open_cnt == 1 else "deals"
+    renewal_progress = {
+        "closed_count": closed_cnt,
+        "closed_acv": closed_val,
+        "closed_pct": closed_pct,
+        "open_count": open_cnt,
+        "open_acv": open_val,
+        "summary_sentence": f"{closed_cnt} of {total_count} {total_deal_word} closed: {_fmt_strip_cur(closed_val)} of {_fmt_strip_cur(total_acv)} ({closed_pct}%). Open: {open_cnt} {open_deal_word}, {_fmt_strip_cur(open_val)}",
+    }
+
+    # 13. Account Concentration
+    if top_accounts and total_acv > 0:
+        top_acc = top_accounts[0]
+        top_acc_name = top_acc["account_name"]
+        top_acc_pct = round((top_acc["acv"] / total_acv) * 100)
+        account_concentration = {
+            "account_name": top_acc_name,
+            "acv": top_acc["acv"],
+            "pct": top_acc_pct,
+            "sentence": f"{top_acc_name} is {top_acc_pct}% of your ACV.",
+        }
+    else:
+        account_concentration = {
+            "account_name": None,
+            "acv": 0.0,
+            "pct": 0,
+            "sentence": "",
+        }
+
+    # 14. Closing Soon & Overdue (Open deals only)
+    closing_soon_days = int(SettingsService.get_setting(db, "closing_soon_days", "30") or 30)
+    expiry_window_days = int(SettingsService.get_setting(db, "expiry_window_days", "60") or 60)
+
+    closing_soon_and_overdue = []
+    for d in deals:
+        if not is_deal_open(d):
+            continue
+        cd_str = d.get("close_date")
+        if not cd_str:
+            continue
+        cd = parse_excel_date(cd_str)
+        if not cd:
+            continue
+        if cd < snap.snapshot_date:
+            days_diff = (snap.snapshot_date - cd).days
+            reason = "Past close date"
+            if d.get("forecast_category") == "Commit" and d.get("approval_status") not in ("Approved", "Approved - 2nd"):
+                reason = f"Commit, {d.get('approval_status') or 'not submitted'}"
+            closing_soon_and_overdue.append({
+                "deal": d,
+                "opportunity_name": d.get("opportunity_name") or d.get("id"),
+                "account_name": d.get("account_name"),
+                "forecast_category": d.get("forecast_category"),
+                "approval_status": d.get("approval_status"),
+                "acv": float(d.get("forecast_acv_amount") or 0.0),
+                "status": "overdue",
+                "days_label": f"{days_diff}d overdue",
+                "days_diff": -days_diff,
+                "close_date": cd.isoformat(),
+                "reason": reason,
+            })
+        elif snap.snapshot_date <= cd <= snap.snapshot_date + timedelta(days=closing_soon_days):
+            days_diff = (cd - snap.snapshot_date).days
+            reason = f"Closing in {days_diff}d"
+            if d.get("forecast_category") == "Commit" and d.get("approval_status") not in ("Approved", "Approved - 2nd"):
+                reason = f"Commit, {d.get('approval_status') or 'not submitted'}"
+            closing_soon_and_overdue.append({
+                "deal": d,
+                "opportunity_name": d.get("opportunity_name") or d.get("id"),
+                "account_name": d.get("account_name"),
+                "forecast_category": d.get("forecast_category"),
+                "approval_status": d.get("approval_status"),
+                "acv": float(d.get("forecast_acv_amount") or 0.0),
+                "status": "closing_soon",
+                "days_label": f"{days_diff}d left" if days_diff > 0 else "Closes today",
+                "days_diff": days_diff,
+                "close_date": cd.isoformat(),
+                "reason": reason,
+            })
+    closing_soon_and_overdue.sort(key=lambda x: x["days_diff"])
+
+    # 15. Upcoming Service Expiry
+    upcoming_service_expiry = []
+    for d in deals:
+        s_exp_str = d.get("service_expiry_date") or d.get("service_end_date")
+        if not s_exp_str:
+            continue
+        s_exp = parse_excel_date(s_exp_str)
+        if not s_exp:
+            continue
+        if snap.snapshot_date <= s_exp <= snap.snapshot_date + timedelta(days=expiry_window_days):
+            days_left = (s_exp - snap.snapshot_date).days
+            upcoming_service_expiry.append({
+                "deal": d,
+                "opportunity_name": d.get("opportunity_name") or d.get("id"),
+                "account_name": d.get("account_name"),
+                "acv": float(d.get("forecast_acv_amount") or 0.0),
+                "service_expiry_date": s_exp.isoformat(),
+                "days_left": days_left,
+                "days_label": f"{days_left}d left" if days_left > 0 else "Expires today",
+            })
+    upcoming_service_expiry.sort(key=lambda x: x["days_left"])
+
+    # 16. Messages & Comments Summary
+    open_threads_cnt = (
+        db.query(func.count(func.distinct(DealMessage.deal_id)))
+        .filter(DealMessage.deal_id.in_(owned_ids))
+        .scalar()
+    ) if owned_ids else 0
+
+    shared_comments = []
+    if owned_ids:
+        comments_q = (
+            db.query(DealComment)
+            .filter(
+                DealComment.opportunity_id_18.in_(owned_ids),
+                DealComment.is_deleted == False,
+                DealComment.visibility.in_(["shared", "all", "public"]),
+            )
+            .order_by(DealComment.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        deal_name_map = {d["opportunity_id_18"]: d.get("opportunity_name") or d.get("account_name") for d in deals}
+        for sc in comments_q:
+            shared_comments.append({
+                "id": sc.id,
+                "deal_id": sc.opportunity_id_18,
+                "deal_name": deal_name_map.get(sc.opportunity_id_18, sc.opportunity_id_18),
+                "author": sc.author,
+                "author_role": sc.author_role,
+                "text": sc.text,
+                "created_at": sc.created_at.isoformat() if sc.created_at else None,
+                "created_at_formatted": sc.created_at.strftime("%b %d, %Y") if sc.created_at else "",
+            })
+
+    messages_and_comments_summary = {
+        "open_threads": open_threads_cnt or 0,
+        "unread_count": unread_msg_count,
+        "latest_shared_comments": shared_comments,
+    }
+
+    # 17. Data Notes (Reconciliation excluded + Missing service dates)
+    recon_opps = (
+        db.query(Opportunity)
+        .filter(
+            Opportunity.snapshot_id == snap.id,
+            Opportunity.opportunity_owner.in_(allowed_owners),
+            Opportunity.is_reconciliation_entry == True,
+        )
+        .all()
+    )
+    recon_cnt = len(recon_opps)
+    recon_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in recon_opps), 2)
+    recon_acv_str = f"-${abs(recon_acv):,.2f}" if recon_acv < 0 else f"${recon_acv:,.2f}"
+    notes_parts = []
+    if recon_cnt > 0:
+        notes_parts.append(f"{recon_cnt} reconciliation {'entry' if recon_cnt == 1 else 'entries'} ({recon_acv_str}) {'is' if recon_cnt == 1 else 'are'} excluded from these totals.")
+    if len(missing_dates_deals) > 0:
+        notes_parts.append(f"{len(missing_dates_deals)} deal{'s' if len(missing_dates_deals) != 1 else ''} have no service dates.")
+
+    data_notes = {
+        "reconciliation_excluded_count": recon_cnt,
+        "reconciliation_excluded_acv": recon_acv,
+        "missing_service_dates_count": len(missing_dates_deals),
+        "note_text": " · ".join(notes_parts) if notes_parts else "",
+    }
 
     kpis_dict = {
         "total_count": total_count,
@@ -721,7 +932,14 @@ def get_kam_overview(
             "slippage_deals": slippage_deals,
             "not_submitted_deals": not_submitted_deals,
             "missing_service_dates": missing_dates_deals,
+            "needs_review_deals": needs_review_deals,
         },
+        "renewal_progress": renewal_progress,
+        "account_concentration": account_concentration,
+        "closing_soon_and_overdue": closing_soon_and_overdue,
+        "upcoming_service_expiry": upcoming_service_expiry,
+        "messages_and_comments_summary": messages_and_comments_summary,
+        "data_notes": data_notes,
         "insight_cards": insights[:3],
         "deals": deals,
     }

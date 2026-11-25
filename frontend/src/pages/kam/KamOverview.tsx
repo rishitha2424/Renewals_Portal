@@ -39,7 +39,7 @@ export default function KamOverview() {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [modalDeals, setModalDeals] = useState<any[] | null>(null)
   const [modalTitle, setModalTitle] = useState<string>('')
-  const [activeActionTab, setActiveActionTab] = useState<'immediate' | 'delayed' | 'not_submitted' | 'slippage' | 'missing_dates'>('immediate')
+  const [activeActionTab, setActiveActionTab] = useState<'immediate' | 'delayed' | 'not_submitted' | 'slippage' | 'needs_review'>('immediate')
 
   // Auto-set KAM default period to "all_open"
   useEffect(() => {
@@ -204,19 +204,25 @@ export default function KamOverview() {
     ? Math.round((kpis.commit_coverage_acv / kpis.total_acv) * 100)
     : 0
 
-  // Action Center Filtered List
-  const immediateDeals = actionLists.immediate_attention || []
+  // Action Center Filtered List (Excludes Closed Deals)
+  const isDealClosedCheck = (d: any) => {
+    const fc = (d.forecast_category || '').toLowerCase()
+    const st = (d.stage_number || d.stage || '').toLowerCase()
+    return fc === 'closed' || st.includes('closed') || st.includes('won') || st.includes('lost') || st.includes('delete')
+  }
+
+  const immediateDeals = (actionLists.immediate_attention || []).filter((d: any) => !isDealClosedCheck(d))
   const delayedDeals = actionLists.delayed_deals || []
-  const notSubmittedDeals = actionLists.not_submitted_deals || []
+  const notSubmittedDeals = (actionLists.not_submitted_deals || []).filter((d: any) => !isDealClosedCheck(d))
   const slippageDeals = actionLists.slippage_deals || []
-  const missingDatesDeals = actionLists.missing_service_dates || []
+  const needsReviewDeals = actionLists.needs_review_deals || actionLists.missing_service_dates || []
 
   const availableActionTabs = [
     { key: 'immediate', label: 'Immediate attention', count: immediateDeals.length, deals: immediateDeals },
     { key: 'delayed', label: 'Delayed renewals', count: delayedDeals.length, deals: delayedDeals },
     { key: 'not_submitted', label: 'Not submitted', count: notSubmittedDeals.length, deals: notSubmittedDeals },
     { key: 'slippage', label: 'Slippage', count: slippageDeals.length, deals: slippageDeals },
-    { key: 'missing_dates', label: 'Missing dates', count: missingDatesDeals.length, deals: missingDatesDeals },
+    { key: 'needs_review', label: 'Needs review', count: needsReviewDeals.length, deals: needsReviewDeals },
   ].filter((tab) => tab.count > 0)
 
   // Auto-select valid tab if current has 0
@@ -301,6 +307,29 @@ export default function KamOverview() {
           </button>
         )}
       </div>
+
+      {/* 2b. Renewal Progress Slim Strip */}
+      {data.renewal_progress && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xs text-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span className="font-semibold text-[var(--text-primary)]">
+              {data.renewal_progress.summary_sentence}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 w-full sm:w-64">
+            <div className="flex-1 h-2 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, data.renewal_progress.closed_pct || 0))}%` }}
+              />
+            </div>
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums shrink-0">
+              {data.renewal_progress.closed_pct}%
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* 3. Movements & Changes Banner (vs Yesterday, vs Last Week, vs Compare to Date) */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xs">
@@ -474,10 +503,10 @@ export default function KamOverview() {
           count={kpis.needs_review_count}
           dealsLabel={kpis.needs_review_count === 1 ? 'deal' : 'deals'}
           tone="neutral"
-          subtitle="Missing service dates"
+          subtitle="Missing dates or negative ACV"
           onClick={() => openDeals(
             `Needs Review Deals (${kpis.needs_review_count})`,
-            actionLists.missing_service_dates || []
+            needsReviewDeals
           )}
         />
       </div>
@@ -606,7 +635,14 @@ export default function KamOverview() {
                     className="hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3 font-medium text-[var(--text-primary)] max-w-xs truncate">
-                      {deal.opportunity_name || deal.id}
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="truncate">{deal.opportunity_name || deal.id}</span>
+                        {deal.review_reasons?.map((r: string, ri: number) => (
+                          <span key={ri} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-[var(--text-secondary)] max-w-xs truncate">
                       {deal.account_name}
@@ -640,6 +676,40 @@ export default function KamOverview() {
           </div>
         )}
       </div>
+
+      {/* 10. Messages & Management Comments Summary */}
+      {data.messages_and_comments_summary && (
+        <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-[var(--text-primary)]">Communication & Management Feedback</div>
+              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                {data.messages_and_comments_summary.open_threads} open thread{data.messages_and_comments_summary.open_threads === 1 ? '' : 's'} · {data.messages_and_comments_summary.unread_count} unread
+                {data.messages_and_comments_summary.latest_shared_comments?.length > 0 && (
+                  <span> · Latest feedback from {data.messages_and_comments_summary.latest_shared_comments[0].author}: "{data.messages_and_comments_summary.latest_shared_comments[0].text.slice(0, 45)}..."</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/messages"
+            className="px-3 py-1.5 rounded-lg font-semibold text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 transition-colors shrink-0 flex items-center gap-1"
+          >
+            <span>Open Messages Hub</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* 11. Data Notes Footer */}
+      {data.data_notes?.note_text && (
+        <div className="text-center text-xs text-[var(--text-muted)] py-3 border-t border-[var(--border)]">
+          {data.data_notes.note_text}
+        </div>
+      )}
 
       {/* Drill-down DealListModal */}
       {modalDeals && (
