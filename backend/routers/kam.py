@@ -63,7 +63,7 @@ def _resolve_snapshot(db: Session, as_of: Optional[str] = None) -> UploadSnapsho
 def get_kam_overview(
     as_of: Optional[str] = Query(None),
     period: Optional[str] = Query(None),
-    compare: Optional[str] = Query("yesterday"),
+    compare: Optional[str] = Query(None),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
     ctx: UserContext = Depends(_require_kam_or_management),
@@ -73,7 +73,9 @@ def get_kam_overview(
     Returns KAM's personal portfolio metrics:
     - Period totals: deals count, total ACV
     - KPI tiles: Portfolio, Commit coverage, Approvals, Delayed, Slippage, Needs Review, Unread messages
-    - Movements vs yesterday and last week
+    - Movements vs compare-to snapshot, yesterday and last week
+    - Region line: single region sentence or multi-region chips + country breakdown
+    - What changed between active snapshot and compare-to snapshot
     - Charts: Forecast category, Approval status, Stage funnel, BU split, Region split, Timelines, Top accounts, Deal sizes
     - Action lists: Immediate attention, Delayed deals, Slippage, Missing dates, Unapproved Commit
     - Plain-language insight cards
@@ -93,6 +95,8 @@ def get_kam_overview(
             "best_case_count": 0, "best_case_acv": 0.0,
             "pipeline_count": 0, "pipeline_acv": 0.0,
             "approved_count": 0, "approved_acv": 0.0,
+            "approved_2nd_count": 0, "approved_2nd_acv": 0.0,
+            "approved_2nd_breakdown": None,
             "pending_approval_count": 0, "pending_approval_acv": 0.0,
             "not_submitted_count": 0, "not_submitted_acv": 0.0,
             "delayed_count": 0, "delayed_acv": 0.0,
@@ -101,7 +105,7 @@ def get_kam_overview(
             "unread_messages": 0,
         }
         return {
-            "period": period,
+            "period": period or "All periods",
             "owner_name": effective_owner_name,
             "kpis": empty_kpis,
             "total": {"count": 0, "acv": 0.0},
@@ -110,6 +114,8 @@ def get_kam_overview(
             "charts": {},
             "action_lists": {},
             "insight_cards": ["No opportunities found for current owner."],
+            "region_line": {"single_region": False, "summary_sentence": "", "regions": []},
+            "what_changed": {"has_changes": False, "total_changes": 0, "compare_date": None, "new_deals": [], "acv_changes": [], "stage_changes": [], "category_changes": [], "approval_changes": [], "closed_won": [], "removed_deals": []},
             "movements": {"delta_yesterday": {"count": 0, "acv": 0.0, "available": False}},
         }
 
@@ -233,13 +239,26 @@ def get_kam_overview(
         msg_q = msg_q.filter(DealMessage.deal_id.in_(owned_ids), DealMessage.sender_role != "kam")
     unread_msg_count = msg_q.count()
 
-    # 6. Movements vs Yesterday & Last Week
+    # 6. Movements vs Compare-To, Yesterday & Last Week
     y_snap = delayed_svc.get_yesterday_baseline(snap)
     w_snap = delayed_svc.get_lastweek_baseline(snap)
 
+    compare_snap: UploadSnapshot | None = None
+    if compare and compare not in ("yesterday", "lastweek", "last_week"):
+        compare_snap = _resolve_snapshot(db, compare)
+    if not compare_snap or compare_snap.id == snap.id:
+        compare_snap = y_snap
+    if not compare_snap or compare_snap.id == snap.id:
+        compare_snap = (
+            db.query(UploadSnapshot)
+            .filter(UploadSnapshot.snapshot_date < snap.snapshot_date)
+            .order_by(UploadSnapshot.snapshot_date.desc())
+            .first()
+        )
+
     def _compute_delta(base_snap: UploadSnapshot | None) -> dict[str, Any]:
         if not base_snap:
-            return {"count": None, "acv": None, "available": False, "label": "n/a"}
+            return {"count": None, "acv": None, "available": False, "label": "n/a", "date": None}
         b_opps = (
             db.query(Opportunity)
             .filter(Opportunity.snapshot_id == base_snap.id, *res.conditions)
@@ -249,24 +268,248 @@ def get_kam_overview(
         b_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in b_opps), 2)
         diff_cnt = total_count - b_cnt
         diff_acv = round(total_acv - b_acv, 2)
+        cnt_prefix = "+" if diff_cnt > 0 else ""
+        acv_prefix = "+" if diff_acv > 0 else ""
         return {
             "count": diff_cnt,
             "acv": diff_acv,
             "available": True,
-            "label": f"{'+' if diff_cnt > 0 else ''}{diff_cnt} deals / {'+' if diff_acv > 0 else ''}${diff_acv:,.2f}",
+            "date": base_snap.snapshot_date.isoformat(),
+            "date_formatted": base_snap.snapshot_date.strftime("%b %d, %Y"),
+            "label": f"{cnt_prefix}{diff_cnt} deals ({acv_prefix}${diff_acv:,.2f})",
         }
 
+    delta_compare = _compute_delta(compare_snap)
     delta_yesterday = _compute_delta(y_snap)
     delta_lastweek = _compute_delta(w_snap)
 
-    # 7. Chart Data Structures
+    # 7. What Changed Between Active and Compare-to Snapshot
+    what_changed: dict[str, Any] = {
+        "has_changes": False,
+        "compare_date": compare_snap.snapshot_date.isoformat() if compare_snap else None,
+        "compare_date_formatted": compare_snap.snapshot_date.strftime("%b %d, %Y") if compare_snap else "baseline",
+        "total_changes": 0,
+        "new_deals": [],
+        "acv_changes": [],
+        "stage_changes": [],
+        "category_changes": [],
+        "approval_changes": [],
+        "closed_won": [],
+        "removed_deals": [],
+    }
+
+    if compare_snap and compare_snap.id != snap.id:
+        prior_opps = (
+            db.query(Opportunity)
+            .filter(Opportunity.snapshot_id == compare_snap.id, *res.conditions)
+            .all()
+        )
+        prior_deals = [serialize_opportunity(o) for o in prior_opps]
+        prior_by_id = {str(d.get("opportunity_id_18") or d.get("id")): d for d in prior_deals if (d.get("opportunity_id_18") or d.get("id"))}
+        cur_by_id = {str(d.get("opportunity_id_18") or d.get("id")): d for d in deals if (d.get("opportunity_id_18") or d.get("id"))}
+
+        # New deals
+        for d_id, cur_d in cur_by_id.items():
+            if d_id not in prior_by_id:
+                what_changed["new_deals"].append({
+                    "id": d_id,
+                    "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                    "account_name": cur_d.get("account_name") or "Unknown",
+                    "acv": float(cur_d.get("forecast_acv_amount") or 0.0),
+                    "stage": cur_d.get("stage_number") or cur_d.get("stage") or "Unassigned",
+                    "forecast_category": cur_d.get("forecast_category") or "Unassigned",
+                    "deal": cur_d,
+                })
+
+        # Changes in existing deals
+        for d_id, cur_d in cur_by_id.items():
+            if d_id in prior_by_id:
+                pr_d = prior_by_id[d_id]
+                c_acv = float(cur_d.get("forecast_acv_amount") or 0.0)
+                p_acv = float(pr_d.get("forecast_acv_amount") or 0.0)
+                if abs(c_acv - p_acv) > 0.01:
+                    diff_acv = round(c_acv - p_acv, 2)
+                    what_changed["acv_changes"].append({
+                        "id": d_id,
+                        "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                        "account_name": cur_d.get("account_name") or "Unknown",
+                        "old_acv": p_acv,
+                        "new_acv": c_acv,
+                        "diff_acv": diff_acv,
+                        "deal": cur_d,
+                    })
+
+                c_stage = (cur_d.get("stage_number") or cur_d.get("stage") or "").strip()
+                p_stage = (pr_d.get("stage_number") or pr_d.get("stage") or "").strip()
+                if c_stage and p_stage and c_stage != p_stage:
+                    what_changed["stage_changes"].append({
+                        "id": d_id,
+                        "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                        "account_name": cur_d.get("account_name") or "Unknown",
+                        "old_stage": p_stage,
+                        "new_stage": c_stage,
+                        "deal": cur_d,
+                    })
+
+                c_cat = (cur_d.get("forecast_category") or "").strip()
+                p_cat = (pr_d.get("forecast_category") or "").strip()
+                if c_cat and p_cat and c_cat != p_cat:
+                    what_changed["category_changes"].append({
+                        "id": d_id,
+                        "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                        "account_name": cur_d.get("account_name") or "Unknown",
+                        "old_category": p_cat,
+                        "new_category": c_cat,
+                        "deal": cur_d,
+                    })
+
+                c_appr = (cur_d.get("approval_status") or "").strip()
+                p_appr = (pr_d.get("approval_status") or "").strip()
+                if c_appr and p_appr and c_appr != p_appr:
+                    what_changed["approval_changes"].append({
+                        "id": d_id,
+                        "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                        "account_name": cur_d.get("account_name") or "Unknown",
+                        "old_status": p_appr,
+                        "new_status": c_appr,
+                        "deal": cur_d,
+                    })
+
+                # Closed Won
+                if ("Closed Won" in c_stage or c_cat == "Closed") and not ("Closed Won" in p_stage or p_cat == "Closed"):
+                    what_changed["closed_won"].append({
+                        "id": d_id,
+                        "opportunity_name": cur_d.get("opportunity_name") or d_id,
+                        "account_name": cur_d.get("account_name") or "Unknown",
+                        "acv": c_acv,
+                        "deal": cur_d,
+                    })
+
+        # Removed / Lost deals
+        for d_id, pr_d in prior_by_id.items():
+            if d_id not in cur_by_id:
+                p_acv = float(pr_d.get("forecast_acv_amount") or 0.0)
+                what_changed["removed_deals"].append({
+                    "id": d_id,
+                    "opportunity_name": pr_d.get("opportunity_name") or d_id,
+                    "account_name": pr_d.get("account_name") or "Unknown",
+                    "acv": p_acv,
+                    "reason": "Removed from portfolio or period scope",
+                    "deal": pr_d,
+                })
+
+        total_changes = (
+            len(what_changed["new_deals"])
+            + len(what_changed["acv_changes"])
+            + len(what_changed["stage_changes"])
+            + len(what_changed["category_changes"])
+            + len(what_changed["approval_changes"])
+            + len(what_changed["closed_won"])
+            + len(what_changed["removed_deals"])
+        )
+        what_changed["total_changes"] = total_changes
+        what_changed["has_changes"] = total_changes > 0
+
+    # 8. Region Line (Single region sentence or Multi-region chips with country counts)
+    REGION_DISPLAY = {
+        "MENA": "MEA",
+        "Middle East and North Africa": "MEA",
+        "MEA": "MEA",
+        "Middle East": "MEA",
+        "NAMR": "North America",
+        "NAMR GUAVUS": "North America",
+        "North America": "North America",
+        "South America": "LATAM",
+        "LATAM": "LATAM",
+        "AFRICA": "Africa",
+        "Africa": "Africa",
+        "Europe": "Europe",
+        "West Europe": "Europe",
+        "East Europe": "Europe",
+        "APAC": "APAC",
+        "SEAO": "APAC",
+    }
+
+    region_dict: dict[str, dict[str, Any]] = {}
+    for d in deals:
+        raw_sub = (d.get("revised_sub_region") or d.get("sub_region") or "").strip()
+        r_name = REGION_DISPLAY.get(raw_sub, raw_sub or "Unassigned")
+        c_name = (d.get("country_territory") or d.get("country") or "").strip() or "Unknown"
+        d_acv = float(d.get("forecast_acv_amount") or 0.0)
+
+        if r_name not in region_dict:
+            region_dict[r_name] = {
+                "region": r_name,
+                "count": 0,
+                "acv": 0.0,
+                "countries": {},
+                "deals": [],
+            }
+        region_dict[r_name]["count"] += 1
+        region_dict[r_name]["acv"] = round(region_dict[r_name]["acv"] + d_acv, 2)
+        region_dict[r_name]["countries"][c_name] = region_dict[r_name]["countries"].get(c_name, 0) + 1
+        region_dict[r_name]["deals"].append(d)
+
+    region_items = []
+    for r_name, r_info in sorted(region_dict.items(), key=lambda x: x[1]["acv"], reverse=True):
+        cnt = r_info["count"]
+        acv = r_info["acv"]
+        share_pct = round((acv / total_acv) * 100) if total_acv > 0 else 0
+        acv_str = f"${acv / 1_000_000:.2f}M" if acv >= 1_000_000 else f"${acv / 1_000:.1f}K"
+        chip_label = f"{r_name} · {cnt} deal{'s' if cnt > 1 else ''} · {acv_str} · {share_pct}%"
+        sorted_countries = [
+            {"country": c, "count": n}
+            for c, n in sorted(r_info["countries"].items(), key=lambda x: (-x[1], x[0]))
+        ]
+        region_items.append({
+            "region": r_name,
+            "count": cnt,
+            "acv": acv,
+            "share_pct": share_pct,
+            "label": chip_label,
+            "countries": sorted_countries,
+            "deals": r_info["deals"],
+        })
+
+    if len(region_items) == 1:
+        single_region = True
+        r0 = region_items[0]
+        countries_summary = ", ".join([f"{c['country']} {c['count']}" for c in r0["countries"] if c["country"] != "Unknown"])
+        if not countries_summary:
+            countries_summary = ", ".join([f"{c['country']} {c['count']}" for c in r0["countries"]])
+        summary_sentence = f"All {total_count} deals are in {r0['region']}: {countries_summary}." if countries_summary else f"All {total_count} deals are in {r0['region']}."
+    else:
+        single_region = False
+        summary_sentence = ""
+
+    region_line = {
+        "single_region": single_region,
+        "summary_sentence": summary_sentence,
+        "regions": region_items,
+    }
+
+    # 9. Chart Data Structures
     fc_chart = [
-        {"name": cat, "category": cat, "count": fc_map[cat]["count"], "acv": fc_map[cat]["acv"]}
+        {
+            "name": cat,
+            "category": cat,
+            "count": fc_map[cat]["count"],
+            "acv": fc_map[cat]["acv"],
+            "deals": fc_map[cat]["deals"],
+        }
         for cat in ["Closed", "Commit", "Best Case", "Pipeline", "Not yet proposed"]
     ]
 
     st_chart = [
-        {"name": st, "status": st, "count": st_map[st]["count"], "acv": st_map[st]["acv"]}
+        {
+            "name": st,
+            "status": st,
+            "count": st_map[st]["count"],
+            "acv": st_map[st]["acv"],
+            "deals": st_map[st]["deals"],
+            "approved_2nd_count": st_map[st].get("approved_2nd_count", 0),
+            "approved_2nd_acv": st_map[st].get("approved_2nd_acv", 0.0),
+        }
         for st in ["Approved", "Pending Approval", "Not submitted"]
     ]
 
@@ -295,12 +538,13 @@ def get_kam_overview(
     # Region / Country
     reg_agg: dict[str, dict[str, Any]] = {}
     for d in deals:
-        reg = str(d.get("sub_region") or d.get("region") or "Unmapped").strip() or "Unmapped"
-        if reg not in reg_agg:
-            reg_agg[reg] = {"region": reg, "count": 0, "acv": 0.0, "deals": []}
-        reg_agg[reg]["count"] += 1
-        reg_agg[reg]["acv"] = round(reg_agg[reg]["acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
-        reg_agg[reg]["deals"].append(d)
+        reg = str(d.get("revised_sub_region") or d.get("sub_region") or d.get("region") or "Unassigned").strip() or "Unassigned"
+        reg_display = REGION_DISPLAY.get(reg, reg)
+        if reg_display not in reg_agg:
+            reg_agg[reg_display] = {"region": reg_display, "count": 0, "acv": 0.0, "deals": []}
+        reg_agg[reg_display]["count"] += 1
+        reg_agg[reg_display]["acv"] = round(reg_agg[reg_display]["acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
+        reg_agg[reg_display]["deals"].append(d)
     region_chart = sorted(reg_agg.values(), key=lambda x: x["acv"], reverse=True)
 
     # Monthly Close Timeline
@@ -319,9 +563,10 @@ def get_kam_overview(
     for d in deals:
         acc = str(d.get("account_name") or "Unknown").strip()
         if acc not in acc_agg:
-            acc_agg[acc] = {"account_name": acc, "count": 0, "acv": 0.0}
+            acc_agg[acc] = {"account_name": acc, "count": 0, "acv": 0.0, "deals": []}
         acc_agg[acc]["count"] += 1
         acc_agg[acc]["acv"] = round(acc_agg[acc]["acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
+        acc_agg[acc]["deals"].append(d)
     top_accounts = sorted(acc_agg.values(), key=lambda x: x["acv"], reverse=True)[:10]
 
     # Deal Size Bands
@@ -340,7 +585,7 @@ def get_kam_overview(
                 b["acv"] = round(b["acv"] + amt, 2)
                 break
 
-    # 8. Action Lists
+    # 10. Action Lists
     immediate_attention = [
         d for d in deals
         if (d.get("forecast_category") == "Commit" and d.get("approval_status") != "Approved")
@@ -348,7 +593,7 @@ def get_kam_overview(
     ]
     not_submitted_deals = [d for d in deals if d.get("approval_status") in ("Not submitted", "Blank", "", None)]
 
-    # 9. Plain Language Insight Statements
+    # 11. Plain Language Insight Statements (3 concise sentences)
     insights = []
     unapproved_commit = [d for d in deals if d.get("forecast_category") == "Commit" and d.get("approval_status") != "Approved"]
     if unapproved_commit:
@@ -360,17 +605,17 @@ def get_kam_overview(
     if deals:
         largest = max(deals, key=lambda x: float(x.get("forecast_acv_amount") or 0.0))
         insights.append(f"Largest deal: {largest.get('opportunity_name') or largest.get('id')} ({largest.get('account_name')}) at ${float(largest.get('forecast_acv_amount') or 0):,.2f}.")
+    else:
+        insights.append("No active deals in the selected period.")
 
     if delayed_count > 0:
         insights.append(f"Delayed renewals: {delayed_count} deal{'s' if delayed_count > 1 else ''} totaling ${delayed_acv:,.2f}.")
+    elif slippage_count > 0:
+        insights.append(f"Slippage risk: {slippage_count} deal{'s' if slippage_count > 1 else ''} totaling ${slippage_acv:,.2f} moved into next year.")
+    elif needs_review_count > 0:
+        insights.append(f"Needs review: {needs_review_count} deal{'s' if needs_review_count > 1 else ''} missing service dates.")
     else:
         insights.append("No delayed renewals in your portfolio.")
-
-    if slippage_count > 0:
-        insights.append(f"Slippage risk: {slippage_count} deal{'s' if slippage_count > 1 else ''} totaling ${slippage_acv:,.2f} moved into next year.")
-
-    if needs_review_count > 0:
-        insights.append(f"Needs review: {needs_review_count} deal{'s' if needs_review_count > 1 else ''} missing service dates.")
 
     kpis_dict = {
         "total_count": total_count,
@@ -425,12 +670,14 @@ def get_kam_overview(
     other_periods_count = max(0, total_all_count - total_count)
     other_periods_acv = round(max(0.0, total_all_acv - total_acv), 2)
 
+    eff_period_label = "All periods" if period == "all_open" or res.data_slice == "all_open" else res.data_slice
+
     return {
-        "period": res.data_slice,
+        "period": eff_period_label,
         "resolved_quarter": res.resolved_quarter,
         "period_info": {
             "selected_period": period,
-            "period_label": res.data_slice,
+            "period_label": eff_period_label,
             "showing_count": total_count,
             "showing_acv": round(total_acv, 2),
             "total_all_count": total_all_count,
@@ -439,6 +686,9 @@ def get_kam_overview(
             "other_periods_acv": other_periods_acv,
         },
         "as_of": snap.snapshot_date.isoformat(),
+        "as_of_date_formatted": snap.snapshot_date.strftime("%b %d, %Y"),
+        "compare_as_of": compare_snap.snapshot_date.isoformat() if compare_snap else None,
+        "compare_as_of_formatted": compare_snap.snapshot_date.strftime("%b %d, %Y") if compare_snap else None,
         "owner_name": effective_owner_name,
         "kpis": kpis_dict,
         "total": {"count": total_count, "acv": total_acv},
@@ -447,9 +697,13 @@ def get_kam_overview(
         "delayed": {"count": delayed_count, "acv": delayed_acv, "deals": delayed_deals},
         "slippage": {"count": slippage_count, "acv": slippage_acv, "deals": slippage_deals},
         "movements": {
+            "delta_compare": delta_compare,
             "delta_yesterday": delta_yesterday,
             "delta_lastweek": delta_lastweek,
+            "compare_date_formatted": compare_snap.snapshot_date.strftime("%b %d, %Y") if compare_snap else None,
         },
+        "region_line": region_line,
+        "what_changed": what_changed,
         "charts": {
             "forecast_category": fc_chart,
             "approval_status": st_chart,
@@ -467,7 +721,7 @@ def get_kam_overview(
             "not_submitted_deals": not_submitted_deals,
             "missing_service_dates": missing_dates_deals,
         },
-        "insight_cards": insights,
+        "insight_cards": insights[:3],
         "deals": deals,
     }
 
@@ -582,13 +836,15 @@ def get_kam_deals(
 def get_kam_report_pptx(
     as_of: Optional[str] = Query(None),
     period: Optional[str] = Query(None),
+    compare: Optional[str] = Query(None),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
     ctx: UserContext = Depends(_require_kam_or_management),
     db: Session = Depends(get_db),
 ):
     """
-    Download a branded 4-6 slide PowerPoint report scoped strictly to the KAM's deals.
+    Download a branded PowerPoint report scoped strictly to the KAM's deals.
+    Matches the KAM Overview: tiles, insights, region line, forecast/approval, BU, top accounts, action items, what changed.
     """
     kam_default = SettingsService.get_kam_default_period(db)
     if not isinstance(period, str) or not period:
@@ -597,8 +853,8 @@ def get_kam_report_pptx(
     overview_data = get_kam_overview(
         as_of=as_of,
         period=period,
+        compare=compare,
         types=types,
-        compare="yesterday",
         owner_override=owner_override,
         ctx=ctx,
         db=db,
@@ -613,14 +869,16 @@ def get_kam_report_pptx(
     buf = KamReportService.generate_pptx_report(
         kam_name=kam_name,
         owner_name=owner_name,
-        period=overview_data.get("period") or period or "All open deals",
+        period=overview_data.get("period") or period or "All periods",
         as_of_date=overview_data.get("as_of") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         overview_data=overview_data,
         deals=deals,
+        compare_as_of_date=overview_data.get("compare_as_of"),
     )
 
     clean_owner = owner_name.replace(" ", "_").replace("/", "_")
-    filename = f"KAM_Report_{clean_owner}_{overview_data.get('period') or 'all_open'}.pptx"
+    period_tag = "all_periods" if (overview_data.get('period') in ('All periods', 'all_open')) else (overview_data.get('period') or 'all_periods')
+    filename = f"KAM_Report_{clean_owner}_{period_tag}.pptx"
 
     return StreamingResponse(
         buf,
@@ -636,6 +894,7 @@ def get_kam_report_pptx(
 def get_kam_report_pdf(
     as_of: Optional[str] = Query(None),
     period: Optional[str] = Query(None),
+    compare: Optional[str] = Query(None),
     types: Optional[str] = Query(None),
     owner_override: Optional[str] = Query(None),
     ctx: UserContext = Depends(_require_kam_or_management),
@@ -643,6 +902,7 @@ def get_kam_report_pdf(
 ):
     """
     Download a branded multi-page PDF report scoped strictly to the KAM's deals.
+    Matches the KAM Overview: tiles, insights, region line, forecast/approval, BU, top accounts, action items, what changed.
     """
     kam_default = SettingsService.get_kam_default_period(db)
     if not isinstance(period, str) or not period:
@@ -650,8 +910,8 @@ def get_kam_report_pdf(
     overview_data = get_kam_overview(
         as_of=as_of,
         period=period,
+        compare=compare,
         types=types,
-        compare="yesterday",
         owner_override=owner_override,
         ctx=ctx,
         db=db,
@@ -666,14 +926,16 @@ def get_kam_report_pdf(
     buf = KamReportService.generate_pdf_report(
         kam_name=kam_name,
         owner_name=owner_name,
-        period=overview_data.get("period") or period or "Q4-2026",
+        period=overview_data.get("period") or period or "All periods",
         as_of_date=overview_data.get("as_of") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         overview_data=overview_data,
         deals=deals,
+        compare_as_of_date=overview_data.get("compare_as_of"),
     )
 
     clean_owner = owner_name.replace(" ", "_").replace("/", "_")
-    filename = f"KAM_Report_{clean_owner}_{overview_data.get('period') or 'Q4'}.pdf"
+    period_tag = "all_periods" if (overview_data.get('period') in ('All periods', 'all_open')) else (overview_data.get('period') or 'all_periods')
+    filename = f"KAM_Report_{clean_owner}_{period_tag}.pdf"
 
     return StreamingResponse(
         buf,

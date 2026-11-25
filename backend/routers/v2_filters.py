@@ -108,6 +108,8 @@ def get_filter_options(
             fy_counts[fy_label] = fy_counts.get(fy_label, 0) + 1
 
     quarters = [
+        {"key": "all_open", "value": "all_open", "label": "All periods", "count": total_deals},
+    ] + [
         {"key": q, "value": q, "label": ScopeService.quarter_label(q), "count": count}
         for q, count in sorted(q_counts.items())
     ]

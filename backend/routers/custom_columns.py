@@ -526,7 +526,12 @@ def add_deal_comment(
 
         recipients: list[User] = []
         if body.recipient_ids:
-            recipients = db.query(User).filter(User.id.in_(body.recipient_ids), User.status != "disabled").all()
+            raw_ids = list(body.recipient_ids)
+            if "admin" in raw_ids:
+                raw_ids.remove("admin")
+                admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
+                raw_ids.extend(admin_ids)
+            recipients = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
         else:
             mgmt_admin = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
             recipients = list(mgmt_admin)

@@ -13,7 +13,7 @@ export function formatACV(val: number | null | undefined, showSign = false): str
   const sign = showSign ? (val >= 0 ? '+' : '') : ''
   const abs = Math.abs(val)
   if (abs >= 1_000_000) return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000_000).toFixed(2)}M`
-  if (abs >= 1_000)     return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000).toFixed(2)}K`
+  if (abs >= 1_000) return `${sign}${val < 0 ? '-' : ''}$${(abs / 1_000).toFixed(2)}K`
   return `${sign}${val < 0 ? '-' : ''}$${abs.toFixed(0)}`
 }
 
@@ -23,7 +23,7 @@ export function acvM(v: number | null | undefined): string {
   const abs = Math.abs(v)
   const sign = v < 0 ? '-' : ''
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`
-  if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(0)}K`
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`
   return `${sign}$${abs.toFixed(0)}`
 }
 

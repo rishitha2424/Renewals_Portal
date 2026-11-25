@@ -193,8 +193,6 @@ export const useAppStore = create<AppState>()(
         globalFilters: s.globalFilters,
         includeDeletedLost: s.includeDeletedLost,
         metricMode: s.metricMode,
-        activeSnapshotId: s.activeSnapshotId,
-        compareSnapshotId: s.compareSnapshotId,
         sidebarCollapsed: s.sidebarCollapsed,
       }),
     }

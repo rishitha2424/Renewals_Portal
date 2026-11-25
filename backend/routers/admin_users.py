@@ -141,14 +141,28 @@ def create_user(
 ):
     """Create a new user account and generate an invite link."""
     clean_email = req.email.strip().lower()
-    existing = db.query(User).filter(func.lower(User.email) == clean_email).first()
-    if existing:
+    clean_name = req.name.strip()
+    clean_role = req.role.strip().lower()
+
+    existing_email = db.query(User).filter(func.lower(User.email) == clean_email).first()
+    if existing_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A user with this email already exists.")
 
+    # Block creating two users with exactly the same display name within a role
+    existing_name = db.query(User).filter(
+        User.role == clean_role,
+        func.lower(User.name) == func.lower(clean_name),
+    ).first()
+    if existing_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A user with display name '{clean_name}' already exists for role '{clean_role}'. Please use a unique display name (e.g. '{clean_name} (1)').",
+        )
+
     user = User(
-        name=req.name.strip(),
+        name=clean_name,
         email=clean_email,
-        role=req.role.strip().lower(),
+        role=clean_role,
         status="invited",
         owner_name=req.owner_name.strip() if req.owner_name else None,
         mobileum_id=req.mobileum_id.strip() if req.mobileum_id else None,
@@ -201,8 +215,20 @@ def update_user(
     changes: dict[str, dict[str, Any]] = {}
 
     if req.name is not None and req.name.strip() and req.name.strip() != user.name:
-        changes["name"] = {"old": user.name, "new": req.name.strip()}
-        user.name = req.name.strip()
+        target_role = (req.role or user.role).strip().lower()
+        clean_new_name = req.name.strip()
+        existing_name = db.query(User).filter(
+            User.role == target_role,
+            func.lower(User.name) == func.lower(clean_new_name),
+            User.id != user_id,
+        ).first()
+        if existing_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A user with display name '{clean_new_name}' already exists for role '{target_role}'. Please use a unique display name (e.g. '{clean_new_name} (1)').",
+            )
+        changes["name"] = {"old": user.name, "new": clean_new_name}
+        user.name = clean_new_name
 
     if req.email is not None and req.email.strip().lower() != user.email.lower():
         clean_email = req.email.strip().lower()

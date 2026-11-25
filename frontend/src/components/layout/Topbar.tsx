@@ -248,18 +248,24 @@ export default function Topbar() {
   // Auto-init active and compare snapshots
   useEffect(() => {
     if (snapshots.length > 0) {
+      const latestSnap = snapshots[0]
       const exists = snapshots.some((s: any) => s.id === activeSnapshotId)
       if (!activeSnapshotId || !exists) {
-        const todaySnap = snapshots.find((s: any) => s.is_active_today) ?? snapshots[0]
-        setActiveSnapshotId(todaySnap.id)
+        setActiveSnapshotId(latestSnap.id)
       }
-      const vsValid = vsOptions.some((v: any) => v.id === compareSnapshotId)
-      if ((!compareSnapshotId || !vsValid) && vsOptions.length > 0) {
-        const preferred = vsOptions.find((v: any) => v.isDefaultEarlier) || vsOptions[0]
-        setCompareSnapshotId(preferred.id)
+
+      const activeId = (!activeSnapshotId || !exists) ? latestSnap.id : activeSnapshotId
+      const activeObj = snapshots.find((s: any) => s.id === activeId) || latestSnap
+      
+      const earlierSnaps = snapshots.filter((s: any) => s.id !== activeObj.id && s.snapshot_date < activeObj.snapshot_date)
+      const defaultCompareSnap = earlierSnaps[0] || snapshots.find((s: any) => s.id !== activeObj.id) || null
+      
+      const vsValid = snapshots.some((s: any) => s.id === compareSnapshotId && s.id !== activeId)
+      if ((!compareSnapshotId || !vsValid) && defaultCompareSnap) {
+        setCompareSnapshotId(defaultCompareSnap.id)
       }
     }
-  }, [snapshots, activeSnapshotId, compareSnapshotId, vsOptions, setActiveSnapshotId, setCompareSnapshotId])
+  }, [snapshots, activeSnapshotId, compareSnapshotId, setActiveSnapshotId, setCompareSnapshotId])
 
   // Determine comparison tooltip label (e.g. "vs Fri 2 Oct")
   const getCompareLabel = () => {
@@ -302,6 +308,7 @@ export default function Topbar() {
           as_of: activeSnap?.snapshot_date,
           period: globalFilters.period,
           types: typesStr,
+          compare: compareSnap?.snapshot_date,
         })
         showToast.success('Report downloaded', filename)
       } else {
@@ -399,9 +406,18 @@ export default function Topbar() {
 
   // Period chip - only show if user changed from default
   if (globalFilters.period !== DEFAULT_FILTER_SPEC.period) {
-    const pLabel =
-      filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)?.label ||
-      globalFilters.period
+    let pLabel = 'All periods'
+    if (globalFilters.period === 'all_open') {
+      pLabel = 'All periods'
+    } else if (globalFilters.period === 'current_quarter') {
+      pLabel = 'Current quarter'
+    } else if (globalFilters.period === 'next_quarter') {
+      pLabel = 'Next quarter'
+    } else {
+      const match = filterOpts?.quarters?.find((q: any) => q.value === globalFilters.period)
+      pLabel = match?.label || globalFilters.period
+      if (pLabel === 'All open deals' || pLabel === 'all_open') pLabel = 'All periods'
+    }
     chips.push({
       key: `period-${globalFilters.period}`,
       label: `Period: ${pLabel}`,
@@ -560,7 +576,7 @@ export default function Topbar() {
                 className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[90px] xl:max-w-[120px] truncate"
                 id="filter-period-select"
               >
-                <option value="all_open">All open deals</option>
+                <option value="all_open" title="All deals for this owner, across all dates.">All periods</option>
                 <option value="current_quarter">Current quarter</option>
                 <option value="next_quarter">Next quarter</option>
                 {filterOpts?.fiscal_years?.map((fy: any) => (
@@ -1325,7 +1341,7 @@ export default function Topbar() {
                     }}
                     className="w-full h-10 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] text-xs text-[var(--text-primary)] outline-none font-medium"
                   >
-                    <option value="all_open">All open deals</option>
+                    <option value="all_open" title="All deals for this owner, across all dates.">All periods</option>
                     <option value="current_quarter">Current quarter</option>
                     <option value="next_quarter">Next quarter</option>
                     {filterOpts?.fiscal_years?.map((fy: any) => (

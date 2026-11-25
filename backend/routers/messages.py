@@ -71,16 +71,36 @@ def get_message_recipients(
     mgmt_users = db.query(User).filter(User.role == "management", User.status != "disabled").order_by(User.name.asc()).all()
     admin_users = db.query(User).filter(User.role == "admin", User.status != "disabled").order_by(User.name.asc()).all()
 
-    mgmt_list = [{"id": u.id, "name": u.name, "role": u.role} for u in mgmt_users]
-    admin_list = [{"id": u.id, "name": u.name, "role": u.role} for u in admin_users]
+    # Disambiguate management accounts with duplicate display names
+    from collections import Counter
+    mgmt_counts = Counter(u.name for u in mgmt_users if u.name)
+    seen_mgmt: dict[str, int] = {}
+    mgmt_list = []
+    for u in mgmt_users:
+        base_name = u.name or "Management"
+        if mgmt_counts[base_name] > 1:
+            idx = seen_mgmt.get(base_name, 0) + 1
+            seen_mgmt[base_name] = idx
+            display_name = f"{base_name} ({idx})"
+        else:
+            display_name = base_name
+        mgmt_list.append({"id": u.id, "name": display_name, "role": u.role})
+
+    # For admin identity: hide real names from non-admins
+    if ctx.is_admin:
+        admin_list = [{"id": u.id, "name": u.name, "role": u.role} for u in admin_users]
+        default_admin_ids = [u["id"] for u in admin_list]
+    else:
+        admin_list = [{"id": "admin", "name": "Admin", "role": "admin"}]
+        default_admin_ids = ["admin"]
 
     defaults = []
     if ctx.is_kam:
-        defaults = [u["id"] for u in mgmt_list] + [u["id"] for u in admin_list]
+        defaults = [u["id"] for u in mgmt_list] + default_admin_ids
     else:
         if deal_owner:
             defaults.append(deal_owner["id"])
-        defaults += [u["id"] for u in admin_list]
+        defaults += default_admin_ids
 
     return {
         "deal_owner": deal_owner,
@@ -130,6 +150,14 @@ def get_email_log(
     items = q.order_by(EmailOutbox.created_at.desc()).limit(limit).all()
     results = []
     for item in items:
+        s_name = item.sender_name or "System"
+        r_name = item.recipient_name or "User"
+        if not ctx.is_admin:
+            if item.sender_role == "admin":
+                s_name = "Admin"
+            if item.recipient_role == "admin":
+                r_name = "Admin"
+
         results.append({
             "id": item.id,
             "created_at": item.created_at.isoformat() if item.created_at else None,
@@ -137,9 +165,9 @@ def get_email_log(
             "template_type": item.template_type,
             "deal_id": item.deal_id,
             "deal_name": item.deal_name,
-            "sender_name": item.sender_name or "System",
+            "sender_name": s_name,
             "sender_role": item.sender_role or "system",
-            "recipient_name": item.recipient_name or "User",
+            "recipient_name": r_name,
             "recipient_role": item.recipient_role or "user",
             "status": item.status,
             "attempts": item.retry_count or 1,
@@ -179,7 +207,12 @@ def send_deal_message(
 
     recipients: list[User] = []
     if req.recipient_ids:
-        recipients = db.query(User).filter(User.id.in_(req.recipient_ids), User.status != "disabled").all()
+        raw_ids = list(req.recipient_ids)
+        if "admin" in raw_ids:
+            raw_ids.remove("admin")
+            admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
+            raw_ids.extend(admin_ids)
+        recipients = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
     else:
         # Default recipients
         if ctx.is_kam:
@@ -288,7 +321,12 @@ def reply_to_message(
     # Determine recipients
     recipients: list[User] = []
     if req.recipient_ids:
-        recipients = db.query(User).filter(User.id.in_(req.recipient_ids), User.status != "disabled").all()
+        raw_ids = list(req.recipient_ids)
+        if "admin" in raw_ids:
+            raw_ids.remove("admin")
+            admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
+            raw_ids.extend(admin_ids)
+        recipients = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
     else:
         # Default: thread participants
         thread_msgs = db.query(DealMessage).filter(DealMessage.thread_id == root_id).all()
@@ -440,6 +478,11 @@ def list_message_threads(
         opp_owner = opp.opportunity_owner if opp else (recipient_user.owner_name if recipient_user else "")
         sender_name = sender_user.name if sender_user else "Unknown"
         recipient_name = recipient_user.name if recipient_user else "Unknown"
+        if not ctx.is_admin:
+            if sender_user and sender_user.role == "admin":
+                sender_name = "Admin"
+            if recipient_user and recipient_user.role == "admin":
+                recipient_name = "Admin"
         deal_name = opp.opportunity_name if opp else rm.deal_id
         account_name = opp.account_name if opp else ""
         latest_body = all_msgs[-1].body if all_msgs else rm.body
@@ -517,11 +560,17 @@ def get_deal_thread(
             rec_ids = [m.recipient_id]
 
         rec_users = db.query(User).filter(User.id.in_(rec_ids)).all() if rec_ids else []
-        rec_names = [u.name for u in rec_users] if rec_users else ([recipient.name] if recipient else [])
+        rec_names = [("Admin" if u.role == "admin" and not ctx.is_admin else u.name) for u in rec_users] if rec_users else ([("Admin" if recipient.role == "admin" and not ctx.is_admin else recipient.name)] if recipient else [])
         rec_str = ", ".join(rec_names) if rec_names else (m.recipient_name or "Recipient")
 
         time_str = m.created_at.strftime("%H:%M") if m.created_at else ""
         delivery_chip = f"Emailed to {rec_str} – sent {time_str}" if rec_str else f"Sent {time_str}"
+
+        s_name = sender.name if sender else "Unknown"
+        s_id = str(m.sender_id)
+        if not ctx.is_admin and sender and sender.role == "admin":
+            s_name = "Admin"
+            s_id = "admin"
 
         results.append({
             "id": m.id,
@@ -533,8 +582,8 @@ def get_deal_thread(
             "priority": m.priority,
             "is_read": bool(m.is_read),
             "thread_status": m.thread_status,
-            "sender_id": str(m.sender_id),
-            "sender_name": sender.name if sender else "Unknown",
+            "sender_id": s_id,
+            "sender_name": s_name,
             "sender_role": sender.role if sender else "unknown",
             "recipient_id": str(m.recipient_id),
             "recipient_name": rec_str,

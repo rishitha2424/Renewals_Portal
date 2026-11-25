@@ -32,6 +32,8 @@ def serialize_opportunity(o: Opportunity) -> dict[str, Any]:
     if not reg or reg.lower() in ("nan", "none", ""):
         reg = "Other / Unmapped"
 
+    country = o.country_territory or extra.get("Country/Territory") or extra.get("Country") or extra.get("Country / Territory") or ""
+
     return {
         "id": o.opportunity_id_18 or o.id,
         "opportunity_id_18": o.opportunity_id_18,
@@ -42,6 +44,8 @@ def serialize_opportunity(o: Opportunity) -> dict[str, Any]:
         "acv": float(o.forecast_acv_amount or 0.0),
         "sub_region": reg,
         "region": reg,
+        "country_territory": country,
+        "country": country,
         "business_unit_primary": bu,
         "business_unit": bu,
         "business_unit_raw": o.business_unit_raw or bu,

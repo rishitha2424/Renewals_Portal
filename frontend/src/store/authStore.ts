@@ -60,6 +60,12 @@ export const useAuthStore = create<AuthState>()(
           const res = await authLogin(email, password, rememberMe)
           const user = res.user
           set({ currentUser: user, isAuthenticated: true, isLoading: false, error: null })
+          // Ensure fresh login always defaults to latest snapshot
+          try {
+            const { useAppStore } = await import('./appStore')
+            useAppStore.getState().setActiveSnapshotId(null)
+            useAppStore.getState().setCompareSnapshotId(null)
+          } catch (_) {}
           return user
         } catch (err: any) {
           const msg = err?.response?.data?.detail || err?.message || 'Login failed'
@@ -75,6 +81,11 @@ export const useAuthStore = create<AuthState>()(
           // Ignore network errors on logout
         } finally {
           set({ currentUser: null, isAuthenticated: false, error: null, isLoading: false })
+          try {
+            const { useAppStore } = await import('./appStore')
+            useAppStore.getState().setActiveSnapshotId(null)
+            useAppStore.getState().setCompareSnapshotId(null)
+          } catch (_) {}
           // If in browser, redirect to login
           if (typeof window !== 'undefined') {
             window.location.href = '/login'

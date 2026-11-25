@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Users, Shield, UserCheck, Check, User as UserIcon } from 'lucide-react'
 import { getMessageRecipients, RecipientUser, RecipientOptions } from '@/api/client'
+import { useAuthStore } from '@/store/authStore'
 
 interface RecipientPickerProps {
   dealId?: string
@@ -20,6 +21,7 @@ export default function RecipientPicker({
   commentVisibility = 'internal',
   className = '',
 }: RecipientPickerProps) {
+  const { currentUser } = useAuthStore()
   const { data, isLoading } = useQuery<RecipientOptions>({
     queryKey: ['message-recipients', dealId],
     queryFn: () => getMessageRecipients(dealId),
@@ -68,15 +70,33 @@ export default function RecipientPicker({
   // Compute selected names for "Visible to:" line
   const selectedNames = useMemo(() => {
     if (!data) return []
-    const allUsers: RecipientUser[] = [
-      ...(dealOwner ? [dealOwner] : []),
-      ...managementUsers,
-      ...adminUsers,
-    ]
-    return allUsers
-      .filter(u => selectedIds.includes(u.id))
-      .map(u => u.name)
-  }, [data, selectedIds, dealOwner, managementUsers, adminUsers])
+    const isNonAdmin = currentUser?.role !== 'admin'
+    const names: string[] = []
+
+    if (dealOwner && selectedIds.includes(dealOwner.id)) {
+      names.push(dealOwner.name)
+    }
+
+    managementUsers.forEach(u => {
+      if (selectedIds.includes(u.id)) {
+        names.push(u.name)
+      }
+    })
+
+    if (isNonAdmin) {
+      if (selectedIds.includes('admin') || adminUsers.some(a => selectedIds.includes(a.id))) {
+        names.push('Admin')
+      }
+    } else {
+      adminUsers.forEach(u => {
+        if (selectedIds.includes(u.id)) {
+          names.push(u.name)
+        }
+      })
+    }
+
+    return names
+  }, [data, selectedIds, dealOwner, managementUsers, adminUsers, currentUser?.role])
 
   const showDealOwner = contextType !== 'comment' || commentVisibility === 'shared_with_owner'
 
@@ -160,40 +180,60 @@ export default function RecipientPicker({
         )}
 
         {/* Admin Accounts */}
-        {adminUsers.length > 0 && (
+        {currentUser?.role !== 'admin' ? (
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Administrators
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Admin
+            </div>
+            <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--bg-card)] cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={selectedIds.includes('admin') || adminUsers.some(a => selectedIds.includes(a.id))}
+                onChange={() => toggleUser('admin')}
+                className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500 border-[var(--border)]"
+              />
+              <span className="font-medium text-[var(--text-primary)]">Admin</span>
+              <span className="text-[10px] text-[var(--text-muted)]">
+                (Notifies all administrators)
               </span>
-              <button
-                type="button"
-                onClick={() => toggleGroup(adminUsers)}
-                className="text-teal-600 dark:text-teal-400 hover:underline cursor-pointer font-medium"
-              >
-                {adminUsers.every(u => selectedIds.includes(u.id)) ? 'Deselect all' : 'Select all'}
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-              {adminUsers.map((u) => (
-                <label
-                  key={u.id}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--bg-card)] cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(u.id)}
-                    onChange={() => toggleUser(u.id)}
-                    className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500 border-[var(--border)]"
-                  />
-                  <span className="font-medium text-[var(--text-primary)] truncate">{u.name}</span>
-                  <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-500/15 text-blue-700 dark:text-blue-300">
-                    Admin
-                  </span>
-                </label>
-              ))}
-            </div>
+            </label>
           </div>
+        ) : (
+          adminUsers.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  Administrators
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(adminUsers)}
+                  className="text-teal-600 dark:text-teal-400 hover:underline cursor-pointer font-medium"
+                >
+                  {adminUsers.every(u => selectedIds.includes(u.id)) ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                {adminUsers.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--bg-card)] cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(u.id)}
+                      onChange={() => toggleUser(u.id)}
+                      className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500 border-[var(--border)]"
+                    />
+                    <span className="font-medium text-[var(--text-primary)] truncate">{u.name}</span>
+                    <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-blue-500/15 text-blue-700 dark:text-blue-300">
+                      Admin
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )
         )}
       </div>
 
@@ -203,7 +243,7 @@ export default function RecipientPicker({
           <p>
             <strong className="text-[var(--text-primary)]">Visible to:</strong>{' '}
             {selectedNames.join(', ')}.{' '}
-            <span className="text-[var(--text-muted)]">Admins can audit all messages.</span>
+            <span className="text-[var(--text-muted)]">Admin can see all messages.</span>
           </p>
         ) : (
           <p className="text-amber-600 dark:text-amber-400 font-medium">

@@ -1037,10 +1037,16 @@ class AnnotationService:
                 except Exception:
                     rec_ids = []
             rec_names = []
+            is_caller_admin = getattr(user_context, "is_admin", False) if user_context else False
             if rec_ids:
                 from backend.models.user import User
                 users = self.db.query(User).filter(User.id.in_(rec_ids)).all()
-                rec_names = [u.name for u in users]
+                rec_names = [("Admin" if u.role == "admin" and not is_caller_admin else u.name) for u in users]
+
+            if not is_caller_admin and (c.author_role == "admin" or str(c.author_id) == "admin"):
+                d["author"] = "Admin"
+                d["user_display"] = "Admin"
+
             d["recipients"] = rec_names
             time_str = c.created_at.strftime("%H:%M") if c.created_at else ""
             if rec_names:

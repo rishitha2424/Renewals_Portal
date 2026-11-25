@@ -1133,23 +1133,25 @@ export const markMessageRead = async (messageId: string) => {
 }
 
 // ── KAM Portal Endpoints ─────────────────────────────────────────────────────
-export const getKamOverview = async (params: { as_of?: string | null; period?: string | null; types?: string | null } = {}) => {
+export const getKamOverview = async (params: { as_of?: string | null; period?: string | null; types?: string | null; compare?: string | null } = {}) => {
   const p: any = {}
   if (params.as_of) p.as_of = params.as_of
   if (params.period) p.period = params.period
   if (params.types) p.types = params.types
+  if (params.compare) p.compare = params.compare
   const res = await api.get('/kam/overview', { params: p })
   return res.data
 }
 
 export const downloadKamReport = async (
   format: 'pptx' | 'pdf',
-  params: { as_of?: string | null; period?: string | null; types?: string | null } = {}
+  params: { as_of?: string | null; period?: string | null; types?: string | null; compare?: string | null } = {}
 ): Promise<{ blob: Blob; filename: string }> => {
   const p: any = {}
   if (params.as_of) p.as_of = params.as_of
   if (params.period) p.period = params.period
   if (params.types) p.types = params.types
+  if (params.compare) p.compare = params.compare
   const res = await api.get(`/kam/report/${format}`, {
     params: p,
     responseType: 'blob',

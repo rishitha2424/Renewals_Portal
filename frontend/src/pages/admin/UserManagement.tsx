@@ -499,6 +499,11 @@ export default function UserManagement() {
                   placeholder="e.g. John Doe"
                   className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
                 />
+                {inviteRole === 'management' && (
+                  <p className="text-[10px] text-[#00A3AD] mt-1">
+                    Please give each management account a clear, unique display name (e.g. "Management - MEA", "Management (1)").
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Email Address</label>

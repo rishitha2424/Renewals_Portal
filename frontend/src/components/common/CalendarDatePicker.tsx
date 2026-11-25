@@ -142,17 +142,11 @@ export default function CalendarDatePicker({
 
   // Button title / text
   const displayValue = useMemo(() => {
-    if (mode === 'compare' && comparePreset) {
-      if (comparePreset === 'yesterday') return 'Yesterday'
-      if (comparePreset === 'last_week') return 'Last week'
-      if (comparePreset === 'last_month') return 'Last month'
-      if (comparePreset === 'previous_upload') return 'Previous upload'
-    }
     if (selectedSnap) {
-      return formatDateShort(selectedSnap.snapshot_date)
+      return formatDate(selectedSnap.snapshot_date)
     }
     return 'Select date'
-  }, [mode, comparePreset, selectedSnap])
+  }, [selectedSnap])
 
   const handleSelectDate = (snap: SnapshotItem) => {
     onChange(snap.id, snap.snapshot_date)
@@ -325,7 +319,7 @@ export default function CalendarDatePicker({
                     onClick={() => handleSelectDate(snapshots[0])}
                     className="text-teal-600 dark:text-teal-400 hover:underline font-semibold"
                   >
-                    Latest ({formatDateShort(snapshots[0].snapshot_date)})
+                    Latest ({formatDate(snapshots[0].snapshot_date)})
                   </button>
                 )}
               </div>

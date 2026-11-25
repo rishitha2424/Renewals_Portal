@@ -193,7 +193,7 @@ export default function KamDeals() {
                 onClick={() => setGlobalFilters({ period: 'all_open' })}
                 className="font-semibold text-[#00A3AD] hover:underline cursor-pointer flex items-center gap-1 shrink-0"
               >
-                <span>Switch to All open deals ({pInfo?.total_all_count || count + otherCount})</span>
+                <span>Switch to All periods ({pInfo?.total_all_count || count + otherCount})</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}

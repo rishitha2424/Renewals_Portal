@@ -32,8 +32,29 @@ def list_notifications(
         limit=limit,
     )
 
+    from backend.models.user import User
+    admin_users = db.query(User).filter(User.role == "admin").all() if not ctx.is_admin else []
+    admin_names = [u.name for u in admin_users if u.name]
+    admin_emails = [u.email for u in admin_users if u.email]
+
+    out_items = []
+    for n in items:
+        d = n.to_dict()
+        if not ctx.is_admin:
+            for name in admin_names:
+                if name and name in d.get("title", ""):
+                    d["title"] = d["title"].replace(name, "Admin")
+                if name and name in d.get("message", ""):
+                    d["message"] = d["message"].replace(name, "Admin")
+            for email in admin_emails:
+                if email and email in d.get("title", ""):
+                    d["title"] = d["title"].replace(email, "Admin")
+                if email and email in d.get("message", ""):
+                    d["message"] = d["message"].replace(email, "Admin")
+        out_items.append(d)
+
     return {
-        "notifications": [n.to_dict() for n in items],
+        "notifications": out_items,
         "unread_count": unread_count,
     }
 

@@ -427,9 +427,9 @@ class ScopeService:
             except Exception:
                 pass
 
-        elif period in ("all_open", "all_open_deals", "all_periods", "all", "All open deals", "All Open Deals"):
-            data_slice = "All open deals"
-            resolved_quarter = "All open deals"
+        elif period in ("all_open", "all_open_deals", "all_periods", "all", "All open deals", "All Open Deals", "All periods", "All Periods"):
+            data_slice = "All periods"
+            resolved_quarter = "All periods"
 
         else:
             resolved_quarter = cq
