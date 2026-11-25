@@ -246,11 +246,10 @@ def test_single_login_owner_account(round19_db):
     assert data["user"]["is_owner"] is True
     assert data["redirect_url"] == "/"
 
-    token = data["token"]
-    assert token is not None
+    # Verify that token does NOT appear in response body (cookie-only auth)
+    assert "token" not in data
 
-    # 2. Check /api/auth/me returns current user info
-    client.headers["Authorization"] = f"Bearer {token}"
+    # 2. Check /api/auth/me returns current user info via HttpOnly session cookie
     me_resp = client.get("/api/auth/me")
     assert me_resp.status_code == 200
     me_data = me_resp.json()
