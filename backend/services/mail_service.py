@@ -90,6 +90,11 @@ class MailService:
         body_text: Optional[str] = None,
         recipient_name: Optional[str] = None,
         template_type: str = "general",
+        deal_id: Optional[str] = None,
+        deal_name: Optional[str] = None,
+        sender_name: Optional[str] = None,
+        sender_role: Optional[str] = None,
+        recipient_role: Optional[str] = None,
     ) -> EmailOutbox:
         """
         Record email into the email_outbox table.
@@ -110,6 +115,11 @@ class MailService:
             body_html=body_html.strip(),
             body_text=body_text.strip(),
             template_type=template_type,
+            deal_id=deal_id,
+            deal_name=deal_name,
+            sender_name=sender_name,
+            sender_role=sender_role,
+            recipient_role=recipient_role,
             status=init_status,
             created_at=datetime.now(timezone.utc),
         )
@@ -338,6 +348,59 @@ class MailService:
         )
 
     @classmethod
+    def send_template(
+        cls,
+        db: Session,
+        to_email: str,
+        to_name: str,
+        template_type: str,
+        context: dict[str, Any],
+    ) -> Optional[EmailOutbox]:
+        """Send a templated notification email with short subject and clean body."""
+        subject = context.get("subject", "Horizon Notification")
+        sender_name = context.get("sender_name", "System")
+        sender_role = context.get("sender_role", "system")
+        deal_id = context.get("deal_id")
+        deal_name = context.get("deal_name")
+        deal_summary = context.get("deal_summary") or deal_name or deal_id or "Renewal Deal"
+        body_text = context.get("body_text", "")
+        target_type = context.get("target_type", "deal_message")
+        target_id = context.get("target_id", "")
+
+        link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}" if "message" in target_type else f"{settings.APP_BASE_URL}/opportunities?deal_id={deal_id}"
+
+        body_html = f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
+          <h3 style="color: #12284C; margin: 0 0 8px 0;">{subject}</h3>
+          <p style="font-size: 13px; color: #64748B; margin: 0 0 16px 0;">
+            From <strong>{sender_name}</strong> ({sender_role}) · Deal: <strong>{deal_summary}</strong>
+          </p>
+          <div style="background-color: #F8FAFC; border-left: 4px solid #00A3AD; padding: 16px; margin: 16px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #0F172A; white-space: pre-wrap;">{body_text}</p>
+          </div>
+          <div style="margin: 24px 0;">
+            <a href="{link}" style="background-color: #00A3AD; color: #FFFFFF; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Open in Portal</a>
+          </div>
+        </div>
+        """
+        plain_text = f"{subject}\nFrom: {sender_name} ({sender_role})\nDeal: {deal_summary}\n\n{body_text}\n\nOpen in portal: {link}"
+
+        return cls.queue_email(
+            db=db,
+            recipient_email=to_email,
+            recipient_name=to_name,
+            subject=subject,
+            body_html=body_html,
+            body_text=plain_text,
+            template_type=template_type,
+            deal_id=deal_id,
+            deal_name=deal_name,
+            sender_name=sender_name,
+            sender_role=sender_role,
+            recipient_role=context.get("recipient_role"),
+        )
+
+    @classmethod
     def template_new_message(
         cls,
         db: Session,
@@ -500,12 +563,13 @@ def template_new_message(
     thread_link: str,
 ) -> tuple[str, str, str]:
     """Returns (subject, body_html, body_text) for a new deal message."""
-    subject = f"[{deal_name}] New Message from {sender_name}: {subject_text}"
+    short_deal = (deal_name or deal_id or "Deal")[:40]
+    subject = f"New message: {short_deal}"
     body_html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
       <h3 style="color: #12284C; margin: 0 0 12px 0;">New Message regarding {deal_name}</h3>
       <div style="background-color: #F8FAFC; border-left: 4px solid #00A3AD; padding: 16px; margin: 16px 0; border-radius: 4px;">
-        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name} | <strong>Deal ID:</strong> {deal_id}</p>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name}</p>
         <p style="margin: 0; font-size: 15px; color: #0F172A; white-space: pre-wrap;">{body}</p>
       </div>
       <div style="margin: 24px 0;">
@@ -514,7 +578,7 @@ def template_new_message(
       <p style="font-size: 12px; color: #94A3B8;">Direct link: {thread_link}</p>
     </div>
     """
-    body_text = f"New message from {sender_name} regarding {deal_name} (ID: {deal_id}):\n\n{body}\n\nView and reply in portal: {thread_link}"
+    body_text = f"New message from {sender_name} regarding {deal_name}:\n\n{body}\n\nView and reply in portal: {thread_link}"
     return subject, body_html, body_text
 
 
@@ -527,12 +591,13 @@ def template_reply_message(
     thread_link: str,
 ) -> tuple[str, str, str]:
     """Returns (subject, body_html, body_text) for a reply in a deal message thread."""
-    subject = f"Re: [{deal_name}] Update from {sender_name}"
+    short_deal = (deal_name or deal_id or "Deal")[:40]
+    subject = f"Re: {short_deal}"
     body_html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
       <h3 style="color: #12284C; margin: 0 0 12px 0;">New Reply on {deal_name}</h3>
       <div style="background-color: #F8FAFC; border-left: 4px solid #3B82F6; padding: 16px; margin: 16px 0; border-radius: 4px;">
-        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name} | <strong>Deal ID:</strong> {deal_id}</p>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name}</p>
         <p style="margin: 0; font-size: 15px; color: #0F172A; white-space: pre-wrap;">{body}</p>
       </div>
       <div style="margin: 24px 0;">
@@ -541,7 +606,7 @@ def template_reply_message(
       <p style="font-size: 12px; color: #94A3B8;">Direct link: {thread_link}</p>
     </div>
     """
-    body_text = f"New reply from {sender_name} regarding {deal_name} (ID: {deal_id}):\n\n{body}\n\nOpen thread: {thread_link}"
+    body_text = f"New reply from {sender_name} regarding {deal_name}:\n\n{body}\n\nOpen thread: {thread_link}"
     return subject, body_html, body_text
 
 

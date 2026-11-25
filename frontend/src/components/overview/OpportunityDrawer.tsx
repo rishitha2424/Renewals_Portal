@@ -59,6 +59,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import showToast from '@/components/ui/Toast'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
+import RecipientPicker from '@/components/common/RecipientPicker'
 import clsx from 'clsx'
 
 export interface DealComment {
@@ -71,6 +72,7 @@ export interface DealComment {
   visibility?: 'internal' | 'shared_with_owner' | 'shared'
   authorId?: string
   authorRole?: string
+  delivery_status?: string
 }
 
 const EMPTY_COLS: CustomColumnItem[] = []
@@ -105,6 +107,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [msgBody, setMsgBody] = useState('')
   const [msgPriority, setMsgPriority] = useState('normal')
   const [isSendingMsg, setIsSendingMsg] = useState(false)
+  const [msgRecipients, setMsgRecipients] = useState<string[]>([])
   const [replyBody, setReplyBody] = useState('')
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [isSendingReply, setIsSendingReply] = useState(false)
@@ -119,9 +122,11 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
         subject: msgSubject.trim(),
         body: msgBody.trim(),
         priority: msgPriority,
+        recipient_ids: msgRecipients.length > 0 ? msgRecipients : undefined,
       })
       setMsgSubject('')
       setMsgBody('')
+      setMsgRecipients([])
       refetchDealMessages()
       showToast.success('Message sent to deal owner')
     } catch (err: any) {
@@ -160,6 +165,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   })
   const [commentText, setCommentText] = useState('')
   const [commentVisibility, setCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
+  const [commentRecipients, setCommentRecipients] = useState<string[]>([])
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [editingCommentVisibility, setEditingCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
@@ -222,6 +228,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
           visibility: c.visibility,
           authorId: c.author_id,
           authorRole: c.author_role,
+          delivery_status: c.delivery_status,
         }))
       )
     } else if (serverComments && serverComments.length === 0) {
@@ -281,8 +288,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     setCommentText('')
 
     try {
-      await addDealComment(oppId, trimmed, author, effectiveVis)
+      await addDealComment(oppId, trimmed, author, effectiveVis, commentRecipients.length > 0 ? commentRecipients : undefined)
       await refetchComments()
+      setCommentRecipients([])
       showToast.success('Comment saved')
     } catch (err: any) {
       await refetchComments()
@@ -1226,6 +1234,17 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                         Save Comment
                       </button>
                     </div>
+
+                    {/* Recipient Picker for Comment */}
+                    {oppId && (
+                      <RecipientPicker
+                        dealId={oppId}
+                        selectedIds={commentRecipients}
+                        onChange={setCommentRecipients}
+                        contextType="comment"
+                        commentVisibility={commentVisibility}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -1276,6 +1295,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                             </div>
                           </div>
                           <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{c.text}</p>
+                          {c.delivery_status && (
+                            <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium">
+                              <Check className="w-3 h-3 shrink-0" />
+                              <span>{c.delivery_status}</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {comments.length > 3 && (
@@ -1671,6 +1696,17 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                       Save Comment
                     </button>
                   </div>
+
+                  {/* Recipient Picker for Tab 3 */}
+                  {oppId && (
+                    <RecipientPicker
+                      dealId={oppId}
+                      selectedIds={commentRecipients}
+                      onChange={setCommentRecipients}
+                      contextType="comment"
+                      commentVisibility={commentVisibility}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -1804,6 +1840,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                             {c.text}
                           </p>
                         )}
+                        {c.delivery_status && (
+                          <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium pl-8">
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span>{c.delivery_status}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1883,6 +1925,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                         <p className="text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
                           {m.body}
                         </p>
+                        {m.delivery_status && (
+                          <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium">
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span>{m.delivery_status}</span>
+                          </div>
+                        )}
 
                         {/* Reply trigger button */}
                         <div className="pt-1 flex items-center justify-end">
@@ -1962,6 +2010,14 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                       className="w-full p-2.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:border-teal-500 resize-none"
                       required
                     />
+                    {oppId && (
+                      <RecipientPicker
+                        dealId={oppId}
+                        selectedIds={msgRecipients}
+                        onChange={setMsgRecipients}
+                        contextType="message"
+                      />
+                    )}
                     <div className="flex justify-end">
                       <button
                         type="submit"

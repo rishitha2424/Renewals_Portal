@@ -1009,6 +1009,7 @@ class AnnotationService:
     # Deal Comments
     # -------------------------------------------------------------
     def list_comments(self, opportunity_id_18: str, user_context: Optional[Any] = None) -> list[dict]:
+        import json
         opp_id = str(opportunity_id_18 or "").strip()
         if not opp_id:
             return []
@@ -1026,7 +1027,28 @@ class AnnotationService:
                 )
             )
         comments = q.order_by(DealComment.created_at.asc()).all()
-        return [c.to_dict() for c in comments]
+        out = []
+        for c in comments:
+            d = c.to_dict()
+            rec_ids = []
+            if getattr(c, "recipient_ids", None):
+                try:
+                    rec_ids = json.loads(c.recipient_ids)
+                except Exception:
+                    rec_ids = []
+            rec_names = []
+            if rec_ids:
+                from backend.models.user import User
+                users = self.db.query(User).filter(User.id.in_(rec_ids)).all()
+                rec_names = [u.name for u in users]
+            d["recipients"] = rec_names
+            time_str = c.created_at.strftime("%H:%M") if c.created_at else ""
+            if rec_names:
+                d["delivery_status"] = f"Emailed to {', '.join(rec_names)} – sent {time_str}"
+            else:
+                d["delivery_status"] = f"Sent {time_str}" if time_str else "Sent"
+            out.append(d)
+        return out
 
     def add_comment(
         self,
@@ -1037,6 +1059,7 @@ class AnnotationService:
         visibility: str = "internal",
         author_role: str = "admin",
         user_display: str | None = None,
+        recipient_ids: Optional[list[str]] = None,
     ) -> dict:
         opp_id = str(opportunity_id_18 or "").strip()
         cleaned_text = str(text or "").strip()
@@ -1056,6 +1079,8 @@ class AnnotationService:
             vis_clean = "shared_with_owner"
 
         now = datetime.now(timezone.utc)
+        import json
+        rec_ids_str = json.dumps(recipient_ids) if recipient_ids else None
         comment = DealComment(
             id=str(uuid.uuid4()),
             opportunity_id_18=opp_id,
@@ -1067,6 +1092,7 @@ class AnnotationService:
             visibility=vis_clean,
             author_id=user_id,
             author_role=author_role or "admin",
+            recipient_ids=rec_ids_str,
         )
         self.db.add(comment)
 

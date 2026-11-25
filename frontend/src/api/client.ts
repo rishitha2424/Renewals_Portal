@@ -796,12 +796,14 @@ export const addDealComment = async (
   opportunityId: string,
   text: string,
   author?: string,
-  visibility?: 'internal' | 'shared_with_owner'
+  visibility?: 'internal' | 'shared_with_owner',
+  recipient_ids?: string[]
 ): Promise<DealCommentItem> => {
   const res = await api.post(`/custom-columns/deals/${opportunityId}/comments`, {
     text,
     author,
     visibility,
+    recipient_ids,
   })
   return res.data.comment
 }
@@ -1094,6 +1096,9 @@ export interface DealMessageDetail {
   priority: string
   is_read: boolean
   created_at: string
+  delivery_status?: string
+  recipients?: string[]
+  recipient_ids?: string[]
 }
 
 export const getMessageThreads = async (params: { deal_id?: string; thread_status?: string } = {}) => {
@@ -1111,13 +1116,14 @@ export const sendDealMessage = async (data: {
   subject: string
   body: string
   priority?: string
+  recipient_ids?: string[]
 }) => {
   const res = await api.post('/messages', data)
   return res.data
 }
 
-export const replyDealMessage = async (messageId: string, body: string) => {
-  const res = await api.post(`/messages/${messageId}/reply`, { body })
+export const replyDealMessage = async (messageId: string, body: string, recipient_ids?: string[]) => {
+  const res = await api.post(`/messages/${messageId}/reply`, { body, recipient_ids })
   return res.data
 }
 
@@ -1193,6 +1199,91 @@ export const getKamDeals = async (params: {
 
 export const searchGlobal = async (params: { q: string; as_of?: string; limit?: number }) => {
   const res = await api.get('/search', { params })
+  return res.data
+}
+
+// ── Snapshot Calendar ────────────────────────────────────────────────────────
+export const getSnapshotCalendar = async (year?: number, month?: number) => {
+  const params: any = {}
+  if (year != null) params.year = year
+  if (month != null) params.month = month
+  const res = await api.get('/snapshots/calendar', { params })
+  return res.data
+}
+
+// ── Notification Centre ──────────────────────────────────────────────────────
+export interface NotificationItem {
+  id: string
+  user_id: string
+  category: 'message' | 'reply' | 'comment' | 'alert' | 'email_failure' | string
+  title: string
+  message: string
+  deal_id?: string | null
+  deal_name?: string | null
+  target_type: string
+  target_id?: string | null
+  is_read: boolean
+  created_at: string
+  read_at?: string | null
+}
+
+export const getNotifications = async (category?: string, limit = 50): Promise<{ notifications: NotificationItem[]; unread_count: number }> => {
+  const params: any = { limit }
+  if (category && category !== 'all') params.category = category
+  const res = await api.get('/notifications', { params })
+  return res.data
+}
+
+export const markNotificationRead = async (id: string) => {
+  const res = await api.post(`/notifications/${id}/read`)
+  return res.data
+}
+
+export const markAllNotificationsRead = async () => {
+  const res = await api.post('/notifications/read-all')
+  return res.data
+}
+
+// ── Recipients & Email Log ───────────────────────────────────────────────────
+export interface RecipientUser {
+  id: string
+  name: string
+  role: string
+  is_owner?: boolean
+}
+
+export interface RecipientOptions {
+  deal_owner?: RecipientUser | null
+  management: RecipientUser[]
+  admins: RecipientUser[]
+  defaults: string[]
+}
+
+export const getMessageRecipients = async (deal_id?: string): Promise<RecipientOptions> => {
+  const params: any = {}
+  if (deal_id) params.deal_id = deal_id
+  const res = await api.get('/messages/recipients', { params })
+  return res.data
+}
+
+export interface EmailLogItem {
+  id: string
+  created_at?: string | null
+  sent_at?: string | null
+  template_type: string
+  deal_id?: string | null
+  deal_name?: string | null
+  sender_name: string
+  sender_role: string
+  recipient_name: string
+  recipient_role: string
+  status: string
+  attempts: number
+  error_message?: string | null
+}
+
+export const getEmailLog = async (limit = 100): Promise<{ log: EmailLogItem[] }> => {
+  const res = await api.get('/messages/email-log', { params: { limit } })
   return res.data
 }
 

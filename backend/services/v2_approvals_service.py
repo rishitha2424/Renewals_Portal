@@ -11,6 +11,8 @@ from backend.services.context import UserContext
 from backend.services.scopes import ScopeService
 from backend.config import settings
 
+from backend.constants import get_approval_group, is_approved_2nd, normalize_approval_status
+
 def _sum(df: pd.DataFrame, col: str) -> float:
     if df.empty or col not in df.columns:
         return 0.0
@@ -24,12 +26,10 @@ FUNNEL_STAGES = ["Approved", "Pending Approval", "Blank"]
 def _norm_approval(s: str | None) -> str:
     if not s or str(s).strip() in ("", "nan", "None", "Blank"):
         return "Blank"
-    s = s.strip()
-    if s in ("Approved", "Approved - 2nd"):
-        return "Approved"
-    if s in ("Pending Approval", "Pending-Approval"):
-        return "Pending Approval"
-    return s
+    grp = get_approval_group(s)
+    if grp == "Not submitted":
+        return "Blank"
+    return grp
 
 def _norm_fc(s: str | None) -> str:
     if not s or str(s).strip() in ("", "nan", "None"):
@@ -122,6 +122,8 @@ class V2ApprovalsService:
                 "forecast_category": fc,
                 "forecast_acv_amount": float(o.forecast_acv_amount or 0),
                 "approval_status": status,
+                "raw_approval_status": o.approval_status,
+                "is_approved_2nd": is_approved_2nd(o.approval_status),
                 "reason_for_approval": o.extra_attributes.get("Reason for approval") if o.extra_attributes else None,
                 "close_date": o.close_date,
                 "sub_region": o.sub_region,
@@ -206,6 +208,13 @@ class V2ApprovalsService:
             delta_lw = get_delta(df_lw)
             delta_comp = get_delta(comp_df) if comp_snap else None
             
+            app_2nd_c = 0
+            app_2nd_a = 0.0
+            if st == "Approved" and not st_df.empty and "is_approved_2nd" in st_df.columns:
+                app_2nd_df = st_df[st_df["is_approved_2nd"] == True]
+                app_2nd_c = len(app_2nd_df)
+                app_2nd_a = round(_sum(app_2nd_df, "forecast_acv_amount"), 2)
+
             statuses_list.append({
                 "status": st,
                 "count": c,
@@ -214,7 +223,10 @@ class V2ApprovalsService:
                 "pct_acv": pct_a,
                 "delta_yesterday": delta_yest,
                 "delta_lastweek": delta_lw,
-                "delta_custom": delta_comp
+                "delta_custom": delta_comp,
+                "approved_2nd_count": app_2nd_c,
+                "approved_2nd_acv": app_2nd_a,
+                "breakdown_text": f"incl. {app_2nd_c} Approved 2nd (${app_2nd_a:,.2f})" if app_2nd_c > 0 else None,
             })
             
             row_matrix = {}

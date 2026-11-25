@@ -16,6 +16,7 @@ export interface TileProps {
   dealsLabel?: string
   badge?: React.ReactNode
   subtitle?: React.ReactNode
+  breakdown?: React.ReactNode
   deltaYesterday?: DeltaValue | null | React.ReactNode
   deltaLastWeek?: DeltaValue | null | React.ReactNode
   polarity?: MetricPolarity
@@ -38,6 +39,7 @@ export const Tile: React.FC<TileProps> = ({
   dealsLabel = 'deals',
   badge,
   subtitle,
+  breakdown,
   deltaYesterday,
   deltaLastWeek,
   polarity,
@@ -144,7 +146,7 @@ export const Tile: React.FC<TileProps> = ({
               }`}
               style={accentColor ? { backgroundColor: `${accentColor}18`, color: accentColor, borderColor: `${accentColor}35` } : undefined}
             >
-              {typeof count === 'number' ? `${formatCount(count)} ${dealsLabel}` : count}
+              {typeof count === 'number' ? `${formatCount(count)} ${count === 1 && dealsLabel === 'deals' ? 'deal' : dealsLabel}` : count}
             </span>
           ) : null}
         </div>
@@ -153,6 +155,13 @@ export const Tile: React.FC<TileProps> = ({
         <div className="text-2xl sm:text-3xl font-extrabold tabular-nums text-[var(--text-primary)] tracking-tight">
           {isNA ? <span className="text-slate-400 font-normal text-xl">n/a</span> : amount}
         </div>
+
+        {/* Breakdown line, e.g. incl. n Approved 2nd ($X) */}
+        {breakdown && (
+          <div className="text-xs text-[var(--text-secondary)] font-medium -mt-1">
+            {breakdown}
+          </div>
+        )}
 
         {/* Subtitle / View Deals */}
         {(subtitle || viewDealsText || onDealsClick) && (

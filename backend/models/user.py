@@ -39,6 +39,7 @@ class User(Base):
 
     aliases: Mapped[List[UserAlias]] = relationship("UserAlias", back_populates="user", cascade="all, delete-orphan")
     tokens: Mapped[List[UserToken]] = relationship("UserToken", back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[List[Notification]] = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserAlias(Base):
@@ -90,6 +91,7 @@ class DealMessage(Base):
     subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)  # 'low', 'normal', 'high', 'urgent'
+    recipient_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON-encoded array of recipient user IDs
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     thread_status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # 'open', 'resolved'
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -105,6 +107,11 @@ class EmailOutbox(Base):
     body_html: Mapped[str] = mapped_column(Text, nullable=False)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     template_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'invite', 'reset', 'new_message', 'reply', etc.
+    deal_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    deal_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sender_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sender_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    recipient_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", nullable=False)  # 'sent', 'failed', 'pending – email not configured'
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -137,4 +144,40 @@ class OwnerSyncAlert(Base):
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), index=True, nullable=False)  # 'message', 'reply', 'comment', 'alert', 'email_failure'
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    deal_id: Mapped[Optional[str]] = mapped_column(String(100), index=True, nullable=True)
+    deal_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'deal_message', 'deal_comment', 'alert'
+    target_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # thread_id or comment_id
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[User] = relationship("User", back_populates="notifications")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "category": self.category,
+            "title": self.title,
+            "message": self.message,
+            "deal_id": self.deal_id,
+            "deal_name": self.deal_name,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "is_read": self.is_read,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "read_at": self.read_at.isoformat() if self.read_at else None,
+        }
+
 

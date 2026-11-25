@@ -79,6 +79,7 @@ class CreateDealCommentRequest(BaseModel):
     text: str = Field(..., description="Comment text")
     author: Optional[str] = Field(None, description="Author display name")
     visibility: Optional[str] = Field("internal", description="Visibility flag: 'internal' or 'shared' / 'shared_with_owner'")
+    recipient_ids: Optional[List[str]] = Field(None, description="Selected recipient user IDs")
 
 
 class UpdateDealCommentRequest(BaseModel):
@@ -517,6 +518,31 @@ def add_deal_comment(
     try:
         user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
         user_disp = ctx.display_name or ctx.email or author_name
+
+        # Resolve Recipients
+        from backend.models.user import User, UserAlias
+        from backend.services.notification_service import NotificationService
+        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
+
+        recipients: list[User] = []
+        if body.recipient_ids:
+            recipients = db.query(User).filter(User.id.in_(body.recipient_ids), User.status != "disabled").all()
+        else:
+            mgmt_admin = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
+            recipients = list(mgmt_admin)
+            if vis in ("shared", "shared_with_owner") and opp and opp.opportunity_owner:
+                owner_clean = opp.opportunity_owner.strip()
+                kam_u = db.query(User).filter(func.lower(User.owner_name) == owner_clean.lower(), User.status != "disabled").first()
+                if not kam_u:
+                    alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
+                    if alias and alias.user.status != "disabled":
+                        kam_u = alias.user
+                if kam_u and kam_u.id not in [u.id for u in recipients]:
+                    recipients.append(kam_u)
+
+        # Filter out author
+        recipients = [u for u in recipients if str(u.id) != str(user_id)]
+
         comment = svc.add_comment(
             opportunity_id_18=opportunity_id,
             text=body.text,
@@ -525,58 +551,29 @@ def add_deal_comment(
             visibility=vis,
             author_role=author_role,
             user_display=user_disp,
+            recipient_ids=[u.id for u in recipients],
         )
 
-        # When management/admin adds a comment shared with owner, notify the KAM and queue email
-        if vis in ("shared", "shared_with_owner") and author_role != "kam":
+        # Dispatch In-App Notifications & Emails for each recipient
+        deal_title = opp.opportunity_name if opp else opportunity_id
+        for r in recipients:
             try:
-                opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
-                if opp and opp.opportunity_owner:
-                    owner_clean = opp.opportunity_owner.strip()
-                    from backend.models.user import User, UserAlias, DealMessage
-                    from backend.services.mail_service import MailService
-                    import uuid
-
-                    kam_user = (
-                        db.query(User)
-                        .filter(func.lower(User.owner_name) == owner_clean.lower())
-                        .first()
-                    )
-                    if not kam_user:
-                        alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
-                        if alias:
-                            kam_user = alias.user
-
-                    if kam_user:
-                        msg_id = str(uuid.uuid4())
-                        deal_title = opp.opportunity_name or opportunity_id
-                        admin_first = db.query(User.id).filter(User.role == "admin").first()
-                        caller_uid = ctx.user_id if ctx.user_id and ctx.user_id != "admin" else (admin_first[0] if admin_first else None)
-                        msg = DealMessage(
-                            id=msg_id,
-                            deal_id=opportunity_id,
-                            thread_id=msg_id,
-                            sender_id=caller_uid,
-                            sender_name=author_name,
-                            sender_role=author_role,
-                            recipient_id=kam_user.id,
-                            recipient_name=kam_user.name or kam_user.email,
-                            subject=f"New comment on {deal_title}",
-                            body=f"{author_name} added a comment: {body.text.strip()}",
-                            priority="normal",
-                            is_read=False,
-                            thread_status="open",
-                        )
-                        db.add(msg)
-                        db.commit()
-                        MailService.template_new_message(
-                            db,
-                            kam_user,
-                            author_name,
-                            deal_title,
-                            opportunity_id,
-                            f"{author_name} added a comment on your deal:\n\n\"{body.text.strip()}\"",
-                        )
+                NotificationService.create_notification(
+                    db=db,
+                    user_id=r.id,
+                    category="comment",
+                    title=f"New comment from {author_name}",
+                    message=body.text.strip(),
+                    deal_id=opportunity_id,
+                    deal_name=deal_title,
+                    target_type="deal_comment",
+                    target_id=comment.get("id"),
+                    send_email=True,
+                    email_sender_name=author_name,
+                    email_sender_role=author_role,
+                    account_name=opp.account_name if opp else None,
+                    acv_amount=float(opp.forecast_acv_amount or 0.0) if opp else None,
+                )
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning("Failed to queue notification for shared comment: %s", e)

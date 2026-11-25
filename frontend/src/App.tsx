@@ -20,6 +20,7 @@ import KamDeals from '@/pages/kam/KamDeals'
 import MessagesHub from '@/pages/MessagesHub'
 import UserManagement from '@/pages/admin/UserManagement'
 import EmailOutbox from '@/pages/admin/EmailOutbox'
+import NotificationsPage from '@/pages/NotificationsPage'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
@@ -190,6 +191,9 @@ export default function App() {
 
             {/* Messaging Hub */}
             <Route path="/messages" element={<MessagesHub />} />
+
+            {/* Notification Centre */}
+            <Route path="/notifications" element={<NotificationsPage />} />
 
             {/* Admin Governance Routes */}
             <Route path="/admin/users" element={<UserManagement />} />

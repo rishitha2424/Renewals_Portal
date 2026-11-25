@@ -25,6 +25,7 @@ from backend.services.deal_serializer import serialize_opportunity
 from backend.services.v2_delayed_service import V2DelayedService
 from backend.services.kam_report_service import KamReportService
 from backend.services.settings_service import SettingsService
+from backend.constants import get_approval_group, is_approved_2nd, normalize_approval_status
 
 log = logging.getLogger(__name__)
 
@@ -171,21 +172,21 @@ def get_kam_overview(
 
     # 2. Approval split
     st_map: dict[str, dict[str, Any]] = {
-        "Approved": {"count": 0, "acv": 0.0, "deals": []},
+        "Approved": {"count": 0, "acv": 0.0, "deals": [], "approved_2nd_count": 0, "approved_2nd_acv": 0.0},
         "Pending Approval": {"count": 0, "acv": 0.0, "deals": []},
         "Not submitted": {"count": 0, "acv": 0.0, "deals": []},
     }
     for d in deals:
-        st = (d.get("approval_status") or "Not submitted").strip()
-        if st in ("Approved", "Approved - 2nd"):
-            norm_st = "Approved"
-        elif st in ("Pending Approval", "Pending-Approval"):
-            norm_st = "Pending Approval"
-        else:
+        raw_st = d.get("approval_status") or d.get("raw_approval_status")
+        norm_st = get_approval_group(raw_st)
+        if norm_st not in st_map:
             norm_st = "Not submitted"
         st_map[norm_st]["count"] += 1
         st_map[norm_st]["acv"] = round(st_map[norm_st]["acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
         st_map[norm_st]["deals"].append(d)
+        if norm_st == "Approved" and is_approved_2nd(raw_st):
+            st_map["Approved"]["approved_2nd_count"] += 1
+            st_map["Approved"]["approved_2nd_acv"] = round(st_map["Approved"]["approved_2nd_acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
 
     # 3. Delayed & Slippage for this KAM
     delayed_svc = V2DelayedService(db)
@@ -285,7 +286,7 @@ def get_kam_overview(
     for d in deals:
         bu = str(d.get("business_unit_primary") or d.get("business_unit") or "Unassigned").strip() or "Unassigned"
         if bu not in bu_agg:
-            bu_agg[bu] = {"bu": bu, "count": 0, "acv": 0.0, "deals": []}
+            bu_agg[bu] = {"bu": bu, "business_unit": bu, "count": 0, "acv": 0.0, "deals": []}
         bu_agg[bu]["count"] += 1
         bu_agg[bu]["acv"] = round(bu_agg[bu]["acv"] + float(d.get("forecast_acv_amount") or 0.0), 2)
         bu_agg[bu]["deals"].append(d)
@@ -386,6 +387,12 @@ def get_kam_overview(
         "pipeline_acv": fc_map["Pipeline"]["acv"],
         "approved_count": st_map["Approved"]["count"],
         "approved_acv": st_map["Approved"]["acv"],
+        "approved_2nd_count": st_map["Approved"]["approved_2nd_count"],
+        "approved_2nd_acv": st_map["Approved"]["approved_2nd_acv"],
+        "approved_2nd_breakdown": (
+            f"incl. {st_map['Approved']['approved_2nd_count']} Approved 2nd (${st_map['Approved']['approved_2nd_acv']:,.2f})"
+            if st_map['Approved']['approved_2nd_count'] > 0 else None
+        ),
         "pending_approval_count": st_map["Pending Approval"]["count"],
         "pending_approval_acv": st_map["Pending Approval"]["acv"],
         "not_submitted_count": st_map["Not submitted"]["count"],

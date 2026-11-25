@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import settings
 from backend.routers import snapshots, analytics, opportunities, export, health, admin_auth, settings as system_settings_router, custom_columns
 from backend.routers import v2_overview, v2_expiry, v2_approvals, v2_business_units, v2_regions, v2_delayed, v2_filters, v2_explorer
-from backend.routers import auth, admin_users, messages, email_admin, kam, search
+from backend.routers import auth, admin_users, messages, email_admin, kam, search, notifications
 
 logging.basicConfig(
     level=logging.INFO,
@@ -286,6 +286,7 @@ app.include_router(admin_auth.router, prefix="/api")
 app.include_router(auth.router)
 app.include_router(admin_users.router)
 app.include_router(messages.router)
+app.include_router(notifications.router)
 app.include_router(email_admin.router, prefix="/api/admin/email")
 app.include_router(email_admin.router, prefix="/api/email-admin")
 app.include_router(kam.router)

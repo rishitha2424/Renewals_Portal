@@ -6,6 +6,8 @@ Handles message posting, replies, read receipts, and thread resolution.
 from __future__ import annotations
 
 import logging
+import json
+import uuid
 from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
 from backend.database import get_db
-from backend.models.user import User, DealMessage
+from backend.models.user import User, DealMessage, EmailOutbox
 from backend.models.opportunity import Opportunity
 from backend.services.context import (
     UserContext,
@@ -22,6 +24,7 @@ from backend.services.context import (
 )
 from backend.services.audit_service import log_audit_event
 from backend.services.mail_service import MailService
+from backend.services.notification_service import NotificationService
 
 log = logging.getLogger(__name__)
 
@@ -33,57 +36,173 @@ class SendDealMessageRequest(BaseModel):
     subject: str
     body: str
     priority: Optional[str] = "normal"  # "low" | "normal" | "high" | "urgent"
+    recipient_ids: Optional[List[str]] = None
 
 
 class ReplyMessageRequest(BaseModel):
     body: str
+    recipient_ids: Optional[List[str]] = None
+
+
+@router.get("/recipients")
+def get_message_recipients(
+    deal_id: Optional[str] = None,
+    ctx: UserContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+):
+    """
+    Candidate recipients for Compose, Reply, and Comments.
+    STRICT PRIVACY: Returns names, roles and IDs only; NEVER returns email addresses.
+    """
+    deal_owner = None
+    if deal_id:
+        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == deal_id).first()
+        if opp and opp.opportunity_owner:
+            owner_clean = opp.opportunity_owner.strip()
+            u = db.query(User).filter(func.lower(User.owner_name) == owner_clean.lower(), User.status != "disabled").first()
+            if not u:
+                from backend.models.user import UserAlias
+                alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
+                if alias and alias.user.status != "disabled":
+                    u = alias.user
+            if u:
+                deal_owner = {"id": u.id, "name": u.name, "role": u.role, "is_owner": True}
+
+    mgmt_users = db.query(User).filter(User.role == "management", User.status != "disabled").order_by(User.name.asc()).all()
+    admin_users = db.query(User).filter(User.role == "admin", User.status != "disabled").order_by(User.name.asc()).all()
+
+    mgmt_list = [{"id": u.id, "name": u.name, "role": u.role} for u in mgmt_users]
+    admin_list = [{"id": u.id, "name": u.name, "role": u.role} for u in admin_users]
+
+    defaults = []
+    if ctx.is_kam:
+        defaults = [u["id"] for u in mgmt_list] + [u["id"] for u in admin_list]
+    else:
+        if deal_owner:
+            defaults.append(deal_owner["id"])
+        defaults += [u["id"] for u in admin_list]
+
+    return {
+        "deal_owner": deal_owner,
+        "management": mgmt_list,
+        "admins": admin_list,
+        "defaults": list(dict.fromkeys(defaults)),
+    }
+
+
+@router.get("/email-log")
+def get_email_log(
+    ctx: UserContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+    limit: int = 100,
+):
+    """
+    Email delivery event log.
+    - Admin: all message/comment email events.
+    - Management & KAM: only their own items ("My email log").
+    - PRIVACY ENFORCEMENT: Never includes recipient_email or sender_email!
+    """
+    q = db.query(EmailOutbox).filter(
+        EmailOutbox.template_type.in_(["new_message", "reply_message", "comment", "deal_comment"])
+    )
+    if not ctx.is_admin:
+        allowed_names = set()
+        if ctx.display_name:
+            allowed_names.add(ctx.display_name)
+        if ctx.name:
+            allowed_names.add(ctx.name)
+        if ctx.all_owner_names:
+            allowed_names.update(ctx.all_owner_names)
+        
+        # Also include user database record's name
+        u_rec = db.query(User).filter(User.id == ctx.user_id).first()
+        if u_rec and u_rec.name:
+            allowed_names.add(u_rec.name)
+
+        if allowed_names:
+            name_list = list(allowed_names)
+            q = q.filter(
+                or_(
+                    EmailOutbox.recipient_name.in_(name_list),
+                    EmailOutbox.sender_name.in_(name_list),
+                )
+            )
+    items = q.order_by(EmailOutbox.created_at.desc()).limit(limit).all()
+    results = []
+    for item in items:
+        results.append({
+            "id": item.id,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "sent_at": item.sent_at.isoformat() if item.sent_at else None,
+            "template_type": item.template_type,
+            "deal_id": item.deal_id,
+            "deal_name": item.deal_name,
+            "sender_name": item.sender_name or "System",
+            "sender_role": item.sender_role or "system",
+            "recipient_name": item.recipient_name or "User",
+            "recipient_role": item.recipient_role or "user",
+            "status": item.status,
+            "attempts": item.retry_count or 1,
+            "error_message": item.error_message,
+        })
+    return {"log": results}
 
 
 @router.post("")
 def send_deal_message(
     req: SendDealMessageRequest,
-    ctx: UserContext = Depends(require_management_or_admin),
+    ctx: UserContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
 ):
     """
-    Admin or Management sends a message to a deal owner about a specific deal.
-    Creates root message thread and queues email notification to the KAM.
+    Send a message about a specific deal.
+    - Admin & Management can message on any deal.
+    - KAMs can message on their own deals.
+    - Supports explicit recipient_ids or sensible defaults.
     """
     # 1. Resolve Opportunity
     opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == req.deal_id).first()
     if not opp:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found.")
 
+    if ctx.is_kam:
+        if (opp.opportunity_owner or "").strip() not in ctx.all_owner_names:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden: You do not own this deal.")
+
     owner_name = (opp.opportunity_owner or "").strip()
-    if not owner_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity has no owner assigned.")
 
-    # 2. Find recipient KAM user
-    kam_user = (
-        db.query(User)
-        .filter(func.lower(User.owner_name) == owner_name.lower())
-        .first()
-    )
-    if not kam_user:
-        # Search via aliases
-        from backend.models.user import UserAlias
-        alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_name.lower()).first()
-        if alias:
-            kam_user = alias.user
-
-    if not kam_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No user account linked to opportunity owner '{owner_name}'. Please add this KAM in User Management first.",
-        )
-
-    # 3. Create DealMessage
-    import uuid
+    # 2. Resolve Recipients
     caller_uid = ctx.user_id if ctx.user_id != "admin" else db.query(User.id).filter(User.role == "admin").first()[0]
     sender_user = db.query(User).filter(User.id == caller_uid).first()
     sender_name = sender_user.name if sender_user else ctx.display_name
     sender_role = sender_user.role if sender_user else ctx.role
-    recipient_name = kam_user.name or kam_user.email
+
+    recipients: list[User] = []
+    if req.recipient_ids:
+        recipients = db.query(User).filter(User.id.in_(req.recipient_ids), User.status != "disabled").all()
+    else:
+        # Default recipients
+        if ctx.is_kam:
+            recipients = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
+        else:
+            admin_users = db.query(User).filter(User.role == "admin", User.status != "disabled").all()
+            kam_user = None
+            if owner_name:
+                kam_user = db.query(User).filter(func.lower(User.owner_name) == owner_name.lower(), User.status != "disabled").first()
+                if not kam_user:
+                    from backend.models.user import UserAlias
+                    alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_name.lower()).first()
+                    if alias and alias.user.status != "disabled":
+                        kam_user = alias.user
+            recipients = list(admin_users)
+            if kam_user and kam_user.id not in [u.id for u in recipients]:
+                recipients.append(kam_user)
+
+    # Filter out caller
+    recipients = [u for u in recipients if str(u.id) != str(caller_uid)]
+
+    first_recipient_id = recipients[0].id if recipients else None
+    first_recipient_name = recipients[0].name if recipients else None
 
     msg_id = str(uuid.uuid4())
     msg = DealMessage(
@@ -93,8 +212,9 @@ def send_deal_message(
         sender_id=caller_uid,
         sender_name=sender_name,
         sender_role=sender_role,
-        recipient_id=kam_user.id,
-        recipient_name=recipient_name,
+        recipient_id=first_recipient_id,
+        recipient_name=first_recipient_name,
+        recipient_ids=json.dumps([u.id for u in recipients]),
         subject=req.subject.strip(),
         body=req.body.strip(),
         priority=req.priority or "normal",
@@ -105,16 +225,32 @@ def send_deal_message(
     db.commit()
     db.refresh(msg)
 
-    # 4. Queue email notification
+    # 4. In-App Notifications & Emails for each recipient
     deal_title = opp.opportunity_name or opp.opportunity_id_18
-    MailService.template_new_message(db, kam_user, sender_name, deal_title, req.deal_id, req.body, subject=req.subject)
+    for r in recipients:
+        NotificationService.create_notification(
+            db=db,
+            user_id=r.id,
+            category="message",
+            title=f"New message from {sender_name}",
+            message=req.body.strip(),
+            deal_id=req.deal_id,
+            deal_name=deal_title,
+            target_type="deal_message",
+            target_id=msg_id,
+            send_email=True,
+            email_sender_name=sender_name,
+            email_sender_role=sender_role,
+            account_name=opp.account_name,
+            acv_amount=float(opp.forecast_acv_amount or 0.0),
+        )
 
     log_audit_event(
         db,
         "message_sent",
         user_id=ctx.user_id,
         user_email=ctx.email,
-        details={"deal_id": req.deal_id, "recipient_email": kam_user.email, "subject": req.subject},
+        details={"deal_id": req.deal_id, "recipients": [u.name for u in recipients], "subject": req.subject},
     )
 
     return {"status": "sent", "message_id": msg.id}
@@ -129,26 +265,19 @@ def reply_to_message(
 ):
     """
     Reply to a deal message thread.
-    KAM replies back to sender (management/admin); management/admin can reply again.
+    Notifies chosen recipients or thread participants.
     """
     parent = db.query(DealMessage).filter(DealMessage.id == message_id).first()
     if not parent:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent message not found.")
 
-    # Find root of thread
     root_id = parent.thread_id or parent.id
     root_msg = db.query(DealMessage).filter(DealMessage.id == root_id).first()
 
-    # Determine recipient
     caller_uid = ctx.user_id if ctx.user_id != "admin" else db.query(User.id).filter(User.role == "admin").first()[0]
-    if str(caller_uid) == str(parent.sender_id):
-        recipient_id = parent.recipient_id
-    else:
-        recipient_id = parent.sender_id
-
-    recipient_user = db.query(User).filter(User.id == recipient_id).first()
-    if not recipient_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient user not found.")
+    caller_user = db.query(User).filter(User.id == caller_uid).first()
+    sender_name = caller_user.name if caller_user else ctx.display_name
+    sender_role = caller_user.role if caller_user else ctx.role
 
     # Check access for KAM
     if ctx.is_kam:
@@ -156,13 +285,33 @@ def reply_to_message(
         if opp and (opp.opportunity_owner or "").strip() not in ctx.all_owner_names:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    import uuid
-    reply_id = str(uuid.uuid4())
-    caller_user = db.query(User).filter(User.id == caller_uid).first()
-    sender_name = caller_user.name if caller_user else ctx.display_name
-    sender_role = caller_user.role if caller_user else ctx.role
-    recipient_name = recipient_user.name if recipient_user else recipient_user.email
+    # Determine recipients
+    recipients: list[User] = []
+    if req.recipient_ids:
+        recipients = db.query(User).filter(User.id.in_(req.recipient_ids), User.status != "disabled").all()
+    else:
+        # Default: thread participants
+        thread_msgs = db.query(DealMessage).filter(DealMessage.thread_id == root_id).all()
+        uids = set()
+        for tm in thread_msgs:
+            if tm.sender_id: uids.add(tm.sender_id)
+            if tm.recipient_id: uids.add(tm.recipient_id)
+            if tm.recipient_ids:
+                try:
+                    for uid in json.loads(tm.recipient_ids):
+                        uids.add(uid)
+                except Exception:
+                    pass
+        recipients = db.query(User).filter(User.id.in_(list(uids)), User.status != "disabled").all()
 
+    # Filter out caller
+    recipients = [u for u in recipients if str(u.id) != str(caller_uid)]
+
+    first_recipient_id = recipients[0].id if recipients else (parent.sender_id if str(parent.sender_id) != str(caller_uid) else parent.recipient_id)
+    first_recipient_user = db.query(User).filter(User.id == first_recipient_id).first() if first_recipient_id else None
+    first_recipient_name = first_recipient_user.name if first_recipient_user else None
+
+    reply_id = str(uuid.uuid4())
     reply = DealMessage(
         id=reply_id,
         deal_id=parent.deal_id,
@@ -170,8 +319,9 @@ def reply_to_message(
         sender_id=caller_uid,
         sender_name=sender_name,
         sender_role=sender_role,
-        recipient_id=recipient_id,
-        recipient_name=recipient_name,
+        recipient_id=first_recipient_id,
+        recipient_name=first_recipient_name,
+        recipient_ids=json.dumps([u.id for u in recipients]),
         subject=f"Re: {root_msg.subject if root_msg and root_msg.subject else parent.subject or ''}",
         body=req.body.strip(),
         priority=parent.priority,
@@ -179,23 +329,38 @@ def reply_to_message(
         thread_status="open",
     )
     db.add(reply)
-    # Reopen thread if previously resolved
     if root_msg:
         root_msg.thread_status = "open"
     db.commit()
     db.refresh(reply)
 
-    # Queue email notification
+    # In-app notifications & emails
     opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == parent.deal_id).first()
     deal_title = opp.opportunity_name if opp else parent.deal_id
-    MailService.template_reply_message(db, recipient_user, sender_name, deal_title, parent.deal_id, req.body)
+    for r in recipients:
+        NotificationService.create_notification(
+            db=db,
+            user_id=r.id,
+            category="reply",
+            title=f"New reply from {sender_name}",
+            message=req.body.strip(),
+            deal_id=parent.deal_id,
+            deal_name=deal_title,
+            target_type="deal_message",
+            target_id=root_id,
+            send_email=True,
+            email_sender_name=sender_name,
+            email_sender_role=sender_role,
+            account_name=opp.account_name if opp else None,
+            acv_amount=float(opp.forecast_acv_amount or 0.0) if opp else None,
+        )
 
     log_audit_event(
         db,
         "message_reply_sent",
         user_id=ctx.user_id,
         user_email=ctx.email,
-        details={"deal_id": parent.deal_id, "reply_to": message_id},
+        details={"deal_id": parent.deal_id, "reply_to": message_id, "recipients": [u.name for u in recipients]},
     )
 
     return {"status": "reply_sent", "message_id": reply.id}
@@ -341,6 +506,23 @@ def get_deal_thread(
     for m in msgs:
         sender = db.query(User).filter(User.id == m.sender_id).first()
         recipient = db.query(User).filter(User.id == m.recipient_id).first()
+
+        rec_ids = []
+        if m.recipient_ids:
+            try:
+                rec_ids = json.loads(m.recipient_ids)
+            except Exception:
+                rec_ids = []
+        if not rec_ids and m.recipient_id:
+            rec_ids = [m.recipient_id]
+
+        rec_users = db.query(User).filter(User.id.in_(rec_ids)).all() if rec_ids else []
+        rec_names = [u.name for u in rec_users] if rec_users else ([recipient.name] if recipient else [])
+        rec_str = ", ".join(rec_names) if rec_names else (m.recipient_name or "Recipient")
+
+        time_str = m.created_at.strftime("%H:%M") if m.created_at else ""
+        delivery_chip = f"Emailed to {rec_str} – sent {time_str}" if rec_str else f"Sent {time_str}"
+
         results.append({
             "id": m.id,
             "thread_id": m.thread_id,
@@ -355,7 +537,10 @@ def get_deal_thread(
             "sender_name": sender.name if sender else "Unknown",
             "sender_role": sender.role if sender else "unknown",
             "recipient_id": str(m.recipient_id),
-            "recipient_name": recipient.name if recipient else "Unknown",
+            "recipient_name": rec_str,
+            "recipient_ids": rec_ids,
+            "recipients": rec_names,
+            "delivery_status": delivery_chip,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         })
 

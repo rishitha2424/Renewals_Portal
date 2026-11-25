@@ -134,6 +134,7 @@ class DealComment(Base):
     visibility: Mapped[str] = mapped_column(String(32), default="internal", nullable=False)
     author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     author_role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
+    recipient_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded array of recipient user IDs
 
     __table_args__ = (
         Index("ix_deal_comments_opp_deleted", "opportunity_id_18", "is_deleted"),
@@ -152,4 +153,5 @@ class DealComment(Base):
             "visibility": self.visibility or "internal",
             "author_id": self.author_id,
             "author_role": self.author_role or "admin",
+            "recipient_ids": self.recipient_ids,
         }

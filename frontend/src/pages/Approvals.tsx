@@ -43,6 +43,7 @@ function StatChip({ label, data, icon: Icon, metricMode, compareDate, compareSet
       title={label}
       amount={isBoth || isAmount ? acvM(data.acv) : `${formatNumber(data.count)} deals`}
       count={data.count}
+      breakdown={data.breakdown_text || (data.approved_2nd_count > 0 ? `incl. ${data.approved_2nd_count} Approved 2nd (${acvM(data.approved_2nd_acv)})` : undefined)}
       deltaYesterday={data.delta_yesterday}
       deltaLastWeek={data.delta_lastweek}
       subtitle={pctOfPeriod != null ? `${pctOfPeriod.toFixed(1)}% of period ACV` : undefined}

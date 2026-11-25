@@ -153,6 +153,12 @@ export function formatNumber(val: number | null | undefined): string {
   return val.toLocaleString('en-US')
 }
 
+/** Format deal count with singular/plural: 1 → "1 deal", 2 → "2 deals" */
+export function formatDealsCount(count: number | null | undefined): string {
+  if (count == null) return '—'
+  return `${formatCount(count)} ${count === 1 ? 'deal' : 'deals'}`
+}
+
 /** Display label for forecast category (Blank/null/empty/nan -> "Not yet proposed") */
 export function getForecastCategoryLabel(cat: string | null | undefined): string {
   if (!cat) return MISSING_FORECAST_CATEGORY
@@ -177,13 +183,39 @@ export function getApprovalStatusLabel(status: string | null | undefined): strin
   if (['blank', '(blank)', 'none', 'unassigned', 'draft', 'null', 'nan', ''].includes(lower)) {
     return MISSING_APPROVAL_STATUS
   }
-  if (lower === 'not submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'not submitted' || lower === 'not-submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2') return 'Approved - 2nd'
   if (lower === 'approved' || lower === 'approve') return 'Approved'
   if (lower === 'pending approval' || lower === 'pending' || lower === 'pending_approval' || lower === 'pending-approval') {
     return 'Pending Approval'
   }
   if (lower === 'rejected' || lower === 'reject') return 'Rejected'
   return trimmed
+}
+
+/** Normalize approval status into canonical grouping */
+export function getApprovalGroup(status: string | null | undefined): string {
+  if (!status) return MISSING_APPROVAL_STATUS
+  const trimmed = status.trim()
+  const lower = trimmed.toLowerCase()
+  if (['blank', '(blank)', 'none', 'unassigned', 'draft', 'null', 'nan', ''].includes(lower)) {
+    return MISSING_APPROVAL_STATUS
+  }
+  if (lower === 'not submitted' || lower === 'not-submitted') return MISSING_APPROVAL_STATUS
+  if (lower === 'approved' || lower === 'approve' || lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2') {
+    return 'Approved'
+  }
+  if (lower === 'pending approval' || lower === 'pending' || lower === 'pending_approval' || lower === 'pending-approval') {
+    return 'Pending Approval'
+  }
+  if (lower === 'rejected' || lower === 'reject') return 'Rejected'
+  return trimmed
+}
+
+export function isApproved2nd(status: string | null | undefined): boolean {
+  if (!status) return false
+  const lower = status.trim().toLowerCase()
+  return lower === 'approved - 2nd' || lower === 'approved 2nd' || lower === 'approved 2'
 }
 
 /** Derive quarter from date string (e.g. YYYY-MM-DD -> Qx-YYYY) */

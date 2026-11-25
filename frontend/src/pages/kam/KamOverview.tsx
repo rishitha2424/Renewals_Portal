@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -23,9 +23,12 @@ import {
   Globe,
   BarChart3,
   Flame,
+  Check,
+  Tag,
+  Zap,
 } from 'lucide-react'
 import { getKamOverview } from '@/api/client'
-import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel, formatACV, acvM } from '@/utils/format'
+import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel, formatACV, formatDealsCount, acvM } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import { useAuthStore } from '@/store/authStore'
 import { useAppStore } from '@/store/appStore'
@@ -239,6 +242,197 @@ export default function KamOverview() {
     ? Math.round((kpis.commit_coverage_acv / kpis.total_acv) * 100)
     : 0
 
+  // ── 1. Renewal Timeline Groups ──────────────────────────────────────────
+  const monthlyTimelineGroups = useMemo(() => {
+    const map = new Map<string, any[]>()
+    allDeals.forEach((d: any) => {
+      const cd = d.close_date || ''
+      const monthKey = cd.length >= 7 ? cd.slice(0, 7) : 'Unscheduled'
+      if (!map.has(monthKey)) map.set(monthKey, [])
+      map.get(monthKey)!.push(d)
+    })
+    return Array.from(map.entries())
+      .sort(([a], [b]) => (a === 'Unscheduled' ? 1 : b === 'Unscheduled' ? -1 : a.localeCompare(b)))
+      .map(([month, deals]) => ({
+        month,
+        totalAcv: deals.reduce((sum, d) => sum + (parseFloat(d.forecast_acv_amount) || 0), 0),
+        deals: deals.sort((a, b) => (a.close_date || '').localeCompare(b.close_date || '')),
+      }))
+  }, [allDeals])
+
+  // ── 2. Deal Board by Stage ──────────────────────────────────────────────
+  const stageColumns = useMemo(() => {
+    const map = new Map<string, any[]>()
+    allDeals.forEach((d: any) => {
+      const st = (d.stage_number || d.stage || 'Unassigned').trim() || 'Unassigned'
+      if (!map.has(st)) map.set(st, [])
+      map.get(st)!.push(d)
+    })
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([stage, deals]) => ({
+        stage,
+        totalAcv: deals.reduce((sum, d) => sum + (parseFloat(d.forecast_acv_amount) || 0), 0),
+        deals: deals.sort((a, b) => (parseFloat(b.forecast_acv_amount) || 0) - (parseFloat(a.forecast_acv_amount) || 0)),
+      }))
+  }, [allDeals])
+
+  // ── 3. Approval Tracker per Deal ────────────────────────────────────────
+  const approvalTrackerDeals = useMemo(() => {
+    return [...allDeals].sort((a, b) => {
+      const aNeed = (a.approval_status !== 'Approved' && a.approval_status !== 'Approved - 2nd') ? 1 : 0
+      const bNeed = (b.approval_status !== 'Approved' && b.approval_status !== 'Approved - 2nd') ? 1 : 0
+      if (aNeed !== bNeed) return bNeed - aNeed
+      return (parseFloat(b.forecast_acv_amount) || 0) - (parseFloat(a.forecast_acv_amount) || 0)
+    })
+  }, [allDeals])
+
+  // ── 4. Accounts Section ─────────────────────────────────────────────────
+  const accountCards = useMemo(() => {
+    const map = new Map<string, any[]>()
+    allDeals.forEach((d: any) => {
+      const acc = (d.account_name || 'Unknown Account').trim() || 'Unknown Account'
+      if (!map.has(acc)) map.set(acc, [])
+      map.get(acc)!.push(d)
+    })
+    return Array.from(map.entries())
+      .map(([accountName, deals]) => {
+        const totalAcv = deals.reduce((sum, d) => sum + (parseFloat(d.forecast_acv_amount) || 0), 0)
+        const sortedDates = deals.map(d => d.close_date).filter(Boolean).sort()
+        const nearestClose = sortedDates[0] || null
+        const approvedCount = deals.filter(d => d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd').length
+        const pendingCount = deals.filter(d => d.approval_status === 'Pending Approval').length
+        const notSubmittedCount = deals.length - approvedCount - pendingCount
+        return {
+          accountName,
+          dealsCount: deals.length,
+          totalAcv,
+          nearestClose,
+          approvedCount,
+          pendingCount,
+          notSubmittedCount,
+          deals,
+        }
+      })
+      .sort((a, b) => b.totalAcv - a.totalAcv)
+  }, [allDeals])
+
+  // ── 5. What to Do Next Action List ──────────────────────────────────────
+  const prioritizedActions = useMemo(() => {
+    const items: {
+      id: string
+      oppId: string
+      title: string
+      description: string
+      priority: 'high' | 'medium' | 'normal'
+      actionLabel: string
+      deal: any
+    }[] = []
+
+    allDeals.forEach((d: any) => {
+      const amt = parseFloat(d.forecast_acv_amount) || 0
+      const isApproved = d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd'
+      const isPending = d.approval_status === 'Pending Approval'
+      const isCommit = d.forecast_category === 'Commit'
+      const hasClose = !!d.close_date
+      const isPastClose = hasClose && d.close_date < (activeSnap?.snapshot_date || '') && d.forecast_category !== 'Closed'
+      const missingDates = !d.service_start_date || !d.service_expiry_date
+
+      if (isCommit && !isApproved && !isPending) {
+        items.push({
+          id: `submit_${d.opportunity_id_18}`,
+          oppId: d.opportunity_id_18,
+          title: `Submit approval request for ${d.opportunity_name}`,
+          description: `Commit deal (${formatCurrency(amt)}) has not yet been submitted for management review.`,
+          priority: 'high',
+          actionLabel: 'Submit & Review',
+          deal: d,
+        })
+      } else if (isPending) {
+        items.push({
+          id: `pending_${d.opportunity_id_18}`,
+          oppId: d.opportunity_id_18,
+          title: `Follow up on pending approval for ${d.opportunity_name}`,
+          description: `Awaiting management sign-off on ${formatCurrency(amt)} renewal.`,
+          priority: 'medium',
+          actionLabel: 'Review Inquiries',
+          deal: d,
+        })
+      } else if (isPastClose) {
+        items.push({
+          id: `delayed_${d.opportunity_id_18}`,
+          oppId: d.opportunity_id_18,
+          title: `Update close date on delayed renewal ${d.opportunity_name}`,
+          description: `Target close date was ${formatDate(d.close_date)} (${formatCurrency(amt)}). Update date or log slippage.`,
+          priority: 'high',
+          actionLabel: 'Update Opportunity',
+          deal: d,
+        })
+      } else if (missingDates) {
+        items.push({
+          id: `dates_${d.opportunity_id_18}`,
+          oppId: d.opportunity_id_18,
+          title: `Missing service dates on ${d.opportunity_name}`,
+          description: `Service start or expiry date is unrecorded. Verify customer contract terms.`,
+          priority: 'normal',
+          actionLabel: 'Add Dates',
+          deal: d,
+        })
+      }
+    })
+
+    return items.slice(0, 8)
+  }, [allDeals, activeSnap?.snapshot_date])
+
+  // ── 6. Key Dates Strip ──────────────────────────────────────────────────
+  const keyDatesList = useMemo(() => {
+    const events: {
+      date: string
+      type: 'Renewal Close' | 'Service Expiry'
+      dealName: string
+      accountName: string
+      acv: number
+      oppId: string
+    }[] = []
+
+    allDeals.forEach((d: any) => {
+      const amt = parseFloat(d.forecast_acv_amount) || 0
+      if (d.close_date) {
+        events.push({
+          date: d.close_date,
+          type: 'Renewal Close',
+          dealName: d.opportunity_name,
+          accountName: d.account_name,
+          acv: amt,
+          oppId: d.opportunity_id_18,
+        })
+      }
+      if (d.service_expiry_date) {
+        events.push({
+          date: d.service_expiry_date,
+          type: 'Service Expiry',
+          dealName: d.opportunity_name,
+          accountName: d.account_name,
+          acv: amt,
+          oppId: d.opportunity_id_18,
+        })
+      }
+    })
+
+    return events
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 10)
+  }, [allDeals])
+
+  // ── 7. Conditional Small Charts (>= 2 active categories only) ─────────────
+  const activeForecastCats = forecastChartData.filter(d => d.value > 0)
+  const activeApprovalStats = approvalChartData.filter(d => d.value > 0)
+  const activeBUs = buChartData.filter(d => d.value > 0).map(d => ({
+    ...d,
+    label: d.label && d.label !== 'None' && d.label !== 'null' ? d.label : 'Unassigned',
+  }))
+  const activeRegions = regionChartData.filter(d => d.value > 0)
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -408,9 +602,10 @@ export default function KamOverview() {
           dealsLabel="deals"
           tone="approved"
           subtitle="Ready to execute / approved"
+          breakdown={kpis.approved_2nd_breakdown || (kpis.approved_2nd_count > 0 ? `incl. ${kpis.approved_2nd_count} Approved 2nd (${formatACV(kpis.approved_2nd_acv)})` : undefined)}
           onClick={() => openDeals(
             `Approved Deals (${kpis.approved_count})`,
-            allDeals.filter((d: any) => d.approval_status === 'Approved')
+            allDeals.filter((d: any) => d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd')
           )}
         />
 
@@ -494,242 +689,527 @@ export default function KamOverview() {
         />
       ) : (
         <>
-          {/* 8 Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Chart 1: Forecast Category Split */}
-            <ChartCard
-              title="Forecast Category Split"
-              subtitle="Breakdown of ACV by pipeline stage"
-              type="horizontal-bars"
-              data={forecastChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 2: Approval Status Distribution */}
-            <ChartCard
-              title="Approval Status Distribution"
-              subtitle="Management approval compliance"
-              type="horizontal-bars"
-              data={approvalChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 3: Stage Funnel */}
-            <ChartCard
-              title="Stage Funnel"
-              subtitle="Opportunities by CRM sales stage"
-              type="horizontal-bars"
-              data={stageChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 4: Business Units */}
-            <ChartCard
-              title="Business Unit Split"
-              subtitle="ACV distribution across business units"
-              type="horizontal-bars"
-              data={buChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 5: Regional Distribution */}
-            <ChartCard
-              title="Regional Distribution"
-              subtitle="ACV by geographical territory"
-              type="horizontal-bars"
-              data={regionChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 6: Monthly Close Timeline */}
-            <ChartCard
-              title="Monthly Close Timeline"
-              subtitle="Expected renewal closing volume by month"
-              type="vertical-bars"
-              data={timelineChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 7: Top Accounts */}
-            <ChartCard
-              title="Top Accounts by ACV"
-              subtitle="Highest value renewal customer accounts"
-              type="horizontal-bars"
-              data={accountsChartData}
-              total={kpis.total_acv}
-            />
-
-            {/* Chart 8: Deal Size Bands */}
-            <ChartCard
-              title="Deal Size Distribution"
-              subtitle="Opportunity concentration by ticket size"
-              type="vertical-bars"
-              data={sizeBandsData}
-              total={kpis.total_acv}
-            />
-          </div>
-
-          {/* Action Lists Tabs & Table */}
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 1: WHAT TO DO NEXT (PRIORITIZED ACTION LIST)
+              Plain-language actionable items with direct drill-downs
+              ══════════════════════════════════════════════════════════════ */}
           <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div>
-                <h3 className="text-base font-bold text-[var(--text-primary)]">
-                  Portfolio Action Center
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+                  <span>What to Do Next</span>
                 </h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Action lists requiring KAM attention or management follow-up
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Prioritized recommendations to secure management approval and advance renewals
                 </p>
               </div>
-
-              {/* Action Tabs */}
-              <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-xs">
-                <button
-                  type="button"
-                  onClick={() => setActiveActionTab('immediate')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'immediate'
-                      ? 'bg-[#12284C] text-white shadow-xs'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                    }`}
-                >
-                  Immediate Attention ({(actionLists.immediate_attention || []).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveActionTab('delayed')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'delayed'
-                      ? 'bg-[#12284C] text-white shadow-xs'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                    }`}
-                >
-                  Delayed Renewals ({(actionLists.delayed_deals || []).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveActionTab('not_submitted')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'not_submitted'
-                      ? 'bg-[#12284C] text-white shadow-xs'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                    }`}
-                >
-                  Not Submitted ({(actionLists.not_submitted_deals || []).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveActionTab('slippage')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'slippage'
-                      ? 'bg-[#12284C] text-white shadow-xs'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                    }`}
-                >
-                  Slippage ({(actionLists.slippage_deals || []).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveActionTab('missing_dates')}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${activeActionTab === 'missing_dates'
-                      ? 'bg-[#12284C] text-white shadow-xs'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-                    }`}
-                >
-                  Missing Dates ({(actionLists.missing_service_dates || []).length})
-                </button>
-              </div>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {prioritizedActions.length} action item{prioritizedActions.length === 1 ? '' : 's'}
+              </span>
             </div>
 
-            {/* Active Action List Table */}
-            {(() => {
-              const currentList =
-                activeActionTab === 'immediate'
-                  ? actionLists.immediate_attention || []
-                  : activeActionTab === 'delayed'
-                    ? actionLists.delayed_deals || []
-                    : activeActionTab === 'not_submitted'
-                      ? actionLists.not_submitted_deals || []
-                      : activeActionTab === 'slippage'
-                        ? actionLists.slippage_deals || []
-                        : actionLists.missing_service_dates || []
+            {prioritizedActions.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[var(--text-muted)] flex flex-col items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2 opacity-80" />
+                <p className="font-semibold text-[var(--text-primary)]">All clear</p>
+                <p>All deals in your portfolio are on track. No immediate actions required.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {prioritizedActions.map((action) => (
+                  <div
+                    key={action.id}
+                    className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] hover:border-teal-500/30 transition-all flex flex-col justify-between gap-3 shadow-2xs group"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                          action.priority === 'high'
+                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                            : action.priority === 'medium'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            : 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                        }`}>
+                          {action.priority} Priority
+                        </span>
+                        <span className="text-[11px] font-bold text-[var(--text-primary)] tabular-nums">
+                          {formatCurrency(action.deal.forecast_acv_amount)}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-xs text-[var(--text-primary)] line-clamp-1 group-hover:text-teal-600 transition-colors" title={action.title}>
+                        {action.title}
+                      </h4>
+                      <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
+                        {action.description}
+                      </p>
+                    </div>
 
-              if (currentList.length === 0) {
-                return (
-                  <div className="py-12 text-center text-xs text-[var(--text-muted)] flex flex-col items-center justify-center">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2 opacity-80" />
-                    <p className="font-semibold text-[var(--text-primary)]">All clear in this category</p>
-                    <p>No opportunities flagged under this action category.</p>
+                    <div className="pt-2 border-t border-[var(--border)]/60 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[150px]">
+                        {action.deal.account_name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOppId(action.oppId)}
+                        className="text-teal-600 dark:text-teal-400 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer text-xs"
+                      >
+                        <span>{action.actionLabel}</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                )
-              }
-
-              return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="border-b border-[var(--border)] text-[var(--text-muted)] font-semibold">
-                        <th className="pb-2.5">Opportunity</th>
-                        <th className="pb-2.5">Account</th>
-                        <th className="pb-2.5 text-right">ACV Amount</th>
-                        <th className="pb-2.5">Forecast Category</th>
-                        <th className="pb-2.5">Approval Status</th>
-                        <th className="pb-2.5">Close Date</th>
-                        <th className="pb-2.5">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border)]">
-                      {currentList.map((d: any) => (
-                        <tr
-                          key={d.opportunity_id_18}
-                          onClick={() => setSelectedOppId(d.opportunity_id_18)}
-                          className="hover:bg-[var(--bg-secondary)] cursor-pointer transition-colors group"
-                        >
-                          <td className="py-2.5 pr-3">
-                            <div className="font-bold text-[var(--text-primary)] group-hover:text-teal-600 transition-colors line-clamp-1">
-                              {d.opportunity_name}
-                            </div>
-                            <div className="text-[10px] text-[var(--text-muted)] font-mono">{d.opportunity_id_18}</div>
-                          </td>
-                          <td className="py-2.5 pr-3 max-w-[150px] truncate text-[var(--text-secondary)] font-medium">
-                            {d.account_name}
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-bold text-[var(--text-primary)] tabular-nums">
-                            {formatCurrency(d.forecast_acv_amount)}
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <span className="font-semibold text-[var(--text-secondary)]">
-                              {getForecastCategoryLabel(d.forecast_category)}
-                            </span>
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-semibold ${d.approval_status === 'Approved'
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                : d.approval_status === 'Pending Approval'
-                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                  : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                              }`}>
-                              {getApprovalStatusLabel(d.approval_status)}
-                            </span>
-                          </td>
-                          <td className="py-2.5 pr-3 tabular-nums text-[var(--text-secondary)]">
-                            {formatDate(d.close_date)}
-                          </td>
-                          <td className="py-2.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedOppId(d.opportunity_id_18)
-                              }}
-                              className="text-teal-600 dark:text-teal-400 font-semibold hover:underline inline-flex items-center gap-1"
-                            >
-                              Open <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 2: RENEWAL TIMELINE (HORIZONTAL PROGRESSION)
+              Deals plotted along target close periods without label overlap
+              ══════════════════════════════════════════════════════════════ */}
+          <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <span>Renewal Timeline Progression</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Portfolio deals mapped across scheduled target close months
+                </p>
+              </div>
+              <span className="text-xs text-[var(--text-muted)]">
+                {monthlyTimelineGroups.length} time bucket{monthlyTimelineGroups.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {monthlyTimelineGroups.map((group) => (
+                <div
+                  key={group.month}
+                  className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/40 flex flex-col space-y-3"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                    <div>
+                      <span className="text-xs font-bold text-[var(--text-primary)] font-mono">
+                        {group.month === 'Unscheduled' ? 'No Close Date' : formatDate(group.month)}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-muted)] block">
+                        {formatDealsCount(group.deals.length)}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-teal-600 dark:text-teal-400 tabular-nums">
+                      {formatACV(group.totalAcv)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {group.deals.map((d: any) => (
+                      <div
+                        key={d.opportunity_id_18}
+                        onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                        className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] hover:border-teal-500/40 hover:shadow-xs transition-all cursor-pointer space-y-1.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[160px]" title={d.opportunity_name}>
+                            {d.opportunity_name}
+                          </p>
+                          <span className="text-xs font-semibold text-[var(--text-primary)] tabular-nums shrink-0">
+                            {formatACV(d.forecast_acv_amount)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                          <span className="truncate max-w-[130px]">{d.account_name}</span>
+                          <span className={`px-1.5 py-0.2 rounded font-semibold ${
+                            d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : d.approval_status === 'Pending Approval'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          }`}>
+                            {d.approval_status || 'Not submitted'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 3: DEAL BOARD BY CRM STAGE
+              Kanban-style board grouping deals across active sales stages
+              ══════════════════════════════════════════════════════════════ */}
+          <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <span>Deal Board by CRM Stage</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Opportunities arranged across sales cycle progression stages
+                </p>
+              </div>
+              <span className="text-xs text-[var(--text-muted)]">
+                {stageColumns.length} active stage{stageColumns.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {stageColumns.map((col) => (
+                <div
+                  key={col.stage}
+                  className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/30 flex flex-col space-y-3"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                    <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[120px]" title={col.stage}>
+                      {col.stage}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)]">
+                      {col.deals.length}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 tabular-nums">
+                    {formatCurrency(col.totalAcv)}
+                  </div>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {col.deals.map((d: any) => (
+                      <div
+                        key={d.opportunity_id_18}
+                        onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                        className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] hover:border-teal-500/40 hover:shadow-xs transition-all cursor-pointer space-y-1.5"
+                      >
+                        <p className="text-xs font-bold text-[var(--text-primary)] truncate" title={d.opportunity_name}>
+                          {d.opportunity_name}
+                        </p>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-[var(--text-primary)] tabular-nums">
+                            {formatCurrency(d.forecast_acv_amount)}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[90px]">
+                            {d.account_name}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] pt-1 border-t border-[var(--border)]/50">
+                          <span className="text-[var(--text-muted)] font-mono">
+                            {d.close_date ? formatDate(d.close_date) : 'No Date'}
+                          </span>
+                          <span className={`px-1.5 py-0.2 rounded font-semibold ${
+                            d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : d.approval_status === 'Pending Approval'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          }`}>
+                            {d.approval_status || 'Not submitted'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 4: APPROVAL TRACKER PER DEAL
+              Step progress tracker: Not Submitted -> Pending Approval -> Approved
+              ══════════════════════════════════════════════════════════════ */}
+          <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Approval Sign-off Tracker</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Multi-stage management sign-off progress for each portfolio renewal
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-[var(--text-muted)]">
+                {formatDealsCount(approvalTrackerDeals.length)} tracked
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-[var(--text-muted)] font-semibold">
+                    <th className="pb-2.5 px-3">Opportunity</th>
+                    <th className="pb-2.5 px-3">Account</th>
+                    <th className="pb-2.5 px-3 text-right">ACV Amount</th>
+                    <th className="pb-2.5 px-4 text-center">Approval Progress</th>
+                    <th className="pb-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {approvalTrackerDeals.map((d: any) => {
+                    const isApproved = d.approval_status === 'Approved' || d.approval_status === 'Approved - 2nd'
+                    const isPending = d.approval_status === 'Pending Approval'
+                    const stepNumber = isApproved ? 3 : isPending ? 2 : 1
+
+                    return (
+                      <tr
+                        key={d.opportunity_id_18}
+                        onClick={() => setSelectedOppId(d.opportunity_id_18)}
+                        className="hover:bg-[var(--bg-secondary)]/50 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-3 px-3 max-w-[220px]">
+                          <p className="font-bold text-[var(--text-primary)] truncate group-hover:text-teal-600 transition-colors" title={d.opportunity_name}>
+                            {d.opportunity_name}
+                          </p>
+                          <span className="text-[10px] text-[var(--text-muted)] font-mono">{d.opportunity_id_18}</span>
+                        </td>
+                        <td className="py-3 px-3 max-w-[140px] truncate text-[var(--text-secondary)]">
+                          {d.account_name}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold text-[var(--text-primary)] tabular-nums">
+                          {formatCurrency(d.forecast_acv_amount)}
+                        </td>
+                        <td className="py-3 px-4">
+                          {/* 3-Step Visual Progress Indicator */}
+                          <div className="flex items-center justify-center gap-1.5 max-w-xs mx-auto">
+                            {/* Step 1: Not Submitted */}
+                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              stepNumber >= 1
+                                ? 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/20'
+                                : 'opacity-40'
+                            }`}>
+                              <span>1. Pipeline</span>
+                            </div>
+                            <span className="text-[var(--text-muted)]">→</span>
+
+                            {/* Step 2: Pending Approval */}
+                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              stepNumber === 2
+                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 ring-1 ring-amber-500/40 animate-pulse'
+                                : stepNumber > 2
+                                ? 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border border-slate-500/20'
+                                : 'opacity-30'
+                            }`}>
+                              <span>2. In Review</span>
+                            </div>
+                            <span className="text-[var(--text-muted)]">→</span>
+
+                            {/* Step 3: Approved */}
+                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              stepNumber === 3
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold'
+                                : 'opacity-30'
+                            }`}>
+                              <Check className="w-2.5 h-2.5 shrink-0" />
+                              <span>{d.approval_status === 'Approved - 2nd' ? 'Approved 2nd' : 'Approved'}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedOppId(d.opportunity_id_18)
+                            }}
+                            className="text-teal-600 dark:text-teal-400 font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Inspect</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 5: KEY DATES & DEADLINES STRIP
+              Chronological upcoming milestones (Close Dates & Service Expirations)
+              ══════════════════════════════════════════════════════════════ */}
+          {keyDatesList.length > 0 && (
+            <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                    <span>Key Dates &amp; Milestone Schedule</span>
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Upcoming renewal target close dates and contract service end dates
+                  </p>
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {keyDatesList.length} date milestone{keyDatesList.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {keyDatesList.map((evt, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedOppId(evt.oppId)}
+                    className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] hover:border-teal-500/40 transition-all cursor-pointer space-y-1.5 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-bold text-teal-600 dark:text-teal-400 font-mono">
+                        {formatDate(evt.date)}
+                      </span>
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                        evt.type === 'Renewal Close'
+                          ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                          : 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                      }`}>
+                        {evt.type}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-[var(--text-primary)] truncate" title={evt.dealName}>
+                      {evt.dealName}
+                    </p>
+                    <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] pt-1 border-t border-[var(--border)]/50">
+                      <span className="truncate max-w-[100px]">{evt.accountName}</span>
+                      <span className="font-bold text-[var(--text-primary)] tabular-nums">{formatACV(evt.acv)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 6: TOP ACCOUNTS SECTION
+              Card per customer account with value, deal count, and nearest close
+              ══════════════════════════════════════════════════════════════ */}
+          {accountCards.length > 0 && (
+            <div className="p-5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                    <span>Customer Accounts Distribution</span>
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Account-level exposure, renewal volume, and pending sign-offs
+                  </p>
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {accountCards.length} account{accountCards.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {accountCards.map((acc) => (
+                  <div
+                    key={acc.accountName}
+                    onClick={() => openDeals(`${acc.accountName} Deals (${acc.dealsCount})`, acc.deals)}
+                    className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)] hover:border-teal-500/30 transition-all cursor-pointer space-y-2 shadow-2xs group"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <h4 className="font-bold text-xs text-[var(--text-primary)] group-hover:text-teal-600 transition-colors truncate max-w-[190px]" title={acc.accountName}>
+                          {acc.accountName}
+                        </h4>
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          {formatDealsCount(acc.dealsCount)}
+                        </span>
+                      </div>
+                      <span className="font-bold text-sm text-[var(--text-primary)] tabular-nums">
+                        {formatCurrency(acc.totalAcv)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]/60 text-[10px]">
+                      <span className="text-[var(--text-muted)]">
+                        Nearest: <strong className="text-[var(--text-secondary)]">{acc.nearestClose ? formatDate(acc.nearestClose) : '—'}</strong>
+                      </span>
+                      <div className="flex items-center gap-1 font-semibold">
+                        {acc.approvedCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                            {acc.approvedCount} Appr
+                          </span>
+                        )}
+                        {acc.pendingCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                            {acc.pendingCount} Pend
+                          </span>
+                        )}
+                        {acc.notSubmittedCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300">
+                            {acc.notSubmittedCount} Open
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+              SECTION 7: SMALL CHARTS (ONLY WHEN >= 2 ACTIVE CATEGORIES)
+              Removes look-alike bar charts; renders compact charts only when meaningful
+              ══════════════════════════════════════════════════════════════ */}
+          {(activeForecastCats.length >= 2 || activeApprovalStats.length >= 2 || activeBUs.length >= 2 || activeRegions.length >= 2) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                    <span>Portfolio Concentration Analytics</span>
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Categorical breakdowns displaying 2 or more distinct pipeline distributions
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {activeForecastCats.length >= 2 && (
+                  <ChartCard
+                    title="Forecast Category Split"
+                    subtitle="Breakdown of ACV by pipeline stage"
+                    type="horizontal-bars"
+                    data={activeForecastCats}
+                    total={kpis.total_acv}
+                  />
+                )}
+                {activeApprovalStats.length >= 2 && (
+                  <ChartCard
+                    title="Approval Status Distribution"
+                    subtitle="Management approval compliance"
+                    type="horizontal-bars"
+                    data={activeApprovalStats}
+                    total={kpis.total_acv}
+                  />
+                )}
+                {activeBUs.length >= 2 && (
+                  <ChartCard
+                    title="Business Unit Split"
+                    subtitle="ACV distribution across business units"
+                    type="horizontal-bars"
+                    data={activeBUs}
+                    total={kpis.total_acv}
+                  />
+                )}
+                {activeRegions.length >= 2 && (
+                  <ChartCard
+                    title="Regional Distribution"
+                    subtitle="ACV by geographical territory"
+                    type="horizontal-bars"
+                    data={activeRegions}
+                    total={kpis.total_acv}
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
 

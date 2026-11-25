@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { 
   Mail, 
@@ -208,6 +209,13 @@ export default function EmailOutbox() {
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
+          <Link
+            to="/messages"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-all shadow-sm"
+          >
+            <Mail className="w-3.5 h-3.5 text-teal-600" />
+            <span>Delivery Event Log</span>
+          </Link>
           <button
             onClick={handleSendPending}
             disabled={resendLoading || pendingCount === 0}

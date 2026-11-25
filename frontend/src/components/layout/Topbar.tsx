@@ -35,6 +35,8 @@ import { useAuthStore } from '@/store/authStore'
 import { getSnapshots, getFilterOptions, downloadReport, downloadKamReport, authChangePassword } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { showToast } from '@/components/ui/Toast'
+import NotificationPanel from '@/components/notifications/NotificationPanel'
+import CalendarDatePicker from '@/components/common/CalendarDatePicker'
 import {
   DisplaySizeOption,
   DISPLAY_SIZE_OPTIONS,
@@ -488,52 +490,50 @@ export default function Topbar() {
               </button>
             </div>
 
-            {/* 2. As of */}
-            <div
-              id="topbar-as-of-pill"
-              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs items-center gap-1 transition-colors flex-shrink"
-            >
-              <Calendar className="w-3.5 h-3.5 text-[#00A3AD] flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
-                As of:
-              </span>
-              <select
-                value={activeSnap?.id ?? ''}
-                onChange={(e) => setActiveSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[75px] sm:max-w-[85px] xl:max-w-[110px] truncate"
-                id="topbar-view-as-of-select"
-              >
-                {snapshotsLoading && <option>Loading...</option>}
-                {asOfOptions.map((opt: any) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            {/* 2. Data date (formerly As of) */}
+            <div id="topbar-as-of-pill" className="inline-flex flex-shrink">
+              <CalendarDatePicker
+                mode="date"
+                label="Data date"
+                valueId={activeSnap?.id}
+                valueDate={activeSnap?.snapshot_date}
+                snapshots={snapshots}
+                onChange={(snapId) => setActiveSnapshotId(snapId)}
+              />
             </div>
 
-            {/* 3. vs */}
-            <div
-              id="topbar-vs-pill"
-              className="inline-flex h-9 px-1.5 xl:px-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-card)] text-xs whitespace-nowrap items-center gap-1 transition-colors flex-shrink"
-              title={getCompareLabel()}
-            >
-              <GitCompare className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-              <span className="font-medium text-[var(--text-muted)] inline whitespace-nowrap">
-                vs:
-              </span>
-              <select
-                value={compareSnapshotId ?? ''}
-                onChange={(e) => setCompareSnapshotId(e.target.value || null)}
-                className="bg-transparent font-medium text-[var(--text-primary)] outline-none cursor-pointer text-xs pr-1 max-w-[70px] sm:max-w-[80px] xl:max-w-[110px] truncate"
-                id="topbar-compare-with-select"
-              >
-                {vsOptions.map((opt: any) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            {/* 3. Compare to (formerly vs) */}
+            <div id="topbar-vs-pill" className="inline-flex flex-shrink" title={getCompareLabel()}>
+              <CalendarDatePicker
+                mode="compare"
+                label="Compare to"
+                valueId={compareSnapshotId}
+                valueDate={compareSnap?.snapshot_date}
+                snapshots={snapshots}
+                comparePreset={
+                  vsOptions.find((v: any) => v.id === compareSnapshotId)?.label?.toLowerCase().includes('yesterday')
+                    ? 'yesterday'
+                    : vsOptions.find((v: any) => v.id === compareSnapshotId)?.label?.toLowerCase().includes('last week')
+                    ? 'last_week'
+                    : undefined
+                }
+                onPresetChange={(preset) => {
+                  if (preset === 'yesterday') {
+                    const ySnap = vsOptions.find((v: any) => v.id === activeSnap?.yesterday_date || v.label?.toLowerCase().includes('yesterday'))
+                    if (ySnap) setCompareSnapshotId(ySnap.id)
+                  } else if (preset === 'last_week') {
+                    const lwSnap = vsOptions.find((v: any) => v.label?.toLowerCase().includes('last week'))
+                    if (lwSnap) setCompareSnapshotId(lwSnap.id)
+                  } else if (preset === 'previous_upload') {
+                    const prevSnap = snapshots.find((s: any) => s.id !== activeSnap?.id && s.snapshot_date < (activeSnap?.snapshot_date || ''))
+                    if (prevSnap) setCompareSnapshotId(prevSnap.id)
+                  } else {
+                    const prev = vsOptions[0]
+                    if (prev) setCompareSnapshotId(prev.id)
+                  }
+                }}
+                onChange={(snapId) => setCompareSnapshotId(snapId)}
+              />
             </div>
 
             {/* 4. Period */}
@@ -1048,6 +1048,11 @@ export default function Topbar() {
               )}
             </div>
 
+            {/* Notification Centre Bell */}
+            {currentUser && (
+              <NotificationPanel />
+            )}
+
             {/* User Profile / Authentication Menu (With Display Size inside) */}
             {currentUser ? (
               <div className="relative flex-shrink-0" ref={profileRef}>
@@ -1066,7 +1071,7 @@ export default function Topbar() {
                   }`}>
                     {currentUser.name?.[0]?.toUpperCase() || 'U'}
                   </div>
-                  <span className="text-[var(--text-primary)] max-w-[80px] truncate hidden md:inline">
+                  <span className="text-[var(--text-primary)] max-w-[140px] truncate hidden md:inline font-medium" title={currentUser.name}>
                     {currentUser.name}
                   </span>
                   <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
@@ -1260,10 +1265,10 @@ export default function Topbar() {
 
               {/* Panel Body */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {/* As of Date */}
+                {/* Data date */}
                 <div>
                   <label className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1.5">
-                    As of Snapshot
+                    Data date
                   </label>
                   <select
                     value={activeSnap?.id ?? ''}
