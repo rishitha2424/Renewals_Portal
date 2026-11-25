@@ -1066,6 +1066,7 @@ class AnnotationService:
         author_role: str = "admin",
         user_display: str | None = None,
         recipient_ids: Optional[list[str]] = None,
+        batch_id: Optional[str] = None,
     ) -> dict:
         opp_id = str(opportunity_id_18 or "").strip()
         cleaned_text = str(text or "").strip()
@@ -1099,6 +1100,7 @@ class AnnotationService:
             author_id=user_id,
             author_role=author_role or "admin",
             recipient_ids=rec_ids_str,
+            batch_id=batch_id,
         )
         self.db.add(comment)
 

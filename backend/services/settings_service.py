@@ -57,6 +57,10 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
         "value": "current_quarter",
         "description": "Default period filter for KAM portal views (My Overview and My Opportunities). Options: current_quarter, all_open, next_quarter, FY2026, etc.",
     },
+    "max_comment_batch_size": {
+        "value": "50",
+        "description": "Maximum number of deals that can be commented on in a single batch operation from deal lists.",
+    },
 }
 
 
@@ -182,6 +186,23 @@ class SettingsService:
             return val.strip() if val else "current_quarter"
         except Exception:
             return "current_quarter"
+
+    @staticmethod
+    def get_max_comment_batch_size(db: Optional[Session] = None) -> int:
+        if db is None:
+            try:
+                from backend.database import SessionLocal
+                session = SessionLocal()
+                res = SettingsService.get_max_comment_batch_size(session)
+                session.close()
+                return res
+            except Exception:
+                return 50
+        try:
+            val = SettingsService.get_setting(db, "max_comment_batch_size", "50")
+            return max(1, int(val.strip())) if val else 50
+        except Exception:
+            return 50
 
     @staticmethod
     def get_exclude_reconciliation_entry(db: Optional[Session] = None) -> bool:

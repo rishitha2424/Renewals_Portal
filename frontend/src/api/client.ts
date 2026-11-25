@@ -1366,6 +1366,25 @@ export const getCommentsLog = async (params: {
   return res.data
 }
 
+export interface BatchCommentPayload {
+  deal_ids: string[]
+  text: string
+  visibility?: 'internal' | 'shared_with_owner'
+  recipient_ids?: string[]
+}
+
+export interface BatchCommentResponse {
+  success: boolean
+  batch_id: string
+  comments_created: number
+  total_recipients: number
+}
+
+export const addBatchComment = async (payload: BatchCommentPayload): Promise<BatchCommentResponse> => {
+  const res = await api.post('/comments/batch', payload)
+  return res.data
+}
+
 
 
 

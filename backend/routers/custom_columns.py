@@ -511,7 +511,7 @@ def add_deal_comment(
         vis = "shared_with_owner"
         author_role = "kam"
     else:
-        author_name = body.author or ctx.display_name
+        author_name = ctx.display_name or ("Admin" if ctx.is_admin else "Management")
         vis = body.visibility or "internal"
         author_role = ctx.role
 
@@ -548,6 +548,7 @@ def add_deal_comment(
         # Filter out author
         recipients = [u for u in recipients if str(u.id) != str(user_id)]
 
+        batch_id = str(uuid.uuid4())
         comment = svc.add_comment(
             opportunity_id_18=opportunity_id,
             text=body.text,
@@ -557,6 +558,7 @@ def add_deal_comment(
             author_role=author_role,
             user_display=user_disp,
             recipient_ids=[u.id for u in recipients],
+            batch_id=batch_id,
         )
 
         # Dispatch In-App Notifications & Emails for each recipient

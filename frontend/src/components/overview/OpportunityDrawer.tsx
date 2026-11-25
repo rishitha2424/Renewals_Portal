@@ -160,9 +160,6 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
 
   // ── Comments State ────────────────────────────────────────────────────────
   const [comments, setComments] = useState<DealComment[]>([])
-  const [commentAuthor, setCommentAuthor] = useState<string>(() => {
-    return localStorage.getItem('deal_commenter_name') || 'Reviewer'
-  })
   const [commentText, setCommentText] = useState('')
   const [commentVisibility, setCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
   const [commentRecipients, setCommentRecipients] = useState<string[]>([])
@@ -267,8 +264,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     const trimmed = commentText.trim()
     if (!trimmed || !oppId) return
 
-    const author = commentAuthor.trim() || adminName || currentUser?.name || 'Reviewer'
-    localStorage.setItem('deal_commenter_name', author)
+    const author = currentUser?.name || adminName || 'User'
     const effectiveVis = isKam ? 'shared_with_owner' : commentVisibility
 
     const tempComment: DealComment = {
@@ -1171,13 +1167,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                       <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 flex items-center gap-1">
                         <User className="w-3 h-3" /> Author:
                       </span>
-                      <input
-                        type="text"
-                        value={commentAuthor}
-                        onChange={(e) => setCommentAuthor(e.target.value)}
-                        placeholder="Your name or role"
-                        className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
-                      />
+                      <span className="text-xs font-semibold text-[var(--text-primary)] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)]">
+                        {currentUser?.name || 'User'}
+                      </span>
                     </div>
 
                     <textarea
@@ -1566,13 +1558,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                     <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0 flex items-center gap-1">
                       <User className="w-3 h-3" /> Commenter:
                     </span>
-                    <input
-                      type="text"
-                      value={commentAuthor}
-                      onChange={(e) => setCommentAuthor(e.target.value)}
-                      placeholder="Your name or role"
-                      className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    />
+                    <span className="text-xs font-semibold text-[var(--text-primary)] px-2 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]">
+                      {currentUser?.name || 'User'}
+                    </span>
                   </div>
 
                   <textarea

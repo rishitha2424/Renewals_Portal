@@ -17,13 +17,18 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel, Field
+import uuid
+
 from backend.database import get_db
 from backend.models.opportunity import Opportunity
-from backend.models.custom_column import DealComment
-from backend.models.user import User, EmailOutbox
+from backend.models.custom_column import DealComment, AnnotationAudit
+from backend.models.user import User, EmailOutbox, UserAlias
 from backend.models.snapshot import UploadSnapshot
 from backend.services.context import UserContext, require_authenticated
 from backend.services.scopes import ScopeService, FilterSpec
+from backend.services.settings_service import SettingsService
+from backend.services.notification_service import NotificationService
 
 log = logging.getLogger(__name__)
 
@@ -356,5 +361,256 @@ def get_comments_log(
         "page_size": page_size,
         "total_pages": total_pages,
         "tab": effective_tab,
+    }
+
+
+class BatchCommentRequest(BaseModel):
+    deal_ids: list[str]
+    text: str
+    visibility: Optional[str] = "internal"
+    recipient_ids: Optional[list[str]] = None
+
+
+@router.post("/batch", dependencies=[Depends(require_authenticated)])
+def create_batch_comment(
+    body: BatchCommentRequest,
+    ctx: UserContext = Depends(require_authenticated),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a comment across multiple deals (or a single deal).
+    - Limit number of deals per batch via Settings (default 50).
+    - Permissions server-enforced:
+      - Admin and management can comment on any deal.
+      - KAM can only comment on their own deals (403 if any deal is not theirs).
+      - KAM comments are always shared_with_owner.
+      - Author field is strictly server-enforced (logged-in user's name).
+    - Creates one DealComment record per deal, all linked by batch_id.
+    - Creates one AnnotationAudit entry per deal.
+    - Grouped notifications & emails:
+      - Each recipient gets 1 notification & 1 email per batch listing the deals.
+      - For shared_with_owner, each owner gets 1 email listing only their own deals.
+    """
+    cleaned_ids = list(dict.fromkeys(d.strip() for d in (body.deal_ids or []) if d and d.strip()))
+    if not cleaned_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one opportunity ID must be specified.",
+        )
+
+    max_batch = SettingsService.get_max_comment_batch_size(db)
+    if len(cleaned_ids) > max_batch:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Batch size exceeds maximum limit of {max_batch} deals.",
+        )
+
+    cleaned_text = (body.text or "").strip()
+    if not cleaned_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Comment text cannot be empty.",
+        )
+
+    # 1. Fetch opportunities for all requested deal_ids
+    opps = db.query(Opportunity).filter(Opportunity.opportunity_id_18.in_(cleaned_ids)).all()
+    opp_map: dict[str, Opportunity] = {o.opportunity_id_18: o for o in opps if o.opportunity_id_18}
+
+    # 2. Server-side identity & role validation
+    author_name = ctx.display_name or (
+        "Admin" if ctx.is_admin else ("Management" if ctx.is_management else "Opportunity Owner")
+    )
+    author_role = ctx.role or "viewer"
+    user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
+    user_disp = ctx.display_name or ctx.email or author_name
+
+    if ctx.is_kam:
+        # KAM can only comment on their own deals
+        for d_id in cleaned_ids:
+            opp = opp_map.get(d_id)
+            if not opp or opp.opportunity_owner not in ctx.all_owner_names:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access forbidden: KAMs can only comment on their own opportunities (deal {d_id}).",
+                )
+        vis = "shared_with_owner"
+    else:
+        vis_raw = str(body.visibility or "internal").strip().lower()
+        if vis_raw in ("shared", "shared_with_owner", "shared with owner", "visible to owner", "visible_to_owner"):
+            vis = "shared_with_owner"
+        else:
+            vis = "internal"
+
+    # 3. Create DealComment and AnnotationAudit per deal
+    batch_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    recipient_ids_json = json.dumps(body.recipient_ids) if body.recipient_ids else None
+
+    comments_created = []
+    for d_id in cleaned_ids:
+        c_id = str(uuid.uuid4())
+        comment = DealComment(
+            id=c_id,
+            opportunity_id_18=d_id,
+            author=author_name,
+            text=cleaned_text,
+            is_deleted=False,
+            created_at=now,
+            updated_at=now,
+            visibility=vis,
+            author_id=user_id,
+            author_role=author_role,
+            recipient_ids=recipient_ids_json,
+            batch_id=batch_id,
+        )
+        db.add(comment)
+        comments_created.append(comment)
+
+        # Audit entry per deal
+        audit = AnnotationAudit(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=c_id,
+            column_key="comment",
+            opportunity_id_18=d_id,
+            action="create",
+            old_value=None,
+            new_value=cleaned_text,
+            user_id=user_disp,
+            timestamp=now,
+            extra_info={
+                "author": author_name,
+                "role": author_role,
+                "visibility": vis,
+                "batch_id": batch_id,
+            },
+        )
+        db.add(audit)
+
+    db.flush()
+
+    # 4. Grouped Notifications and Emails
+    # Resolve explicit recipients from recipient_ids
+    notified_user_ids = set()
+    total_notifications_sent = 0
+
+    # Build deal list lines
+    def format_deal_line(d_id: str) -> str:
+        o = opp_map.get(d_id)
+        if o:
+            acv_str = f" – ${float(o.forecast_acv_amount):,.2f}" if o.forecast_acv_amount is not None else ""
+            acct_str = f" ({o.account_name})" if o.account_name else ""
+            return f"• {o.opportunity_name or d_id}{acct_str}{acv_str}"
+        return f"• {d_id}"
+
+    # A) For "Shared with owner": each owner gets 1 notification and 1 email listing ONLY their own deals
+    if vis == "shared_with_owner":
+        owner_to_deal_ids: dict[str, list[str]] = {}
+        for d_id in cleaned_ids:
+            o = opp_map.get(d_id)
+            if o and o.opportunity_owner:
+                owner_clean = o.opportunity_owner.strip()
+                owner_to_deal_ids.setdefault(owner_clean, []).append(d_id)
+
+        for owner_clean, owner_deal_ids in owner_to_deal_ids.items():
+            kam_u = db.query(User).filter(
+                func.lower(User.owner_name) == owner_clean.lower(),
+                User.status != "disabled",
+            ).first()
+            if not kam_u:
+                alias = db.query(UserAlias).filter(
+                    func.lower(UserAlias.alias_name) == owner_clean.lower()
+                ).first()
+                if alias and alias.user.status != "disabled":
+                    kam_u = alias.user
+
+            if kam_u and str(kam_u.id) != str(user_id):
+                owner_lines = [format_deal_line(d_id) for d_id in owner_deal_ids]
+                n_deals = len(owner_deal_ids)
+                deal_title = f"{n_deals} deal{'s' if n_deals > 1 else ''}"
+                first_opp = opp_map.get(owner_deal_ids[0])
+
+                msg_text = f"{cleaned_text}\n\nDeals ({n_deals}):\n" + "\n".join(owner_lines[:15])
+                if len(owner_lines) > 15:
+                    msg_text += f"\n... and {len(owner_lines) - 15} more"
+
+                try:
+                    NotificationService.create_notification(
+                        db=db,
+                        user_id=kam_u.id,
+                        category="comment",
+                        title=f"New comment from {author_name} on {deal_title}",
+                        message=msg_text,
+                        deal_id=owner_deal_ids[0] if n_deals == 1 else None,
+                        deal_name=first_opp.opportunity_name if (first_opp and n_deals == 1) else f"Batch: {n_deals} deals",
+                        target_type="deal_comment",
+                        target_id=comments_created[0].id if n_deals == 1 else batch_id,
+                        send_email=True,
+                        email_sender_name=author_name,
+                        email_sender_role=author_role,
+                        account_name=first_opp.account_name if (first_opp and n_deals == 1) else None,
+                        acv_amount=float(first_opp.forecast_acv_amount) if (first_opp and n_deals == 1 and first_opp.forecast_acv_amount) else None,
+                    )
+                    notified_user_ids.add(kam_u.id)
+                    total_notifications_sent += 1
+                except Exception as e:
+                    log.warning("Failed to queue grouped notification to owner %s: %s", owner_clean, e)
+
+    # B) For explicitly chosen recipients (or defaults for internal):
+    target_users: list[User] = []
+    if body.recipient_ids:
+        raw_ids = list(body.recipient_ids)
+        if "admin" in raw_ids:
+            raw_ids.remove("admin")
+            admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
+            raw_ids.extend(admin_ids)
+        target_users = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
+    else:
+        # Default internal recipients: management & admin
+        if vis == "internal":
+            target_users = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
+
+    # Filter out author and users already notified
+    filtered_recipients = [u for u in target_users if str(u.id) != str(user_id) and u.id not in notified_user_ids]
+
+    if filtered_recipients:
+        all_lines = [format_deal_line(d_id) for d_id in cleaned_ids]
+        n_all = len(cleaned_ids)
+        first_opp = opp_map.get(cleaned_ids[0])
+        batch_summary_title = f"{n_all} deal{'s' if n_all > 1 else ''}"
+
+        full_msg = f"{cleaned_text}\n\nDeals ({n_all}):\n" + "\n".join(all_lines[:20])
+        if len(all_lines) > 20:
+            full_msg += f"\n... and {len(all_lines) - 20} more"
+
+        for r_user in filtered_recipients:
+            try:
+                NotificationService.create_notification(
+                    db=db,
+                    user_id=r_user.id,
+                    category="comment",
+                    title=f"New comment from {author_name} on {batch_summary_title}",
+                    message=full_msg,
+                    deal_id=cleaned_ids[0] if n_all == 1 else None,
+                    deal_name=first_opp.opportunity_name if (first_opp and n_all == 1) else f"Batch: {n_all} deals",
+                    target_type="deal_comment",
+                    target_id=comments_created[0].id if n_all == 1 else batch_id,
+                    send_email=True,
+                    email_sender_name=author_name,
+                    email_sender_role=author_role,
+                    account_name=first_opp.account_name if (first_opp and n_all == 1) else None,
+                    acv_amount=float(first_opp.forecast_acv_amount) if (first_opp and n_all == 1 and first_opp.forecast_acv_amount) else None,
+                )
+                total_notifications_sent += 1
+            except Exception as e:
+                log.warning("Failed to queue grouped notification to recipient %s: %s", r_user.name, e)
+
+    db.commit()
+
+    return {
+        "success": True,
+        "batch_id": batch_id,
+        "comments_created": len(comments_created),
+        "total_recipients": total_notifications_sent,
     }
 

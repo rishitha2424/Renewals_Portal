@@ -135,10 +135,12 @@ class DealComment(Base):
     author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     author_role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
     recipient_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded array of recipient user IDs
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     __table_args__ = (
         Index("ix_deal_comments_opp_deleted", "opportunity_id_18", "is_deleted"),
         Index("ix_deal_comments_created", "created_at"),
+        Index("ix_deal_comments_batch", "batch_id"),
     )
 
     def to_dict(self) -> dict:
@@ -154,4 +156,5 @@ class DealComment(Base):
             "author_id": self.author_id,
             "author_role": self.author_role or "admin",
             "recipient_ids": self.recipient_ids,
+            "batch_id": self.batch_id,
         }

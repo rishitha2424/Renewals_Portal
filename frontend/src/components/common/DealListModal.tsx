@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX } from 'lucide-react'
+import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX, MessageSquare } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
 import { useAppStore } from '@/store/appStore'
+import DealCommentPanel, { CommentTargetDeal } from '@/components/common/DealCommentPanel'
 
 export const getDealStage = (d: any): string => {
   if (!d) return ''
@@ -141,6 +142,11 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
   const [filterRegion, setFilterRegion] = useState<string>(initRegion)
   const [filterBU, setFilterBU] = useState<string>(initBU)
   const [filterOwner, setFilterOwner] = useState<string>(initOwner)
+
+  // Selection & Comment Panel State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showCommentPanel, setShowCommentPanel] = useState<boolean>(false)
+  const [commentTargetDeals, setCommentTargetDeals] = useState<CommentTargetDeal[]>([])
 
   React.useEffect(() => {
     if (initialFilters) {
@@ -302,6 +308,40 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
     }
     return result
   }, [deals, search, filterFC, filterStatus, filterStage, filterRegion, filterBU, filterOwner, sortField, sortDir, deltaGroups, selectedGroup])
+
+  React.useEffect(() => {
+    setSelectedIds(new Set())
+  }, [deals, filterFC, filterStatus, filterStage, filterRegion, filterBU, filterOwner, search])
+
+  const allFilteredSelected = filteredDeals.length > 0 && filteredDeals.every(d => selectedIds.has(d.opportunity_id_18))
+  const someFilteredSelected = filteredDeals.some(d => selectedIds.has(d.opportunity_id_18))
+
+  const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+    if (allFilteredSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        filteredDeals.forEach(d => next.delete(d.opportunity_id_18))
+        return next
+      })
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        filteredDeals.forEach(d => next.add(d.opportunity_id_18))
+        return next
+      })
+    }
+  }
+
+  const toggleSelect = (id: string, e: React.MouseEvent | React.ChangeEvent) => {
+    e.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const isFCMovement = useMemo(() => deals.some(d => d.from_category && d.to_category), [deals])
   const isAPMovement = useMemo(() => deals.some(d => d.from_status && d.to_status), [deals])
@@ -546,6 +586,19 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
               <table className="data-table w-full text-xs text-left whitespace-nowrap">
                 <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] z-10">
                   <tr>
+                    <th className="w-10 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        ref={(input) => {
+                          if (input) input.indeterminate = someFilteredSelected && !allFilteredSelected
+                        }}
+                        onChange={toggleSelectAll}
+                        className="w-3.5 h-3.5 rounded border-[var(--border)] text-teal-600 focus:ring-teal-500 cursor-pointer"
+                        title="Select all (filtered)"
+                        aria-label="Select all filtered deals"
+                      />
+                    </th>
                     <th className="px-3 py-2 font-medium text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] group col-main" onClick={() => handleSort('opportunity_name')}>
                       <div className="flex items-center gap-1">Opportunity {sortField === 'opportunity_name' ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-50" />}</div>
                     </th>
@@ -586,6 +639,7 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
                     {hasWhyHere && (
                       <th className="px-3 py-2 font-medium text-[var(--text-muted)]">Why it is here</th>
                     )}
+                    <th className="w-10 px-2 py-2 text-center font-medium text-[var(--text-muted)]" title="Comment"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
@@ -598,6 +652,15 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
                         onClose()
                       }}
                     >
+                      <td className="w-10 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(d.opportunity_id_18)}
+                          onChange={(e) => toggleSelect(d.opportunity_id_18, e)}
+                          className="w-3.5 h-3.5 rounded border-[var(--border)] text-teal-600 focus:ring-teal-500 cursor-pointer"
+                          aria-label={`Select ${d.opportunity_name || d.opportunity_id_18}`}
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-medium text-[var(--text-primary)] max-w-xs truncate" title={d.opportunity_name || d.opportunity_id_18}>
@@ -704,14 +767,98 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
                           </span>
                         </td>
                       )}
+                      <td className="w-10 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCommentTargetDeals([
+                              {
+                                id: d.opportunity_id_18,
+                                name: d.opportunity_name || d.opportunity_id_18,
+                                account: d.account_name,
+                                owner: getDealOwner(d),
+                                acv: d.forecast_acv_amount,
+                              },
+                            ])
+                            setShowCommentPanel(true)
+                          }}
+                          className="p-1 rounded-md text-[var(--text-muted)] hover:text-teal-600 hover:bg-[var(--bg-hover)] transition-colors cursor-pointer inline-flex items-center justify-center"
+                          title="Add comment"
+                          aria-label={`Comment on ${d.opportunity_name || d.opportunity_id_18}`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               )})()}
           </div>
+
+          {/* Slim Selection Bottom Bar */}
+          {selectedIds.size > 0 && (
+            <div className="sticky bottom-0 z-20 flex items-center justify-between px-4 py-2.5 bg-[#12284C] text-white border-t border-[var(--border)] shadow-lg text-xs shrink-0 animate-in slide-in-from-bottom duration-150">
+              <div className="flex items-center gap-2">
+                <span className="font-bold">
+                  {selectedIds.size} {selectedIds.size === 1 ? 'deal' : 'deals'} selected
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targets: CommentTargetDeal[] = deals
+                      .filter((d) => selectedIds.has(d.opportunity_id_18))
+                      .map((d) => ({
+                        id: d.opportunity_id_18,
+                        name: d.opportunity_name || d.opportunity_id_18,
+                        account: d.account_name,
+                        owner: getDealOwner(d),
+                        acv: d.forecast_acv_amount,
+                      }))
+                    setCommentTargetDeals(targets)
+                    setShowCommentPanel(true)
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#00A3AD] hover:bg-[#008f98] text-white font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Add comment</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-slate-300 hover:text-white underline font-medium cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
       </motion.div>
+
+      {/* Comment Panel */}
+      <DealCommentPanel
+        isOpen={showCommentPanel}
+        deals={commentTargetDeals}
+        onRemoveDeal={(id) => {
+          setCommentTargetDeals((prev) => prev.filter((d) => d.id !== id))
+          setSelectedIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+        }}
+        onClose={() => {
+          setShowCommentPanel(false)
+          setCommentTargetDeals([])
+        }}
+        onSuccess={() => {
+          setSelectedIds(new Set())
+        }}
+      />
     </AnimatePresence>
   )
 }

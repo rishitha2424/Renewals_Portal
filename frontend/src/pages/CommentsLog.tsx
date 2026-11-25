@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
   MessageSquare,
   Search,
@@ -86,7 +86,7 @@ export default function CommentsLog() {
         period: globalFilters.period,
         as_of: activeSnapshotId,
       }),
-    placeholderData: (prev) => prev,
+    placeholderData: keepPreviousData,
   })
 
   const comments = data?.items || []
