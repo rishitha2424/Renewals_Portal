@@ -10,19 +10,6 @@ const api = axios.create({
   },
 })
 
-// Helper to retrieve active auth token without circular import with authStore
-const getActiveAuthToken = (): string | null => {
-  try {
-    const raw = localStorage.getItem('horizon_auth_state')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed?.state?.token) return parsed.state.token
-    }
-  } catch (_) {}
-  const appState = useAppStore.getState()
-  return appState.adminToken || null
-}
-
 // Static hosts can return index.html for /api requests when their proxy is missing.
 // Treat that as a connection error instead of accepting it as empty application data.
 api.interceptors.response.use(
@@ -38,7 +25,7 @@ api.interceptors.response.use(
     // 401 Unauthorized handling: clear auth and redirect to login
     if (error?.response?.status === 401) {
       const url = error.config?.url || ''
-      // Never intercept login, logout, or initial auth check endpoint
+      // Never intercept login, logout, or initial auth check endpoint (/auth/me)
       if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me')) {
         try {
           localStorage.removeItem('horizon_auth_state')
@@ -56,12 +43,6 @@ api.interceptors.response.use(
 const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/snapshots/upload']
 
 api.interceptors.request.use((config) => {
-  const token = getActiveAuthToken()
-  if (token) {
-    config.headers = config.headers || {}
-    config.headers.Authorization = `Bearer ${token}`
-  }
-
   const url = config.url || ''
   const isExcluded = FILTER_EXCLUDED_PATHS.some((p) => url.includes(p))
   if (isExcluded) return config

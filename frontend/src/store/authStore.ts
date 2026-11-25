@@ -18,9 +18,9 @@ export interface UserProfile {
 
 interface AuthState {
   currentUser: UserProfile | null
-  token: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  isInitializing: boolean
   error: string | null
   checkAuth: () => Promise<UserProfile | null>
   login: (email: string, password: string, rememberMe?: boolean) => Promise<UserProfile>
@@ -33,9 +33,9 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      token: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitializing: true,
       error: null,
 
       checkAuth: async () => {
@@ -44,14 +44,14 @@ export const useAuthStore = create<AuthState>()(
           const res = await getAuthMe()
           const user = res?.user || (res?.id ? res : null)
           if (user) {
-            set({ currentUser: user, isAuthenticated: true, isLoading: false })
+            set({ currentUser: user, isAuthenticated: true, isLoading: false, isInitializing: false })
             return user
           }
-          set({ currentUser: null, token: null, isAuthenticated: false, isLoading: false })
+          set({ currentUser: null, isAuthenticated: false, isLoading: false, isInitializing: false })
           return null
         } catch {
           // If check fails (e.g. 401), clear auth
-          set({ currentUser: null, token: null, isAuthenticated: false, isLoading: false })
+          set({ currentUser: null, isAuthenticated: false, isLoading: false, isInitializing: false })
           return null
         }
       },
@@ -61,8 +61,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const res = await authLogin(email, password, rememberMe)
           const user = res.user
-          const token = res.token || null
-          set({ currentUser: user, token, isAuthenticated: true, isLoading: false, error: null })
+          set({ currentUser: user, isAuthenticated: true, isLoading: false, isInitializing: false, error: null })
           // Ensure fresh login always defaults to latest snapshot and defaults
           try {
             const { useAppStore, clearSessionFilters } = await import('./appStore')
@@ -74,7 +73,7 @@ export const useAuthStore = create<AuthState>()(
           return user
         } catch (err: any) {
           const msg = err?.response?.data?.detail || err?.message || 'Login failed'
-          set({ error: msg, isLoading: false, isAuthenticated: false, currentUser: null, token: null })
+          set({ error: msg, isLoading: false, isAuthenticated: false, currentUser: null, isInitializing: false })
           throw new Error(msg)
         }
       },
@@ -85,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore network errors on logout
         } finally {
-          set({ currentUser: null, token: null, isAuthenticated: false, error: null, isLoading: false })
+          set({ currentUser: null, isAuthenticated: false, error: null, isLoading: false, isInitializing: false })
           try {
             const { useAppStore, clearSessionFilters } = await import('./appStore')
             clearSessionFilters()
@@ -107,7 +106,6 @@ export const useAuthStore = create<AuthState>()(
       name: 'horizon_auth_state',
       partialize: (state) => ({
         currentUser: state.currentUser,
-        token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
     }

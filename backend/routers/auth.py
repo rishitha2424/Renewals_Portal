@@ -117,7 +117,7 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     session_token = sign_session_token(user)
 
     # Set secure HttpOnly cookie
-    is_secure = getattr(settings, "COOKIE_SECURE", False)
+    is_secure = settings.is_cookie_secure
     response.set_cookie(
         key="auth_token",
         value=session_token,
@@ -145,7 +145,6 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
 
     return {
         "status": "success",
-        "token": session_token,
         "redirect_url": redirect_url,
         "user": {
             "id": user.id,
@@ -232,12 +231,12 @@ def change_password(
             key="auth_token",
             value=new_token,
             httponly=True,
-            secure=getattr(settings, "COOKIE_SECURE", False),
+            secure=settings.is_cookie_secure,
             samesite="lax",
             path="/",
         )
 
-    return {"status": "password_changed", "token": new_token}
+    return {"status": "password_changed"}
 
 
 @router.post("/forgot-password")
@@ -323,7 +322,7 @@ def set_password_from_invite(req: SetPasswordRequest, response: Response, db: Se
         key="auth_token",
         value=session_token,
         httponly=True,
-        secure=getattr(settings, "COOKIE_SECURE", False),
+        secure=settings.is_cookie_secure,
         samesite="lax",
         path="/",
     )
@@ -331,7 +330,6 @@ def set_password_from_invite(req: SetPasswordRequest, response: Response, db: Se
     redirect_url = "/kam/overview" if user.role == "kam" else "/"
     return {
         "status": "success",
-        "token": session_token,
         "redirect_url": redirect_url,
         "user": {
             "id": user.id,

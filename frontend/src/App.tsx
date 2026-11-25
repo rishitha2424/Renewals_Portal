@@ -30,10 +30,10 @@ import { useAdminSession } from '@/hooks/useAdminSession'
 import { computeScale, applyScale, getSavedDisplaySize } from '@/config/layoutScale'
 
 function ProtectedRoute({ children }: { children?: React.ReactNode }) {
-  const { isAuthenticated, isLoading, currentUser } = useAuthStore()
+  const { isAuthenticated, isInitializing } = useAuthStore()
   const location = useLocation()
 
-  if (isLoading && !currentUser) {
+  if (isInitializing) {
     return <LoadingScreen />
   }
 

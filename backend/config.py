@@ -138,16 +138,20 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = "http://localhost:5173"
     ADMIN_ALERT_EMAIL: str = "rishitha@mobileum.com"
 
-    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", mode="before")
+    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", mode="before")
     @classmethod
-    def parse_bool_env(cls, v: Any) -> bool:
+    def parse_bool_env(cls, v: Any) -> Any:
         """Parse boolean values case-insensitively, handling string representations and whitespace."""
+        if v is None:
+            return None
         if isinstance(v, bool):
             return v
         if isinstance(v, (int, float)):
             return bool(v)
         if isinstance(v, str):
             cleaned = v.strip().strip("'\"").lower()
+            if cleaned in ("none", "null", ""):
+                return None
             return cleaned in ("true", "1", "yes", "t", "on")
         return bool(v)
 
