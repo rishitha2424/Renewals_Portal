@@ -21,7 +21,7 @@ from backend.models.snapshot import UploadSnapshot
 from backend.models.user import User, DealMessage
 from backend.services.context import UserContext, require_authenticated
 from backend.services.scopes import FilterSpec, ScopeService
-from backend.services.deal_serializer import serialize_opportunity
+from backend.services.deal_serializer import serialize_opportunity, is_deal_missing_service_dates
 from backend.services.v2_delayed_service import V2DelayedService
 from backend.services.kam_report_service import KamReportService
 from backend.services.settings_service import SettingsService
@@ -43,7 +43,7 @@ def _require_kam_or_management(ctx: UserContext = Depends(require_authenticated)
 
 def _resolve_snapshot(db: Session, as_of: Optional[str] = None) -> UploadSnapshot | None:
     snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
-    if as_of:
+    if as_of and isinstance(as_of, str) and as_of.strip():
         s_target = db.query(UploadSnapshot).filter(UploadSnapshot.id == as_of).first()
         if not s_target:
             try:
@@ -220,7 +220,7 @@ def get_kam_overview(
     # 4. Needs Review (Missing service start or expiry date)
     missing_dates_deals = [
         d for d in deals
-        if not d.get("service_start_date") or not d.get("service_expiry_date")
+        if is_deal_missing_service_dates(d)
     ]
     needs_review_count = len(missing_dates_deals)
     needs_review_acv = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in missing_dates_deals), 2)

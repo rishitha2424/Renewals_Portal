@@ -474,10 +474,10 @@ export default function KamOverview() {
           count={kpis.needs_review_count}
           dealsLabel={kpis.needs_review_count === 1 ? 'deal' : 'deals'}
           tone="neutral"
-          subtitle="Immediate attention / missing dates"
+          subtitle="Missing service dates"
           onClick={() => openDeals(
             `Needs Review Deals (${kpis.needs_review_count})`,
-            actionLists.immediate_attention || []
+            actionLists.missing_service_dates || []
           )}
         />
       </div>

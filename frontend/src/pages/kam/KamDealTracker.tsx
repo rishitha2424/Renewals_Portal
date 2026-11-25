@@ -127,7 +127,7 @@ export default function KamDealTracker() {
   }
 
   // 2. Renewal Calendar Grouping
-  const dateField = calendarGrouping === 'close_date' ? 'close_date' : 'service_end_date'
+  const dateField = calendarGrouping === 'close_date' ? 'close_date' : 'service_expiry_date'
   const monthlyGroupsMap = new Map<string, {
     key: string
     label: string
@@ -140,8 +140,8 @@ export default function KamDealTracker() {
   }>()
 
   allDeals.forEach((d) => {
-    const rawDate = (d[dateField] || '').trim()
-    const monthKey = rawDate.length >= 7 ? rawDate.slice(0, 7) : 'Unscheduled'
+    const rawDate = (d[dateField] || d['service_end_date'] || '').trim()
+    const monthKey = (rawDate.length >= 7 && rawDate !== '00:00:00') ? rawDate.slice(0, 7) : 'Unscheduled'
     if (!monthlyGroupsMap.has(monthKey)) {
       monthlyGroupsMap.set(monthKey, {
         key: monthKey,
@@ -175,6 +175,8 @@ export default function KamDealTracker() {
   const sortedMonths = Array.from(monthlyGroupsMap.entries())
     .sort(([a], [b]) => (a === 'Unscheduled' ? 1 : b === 'Unscheduled' ? -1 : a.localeCompare(b)))
     .map(([, v]) => v)
+
+  const unscheduledGroup = sortedMonths.find((m) => m.key === 'Unscheduled')
 
   const maxMonthAcv = Math.max(...sortedMonths.map((m) => m.totalPositiveAcv), 1)
   const maxNegativeAcv = Math.abs(Math.min(...sortedMonths.map((m) => m.negativeAcv), 0))
@@ -454,6 +456,25 @@ export default function KamDealTracker() {
               })}
             </div>
           </div>
+
+          {/* Explanation note when deals have no date */}
+          {unscheduledGroup && unscheduledGroup.deals.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 mt-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>
+                  <strong className="font-semibold">{unscheduledGroup.deals.length} {unscheduledGroup.deals.length === 1 ? 'deal has' : 'deals have'}</strong> no {calendarGrouping === 'close_date' ? 'close date' : 'service expiry date'}.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openDeals(`${calendarGrouping === 'close_date' ? 'Missing Close Date' : 'Missing Service Expiry Date'} Deals (${unscheduledGroup.deals.length})`, unscheduledGroup.deals)}
+                className="font-bold underline hover:no-underline cursor-pointer text-amber-700 dark:text-amber-300"
+              >
+                View {unscheduledGroup.deals.length} {unscheduledGroup.deals.length === 1 ? 'deal' : 'deals'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -803,25 +824,63 @@ export default function KamDealTracker() {
           </div>
 
           {/* Single Multi-Segment Horizontal Stacked Bar */}
-          <div className="w-full h-8 rounded-xl overflow-hidden flex bg-[var(--bg-secondary)] border border-[var(--border)] p-0.5">
-            {stageList.map((item, idx) => {
-              const color = STAGE_PALETTE[idx % STAGE_PALETTE.length]
-              const widthPct = (Math.max(item.acv, 0) / stageTotalPositiveAcv) * 100
+          <div className="pt-6 pb-2">
+            <div className="w-full overflow-x-auto min-w-0 pb-1">
+              <div className="w-full min-w-[320px] h-9 rounded-xl overflow-visible flex bg-[var(--bg-secondary)] border border-[var(--border)] p-0.5 relative">
+                {stageList.map((item, idx) => {
+                  const color = STAGE_PALETTE[idx % STAGE_PALETTE.length]
+                  const widthPct = (Math.max(item.acv, 0) / stageTotalPositiveAcv) * 100
+                  const share = stageTotalPositiveAcv > 0 ? Math.round((Math.max(item.acv, 0) / stageTotalPositiveAcv) * 100) : 0
+                  const isThin = widthPct < 8
 
-              if (widthPct <= 0) return null
+                  return (
+                    <div
+                      key={item.stage}
+                      data-stage-segment={item.stage}
+                      onClick={() => openDeals(`Stage: ${item.stage} (${item.count})`, item.deals)}
+                      style={{
+                        flex: `${Math.max(item.acv, 1)} 1 ${Math.max(widthPct, 5)}%`,
+                        minWidth: '40px',
+                        backgroundColor: color,
+                      }}
+                      className="h-full relative group cursor-pointer hover:brightness-105 transition-all flex items-center justify-center rounded-[6px] mx-[1px]"
+                      title={`${item.stage}: ${item.count} ${item.count === 1 ? 'deal' : 'deals'} · ${formatCurrency(item.acv)} (${share}%)`}
+                    >
+                      {/* Count on the bar (when wide enough) */}
+                      {!isThin && (
+                        <span data-stage-count={item.count} className="text-[11px] font-bold text-white drop-shadow-xs truncate px-1">
+                          {item.count}
+                        </span>
+                      )}
 
-              return (
-                <div
-                  key={item.stage}
-                  onClick={() => openDeals(`Stage: ${item.stage} (${item.count})`, item.deals)}
-                  style={{ width: `${Math.max(widthPct, 2)}%`, backgroundColor: color }}
-                  className="h-full cursor-pointer hover:opacity-90 transition-all flex items-center justify-center text-[10px] font-bold text-white truncate px-1"
-                  title={`${item.stage}: ${item.count} deals (${formatCurrency(item.acv)})`}
-                >
-                  {widthPct > 8 ? `${item.count}` : ''}
-                </div>
-              )
-            })}
+                      {/* Small label directly above the bar when segment is thin */}
+                      {isThin && (
+                        <div
+                          data-stage-label={item.stage}
+                          className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
+                        >
+                          <span data-stage-count={item.count} className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-primary)] shadow-xs leading-tight whitespace-nowrap">
+                            {item.count}
+                          </span>
+                          <span className="w-0.5 h-1 bg-[var(--border)]" />
+                        </div>
+                      )}
+
+                      {/* Tooltip with stage name, deals, ACV and percentage */}
+                      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center pointer-events-none z-30 whitespace-nowrap">
+                        <div className="px-2.5 py-1.5 rounded-lg bg-[#0F172A] text-white text-[11px] shadow-lg border border-slate-700/50 flex flex-col items-center gap-0.5">
+                          <span className="font-semibold text-slate-100">{item.stage}</span>
+                          <span className="text-slate-300 text-[10px]">
+                            {item.count} {item.count === 1 ? 'deal' : 'deals'} · {formatCurrency(item.acv)} ({share}%)
+                          </span>
+                        </div>
+                        <div className="w-1.5 h-1.5 bg-[#0F172A] rotate-45 -mt-1 border-r border-b border-slate-700/50" />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Legend and stats below bar */}
@@ -889,3 +948,4 @@ export default function KamDealTracker() {
     </div>
   )
 }
+
