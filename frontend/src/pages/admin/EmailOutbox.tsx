@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { 
@@ -24,6 +25,8 @@ import {
   cancelOutboxEmail,
   deleteOutboxEmail,
   sendOutboxEmailNow,
+  retryOutboxEmail,
+  retryFailedEmails,
   EmailOutboxItem,
   MailDiagnostics
 } from '@/api/client'
@@ -39,6 +42,9 @@ export default function EmailOutbox() {
   const [testLoading, setTestLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [retryLoading, setRetryLoading] = useState(false)
+  const [confirmRetryItem, setConfirmRetryItem] = useState<EmailOutboxItem | null>(null)
+  const [showBulkRetryModal, setShowBulkRetryModal] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
@@ -53,7 +59,52 @@ export default function EmailOutbox() {
   const inactiveReason = data?.inactive_reason || data?.diagnostics?.inactive_reason || ''
   const diagnostics: MailDiagnostics | undefined = data?.diagnostics || data?.config
 
-  const pendingCount = emails.filter((e) => ['pending', 'pending – email not configured', 'failed'].includes(e.status)).length
+  const pendingCount = emails.filter((e) => ['pending', 'pending – email not configured'].includes(e.status)).length
+  const failedEmails = emails.filter((e) => e.status === 'failed')
+  const failedCount = failedEmails.length
+
+  const handleConfirmRetrySingle = async () => {
+    if (!confirmRetryItem) return
+    setRetryLoading(true)
+    try {
+      const res = await retryOutboxEmail(confirmRetryItem.id)
+      setNotification({
+        type: res.delivered || res.status === 'success' ? 'success' : 'error',
+        message: res.delivered || res.status === 'success'
+          ? `Email successfully retried and delivered to ${confirmRetryItem.recipient_email}.`
+          : (res.detail || 'Failed to redeliver email on retry.'),
+      })
+      queryClient.invalidateQueries({ queryKey: ['email-outbox'] })
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err.response?.data?.detail || 'Failed to retry email delivery.',
+      })
+    } finally {
+      setRetryLoading(false)
+      setConfirmRetryItem(null)
+    }
+  }
+
+  const handleConfirmRetryBulk = async () => {
+    setRetryLoading(true)
+    try {
+      const res = await retryFailedEmails()
+      setNotification({
+        type: res.failed_count === 0 ? 'success' : 'error',
+        message: `Retried ${res.retried_count || 0} failed emails. Successfully sent: ${res.sent_count || 0}${res.failed_count ? `, Failed: ${res.failed_count}` : ''}.`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['email-outbox'] })
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err.response?.data?.detail || 'Failed to bulk retry failed emails.',
+      })
+    } finally {
+      setRetryLoading(false)
+      setShowBulkRetryModal(false)
+    }
+  }
 
   const handleSendTest = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -223,6 +274,15 @@ export default function EmailOutbox() {
           >
             <RotateCw className={`w-3.5 h-3.5 ${resendLoading ? 'animate-spin' : ''}`} />
             <span>Send Pending ({pendingCount})</span>
+          </button>
+          <button
+            onClick={() => setShowBulkRetryModal(true)}
+            disabled={retryLoading || failedCount === 0}
+            title="Retry sending failed emails (requires confirmation)"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 disabled:opacity-50 transition-all shadow-sm"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${retryLoading ? 'animate-spin' : ''}`} />
+            <span>Retry Failed ({failedCount})</span>
           </button>
           <button
             onClick={() => setShowTestModal(true)}
@@ -435,7 +495,18 @@ export default function EmailOutbox() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {['pending', 'pending – email not configured', 'failed'].includes(em.status) && (
+                        {em.status === 'failed' && (
+                          <button
+                            onClick={() => setConfirmRetryItem(em)}
+                            disabled={actionLoadingId === em.id || retryLoading}
+                            title="Retry failed email (requires confirmation)"
+                            className="px-2 py-1 rounded-lg text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                          >
+                            <RotateCw className="w-3 h-3" />
+                            <span>Retry</span>
+                          </button>
+                        )}
+                        {['pending', 'pending – email not configured'].includes(em.status) && (
                           <>
                             <button
                               onClick={() => handleSendNowItem(em.id)}
@@ -474,8 +545,8 @@ export default function EmailOutbox() {
       </div>
 
       {/* Send Test Modal */}
-      {showTestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+      {showTestModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
               <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
@@ -529,7 +600,151 @@ export default function EmailOutbox() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Single Item Retry Confirmation Modal */}
+      {confirmRetryItem && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                <RotateCw className="w-4 h-4 text-rose-500" />
+                <span>Confirm Email Redelivery</span>
+              </h3>
+              <button onClick={() => setConfirmRetryItem(null)}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)]">
+              Are you sure you want to resend this failed email? The system will attempt immediate transmission through corporate SMTP.
+            </p>
+
+            <div className="p-3.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)] font-medium">Recipient Name:</span>
+                <span className="font-semibold text-[var(--text-primary)]">{confirmRetryItem.recipient_name || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)] font-medium">Recipient Email:</span>
+                <span className="font-mono text-[var(--text-primary)]">{confirmRetryItem.recipient_email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)] font-medium">Subject:</span>
+                <span className="font-medium text-[var(--text-secondary)] truncate max-w-[220px]" title={confirmRetryItem.subject}>
+                  {confirmRetryItem.subject}
+                </span>
+              </div>
+              {confirmRetryItem.error_message && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <span className="text-[var(--text-muted)] block mb-1">Previous Failure Reason:</span>
+                  <p className="font-mono text-[10px] text-rose-500 bg-rose-500/10 p-2 rounded-lg">
+                    {confirmRetryItem.error_message}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRetryItem(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRetrySingle}
+                disabled={retryLoading}
+                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                {retryLoading ? (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Redelivering...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Confirm Redelivery</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Bulk Retry Failed Confirmation Modal */}
+      {showBulkRetryModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] shrink-0">
+              <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                <RotateCw className="w-4 h-4 text-rose-500" />
+                <span>Retry All Failed Emails ({failedCount})</span>
+              </h3>
+              <button onClick={() => setShowBulkRetryModal(false)}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)] shrink-0">
+              Please review the recipients below. Once confirmed, each failed message will be redelivered via SMTP.
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-2 border border-[var(--border)] rounded-xl p-3 bg-[var(--bg-secondary)]/50 divide-y divide-[var(--border)]">
+              {failedEmails.map((fe) => (
+                <div key={fe.id} className="pt-2 first:pt-0 flex items-center justify-between text-xs gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[var(--text-primary)] truncate">
+                      {fe.recipient_name || fe.recipient_email}
+                    </p>
+                    <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">
+                      {fe.recipient_email} · {fe.subject}
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-rose-500/10 text-rose-600 shrink-0">
+                    Failed ({fe.attempts ?? fe.retry_count ?? 1}x)
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)] shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowBulkRetryModal(false)}
+                className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRetryBulk}
+                disabled={retryLoading}
+                className="px-4 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                {retryLoading ? (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Retrying All...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Confirm Redeliver All ({failedCount})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

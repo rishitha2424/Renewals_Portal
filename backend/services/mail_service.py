@@ -7,6 +7,7 @@ Never logs passwords or invite tokens.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import smtplib
 import socket
@@ -21,6 +22,8 @@ from backend.config import settings, get_env_file_path
 from backend.models.user import EmailOutbox
 
 log = logging.getLogger(__name__)
+
+_email_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="mail-worker")
 
 
 def _sanitize_error(err_str: str) -> str:
@@ -78,7 +81,34 @@ class MailService:
         diag = settings.get_mail_diagnostics()
         diag["is_configured"] = cls.is_configured()
         diag["inactive_reason"] = cls.get_inactive_reason()
+        diag["mail_active"] = cls.is_configured() and bool(settings.MAIL_ENABLED)
+        timeout_val = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+        diag["timeout"] = timeout_val
+        diag["timeout_seconds"] = timeout_val
+        try:
+            from backend.database import SessionLocal
+            db = SessionLocal()
+            try:
+                last_failed = db.query(EmailOutbox).filter(EmailOutbox.status == "failed").order_by(EmailOutbox.id.desc()).first()
+                diag["last_delivery_error"] = last_failed.error_message if last_failed else None
+            finally:
+                db.close()
+        except Exception:
+            diag["last_delivery_error"] = None
         return diag
+
+    @classmethod
+    def _async_dispatch(cls, outbox_id: str) -> None:
+        """Run dispatch in background worker with its own DB session so HTTP requests return instantly."""
+        try:
+            from backend.database import SessionLocal
+            db = SessionLocal()
+            try:
+                cls.dispatch_outbox_item(db, outbox_id)
+            finally:
+                db.close()
+        except Exception as e:
+            log.warning("Background email dispatch exception for %s: %s", outbox_id, e)
 
     @classmethod
     def queue_email(
@@ -128,7 +158,7 @@ class MailService:
         db.refresh(outbox_entry)
 
         if cls.is_configured():
-            cls.dispatch_outbox_item(db, outbox_entry.id)
+            _email_executor.submit(cls._async_dispatch, outbox_entry.id)
 
         return outbox_entry
 
@@ -234,6 +264,60 @@ class MailService:
         }
 
     @classmethod
+    def retry_failed_emails(cls, db: Session, limit: int = 50) -> dict:
+        """Retry sending failed outbox items, returning recipient details and delivery counts."""
+        settings.reload_from_env()
+        failed_items = (
+            db.query(EmailOutbox)
+            .filter(EmailOutbox.status == "failed")
+            .order_by(EmailOutbox.created_at.asc())
+            .limit(limit)
+            .all()
+        )
+        recipients = [
+            {
+                "id": item.id,
+                "recipient_email": item.recipient_email,
+                "recipient_name": item.recipient_name,
+                "subject": item.subject,
+            }
+            for item in failed_items
+        ]
+        sent_count = 0
+        failed_count = 0
+        for item in failed_items:
+            item.status = "pending"
+            item.error_message = None
+            db.commit()
+            success = cls.dispatch_outbox_item(db, item.id)
+            if success:
+                sent_count += 1
+            else:
+                failed_count += 1
+
+        return {
+            "status": "success",
+            "retried_count": len(failed_items),
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "recipients": recipients,
+        }
+
+    @classmethod
+    def retry_outbox_item(cls, db: Session, item_id: str) -> tuple[bool, Optional[str], Optional[EmailOutbox]]:
+        """Retry sending a single outbox item."""
+        settings.reload_from_env()
+        item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+        if not item:
+            return False, "Outbox item not found", None
+        item.status = "pending"
+        item.error_message = None
+        db.commit()
+        success = cls.dispatch_outbox_item(db, item.id)
+        db.refresh(item)
+        return success, item.error_message, item
+
+    @classmethod
     def _send_smtp(
         cls,
         to_addr: str,
@@ -259,11 +343,12 @@ class MailService:
 
             host = settings.SMTP_HOST
             port = settings.SMTP_PORT
+            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
 
             if settings.SMTP_SSL:
-                server = smtplib.SMTP_SSL(host, port, timeout=15)
+                server = smtplib.SMTP_SSL(host, port, timeout=timeout)
             else:
-                server = smtplib.SMTP(host, port, timeout=15)
+                server = smtplib.SMTP(host, port, timeout=timeout)
 
             with server:
                 if not settings.SMTP_SSL and settings.SMTP_STARTTLS:
@@ -289,7 +374,8 @@ class MailService:
             log.warning("SMTP connect failed for %s: %s", to_addr, err)
             return False, err
         except (socket.timeout, TimeoutError):
-            err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+            err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
             log.warning("SMTP timeout for %s: %s", to_addr, err)
             return False, err
         except ssl.SSLError as exc:
@@ -299,6 +385,19 @@ class MailService:
         except socket.gaierror:
             err = f"DNS lookup failed for SMTP host: {settings.SMTP_HOST}"
             log.warning("SMTP DNS lookup failed: %s", err)
+            return False, err
+        except OSError as exc:
+            err_code = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
+            if err_code in (10060, 110) or "timed out" in str(exc).lower():
+                timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+                err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
+            elif err_code in (10061, 111):
+                err = f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+            elif err_code == 10013 or "forbidden by its access permissions" in str(exc).lower():
+                err = f"Network access denied connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+            else:
+                err = _sanitize_error(str(exc))
+            log.warning("SMTP network error for %s: %s", to_addr, err)
             return False, err
         except Exception as exc:
             err_msg = _sanitize_error(str(exc))
@@ -316,7 +415,8 @@ class MailService:
         if not email:
             return None
         name = getattr(user, "name", email)
-        invite_link = f"{settings.APP_BASE_URL}/set-password/{raw_token}"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        invite_link = f"{app_base}/set-password/{raw_token}"
         subj, html, text = template_invite(name, invite_link)
         return cls.queue_email(
             db,
@@ -335,7 +435,8 @@ class MailService:
         if not email:
             return None
         name = getattr(user, "name", email)
-        reset_link = f"{settings.APP_BASE_URL}/reset-password/{raw_token}"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        reset_link = f"{app_base}/reset-password/{raw_token}"
         subj, html, text = template_password_reset(name, reset_link)
         return cls.queue_email(
             db,
@@ -366,8 +467,9 @@ class MailService:
         body_text = context.get("body_text", "")
         target_type = context.get("target_type", "deal_message")
         target_id = context.get("target_id", "")
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
 
-        link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}" if "message" in target_type else f"{settings.APP_BASE_URL}/opportunities?deal_id={deal_id}"
+        link = f"{app_base}/messages?deal_id={deal_id}" if "message" in target_type else f"{app_base}/opportunities?deal_id={deal_id}"
 
         body_html = f"""
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
@@ -416,7 +518,8 @@ class MailService:
         if not email or not getattr(recipient_user, "email_notifications", True):
             return None
         name = getattr(recipient_user, "name", email)
-        thread_link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        thread_link = f"{app_base}/messages?deal_id={deal_id}"
         subj, html, text = template_new_message(
             recipient_name=name,
             sender_name=sender_name,
@@ -451,7 +554,8 @@ class MailService:
         if not email or not getattr(recipient_user, "email_notifications", True):
             return None
         name = getattr(recipient_user, "name", email)
-        thread_link = f"{settings.APP_BASE_URL}/messages?deal_id={deal_id}"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        thread_link = f"{app_base}/messages?deal_id={deal_id}"
         subj, html, text = template_reply_message(
             recipient_name=name,
             sender_name=sender_name,
@@ -474,7 +578,8 @@ class MailService:
     def template_new_owner_alert(cls, db: Session, owner_name: str, deal_count: int) -> Optional[EmailOutbox]:
         """Queue alert to admin when an unmatched owner is found in an upload."""
         admin_email = settings.ADMIN_ALERT_EMAIL or settings.MAIL_FROM
-        admin_link = f"{settings.APP_BASE_URL}/admin/users"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        admin_link = f"{app_base}/admin/users"
         subj, html, text = template_new_owner_alert(owner_name, deal_count, admin_link)
         return cls.queue_email(
             db,
@@ -489,7 +594,8 @@ class MailService:
     def template_owner_missing_alert(cls, db: Session, owner_name: str) -> Optional[EmailOutbox]:
         """Queue alert to admin when a known owner is missing from an upload."""
         admin_email = settings.ADMIN_ALERT_EMAIL or settings.MAIL_FROM
-        admin_link = f"{settings.APP_BASE_URL}/admin/users"
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+        admin_link = f"{app_base}/admin/users"
         subj, html, text = template_owner_missing_alert(owner_name, admin_link)
         return cls.queue_email(
             db,

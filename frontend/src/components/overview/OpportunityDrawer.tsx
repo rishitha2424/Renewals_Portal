@@ -57,6 +57,7 @@ import Badge, { ForecastBadge, ApprovalBadge } from '@/components/ui/Badge'
 import Drawer from '@/components/ui/Drawer'
 import { Skeleton } from '@/components/ui/Skeleton'
 import showToast from '@/components/ui/Toast'
+import { copyToClipboard } from '@/utils/clipboard'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
 import RecipientPicker from '@/components/common/RecipientPicker'
@@ -251,12 +252,16 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     }
   }, [serverComments, oppId, opp?.opportunity_name])
 
-  const handleCopyId = () => {
+  const handleCopyId = async () => {
     if (!oppId) return
-    navigator.clipboard.writeText(oppId)
-    setCopiedId(true)
-    showToast.success('Opportunity ID copied')
-    setTimeout(() => setCopiedId(false), 2000)
+    const ok = await copyToClipboard(oppId)
+    if (ok) {
+      setCopiedId(true)
+      showToast.success('Opportunity ID copied')
+      setTimeout(() => setCopiedId(false), 2000)
+    } else {
+      showToast.error('Could not copy Opportunity ID')
+    }
   }
 
   const handleAddComment = async (e?: React.FormEvent) => {

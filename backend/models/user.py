@@ -24,14 +24,17 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="kam")  # 'admin', 'management', 'kam'
     owner_name: Mapped[Optional[str]] = mapped_column(String(256), index=True, nullable=True)  # exact Excel opportunity_owner
+    kam_portfolio_name = synonym("owner_name")
     mobileum_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="invited")  # 'invited', 'active', 'disabled', 'pending_email'
     password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sso_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sso_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 'entra_id'
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     lockout_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # Owner (Rishitha) cannot be deleted/demoted/disabled
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # System owner cannot be deleted/demoted/disabled
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # Incremented on password change to invalidate sessions
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -76,6 +79,10 @@ class UserToken(Base):
 
     user: Mapped[User] = relationship("User", back_populates="tokens")
 
+    __table_args__ = (
+        Index("ix_user_tokens_lookup", "user_id", "token_type", "used_at"),
+    )
+
 
 class DealMessage(Base):
     __tablename__ = "deal_messages"
@@ -112,7 +119,7 @@ class EmailOutbox(Base):
     sender_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sender_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     recipient_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", nullable=False)  # 'sent', 'failed', 'pending – email not configured'
+    status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", index=True, nullable=False)  # 'sent', 'failed', 'pending – email not configured'
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     attempts = synonym("retry_count")
@@ -179,5 +186,38 @@ class Notification(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "read_at": self.read_at.isoformat() if self.read_at else None,
         }
+
+
+class SSOAccessRequest(Base):
+    __tablename__ = "sso_access_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)  # 'pending', 'approved', 'dismissed'
+    attempt_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    count = synonym("attempt_count")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    first_seen = synonym("created_at")
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_seen = synonym("last_attempt_at")
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "email": self.email,
+            "name": self.name,
+            "tenant_id": self.tenant_id,
+            "status": self.status,
+            "attempt_count": self.attempt_count,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_attempt_at": self.last_attempt_at.isoformat() if self.last_attempt_at else None,
+            "reviewed_by": self.reviewed_by,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+        }
+
 
 

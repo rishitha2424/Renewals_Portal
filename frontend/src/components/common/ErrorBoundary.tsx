@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Copy } from 'lucide-react'
 import Card from '@/components/ui/Card'
+import { copyToClipboard } from '@/utils/clipboard'
 
 interface Props {
   children?: ReactNode
@@ -39,7 +40,7 @@ class ErrorBoundary extends Component<Props, State> {
 
   private handleCopy = () => {
     const text = `Error: ${this.state.error?.message || this.state.error?.toString()}\n\nStack:\n${this.state.error?.stack || 'N/A'}\n\nComponent Stack:\n${this.state.errorInfo?.componentStack || 'N/A'}`
-    navigator.clipboard.writeText(text)
+    copyToClipboard(text)
   }
 
   public render() {

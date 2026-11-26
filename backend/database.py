@@ -40,7 +40,7 @@ def get_db():
 
 def init_db():
     """Create all tables (called at startup) and ensure model columns exist."""
-    from backend.models import opportunity, snapshot, change_log, daily_summary, setting, custom_column  # noqa: F401
+    from backend.models import opportunity, snapshot, change_log, daily_summary, setting, custom_column, user  # noqa: F401
     Base.metadata.create_all(bind=engine)
     try:
         from sqlalchemy import inspect, text

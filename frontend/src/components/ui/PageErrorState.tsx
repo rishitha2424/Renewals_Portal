@@ -11,13 +11,29 @@ export function PageErrorState({
   message = "Couldn’t load this page. Try again",
   onRetry,
 }: PageErrorStateProps) {
-  const is401 = String(message).includes('401') || String(message).toLowerCase().includes('unauthorized')
+  const status = (message as any)?.response?.status || (message as any)?.status
+  const msgStr = typeof message === 'string' ? message : (message as any)?.message || (message as any)?.detail || String(message || '')
+  const detailStr = (message as any)?.response?.data?.detail ? String((message as any).response.data.detail) : ''
+  const is401 = status === 401 ||
+    (message as any)?.response?.status === 401 ||
+    msgStr.includes('401') ||
+    msgStr.toLowerCase().includes('unauthorized') ||
+    msgStr.toLowerCase().includes('authentication required') ||
+    msgStr.toLowerCase().includes('status code 401') ||
+    detailStr.toLowerCase().includes('unauthorized') ||
+    detailStr.toLowerCase().includes('authentication required')
 
   useEffect(() => {
     if (is401) {
       try {
         localStorage.removeItem('horizon_auth_state')
+        import('@/store/authStore').then(({ useAuthStore }) => {
+          useAuthStore.getState().setCurrentUser(null)
+        }).catch(() => {})
       } catch (_) {}
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login?expired=1'
+      }
     }
   }, [is401])
 
@@ -28,11 +44,11 @@ export function PageErrorState({
           <AlertCircle className="w-6 h-6" />
         </div>
         <h3 className="text-base font-bold text-[var(--text-primary)] mb-2">
-          {is401 ? 'Session Expired or Login Required' : message}
+          {is401 ? 'Session Expired' : (typeof message === 'string' ? message : (message as any)?.message || 'Unable to Load Page')}
         </h3>
         <p className="text-xs text-[var(--text-muted)] mb-6">
           {is401
-            ? 'Your authentication session has expired or is invalid. Please log in to continue.'
+            ? 'Your authentication session has expired or is invalid. Please log in again to continue.'
             : 'We encountered an issue communicating with the backend server.'}
         </p>
         {is401 ? (

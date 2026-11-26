@@ -183,18 +183,18 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[999] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
       id="deal-notes-drawer-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
       <div
-        className="w-full max-w-full sm:max-w-xl md:max-w-2xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200"
+        className="w-full max-w-full sm:max-w-xl md:max-w-2xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200 overflow-hidden"
         id="deal-notes-drawer"
       >
         {/* Drawer Header */}
-        <div className="p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3 shrink-0">
+        <div className="sticky top-0 z-20 p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3 shrink-0 shadow-xs">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
@@ -233,15 +233,16 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer shrink-0 border border-[var(--border)] shadow-xs"
             id="deal-notes-drawer-close"
+            aria-label="Close drawer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center border-b border-[var(--border)] px-4 bg-[var(--bg-card)]">
+        <div className="flex items-center border-b border-[var(--border)] px-4 bg-[var(--bg-card)] shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('notes')}

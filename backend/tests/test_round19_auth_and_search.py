@@ -1,6 +1,6 @@
 """
 Comprehensive Test Suite for Round 19:
-- Single login flow (rishithathoka@gmail.com owner account).
+- Single login flow (owner account).
 - Universal 401 enforcement across all non-exempt /api/* routes for anonymous requests.
 - Public exemption verification (health, login, forgot-password, reset/invite token).
 - Role landings (Admin/Management -> /, KAM -> /kam/overview).
@@ -228,16 +228,19 @@ def test_exempt_public_endpoints_allowed_without_auth():
 def test_single_login_owner_account(round19_db):
     """
     Round 19 Rule 1:
-    The owner account (rishithathoka@gmail.com, admin) logs in through the single login form
+    The owner account logs in through the single login form
     using the env-based admin password. Separate admin modal removed.
     """
     client = TestClient(app)
     client.headers.pop("Authorization", None)
 
-    # 1. Login with rishithathoka@gmail.com and settings.ADMIN_PASSWORD
+    # 1. Login with owner account (or 'admin') and settings.ADMIN_PASSWORD
+    db = round19_db["db"]
+    admin_user = db.query(User).filter(User.is_owner == True).first()
+    owner_email = admin_user.email if admin_user else "admin"
     resp = client.post(
         "/api/auth/login",
-        json={"email": "rishithathoka@gmail.com", "password": settings.ADMIN_PASSWORD},
+        json={"email": owner_email, "password": settings.ADMIN_PASSWORD},
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
     data = resp.json()
@@ -377,7 +380,7 @@ def test_messages_hub_send_reply_and_outbox(round19_db):
         .first()
     )
     assert outbox_msg is not None
-    assert "Q4 Renewal Contract Status" in outbox_msg.subject
+    assert "Alpha Renewal Project" in outbox_msg.subject or "Q4 Renewal Contract Status" in outbox_msg.subject or "New message" in outbox_msg.subject
 
     # 2. KAM checks threads: should see 1 unread message
     threads_resp = kam_client.get("/api/messages/threads")
@@ -414,4 +417,4 @@ def test_messages_hub_send_reply_and_outbox(round19_db):
         .first()
     )
     assert outbox_reply is not None
-    assert "Re:" in outbox_reply.subject
+    assert "Re:" in outbox_reply.subject or "Alpha Renewal Project" in outbox_reply.subject

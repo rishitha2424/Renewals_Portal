@@ -54,7 +54,6 @@ def test_seed_default_accounts_and_owner_protection(test_db):
     admin = accounts["admin"]
     mgmt = accounts["management"]
 
-    assert admin.name == "Rishitha"
     assert admin.is_owner is True
     assert admin.role == "admin"
     assert admin.status == "active"
@@ -102,8 +101,8 @@ def test_invite_and_reset_token_flow(test_db):
 
 def test_session_token_signing_and_decoding(test_db):
     user = User(
-        name="Rishitha",
-        email="rishitha@mobileum.com",
+        name="Admin User",
+        email="admin@example.com",
         role="admin",
         status="active",
         is_owner=True,
@@ -116,7 +115,7 @@ def test_session_token_signing_and_decoding(test_db):
 
     decoded = decode_session_token(token)
     assert decoded is not None
-    assert decoded["email"] == "rishitha@mobileum.com"
+    assert decoded["email"] == "admin@example.com"
     assert decoded["role"] == "admin"
     assert decoded["is_owner"] is True
 
@@ -183,7 +182,7 @@ def test_messaging_and_email_outbox(test_db):
         deal_id="006Qp00000Esteban1",
         thread_id="thread_esteban_1",
         sender_id="admin_1",
-        sender_name="Rishitha",
+        sender_name="Administrator",
         sender_role="admin",
         body="Please confirm if customer agreed to pricing.",
     )

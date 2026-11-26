@@ -4,7 +4,7 @@ Authentication & User Management Service for Round 18.
 - Token signing & verification (HMAC-SHA256 session tokens).
 - Invite tokens & Password reset tokens (one-time, expiring, SHA256 hashed in DB).
 - Account lockout & rate limiting.
-- Seeding default admin (Rishitha, is_owner=True) & management account.
+- Seeding default admin (is_owner=True) & management account.
 - Last admin and owner protection.
 """
 from __future__ import annotations
@@ -54,7 +54,8 @@ def hash_password(password: str) -> str:
         return f"argon2${_argon2_hasher.hash(password)}"
 
     if bcrypt is not None:
-        salt = bcrypt.gensalt(rounds=12)
+        rounds = getattr(settings, "BCRYPT_ROUNDS", 12)
+        salt = bcrypt.gensalt(rounds=rounds)
         hashed = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
         return f"bcrypt${hashed}"
 
@@ -309,48 +310,73 @@ def reset_auth_failures(key: str) -> None:
     _FAILED_ATTEMPTS.pop(key, None)
 
 
+def mask_email(email: Optional[str]) -> str:
+    """Mask email for secure logging (e.g. j***e@example.com)."""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local[0] + "***"
+    else:
+        masked_local = local[0] + "***" + local[-1]
+    return f"{masked_local}@{domain}"
+
+
 # --- Default Accounts Seeding ---
 
-def ensure_default_accounts(db: Session) -> dict[str, User]:
+def ensure_default_accounts(db: Session) -> dict[str, Optional[User]]:
     """
-    Ensure the admin (Rishitha, is_owner=True) and default management account exist.
-    Admin can always authenticate with ADMIN_PASSWORD from env or their own DB password.
+    Ensure the system owner (is_owner=True) and default management account exist.
+    Owner email and display name are derived from environment variables: OWNER_EMAIL and OWNER_NAME.
+    If OWNER_EMAIL is unset, the existing owner account in the database is retained.
     """
-    admin_email = "rishithathoka@gmail.com"
+    env_owner_email = (getattr(settings, "OWNER_EMAIL", None) or "").strip()
+    env_owner_name = (getattr(settings, "OWNER_NAME", None) or "").strip()
     mgmt_email = "management@mobileum.com"
 
-    # 1. Admin Rishitha (Owner)
-    admin = db.query(User).filter(func.lower(User.email) == admin_email.lower()).first()
+    # 1. Identify existing owner by stable marker: is_owner=True, or first admin created
+    admin = db.query(User).filter(User.is_owner == True).first()
     if not admin:
-        # Check if there is an existing user with rishitha@mobileum.com or is_owner or name Rishitha
-        admin = db.query(User).filter(
-            or_(
-                func.lower(User.email) == "rishitha@mobileum.com",
-                User.is_owner == True,
-                User.name.ilike("%Rishitha%"),
-            )
-        ).first()
+        admin = db.query(User).filter(User.role == "admin").order_by(User.id.asc()).first()
+        if admin and not admin.is_owner:
+            admin.is_owner = True
+            db.commit()
+            db.refresh(admin)
 
     if not admin:
-        admin = User(
-            name="Rishitha",
-            email=admin_email,
-            role="admin",
-            status="active",
-            is_owner=True,
-            must_change_password=False,
-            password_hash=hash_password(settings.ADMIN_PASSWORD) if settings.ADMIN_PASSWORD else None,
-        )
-        db.add(admin)
-        db.commit()
-        db.refresh(admin)
-        log.info(f"Created default admin owner account: {admin.email}")
+        # No existing owner account found in database
+        initial_email = env_owner_email or "admin@mobileum.com"
+        initial_name = env_owner_name or "Administrator"
+        existing = db.query(User).filter(func.lower(User.email) == initial_email.lower()).first()
+        if existing:
+            admin = existing
+            admin.is_owner = True
+            admin.role = "admin"
+            admin.status = "active"
+            if env_owner_name:
+                admin.name = env_owner_name
+            if not admin.password_hash and settings.ADMIN_PASSWORD:
+                admin.password_hash = hash_password(settings.ADMIN_PASSWORD)
+            db.commit()
+            db.refresh(admin)
+            log.info(f"Promoted existing user {mask_email(admin.email)} to system owner")
+        else:
+            admin = User(
+                name=initial_name,
+                email=initial_email,
+                role="admin",
+                status="active",
+                is_owner=True,
+                must_change_password=False,
+                password_hash=hash_password(settings.ADMIN_PASSWORD) if settings.ADMIN_PASSWORD else None,
+            )
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
+            log.info(f"Created default admin owner account: {mask_email(admin.email)}")
     else:
-        # Ensure Rishitha is always owner, admin, active, and email is rishithathoka@gmail.com
+        # Owner already exists in database
         changed = False
-        if admin.email.lower() != admin_email.lower():
-            admin.email = admin_email
-            changed = True
         if not admin.is_owner:
             admin.is_owner = True
             changed = True
@@ -360,9 +386,49 @@ def ensure_default_accounts(db: Session) -> dict[str, User]:
         if admin.status != "active":
             admin.status = "active"
             changed = True
+
+        # Check if OWNER_EMAIL is configured in env and differs from stored email
+        if env_owner_email and admin.email.strip().lower() != env_owner_email.lower():
+            existing_other = db.query(User).filter(
+                func.lower(User.email) == env_owner_email.lower(),
+                User.id != admin.id,
+            ).first()
+            if existing_other:
+                log.error(
+                    "Cannot update owner email to %s: email already belongs to user ID %s (%s). Keeping existing owner email.",
+                    mask_email(env_owner_email),
+                    existing_other.id,
+                    existing_other.name,
+                )
+            else:
+                old_email = admin.email
+                admin.email = env_owner_email
+                changed = True
+                masked_old = mask_email(old_email)
+                masked_new = mask_email(admin.email)
+                log.info("owner email changed from %s to %s", masked_old, masked_new)
+                try:
+                    from backend.models.user import AuditLog
+                    audit_entry = AuditLog(
+                        event_type="owner_email_changed",
+                        user_id=admin.id,
+                        user_email=admin.email,
+                        details=f"owner email changed from {masked_old} to {masked_new}",
+                    )
+                    db.add(audit_entry)
+                except Exception as exc:
+                    log.warning(f"Could not record owner email change in audit log: {exc}")
+
+        # If OWNER_NAME is set in env and differs
+        if env_owner_name and admin.name != env_owner_name:
+            admin.name = env_owner_name
+            changed = True
+
+        # Ensure password hash exists
         if not admin.password_hash and settings.ADMIN_PASSWORD:
             admin.password_hash = hash_password(settings.ADMIN_PASSWORD)
             changed = True
+
         if changed:
             db.commit()
             db.refresh(admin)

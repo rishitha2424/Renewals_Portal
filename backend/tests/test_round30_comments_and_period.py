@@ -141,7 +141,7 @@ def round30_setup():
     # - Admin wrote an internal comment on Luay's Q4 deal
     c2 = DealComment(
         opportunity_id_18="006Qp00000TESTLUAY1",
-        author="Rishitha Admin",
+        author="Admin User",
         author_id=admin_user.id,
         author_role="admin",
         text="Internal note: Margin target needs review with finance.",
@@ -294,7 +294,7 @@ def test_comments_log_admin_tabs_and_filters(round30_setup):
     assert resp_my.status_code == 200
     data_my = resp_my.json()
     assert data_my["total"] == 1
-    assert data_my["items"][0]["author"] == "Rishitha Admin"
+    assert data_my["items"][0]["author"] == "Admin User"
 
     # Tab "all": sees all 3 comments
     resp_all = client.get("/api/comments/log?tab=all", headers=headers)

@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ADMIN_PASSWORD: str = ""
     ADMIN_SECRET_KEY: str = ""
+    OWNER_EMAIL: Optional[str] = None
+    OWNER_NAME: Optional[str] = None
     COOKIE_SECURE: Optional[bool] = None
     ADMIN_TOKEN_EXPIRE_HOURS: int = 8
     AUTH_SESSION_EXPIRE_HOURS: int = 24
@@ -125,20 +127,35 @@ class Settings(BaseSettings):
     RESET_TOKEN_EXPIRE_HOURS: int = 24
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15
+    BCRYPT_ROUNDS: int = 12
 
     # Email & SMTP Configuration (Round 18)
     MAIL_ENABLED: bool = False
     SMTP_HOST: str = "smtp.office365.com"
     SMTP_PORT: int = 587
+    SMTP_TIMEOUT: int = 60
+    SMTP_TIMEOUT_SECONDS: int = 60
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_STARTTLS: bool = True
     SMTP_SSL: bool = False
     MAIL_FROM: str = "renewals@mobileum.com"
     APP_BASE_URL: str = "http://localhost:5173"
-    ADMIN_ALERT_EMAIL: str = "rishitha@mobileum.com"
+    ADMIN_ALERT_EMAIL: str = "alerts@mobileum.com"
 
-    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", mode="before")
+    # Microsoft SSO / Entra ID (OIDC)
+    SSO_ENABLED: bool = False
+    AZURE_TENANT_ID: str = ""
+    AZURE_CLIENT_ID: str = ""
+    AZURE_CLIENT_SECRET: str = ""
+    SSO_REDIRECT_URI: str = ""
+    SSO_ALLOWED_DOMAINS: str = ""
+    SSO_EMAIL_CLAIM: str = "email,preferred_username,upn"
+    SSO_LOCAL_LOGIN_ENABLED: bool = True
+    SSO_PASSWORD_LOGIN_FOR_USERS: bool = False
+    SSO_CLIENT_SECRET_EXPIRES: str = ""
+
+    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", "SSO_ENABLED", "SSO_LOCAL_LOGIN_ENABLED", "SSO_PASSWORD_LOGIN_FOR_USERS", mode="before")
     @classmethod
     def parse_bool_env(cls, v: Any) -> Any:
         """Parse boolean values case-insensitively, handling string representations and whitespace."""
@@ -155,10 +172,10 @@ class Settings(BaseSettings):
             return cleaned in ("true", "1", "yes", "t", "on")
         return bool(v)
 
-    @field_validator("SMTP_PORT", mode="before")
+    @field_validator("SMTP_PORT", "SMTP_TIMEOUT", "SMTP_TIMEOUT_SECONDS", "BCRYPT_ROUNDS", mode="before")
     @classmethod
     def parse_int_env(cls, v: Any) -> int:
-        """Parse port number integer safely from string representations."""
+        """Parse port/timeout/cost integer safely from string representations."""
         if isinstance(v, int):
             return v
         if isinstance(v, str):
@@ -221,6 +238,14 @@ class Settings(BaseSettings):
                 "set": _is_set(self.MAIL_FROM),
                 "value": self.MAIL_FROM or "(not set)",
             },
+            "SMTP_TIMEOUT": {
+                "set": _is_set(self.SMTP_TIMEOUT),
+                "value": self.SMTP_TIMEOUT,
+            },
+            "SMTP_TIMEOUT_SECONDS": {
+                "set": _is_set(self.SMTP_TIMEOUT_SECONDS),
+                "value": self.SMTP_TIMEOUT_SECONDS,
+            },
         }
 
         # Determine exact reason why mail is active or inactive
@@ -245,8 +270,11 @@ class Settings(BaseSettings):
             "env_file_path": str(env_path),
             "env_file_exists": file_exists,
             "mail_enabled": bool(self.MAIL_ENABLED),
+            "mail_active": is_configured and bool(self.MAIL_ENABLED),
             "is_configured": is_configured,
             "inactive_reason": inactive_reason,
+            "timeout": self.SMTP_TIMEOUT,
+            "timeout_seconds": self.SMTP_TIMEOUT,
             "variables": variables,
         }
 
@@ -255,6 +283,47 @@ class Settings(BaseSettings):
         if self.COOKIE_SECURE is not None:
             return self.COOKIE_SECURE
         return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def effective_sso_redirect_uri(self) -> str:
+        if self.SSO_REDIRECT_URI and self.SSO_REDIRECT_URI.strip():
+            return self.SSO_REDIRECT_URI.strip()
+        base = (self.APP_BASE_URL or "http://localhost:5173").rstrip("/")
+        return f"{base}/api/auth/sso/callback"
+
+    def get_sso_public_config(self) -> dict:
+        """Safe public SSO configuration. Never leaks secrets or tenant details."""
+        domains = [d.strip().lower() for d in self.SSO_ALLOWED_DOMAINS.split(",") if d.strip()] if self.SSO_ALLOWED_DOMAINS else []
+        return {
+            "sso_enabled": bool(self.SSO_ENABLED),
+            "sso_local_login_enabled": bool(self.SSO_LOCAL_LOGIN_ENABLED),
+            "sso_password_login_for_users": bool(self.SSO_PASSWORD_LOGIN_FOR_USERS),
+            "allowed_domains": domains,
+            "redirect_uri": self.effective_sso_redirect_uri,
+        }
+
+    def get_sso_admin_diagnostics(self) -> dict:
+        """Safe admin diagnostics with secrets masked."""
+        def mask_val(v: str) -> str:
+            v = (v or "").strip()
+            if not v:
+                return "(not configured)"
+            if len(v) <= 8:
+                return "••••••••"
+            return f"{v[:4]}••••••••{v[-4:]}"
+
+        return {
+            "sso_enabled": bool(self.SSO_ENABLED),
+            "tenant_id_masked": mask_val(self.AZURE_TENANT_ID),
+            "client_id_masked": mask_val(self.AZURE_CLIENT_ID),
+            "redirect_uri": self.effective_sso_redirect_uri,
+            "allowed_domains": self.SSO_ALLOWED_DOMAINS or "(all domains allowed)",
+            "email_claim_priority": self.SSO_EMAIL_CLAIM,
+            "local_login_enabled": bool(self.SSO_LOCAL_LOGIN_ENABLED),
+            "password_login_for_users": bool(self.SSO_PASSWORD_LOGIN_FOR_USERS),
+            "secret_configured": bool(self.AZURE_CLIENT_SECRET and self.AZURE_CLIENT_SECRET.strip()),
+            "secret_expires": self.SSO_CLIENT_SECRET_EXPIRES or "(no expiry date set)",
+        }
 
     @property
     def is_admin_configured(self) -> bool:

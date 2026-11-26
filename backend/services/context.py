@@ -191,10 +191,11 @@ def get_user_context(request: Request, db: Session = Depends(get_db)) -> UserCon
     # 2. Try legacy admin token
     legacy_payload = decode_admin_token(token)
     if legacy_payload:
-        user_name = legacy_payload.get("name") or "admin"
+        user_name = legacy_payload.get("name") or getattr(settings, "OWNER_NAME", None) or "admin"
+        owner_email = getattr(settings, "OWNER_EMAIL", None) or "owner@mobileum.com"
         return UserContext(
             user_id="admin",
-            email="rishithathoka@gmail.com",
+            email=owner_email,
             display_name=user_name,
             role="admin",
             roles=["admin", "management", "viewer"],
@@ -250,8 +251,8 @@ def require_management_or_admin(ctx: UserContext = Depends(get_user_context)) ->
 # Default admin context for CLI scripts or tests
 ADMIN_CONTEXT = UserContext(
     user_id="admin",
-    email="rishitha@mobileum.com",
-    display_name="Rishitha (Admin)",
+    email=getattr(settings, "OWNER_EMAIL", None) or "admin@mobileum.com",
+    display_name=getattr(settings, "OWNER_NAME", None) or "Administrator",
     role="admin",
     roles=["admin", "management", "viewer"],
     is_owner=True,

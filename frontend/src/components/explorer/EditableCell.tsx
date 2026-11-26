@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Loader2, AlertCircle, Edit3, Check, X, FileText } from 'lucide-react'
 import { DealAnnotationItem, setDealAnnotation, deleteDealAnnotation } from '@/api/client'
 import showToast from '@/components/ui/Toast'
@@ -147,8 +148,8 @@ export const EditableCell: React.FC<EditableCellProps> = ({
           <FileText className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 shrink-0 opacity-60 group-hover:opacity-100" />
         </div>
 
-        {showPopover && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        {showPopover && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-4 w-full max-w-lg space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -193,7 +194,8 @@ export const EditableCell: React.FC<EditableCellProps> = ({
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     )

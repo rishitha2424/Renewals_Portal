@@ -25,10 +25,13 @@ api.interceptors.response.use(
     // 401 Unauthorized handling: clear auth and redirect to login
     if (error?.response?.status === 401) {
       const url = error.config?.url || ''
-      // Never intercept login, logout, or initial auth check endpoint (/auth/me)
-      if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me')) {
+      // Never intercept login, logout, or initial auth check endpoint (/auth/me, /admin/status)
+      if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me') && !url.includes('/admin/status')) {
         try {
           localStorage.removeItem('horizon_auth_state')
+          import('../store/authStore').then(({ useAuthStore }) => {
+            useAuthStore.getState().setCurrentUser(null)
+          }).catch(() => {})
         } catch (_) {}
         if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
           window.location.href = '/login?expired=1'
@@ -940,6 +943,7 @@ export const updateAdminUser = async (
     status?: 'active' | 'disabled' | 'invited'
     owner_name?: string
     aliases?: string[]
+    admin_password?: string
   }
 ) => {
   const res = await api.put(`/admin/users/${userId}`, data)
@@ -1014,8 +1018,11 @@ export interface MailDiagnostics {
   env_file_path: string
   env_file_exists: boolean
   mail_enabled: boolean
+  mail_active?: boolean
   is_configured: boolean
   inactive_reason: string
+  timeout?: number
+  timeout_seconds?: number
   variables: Record<string, MailDiagnosticVariable>
 }
 
@@ -1078,6 +1085,16 @@ export const deleteOutboxEmail = async (itemId: string): Promise<{ status: strin
 
 export const sendOutboxEmailNow = async (itemId: string): Promise<{ status: string; delivered: boolean; detail: string; item_status: string }> => {
   const res = await api.post(`/admin/email/outbox/${itemId}/send-now`)
+  return res.data
+}
+
+export const retryOutboxEmail = async (itemId: string): Promise<{ status: string; delivered: boolean; detail: string; item_status: string; recipient?: any }> => {
+  const res = await api.post(`/admin/email/outbox/${itemId}/retry`)
+  return res.data
+}
+
+export const retryFailedEmails = async (): Promise<{ status: string; retried_count: number; sent_count: number; failed_count: number; recipients: any[] }> => {
+  const res = await api.post('/admin/email/retry-failed')
   return res.data
 }
 
@@ -1365,6 +1382,76 @@ export const addBatchComment = async (payload: BatchCommentPayload): Promise<Bat
   const res = await api.post('/comments/batch', payload)
   return res.data
 }
+
+// ── Microsoft SSO (Entra ID) ────────────────────────────────────────────────
+export interface SSOPublicConfig {
+  sso_enabled: boolean
+  sso_local_login_enabled: boolean
+  sso_password_login_for_users: boolean
+  provider_name: string
+  button_label: string
+  login_url: string
+}
+
+export interface SSOAdminDiagnostics {
+  sso_enabled: boolean
+  tenant_id: string
+  client_id: string
+  client_secret_configured: boolean
+  client_secret_expires: string | null
+  redirect_uri: string
+  allowed_domains: string[]
+  email_claim: string
+  local_login_enabled: boolean
+  password_login_for_users: boolean
+}
+
+export interface SSOAccessRequestItem {
+  id: string
+  email: string
+  name: string | null
+  tenant_id: string | null
+  status: 'pending' | 'approved' | 'dismissed'
+  attempt_count: number
+  created_at: string
+  last_attempt_at: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+}
+
+export const getSSOConfig = async (): Promise<SSOPublicConfig> => {
+  const res = await api.get('/auth/sso/config')
+  return res.data
+}
+
+export const getSSODiagnostics = async (): Promise<SSOAdminDiagnostics> => {
+  const res = await api.get('/admin/sso/diagnostics')
+  return res.data
+}
+
+export const testSSOConnection = async (): Promise<{ status: string; detail: string; tenant_id?: string; keys_found?: number }> => {
+  const res = await api.post('/admin/sso/test-connection')
+  return res.data
+}
+
+export const getSSOAccessRequests = async (status: string = 'pending'): Promise<SSOAccessRequestItem[]> => {
+  const res = await api.get('/admin/sso/access-requests', { params: { status } })
+  return res.data
+}
+
+export const approveSSOAccessRequest = async (
+  requestId: string,
+  payload: { role: string; owner_name?: string; name?: string }
+): Promise<{ status: string; user_id: string; email: string; role: string }> => {
+  const res = await api.post(`/admin/sso/access-requests/${requestId}/approve`, payload)
+  return res.data
+}
+
+export const dismissSSOAccessRequest = async (requestId: string): Promise<{ status: string }> => {
+  const res = await api.post(`/admin/sso/access-requests/${requestId}/dismiss`)
+  return res.data
+}
+
 
 
 

@@ -45,6 +45,7 @@ class UpdateUserRequest(BaseModel):
     owner_name: Optional[str] = None
     mobileum_id: Optional[str] = None
     aliases: Optional[List[str]] = None
+    admin_password: Optional[str] = None
 
 
 class ToggleStatusRequest(BaseModel):
@@ -61,11 +62,11 @@ class ResolveAlertRequest(BaseModel):
 
 
 def check_last_admin_or_owner_protection(db: Session, target_user: User, action_description: str) -> None:
-    """Ensure Rishitha (is_owner=True) or the last active admin cannot be removed/disabled/demoted."""
+    """Ensure the system owner (is_owner=True) or the last active admin cannot be removed/disabled/demoted."""
     if target_user.is_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Cannot {action_description} the system owner (Rishitha).",
+            detail=f"Cannot {action_description} the system owner.",
         )
 
     if target_user.role == "admin":
@@ -130,7 +131,10 @@ def list_users(
             "created_at": u.created_at.isoformat() if u.created_at else None,
         })
 
-    return {"users": results}
+    return {
+        "users": results,
+        "owner_email_env_set": bool(settings.OWNER_EMAIL and settings.OWNER_EMAIL.strip()),
+    }
 
 
 @router.post("/users")
@@ -214,6 +218,28 @@ def update_user(
 
     changes: dict[str, dict[str, Any]] = {}
 
+    if user.is_owner:
+        email_changing = req.email is not None and req.email.strip().lower() != user.email.lower()
+        name_changing = req.name is not None and req.name.strip() and req.name.strip() != user.name
+        if email_changing and settings.OWNER_EMAIL and settings.OWNER_EMAIL.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Owner email is set in .env (OWNER_EMAIL). Update .env to change the owner email permanently.",
+            )
+        if email_changing or name_changing:
+            from backend.services.auth_service import verify_password
+            pw_ok = False
+            if req.admin_password:
+                if settings.ADMIN_PASSWORD and req.admin_password == settings.ADMIN_PASSWORD:
+                    pw_ok = True
+                elif user.password_hash and verify_password(req.admin_password, user.password_hash):
+                    pw_ok = True
+            if not pw_ok:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Administrator password is required to change system owner details.",
+                )
+
     if req.name is not None and req.name.strip() and req.name.strip() != user.name:
         target_role = (req.role or user.role).strip().lower()
         clean_new_name = req.name.strip()
@@ -245,7 +271,7 @@ def update_user(
     if req.role is not None and req.role.strip().lower() != user.role:
         new_role = req.role.strip().lower()
         if (user.role == "admin" or new_role == "admin") and not ctx.is_owner:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the system owner (Rishitha) can change administrator roles.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the system owner can change administrator roles.")
         check_last_admin_or_owner_protection(db, user, "change the role of")
         changes["role"] = {"old": user.role, "new": new_role}
         user.role = new_role
@@ -367,6 +393,7 @@ def generate_invite_link(
     return {
         "status": "success",
         "invite_url": invite_url,
+        "invite_link": invite_url,
         "token": raw_token,
         "expires_in_hours": getattr(settings, "INVITE_TOKEN_EXPIRE_HOURS", 72),
         "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,
@@ -405,6 +432,7 @@ def generate_reset_link(
     return {
         "status": "success",
         "reset_url": reset_url,
+        "reset_link": reset_url,
         "token": raw_token,
         "expires_in_hours": getattr(settings, "RESET_TOKEN_EXPIRE_HOURS", 24),
         "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,

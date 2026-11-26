@@ -1462,14 +1462,14 @@ class V2OverviewService:
         if compare:
             filters_applied["compare"] = compare
 
-        # ── Kind: delayed deals (all, slipped, overdue, later_close, and deltas) ──
+        # ── Kind: delayed deals (all, slipped, later_close, and deltas) ──
         delayed_kinds = (
-            "all", "delayed", "delayed_total", "delayed_all", "delayed_overdue", "overdue", "delayed_ahead",
+            "all", "delayed", "delayed_total", "delayed_all", "delayed_overdue", "delayed_ahead",
             "later_close", "ahead", "slippage", "slippage_total", "slipped", "slipped_total",
             "slipped_from_year", "slipped_from_start_year", "newly_delayed", "lost",
             "needs_review", "review", "delayed_ahead_split", "delayed_other_type", "slipped_other_type"
         )
-        if kind in delayed_kinds or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_"))):
+        if not deal_ids and (kind in delayed_kinds or (kind and (kind.startswith("delayed_") or kind.startswith("slipped_")))):
             target_kind = kind
             if kind in ("all", "delayed_all"):
                 target_kind = "total"
@@ -1697,9 +1697,8 @@ class V2OverviewService:
                 all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
             all_opps_q = all_opps_q_stmt.all()
             df_all_ren = _opps_to_df(all_opps_q)
-            cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce")
-            snap_ts = pd.Timestamp(snap.snapshot_date)
-            df = df_all_ren[(cd < snap_ts) & (df_all_ren["forecast_category"] != "Closed") & (~df_all_ren["is_deleted_or_lost"])]
+            cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce").dt.date
+            df = df_all_ren[(cd < snap.snapshot_date) & (df_all_ren["forecast_category"] != "Closed") & (~df_all_ren["is_deleted_or_lost"])]
             df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
         elif kind == "closing_14d_unapproved":
             from backend.config import settings
