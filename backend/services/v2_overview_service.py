@@ -1528,6 +1528,71 @@ class V2OverviewService:
                 "deals": records,
             }
 
+        # ── Kind: overdue deals across snapshot (must not be blocked by scoped quarter) ──
+        if kind == "overdue":
+            all_opps_q_stmt = self.db.query(Opportunity).filter(
+                Opportunity.snapshot_id == snap.id,
+                Opportunity.sales_type == "Renewals",
+            )
+            if ScopeService._is_exclude_reconciliation_enabled(self.db):
+                all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+            all_opps_q = all_opps_q_stmt.all()
+            df_od = _opps_to_df(all_opps_q)
+            if not df_od.empty and "close_date" in df_od.columns:
+                cd = pd.to_datetime(df_od["close_date"], errors="coerce").dt.date
+                df_od = df_od[(cd < snap.snapshot_date) & (df_od["forecast_category"] != "Closed") & (~df_od["is_deleted_or_lost"])]
+                df_od = df_od.drop_duplicates(subset=["opportunity_id_18"], keep="last")
+            else:
+                df_od = pd.DataFrame()
+
+            if deal_ids:
+                df_od = df_od[df_od["opportunity_id_18"].isin(deal_ids)]
+            if category:
+                df_od = df_od[df_od["forecast_category"] == category]
+            if region and region != "Total":
+                df_od = df_od[df_od["canonical_region"] == region]
+            if approval_status and approval_status != "Total":
+                if approval_status in ("not_approved", "unapproved", "Not Approved"):
+                    df_od = df_od[df_od["approval_status"] != "Approved"]
+                else:
+                    df_od = df_od[df_od["approval_status"] == approval_status]
+            if owner and owner != "All" and not df_od.empty:
+                owner_clean = owner.strip().lower()
+                if "opportunity_owner" in df_od.columns:
+                    df_od = df_od[df_od["opportunity_owner"].fillna("").astype(str).str.strip().str.lower() == owner_clean]
+                elif "owner" in df_od.columns:
+                    df_od = df_od[df_od["owner"].fillna("").astype(str).str.strip().str.lower() == owner_clean]
+
+            if not df_od.empty:
+                df_od = df_od.sort_values(by=["forecast_acv_amount", "opportunity_id_18"], ascending=[False, True])
+
+            records = []
+            for _, r in df_od.iterrows():
+                ow_val = str(r.get("opportunity_owner") or r.get("owner") or "")
+                st_val = str(r.get("stage_number") or r.get("stage") or "")
+                records.append({
+                    "id": str(r["opportunity_id_18"]),
+                    "opportunity_id_18": str(r["opportunity_id_18"]),
+                    "opportunity_name": str(r["opportunity_name"]),
+                    "account_name": str(r["account_name"]),
+                    "forecast_category": str(r["forecast_category"]),
+                    "forecast_acv_amount": float(r["forecast_acv_amount"] or 0),
+                    "approval_status": str(r["approval_status"]),
+                    "sub_region": str(r.get("canonical_region") or r.get("sub_region") or ""),
+                    "business_unit_primary": str(r.get("business_unit_primary") or ""),
+                    "opportunity_owner": ow_val,
+                    "owner": ow_val,
+                    "stage": st_val,
+                    "stage_number": st_val,
+                    "close_date": r["close_date"].isoformat() if hasattr(r["close_date"], "isoformat") else str(r["close_date"]) if r["close_date"] else None,
+                })
+            return {
+                "count": len(records),
+                "acv": round(sum(r["forecast_acv_amount"] for r in records), 2),
+                "filters_applied": filters_applied,
+                "deals": records,
+            }
+
         opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
         if df.empty:
@@ -1688,18 +1753,6 @@ class V2OverviewService:
             df = df[df["forecast_category"].isin(["Commit", "Best Case"])]
         elif kind == "commit_not_approved":
             df = df[(df["forecast_category"] == "Commit") & (df["approval_status"] != "Approved")]
-        elif kind == "overdue":
-            all_opps_q_stmt = self.db.query(Opportunity).filter(
-                Opportunity.snapshot_id == snap.id,
-                Opportunity.sales_type == "Renewals",
-            )
-            if ScopeService._is_exclude_reconciliation_enabled(self.db):
-                all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
-            all_opps_q = all_opps_q_stmt.all()
-            df_all_ren = _opps_to_df(all_opps_q)
-            cd = pd.to_datetime(df_all_ren["close_date"], errors="coerce").dt.date
-            df = df_all_ren[(cd < snap.snapshot_date) & (df_all_ren["forecast_category"] != "Closed") & (~df_all_ren["is_deleted_or_lost"])]
-            df = df.drop_duplicates(subset=["opportunity_id_18"], keep="last")
         elif kind == "closing_14d_unapproved":
             from backend.config import settings
             window_days = getattr(settings, "NEEDS_ATTENTION_WINDOW_DAYS", 14)
