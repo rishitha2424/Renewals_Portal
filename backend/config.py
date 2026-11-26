@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     # Paths
     DATA_DIR: Path = ROOT_DIR / "data"
     ASSETS_DIR: Path = ROOT_DIR / "assets"
+    REPORT_LOGO_PATH: Path = ROOT_DIR / "assets" / "logo.png"
 
     # App
     APP_TITLE: str = "Mobileum Horizon"
