@@ -39,11 +39,65 @@ export function formatPct(val: number | null | undefined): string {
   return `${val.toFixed(1)}%`
 }
 
+/** Normalize ISO timestamp string so naive UTC strings are parsed as UTC ('Z'). */
+export function parseUtcDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null
+  const raw = String(iso).trim()
+  if (!raw) return null
+  if (raw.length === 10) {
+    const d = new Date(`${raw}T00:00:00Z`)
+    return isNaN(d.getTime()) ? null : d
+  }
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)
+  const normalized = hasOffset ? raw : `${raw.replace(' ', 'T')}Z`
+  const d = new Date(normalized)
+  return isNaN(d.getTime()) ? null : d
+}
+
+/** Format timestamp consistently in configured IANA timezone or browser local timezone. */
+export function formatDateTime(iso: string | null | undefined, configuredTz?: string | null): string {
+  const d = parseUtcDate(iso)
+  if (!d) return iso ? String(iso) : '—'
+  const opts: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }
+  if (configuredTz && configuredTz.trim()) {
+    try {
+      return d.toLocaleString('en-US', { ...opts, timeZone: configuredTz.trim() })
+    } catch {
+      // Fallback to browser timezone if configuredTz is invalid
+    }
+  }
+  return d.toLocaleString('en-US', opts)
+}
+
+/** Format time-of-day consistently in configured IANA timezone or browser local timezone. */
+export function formatTime(iso: string | null | undefined, configuredTz?: string | null): string {
+  const d = parseUtcDate(iso)
+  if (!d) return ''
+  const opts: Intl.DateTimeFormatOptions = {
+    hour: '2-digit',
+    minute: '2-digit',
+  }
+  if (configuredTz && configuredTz.trim()) {
+    try {
+      return d.toLocaleTimeString('en-US', { ...opts, timeZone: configuredTz.trim() })
+    } catch {
+      // Fallback
+    }
+  }
+  return d.toLocaleTimeString('en-US', opts)
+}
+
 /** Format date string to standard "Nov 13, 2026" */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const dateStr = iso.length === 10 ? iso + 'T00:00:00' : iso
-  const d = new Date(dateStr)
+  const d = iso.length === 10 ? new Date(dateStr) : (parseUtcDate(iso) ?? new Date(dateStr))
   if (isNaN(d.getTime())) return String(iso)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }

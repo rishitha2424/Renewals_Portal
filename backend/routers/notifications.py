@@ -1,6 +1,6 @@
 """
-Notifications Router (Round 25).
-API endpoints for Notification Centre: topbar unread badge, dropdown list, mark read, mark all read.
+Notifications Router (Round 25 + Per-Category Unread Badges & Role-Safe Filtering).
+API endpoints for Notification Centre: topbar unread badge, sidebar badges, dropdown list, mark read, mark all read.
 Strictly isolated to the authenticated user.
 """
 from __future__ import annotations
@@ -9,8 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.models.user import User
+from backend.models.opportunity import Opportunity
+from backend.models.custom_column import DealComment
 from backend.services.context import UserContext, require_authenticated
 from backend.services.notification_service import NotificationService
+from backend.services.delivery_service import resolve_caller_uid, get_kam_owned_deal_ids
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -23,22 +27,53 @@ def list_notifications(
     ctx: UserContext = Depends(require_authenticated),
 ):
     if not ctx.user_id:
-        return {"notifications": [], "unread_count": 0}
+        return {
+            "notifications": [],
+            "unread_count": 0,
+            "unread_by_category": {"messages": 0, "comments": 0, "alerts": 0, "total": 0},
+        }
 
-    items, unread_count = NotificationService.get_user_notifications(
+    uid = resolve_caller_uid(db, ctx)
+    items, unread_count, by_category = NotificationService.get_user_notifications(
         db=db,
-        user_id=ctx.user_id,
+        user_id=uid,
         category=category,
         limit=limit,
     )
 
-    from backend.models.user import User
     admin_users = db.query(User).filter(User.role == "admin").all() if not ctx.is_admin else []
     admin_names = [u.name for u in admin_users if u.name]
     admin_emails = [u.email for u in admin_users if u.email]
 
+    # Defense-in-depth for role/owner changes: never show KAMs internal comment or unowned real-deal notifications
+    owned_deal_ids = get_kam_owned_deal_ids(db, ctx.all_owner_names) if ctx.is_kam else None
+    existing_opp_deal_ids: set[str] = set()
+    comment_vis_map: dict[str, str] = {}
+    if ctx.is_kam:
+        notif_deal_ids = list({n.deal_id for n in items if n.deal_id})
+        if notif_deal_ids:
+            for r in db.query(Opportunity.opportunity_id_18).filter(Opportunity.opportunity_id_18.in_(notif_deal_ids)).distinct().all():
+                if r[0]:
+                    existing_opp_deal_ids.add(r[0])
+        c_ids = [n.target_id for n in items if n.target_type == "deal_comment" and n.target_id]
+        if c_ids:
+            for c in db.query(DealComment.id, DealComment.visibility).filter(DealComment.id.in_(c_ids)).all():
+                comment_vis_map[c[0]] = c[1]
+
     out_items = []
     for n in items:
+        if ctx.is_kam:
+            if (
+                n.deal_id
+                and n.deal_id in existing_opp_deal_ids
+                and owned_deal_ids is not None
+                and n.deal_id not in owned_deal_ids
+            ):
+                continue
+            if n.target_type == "deal_comment" and n.target_id in comment_vis_map:
+                if comment_vis_map[n.target_id] == "internal":
+                    continue
+
         d = n.to_dict()
         if not ctx.is_admin:
             for name in admin_names:
@@ -56,6 +91,7 @@ def list_notifications(
     return {
         "notifications": out_items,
         "unread_count": unread_count,
+        "unread_by_category": by_category,
     }
 
 
@@ -68,7 +104,8 @@ def mark_notification_read(
     if not ctx.user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    ok = NotificationService.mark_as_read(db, ctx.user_id, notification_id)
+    uid = resolve_caller_uid(db, ctx)
+    ok = NotificationService.mark_as_read(db, uid, notification_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
 
@@ -83,6 +120,6 @@ def mark_all_notifications_read(
     if not ctx.user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    marked = NotificationService.mark_all_as_read(db, ctx.user_id)
+    uid = resolve_caller_uid(db, ctx)
+    marked = NotificationService.mark_all_as_read(db, uid)
     return {"success": True, "marked_count": marked}
-

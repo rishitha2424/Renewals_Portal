@@ -241,19 +241,33 @@ def get_kam_overview(
     needs_review_count = len(needs_review_deals)
     needs_review_acv = round(sum(float(d.get("forecast_acv_amount") or 0.0) for d in needs_review_deals), 2)
 
-    # 5. Unread Messages for this KAM
+    # 5. Unread Messages for this KAM (per-user read receipt aware, excluding deleted)
+    from backend.models.user import MessageReadReceipt
+    from backend.services.delivery_service import resolve_caller_uid
+    caller_uid = resolve_caller_uid(db, ctx)
     owned_ids = [d["opportunity_id_18"] for d in deals if d.get("opportunity_id_18")]
-    msg_q = db.query(DealMessage).filter(DealMessage.is_read == False)
-    if ctx.user_id:
+    msg_q = db.query(DealMessage).filter(DealMessage.is_deleted == False)
+    if owned_ids:
         msg_q = msg_q.filter(
             or_(
-                DealMessage.recipient_id == ctx.user_id,
-                (DealMessage.deal_id.in_(owned_ids) & (DealMessage.sender_role != "kam"))
+                DealMessage.recipient_id == caller_uid,
+                (DealMessage.deal_id.in_(owned_ids) & (DealMessage.sender_role != "kam")),
             )
         )
     else:
-        msg_q = msg_q.filter(DealMessage.deal_id.in_(owned_ids), DealMessage.sender_role != "kam")
-    unread_msg_count = msg_q.count()
+        msg_q = msg_q.filter(DealMessage.recipient_id == caller_uid)
+    candidate_msgs = msg_q.all()
+    if candidate_msgs:
+        cand_ids = [m.id for m in candidate_msgs]
+        read_ids = {
+            r[0]
+            for r in db.query(MessageReadReceipt.message_id)
+            .filter(MessageReadReceipt.user_id == caller_uid, MessageReadReceipt.message_id.in_(cand_ids))
+            .all()
+        }
+        unread_msg_count = sum(1 for m in candidate_msgs if m.id not in read_ids and str(m.sender_id) != str(caller_uid))
+    else:
+        unread_msg_count = 0
 
     # 6. Movements vs Compare-To, Yesterday & Last Week
     y_snap = delayed_svc.get_yesterday_baseline(snap)
@@ -773,12 +787,13 @@ def get_kam_overview(
 
     shared_comments = []
     if owned_ids:
+        from backend.utils.time_utils import to_utc_iso
         comments_q = (
             db.query(DealComment)
             .filter(
                 DealComment.opportunity_id_18.in_(owned_ids),
                 DealComment.is_deleted == False,
-                DealComment.visibility.in_(["shared", "all", "public"]),
+                DealComment.visibility.in_(["shared", "shared_with_owner", "all", "public"]),
             )
             .order_by(DealComment.created_at.desc())
             .limit(5)
@@ -786,14 +801,15 @@ def get_kam_overview(
         )
         deal_name_map = {d["opportunity_id_18"]: d.get("opportunity_name") or d.get("account_name") for d in deals}
         for sc in comments_q:
+            author_disp = "Admin" if (not ctx.is_admin and sc.author_role == "admin") else sc.author
             shared_comments.append({
                 "id": sc.id,
                 "deal_id": sc.opportunity_id_18,
                 "deal_name": deal_name_map.get(sc.opportunity_id_18, sc.opportunity_id_18),
-                "author": sc.author,
+                "author": author_disp,
                 "author_role": sc.author_role,
                 "text": sc.text,
-                "created_at": sc.created_at.isoformat() if sc.created_at else None,
+                "created_at": to_utc_iso(sc.created_at),
                 "created_at_formatted": sc.created_at.strftime("%b %d, %Y") if sc.created_at else "",
             })
 

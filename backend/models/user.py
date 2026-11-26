@@ -14,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from backend.database import Base
+from backend.utils.time_utils import to_utc_iso
 
 
 class User(Base):
@@ -102,12 +103,79 @@ class DealMessage(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     thread_status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # 'open', 'resolved'
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    deleted_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class EmailDeliveryEvent(Base):
+    __tablename__ = "email_delivery_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'comment' | 'batch_comment' | 'new_message' | 'reply_message'
+    entity_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 'deal_comment' | 'deal_message'
+    entity_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    deal_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    deal_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    author_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    author_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    author_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_preview: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    recipient_summary: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    selected_recipient_ids: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list of user IDs
+    total_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sent_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True, nullable=False)
+
+
+class CommentMessageHistory(Base):
+    __tablename__ = "comment_message_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)  # 'deal_comment' | 'deal_message'
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    deal_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # 'edit' | 'unsend' | 'delete'
+    previous_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    previous_visibility: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    new_visibility: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    actor_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    actor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    actor_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_cmh_entity", "entity_type", "entity_id"),
+    )
+
+
+class MessageReadReceipt(Base):
+    __tablename__ = "message_read_receipts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("deal_messages.id", ondelete="CASCADE"), index=True, nullable=False)
+    thread_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_msg_read_user"),
+    )
 
 
 class EmailOutbox(Base):
     __tablename__ = "email_outbox"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    recipient_user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    sender_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     recipient_email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     recipient_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -183,8 +251,8 @@ class Notification(Base):
             "target_type": self.target_type,
             "target_id": self.target_id,
             "is_read": self.is_read,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "read_at": self.read_at.isoformat() if self.read_at else None,
+            "created_at": to_utc_iso(self.created_at),
+            "read_at": to_utc_iso(self.read_at),
         }
 
 

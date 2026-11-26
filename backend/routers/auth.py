@@ -211,6 +211,7 @@ def get_current_user_profile(ctx: UserContext = Depends(require_authenticated), 
     """Return currently authenticated user information."""
     user = db.query(User).filter(User.id == ctx.user_id).first()
     aliases = [a.alias_name for a in user.aliases] if user and hasattr(user, "aliases") else ctx.owner_aliases
+    from backend.services.settings_service import SettingsService
     user_data = {
         "id": ctx.user_id,
         "email": ctx.email or (user.email if user else ""),
@@ -220,6 +221,7 @@ def get_current_user_profile(ctx: UserContext = Depends(require_authenticated), 
         "owner_name": ctx.owner_name,
         "owner_aliases": aliases,
         "must_change_password": bool(user.must_change_password if user else False),
+        "timezone": SettingsService.get_timezone(db) or "",
     }
     return {
         "user": user_data,

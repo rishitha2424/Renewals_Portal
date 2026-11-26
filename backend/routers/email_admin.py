@@ -17,6 +17,7 @@ from backend.models.user import EmailOutbox
 from backend.services.context import UserContext, require_admin_context
 from backend.services.mail_service import MailService
 from backend.services.audit_service import log_audit_event
+from backend.utils.time_utils import to_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -55,9 +56,12 @@ def list_email_outbox(
     outbox_items = [
         {
             "id": m.id,
-            "recipient_email": m.recipient_email,
-            "to_email": m.recipient_email,
-            "recipient_name": m.recipient_name,
+            "recipient_name": m.recipient_name or "User",
+            "recipient_role": m.recipient_role or "user",
+            "sender_name": m.sender_name or "System",
+            "sender_role": m.sender_role or "system",
+            "deal_id": m.deal_id,
+            "deal_name": m.deal_name,
             "subject": m.subject,
             "template": m.template_type,
             "template_type": m.template_type,
@@ -65,8 +69,8 @@ def list_email_outbox(
             "attempts": m.retry_count,
             "retry_count": m.retry_count,
             "error_message": m.error_message,
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-            "sent_at": m.sent_at.isoformat() if m.sent_at else None,
+            "created_at": to_utc_iso(m.created_at),
+            "sent_at": to_utc_iso(m.sent_at),
         }
         for m in emails
     ]

@@ -1,29 +1,49 @@
 """
-Email Service (Round 18).
-Handles email outbox persistence, templates, and asynchronous SMTP delivery.
+Email Service (Round 18 + Batch Reuse Optimization).
+Handles email outbox persistence, templates, delivery event aggregation, and asynchronous SMTP delivery.
 Supports Office365, Gmail, and standard SMTP (STARTTLS / SSL).
 When MAIL_ENABLED is false or SMTP is unset, queues items to email_outbox with status 'pending – email not configured'.
-Never logs passwords or invite tokens.
+Never logs passwords, invite tokens, or raw credentials.
 """
 from __future__ import annotations
 
 import concurrent.futures
+import html as html_lib
 import logging
 import smtplib
 import socket
 import ssl
+import threading
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional, List, Dict, Any, Tuple
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from backend.config import settings, get_env_file_path
-from backend.models.user import EmailOutbox
+from backend.models.user import EmailOutbox, EmailDeliveryEvent
 
 log = logging.getLogger(__name__)
 
 _email_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="mail-worker")
+_pending_futures_lock = threading.Lock()
+_pending_futures: list[concurrent.futures.Future] = []
+_sqlite_mem_lock = threading.Lock()
+
+
+def _track_future(fut: concurrent.futures.Future) -> concurrent.futures.Future:
+    with _pending_futures_lock:
+        _pending_futures.append(fut)
+
+    def _cleanup(_f: concurrent.futures.Future) -> None:
+        with _pending_futures_lock:
+            try:
+                _pending_futures.remove(_f)
+            except ValueError:
+                pass
+
+    fut.add_done_callback(_cleanup)
+    return fut
 
 
 def _sanitize_error(err_str: str) -> str:
@@ -40,7 +60,40 @@ def _sanitize_error(err_str: str) -> str:
     return res
 
 
+def _format_smtp_exception(exc: Exception) -> str:
+    timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        code = getattr(exc, "smtp_code", 535)
+        return f"SMTP authentication failed ({code}): Invalid credentials or app password required."
+    if isinstance(exc, (smtplib.SMTPConnectError, ConnectionRefusedError)):
+        return f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
+    if isinstance(exc, ssl.SSLError):
+        reason = exc.reason if hasattr(exc, "reason") else str(exc)
+        return _sanitize_error(f"TLS/SSL error communicating with {settings.SMTP_HOST}: {reason}")
+    if isinstance(exc, socket.gaierror):
+        return f"DNS lookup failed for SMTP host: {settings.SMTP_HOST}"
+    if isinstance(exc, OSError):
+        err_code = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
+        if err_code in (10060, 110) or "timed out" in str(exc).lower():
+            return f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
+        if err_code in (10061, 111):
+            return f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+        if err_code == 10013 or "forbidden by its access permissions" in str(exc).lower():
+            return f"Network access denied connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
+    return _sanitize_error(str(exc)) or "Delivery failed"
+
+
 class MailService:
+    @classmethod
+    def wait_for_idle(cls, timeout: float = 10.0) -> None:
+        """Wait for all pending background mail futures (primarily for tests)."""
+        with _pending_futures_lock:
+            futs = list(_pending_futures)
+        if futs:
+            concurrent.futures.wait(futs, timeout=timeout)
+
     @classmethod
     def is_configured(cls) -> bool:
         """Returns True if MAIL_ENABLED is True and all required SMTP fields are populated."""
@@ -89,7 +142,7 @@ class MailService:
             from backend.database import SessionLocal
             db = SessionLocal()
             try:
-                last_failed = db.query(EmailOutbox).filter(EmailOutbox.status == "failed").order_by(EmailOutbox.id.desc()).first()
+                last_failed = db.query(EmailOutbox).filter(EmailOutbox.status == "failed").order_by(EmailOutbox.created_at.desc()).first()
                 diag["last_delivery_error"] = last_failed.error_message if last_failed else None
             finally:
                 db.close()
@@ -98,17 +151,71 @@ class MailService:
         return diag
 
     @classmethod
-    def _async_dispatch(cls, outbox_id: str) -> None:
-        """Run dispatch in background worker with its own DB session so HTTP requests return instantly."""
+    def _async_dispatch(cls, outbox_id: str, bind_engine: Any = None) -> None:
+        """Run single dispatch in background worker with its own DB session."""
         try:
-            from backend.database import SessionLocal
-            db = SessionLocal()
+            if bind_engine is not None:
+                SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=bind_engine)
+                db = SessionFactory()
+            else:
+                from backend.database import SessionLocal
+                db = SessionLocal()
             try:
                 cls.dispatch_outbox_item(db, outbox_id)
             finally:
                 db.close()
         except Exception as e:
-            log.warning("Background email dispatch exception for %s: %s", outbox_id, e)
+            log.warning("Background email dispatch exception for %s: %s", outbox_id, _sanitize_error(str(e)))
+
+    @classmethod
+    def _async_dispatch_batch(
+        cls,
+        outbox_ids: List[str],
+        event_id: Optional[str] = None,
+        bind_engine: Any = None,
+    ) -> None:
+        """Run batch dispatch in background worker using a single reused SMTP connection."""
+        try:
+            if bind_engine is not None:
+                SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=bind_engine)
+                db = SessionFactory()
+            else:
+                from backend.database import SessionLocal
+                db = SessionLocal()
+            try:
+                cls.dispatch_batch(db, outbox_ids, event_id=event_id)
+            finally:
+                db.close()
+        except Exception as e:
+            log.warning("Background batch email dispatch exception: %s", _sanitize_error(str(e)))
+
+    @classmethod
+    def submit_batch_async(
+        cls,
+        outbox_ids: List[str],
+        event_id: Optional[str] = None,
+        bind_engine: Any = None,
+    ) -> Optional[concurrent.futures.Future]:
+        if not outbox_ids:
+            return None
+        fut = _email_executor.submit(cls._async_dispatch_batch, list(outbox_ids), event_id, bind_engine)
+        return _track_future(fut)
+
+    @classmethod
+    def sync_event_counts(cls, db: Session, event_id: Optional[str]) -> None:
+        if not event_id:
+            return
+        event = db.query(EmailDeliveryEvent).filter(EmailDeliveryEvent.id == event_id).first()
+        if not event:
+            return
+        rows = db.query(EmailOutbox).filter(EmailOutbox.event_id == event_id).all()
+        sent = sum(1 for r in rows if r.status == "sent")
+        failed = sum(1 for r in rows if r.status == "failed")
+        skipped = sum(1 for r in rows if r.status == "skipped")
+        event.sent_count = sent
+        event.failed_count = failed
+        event.skipped_count = skipped
+        event.total_count = len(rows)
 
     @classmethod
     def queue_email(
@@ -125,21 +232,36 @@ class MailService:
         sender_name: Optional[str] = None,
         sender_role: Optional[str] = None,
         recipient_role: Optional[str] = None,
+        event_id: Optional[str] = None,
+        recipient_user_id: Optional[str] = None,
+        sender_id: Optional[str] = None,
+        auto_dispatch: bool = True,
+        auto_commit: bool = True,
     ) -> EmailOutbox:
         """
         Record email into the email_outbox table.
-        If mail delivery is configured and enabled, attempts immediate/async delivery.
-        Otherwise sets status to 'pending – email not configured'.
+        If auto_dispatch is True and mail delivery is configured, submits async dispatch.
         """
         if not body_text:
-            # Simple text fallback from HTML
             import re
             body_text = re.sub(r"<[^>]+>", "", body_html).strip()
 
-        init_status = "pending" if cls.is_configured() else "pending – email not configured"
+        clean_email = (recipient_email or "").strip()
+        if not clean_email:
+            init_status = "skipped"
+            err_msg = "no email on file"
+        elif cls.is_configured():
+            init_status = "pending"
+            err_msg = None
+        else:
+            init_status = "pending – email not configured"
+            err_msg = None
 
         outbox_entry = EmailOutbox(
-            recipient_email=recipient_email.strip(),
+            event_id=event_id,
+            recipient_user_id=recipient_user_id,
+            sender_id=sender_id,
+            recipient_email=clean_email,
             recipient_name=recipient_name.strip() if recipient_name else None,
             subject=subject.strip(),
             body_html=body_html.strip(),
@@ -151,27 +273,215 @@ class MailService:
             sender_role=sender_role,
             recipient_role=recipient_role,
             status=init_status,
+            error_message=err_msg,
             created_at=datetime.now(timezone.utc),
         )
         db.add(outbox_entry)
-        db.commit()
-        db.refresh(outbox_entry)
+        if auto_commit:
+            db.commit()
+            db.refresh(outbox_entry)
 
-        if cls.is_configured():
-            _email_executor.submit(cls._async_dispatch, outbox_entry.id)
+        if auto_dispatch and init_status == "pending" and cls.is_configured():
+            bind_engine = db.get_bind()
+            _track_future(_email_executor.submit(cls._async_dispatch, outbox_entry.id, bind_engine))
 
         return outbox_entry
+
+    @classmethod
+    def _build_mime(cls, item: EmailOutbox) -> MIMEMultipart:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = item.subject
+        msg["From"] = f"Mobileum Horizon <{settings.MAIL_FROM}>"
+        msg["To"] = f"{item.recipient_name} <{item.recipient_email}>" if item.recipient_name else item.recipient_email
+        msg.attach(MIMEText(item.body_text or "", "plain", "utf-8"))
+        msg.attach(MIMEText(item.body_html or "", "html", "utf-8"))
+        return msg
+
+    @classmethod
+    def _open_smtp_connection(cls):
+        host = settings.SMTP_HOST
+        port = settings.SMTP_PORT
+        timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+        if settings.SMTP_SSL:
+            server = smtplib.SMTP_SSL(host, port, timeout=timeout)
+        else:
+            server = smtplib.SMTP(host, port, timeout=timeout)
+        if not settings.SMTP_SSL and settings.SMTP_STARTTLS:
+            server.starttls()
+        if settings.SMTP_USER and settings.SMTP_PASSWORD:
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        return server
+
+    @classmethod
+    def dispatch_batch(
+        cls,
+        db: Session,
+        outbox_ids: List[str],
+        event_id: Optional[str] = None,
+    ) -> dict[str, int]:
+        """
+        Send a batch of outbox items through ONE reused SMTP connection.
+        Per-recipient failures do not stop the remaining items.
+        """
+        if not outbox_ids:
+            return {"sent": 0, "failed": 0, "skipped": 0}
+
+        is_sqlite_mem = False
+        try:
+            bind = db.get_bind()
+            is_sqlite_mem = bind is not None and str(getattr(bind, "url", "")).endswith(":memory:")
+        except Exception:
+            pass
+
+        def _commit_safe():
+            if is_sqlite_mem:
+                with _sqlite_mem_lock:
+                    db.commit()
+            else:
+                db.commit()
+
+        if is_sqlite_mem:
+            with _sqlite_mem_lock:
+                items = (
+                    db.query(EmailOutbox)
+                    .filter(EmailOutbox.id.in_(outbox_ids))
+                    .order_by(EmailOutbox.created_at.asc())
+                    .all()
+                )
+        else:
+            items = (
+                db.query(EmailOutbox)
+                .filter(EmailOutbox.id.in_(outbox_ids))
+                .order_by(EmailOutbox.created_at.asc())
+                .all()
+            )
+
+        sendable: list[EmailOutbox] = []
+        skipped_cnt = 0
+        for item in items:
+            if item.status in ("cancelled", "skipped"):
+                if item.status == "skipped":
+                    skipped_cnt += 1
+                continue
+            if not (item.recipient_email and item.recipient_email.strip()):
+                item.status = "skipped"
+                item.error_message = item.error_message or "no email on file"
+                skipped_cnt += 1
+                continue
+            sendable.append(item)
+
+        if not sendable:
+            if event_id:
+                cls.sync_event_counts(db, event_id)
+            _commit_safe()
+            return {"sent": 0, "failed": 0, "skipped": skipped_cnt}
+
+        if not cls.is_configured():
+            reason = cls.get_inactive_reason()
+            for item in sendable:
+                item.status = "pending – email not configured"
+                item.error_message = reason
+            if event_id:
+                cls.sync_event_counts(db, event_id)
+            _commit_safe()
+            return {"sent": 0, "failed": 0, "skipped": skipped_cnt}
+
+        sent_cnt = 0
+        failed_cnt = 0
+
+        if getattr(settings, "TESTING", False):
+            now = datetime.now(timezone.utc)
+            for item in sendable:
+                item.status = "sent"
+                item.error_message = None
+                item.sent_at = now
+                sent_cnt += 1
+            if event_id:
+                cls.sync_event_counts(db, event_id)
+            _commit_safe()
+            return {"sent": sent_cnt, "failed": failed_cnt, "skipped": skipped_cnt}
+
+        server = None
+        try:
+            server = cls._open_smtp_connection()
+        except Exception as exc:
+            err_msg = _format_smtp_exception(exc)
+            log.warning("SMTP batch connection failed: %s", err_msg)
+            for item in sendable:
+                item.status = "failed"
+                item.error_message = err_msg
+                item.retry_count = (item.retry_count or 0) + 1
+                failed_cnt += 1
+            if event_id:
+                cls.sync_event_counts(db, event_id)
+            _commit_safe()
+            return {"sent": 0, "failed": failed_cnt, "skipped": skipped_cnt}
+
+        try:
+            for item in sendable:
+                try:
+                    msg = cls._build_mime(item)
+                    server.sendmail(settings.MAIL_FROM, [item.recipient_email], msg.as_string())
+                    item.status = "sent"
+                    item.error_message = None
+                    item.sent_at = datetime.now(timezone.utc)
+                    sent_cnt += 1
+                except smtplib.SMTPServerDisconnected as exc:
+                    # Attempt a single reconnect if server closed the connection mid-batch
+                    try:
+                        try:
+                            server.quit()
+                        except Exception:
+                            pass
+                        server = cls._open_smtp_connection()
+                        msg = cls._build_mime(item)
+                        server.sendmail(settings.MAIL_FROM, [item.recipient_email], msg.as_string())
+                        item.status = "sent"
+                        item.error_message = None
+                        item.sent_at = datetime.now(timezone.utc)
+                        sent_cnt += 1
+                    except Exception as retry_exc:
+                        item.status = "failed"
+                        item.error_message = _format_smtp_exception(retry_exc)
+                        item.retry_count = (item.retry_count or 0) + 1
+                        failed_cnt += 1
+                except Exception as exc:
+                    item.status = "failed"
+                    item.error_message = _format_smtp_exception(exc)
+                    item.retry_count = (item.retry_count or 0) + 1
+                    failed_cnt += 1
+        finally:
+            try:
+                if server is not None:
+                    server.quit()
+            except Exception:
+                pass
+
+        if event_id:
+            cls.sync_event_counts(db, event_id)
+        _commit_safe()
+        return {"sent": sent_cnt, "failed": failed_cnt, "skipped": skipped_cnt}
 
     @classmethod
     def dispatch_outbox_item(cls, db: Session, outbox_id: str) -> bool:
         """Synchronously deliver a single queued email from outbox by ID with error tracking."""
         item = db.query(EmailOutbox).filter(EmailOutbox.id == outbox_id).first()
-        if not item or item.status == "cancelled":
+        if not item or item.status in ("cancelled", "skipped"):
+            return False
+
+        if not (item.recipient_email and item.recipient_email.strip()):
+            item.status = "skipped"
+            item.error_message = "no email on file"
+            if item.event_id:
+                cls.sync_event_counts(db, item.event_id)
+            db.commit()
             return False
 
         if not cls.is_configured():
             item.status = "pending – email not configured"
             item.error_message = cls.get_inactive_reason()
+            if item.event_id:
+                cls.sync_event_counts(db, item.event_id)
             db.commit()
             return False
 
@@ -192,6 +502,8 @@ class MailService:
             item.error_message = _sanitize_error(err_msg or "Delivery failed")
             item.retry_count = (item.retry_count or 0) + 1
 
+        if item.event_id:
+            cls.sync_event_counts(db, item.event_id)
         db.commit()
         return success
 
@@ -224,8 +536,8 @@ class MailService:
         return False, _sanitize_error(err_msg or "SMTP delivery failed.")
 
     @classmethod
-    def resend_pending_emails(cls, db: Session, limit: int = 50) -> dict:
-        """Attempt sending items in pending or failed status once SMTP is configured."""
+    def resend_pending_emails(cls, db: Session, limit: int = 100) -> dict:
+        """Attempt sending items in pending or failed status once SMTP is configured, reusing one connection."""
         settings.reload_from_env()
         if not cls.is_configured():
             return {
@@ -241,20 +553,28 @@ class MailService:
             .filter(
                 EmailOutbox.status.in_(["pending", "pending – email not configured", "failed"]),
                 EmailOutbox.status != "cancelled",
+                EmailOutbox.status != "skipped",
             )
             .order_by(EmailOutbox.created_at.asc())
             .limit(limit)
             .all()
         )
 
-        sent_count = 0
-        failed_count = 0
-        for item in pending_items:
-            success = cls.dispatch_outbox_item(db, item.id)
-            if success:
-                sent_count += 1
-            else:
-                failed_count += 1
+        if not pending_items:
+            return {"dispatched": 0, "sent_count": 0, "retried_count": 0, "failed_count": 0}
+
+        ids = [item.id for item in pending_items]
+        if len(ids) == 1:
+            ok = cls.dispatch_outbox_item(db, ids[0])
+            sent_count = 1 if ok else 0
+            failed_count = 0 if ok else 1
+        else:
+            res = cls.dispatch_batch(db, ids)
+            sent_count = res["sent"]
+            failed_count = res["failed"]
+            for eid in {it.event_id for it in pending_items if it.event_id}:
+                cls.sync_event_counts(db, eid)
+            db.commit()
 
         return {
             "dispatched": sent_count,
@@ -264,7 +584,7 @@ class MailService:
         }
 
     @classmethod
-    def retry_failed_emails(cls, db: Session, limit: int = 50) -> dict:
+    def retry_failed_emails(cls, db: Session, limit: int = 100) -> dict:
         """Retry sending failed outbox items, returning recipient details and delivery counts."""
         settings.reload_from_env()
         failed_items = (
@@ -283,17 +603,32 @@ class MailService:
             }
             for item in failed_items
         ]
-        sent_count = 0
-        failed_count = 0
+        if not failed_items:
+            return {
+                "status": "success",
+                "retried_count": 0,
+                "sent_count": 0,
+                "failed_count": 0,
+                "recipients": [],
+            }
+
         for item in failed_items:
             item.status = "pending"
             item.error_message = None
+        db.commit()
+
+        ids = [item.id for item in failed_items]
+        if len(ids) == 1:
+            ok = cls.dispatch_outbox_item(db, ids[0])
+            sent_count = 1 if ok else 0
+            failed_count = 0 if ok else 1
+        else:
+            res = cls.dispatch_batch(db, ids)
+            sent_count = res["sent"]
+            failed_count = res["failed"]
+            for eid in {it.event_id for it in failed_items if it.event_id}:
+                cls.sync_event_counts(db, eid)
             db.commit()
-            success = cls.dispatch_outbox_item(db, item.id)
-            if success:
-                sent_count += 1
-            else:
-                failed_count += 1
 
         return {
             "status": "success",
@@ -328,81 +663,27 @@ class MailService:
     ) -> tuple[bool, Optional[str]]:
         """Low-level SMTP connection and delivery with STARTTLS or SSL, without leaking secrets."""
         if getattr(settings, "TESTING", False):
-            log.info("TESTING mode: simulated successful SMTP delivery to %s", to_addr)
+            log.info("TESTING mode: simulated successful SMTP delivery to recipient")
             return True, None
 
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            from_name = "Mobileum Horizon"
-            msg["From"] = f"{from_name} <{settings.MAIL_FROM}>"
+            msg["From"] = f"Mobileum Horizon <{settings.MAIL_FROM}>"
             msg["To"] = f"{recipient_name} <{to_addr}>" if recipient_name else to_addr
 
             msg.attach(MIMEText(body_text, "plain", "utf-8"))
             msg.attach(MIMEText(body_html, "html", "utf-8"))
 
-            host = settings.SMTP_HOST
-            port = settings.SMTP_PORT
-            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
-
-            if settings.SMTP_SSL:
-                server = smtplib.SMTP_SSL(host, port, timeout=timeout)
-            else:
-                server = smtplib.SMTP(host, port, timeout=timeout)
-
-            with server:
-                if not settings.SMTP_SSL and settings.SMTP_STARTTLS:
-                    server.starttls()
-
-                if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-
+            with cls._open_smtp_connection() as server:
                 server.sendmail(settings.MAIL_FROM, [to_addr], msg.as_string())
 
-            log.info("Email delivered successfully to %s", to_addr)
+            log.info("Email delivered successfully via SMTP")
             return True, None
-        except smtplib.SMTPAuthenticationError as exc:
-            code = getattr(exc, "smtp_code", 535)
-            detail = getattr(exc, "smtp_error", b"")
-            if isinstance(detail, bytes):
-                detail = detail.decode("utf-8", errors="ignore")
-            err = f"SMTP authentication failed ({code}): Invalid credentials or app password required."
-            log.warning("SMTP auth failed for %s: %s", to_addr, err)
-            return False, err
-        except (smtplib.SMTPConnectError, ConnectionRefusedError) as exc:
-            err = f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
-            log.warning("SMTP connect failed for %s: %s", to_addr, err)
-            return False, err
-        except (socket.timeout, TimeoutError):
-            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
-            err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
-            log.warning("SMTP timeout for %s: %s", to_addr, err)
-            return False, err
-        except ssl.SSLError as exc:
-            err = f"TLS/SSL error communicating with {settings.SMTP_HOST}: {exc.reason if hasattr(exc, 'reason') else str(exc)}"
-            log.warning("SMTP SSL error for %s: %s", to_addr, err)
-            return False, _sanitize_error(err)
-        except socket.gaierror:
-            err = f"DNS lookup failed for SMTP host: {settings.SMTP_HOST}"
-            log.warning("SMTP DNS lookup failed: %s", err)
-            return False, err
-        except OSError as exc:
-            err_code = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
-            if err_code in (10060, 110) or "timed out" in str(exc).lower():
-                timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
-                err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
-            elif err_code in (10061, 111):
-                err = f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
-            elif err_code == 10013 or "forbidden by its access permissions" in str(exc).lower():
-                err = f"Network access denied connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"
-            else:
-                err = _sanitize_error(str(exc))
-            log.warning("SMTP network error for %s: %s", to_addr, err)
-            return False, err
         except Exception as exc:
-            err_msg = _sanitize_error(str(exc))
-            log.warning("Failed to send email to %s: %s", to_addr, err_msg)
-            return False, err_msg
+            err = _format_smtp_exception(exc)
+            log.warning("SMTP delivery error: %s", err)
+            return False, err
 
     # =====================================================================
     # Email Template Methods on MailService
@@ -426,6 +707,7 @@ class MailService:
             body_html=html,
             body_text=text,
             template_type="invite",
+            recipient_user_id=str(getattr(user, "id", "") or "") or None,
         )
 
     @classmethod
@@ -446,7 +728,61 @@ class MailService:
             body_html=html,
             body_text=text,
             template_type="reset",
+            recipient_user_id=str(getattr(user, "id", "") or "") or None,
         )
+
+    @classmethod
+    def build_notification_email(
+        cls,
+        to_name: str,
+        template_type: str,
+        context: dict[str, Any],
+    ) -> tuple[str, str, str]:
+        """Build (subject, body_html, body_text) with a personalised greeting."""
+        subject = context.get("subject", "Horizon Notification")
+        sender_name = context.get("sender_name", "System")
+        sender_role = context.get("sender_role", "system")
+        deal_id = context.get("deal_id")
+        deal_name = context.get("deal_name")
+        deal_summary = context.get("deal_summary") or deal_name or deal_id or "Renewal Deal"
+        body_text = context.get("body_text", "")
+        target_type = context.get("target_type", "deal_message")
+        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
+
+        greeting_name = to_name or "there"
+        esc_subject = html_lib.escape(str(subject))
+        esc_greeting = html_lib.escape(str(greeting_name))
+        esc_sender = html_lib.escape(str(sender_name))
+        esc_role = html_lib.escape(str(sender_role))
+        esc_summary = html_lib.escape(str(deal_summary))
+        esc_body = html_lib.escape(str(body_text))
+
+        if "message" in target_type:
+            link = f"{app_base}/messages?deal_id={deal_id}" if deal_id else f"{app_base}/messages"
+        else:
+            link = f"{app_base}/opportunities?deal_id={deal_id}" if deal_id else f"{app_base}/comments-log"
+
+        body_html = f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
+          <h3 style="color: #12284C; margin: 0 0 10px 0;">{esc_subject}</h3>
+          <p style="margin: 0 0 12px 0; font-size: 14px;">Hello {esc_greeting},</p>
+          <p style="font-size: 13px; color: #64748B; margin: 0 0 16px 0;">
+            From <strong>{esc_sender}</strong> ({esc_role}) · Deal: <strong>{esc_summary}</strong>
+          </p>
+          <div style="background-color: #F8FAFC; border-left: 4px solid #00A3AD; padding: 16px; margin: 16px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #0F172A; white-space: pre-wrap;">{esc_body}</p>
+          </div>
+          <div style="margin: 24px 0;">
+            <a href="{link}" style="background-color: #00A3AD; color: #FFFFFF; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Open in Portal</a>
+          </div>
+        </div>
+        """
+        plain_text = (
+            f"Hello {greeting_name},\n\n"
+            f"{subject}\nFrom: {sender_name} ({sender_role})\nDeal: {deal_summary}\n\n"
+            f"{body_text}\n\nOpen in portal: {link}"
+        )
+        return subject, body_html, plain_text
 
     @classmethod
     def send_template(
@@ -456,37 +792,11 @@ class MailService:
         to_name: str,
         template_type: str,
         context: dict[str, Any],
+        auto_dispatch: bool = True,
+        auto_commit: bool = True,
     ) -> Optional[EmailOutbox]:
-        """Send a templated notification email with short subject and clean body."""
-        subject = context.get("subject", "Horizon Notification")
-        sender_name = context.get("sender_name", "System")
-        sender_role = context.get("sender_role", "system")
-        deal_id = context.get("deal_id")
-        deal_name = context.get("deal_name")
-        deal_summary = context.get("deal_summary") or deal_name or deal_id or "Renewal Deal"
-        body_text = context.get("body_text", "")
-        target_type = context.get("target_type", "deal_message")
-        target_id = context.get("target_id", "")
-        app_base = getattr(settings, "APP_BASE_URL", "http://localhost:5173").rstrip("/")
-
-        link = f"{app_base}/messages?deal_id={deal_id}" if "message" in target_type else f"{app_base}/opportunities?deal_id={deal_id}"
-
-        body_html = f"""
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
-          <h3 style="color: #12284C; margin: 0 0 8px 0;">{subject}</h3>
-          <p style="font-size: 13px; color: #64748B; margin: 0 0 16px 0;">
-            From <strong>{sender_name}</strong> ({sender_role}) · Deal: <strong>{deal_summary}</strong>
-          </p>
-          <div style="background-color: #F8FAFC; border-left: 4px solid #00A3AD; padding: 16px; margin: 16px 0; border-radius: 4px;">
-            <p style="margin: 0; font-size: 14px; color: #0F172A; white-space: pre-wrap;">{body_text}</p>
-          </div>
-          <div style="margin: 24px 0;">
-            <a href="{link}" style="background-color: #00A3AD; color: #FFFFFF; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Open in Portal</a>
-          </div>
-        </div>
-        """
-        plain_text = f"{subject}\nFrom: {sender_name} ({sender_role})\nDeal: {deal_summary}\n\n{body_text}\n\nOpen in portal: {link}"
-
+        """Send a templated notification email with personalised greeting."""
+        subject, body_html, plain_text = cls.build_notification_email(to_name, template_type, context)
         return cls.queue_email(
             db=db,
             recipient_email=to_email,
@@ -495,11 +805,16 @@ class MailService:
             body_html=body_html,
             body_text=plain_text,
             template_type=template_type,
-            deal_id=deal_id,
-            deal_name=deal_name,
-            sender_name=sender_name,
-            sender_role=sender_role,
+            deal_id=context.get("deal_id"),
+            deal_name=context.get("deal_name"),
+            sender_name=context.get("sender_name"),
+            sender_role=context.get("sender_role"),
             recipient_role=context.get("recipient_role"),
+            event_id=context.get("event_id"),
+            recipient_user_id=context.get("recipient_user_id"),
+            sender_id=context.get("sender_id"),
+            auto_dispatch=auto_dispatch,
+            auto_commit=auto_commit,
         )
 
     @classmethod
@@ -537,6 +852,11 @@ class MailService:
             body_html=html,
             body_text=text,
             template_type="new_message",
+            deal_id=deal_id,
+            deal_name=deal_title,
+            sender_name=sender_name,
+            recipient_user_id=str(getattr(recipient_user, "id", "") or "") or None,
+            recipient_role=getattr(recipient_user, "role", None),
         )
 
     @classmethod
@@ -572,6 +892,11 @@ class MailService:
             body_html=html,
             body_text=text,
             template_type="reply_message",
+            deal_id=deal_id,
+            deal_name=deal_title,
+            sender_name=sender_name,
+            recipient_user_id=str(getattr(recipient_user, "id", "") or "") or None,
+            recipient_role=getattr(recipient_user, "role", None),
         )
 
     @classmethod
@@ -674,6 +999,7 @@ def template_new_message(
     body_html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
       <h3 style="color: #12284C; margin: 0 0 12px 0;">New Message regarding {deal_name}</h3>
+      <p>Hello {recipient_name},</p>
       <div style="background-color: #F8FAFC; border-left: 4px solid #00A3AD; padding: 16px; margin: 16px 0; border-radius: 4px;">
         <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name}</p>
         <p style="margin: 0; font-size: 15px; color: #0F172A; white-space: pre-wrap;">{body}</p>
@@ -684,7 +1010,7 @@ def template_new_message(
       <p style="font-size: 12px; color: #94A3B8;">Direct link: {thread_link}</p>
     </div>
     """
-    body_text = f"New message from {sender_name} regarding {deal_name}:\n\n{body}\n\nView and reply in portal: {thread_link}"
+    body_text = f"Hello {recipient_name},\n\nNew message from {sender_name} regarding {deal_name}:\n\n{body}\n\nView and reply in portal: {thread_link}"
     return subject, body_html, body_text
 
 
@@ -702,6 +1028,7 @@ def template_reply_message(
     body_html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1E293B; line-height: 1.6;">
       <h3 style="color: #12284C; margin: 0 0 12px 0;">New Reply on {deal_name}</h3>
+      <p>Hello {recipient_name},</p>
       <div style="background-color: #F8FAFC; border-left: 4px solid #3B82F6; padding: 16px; margin: 16px 0; border-radius: 4px;">
         <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748B;"><strong>From:</strong> {sender_name}</p>
         <p style="margin: 0; font-size: 15px; color: #0F172A; white-space: pre-wrap;">{body}</p>
@@ -712,7 +1039,7 @@ def template_reply_message(
       <p style="font-size: 12px; color: #94A3B8;">Direct link: {thread_link}</p>
     </div>
     """
-    body_text = f"New reply from {sender_name} regarding {deal_name}:\n\n{body}\n\nOpen thread: {thread_link}"
+    body_text = f"Hello {recipient_name},\n\nNew reply from {sender_name} regarding {deal_name}:\n\n{body}\n\nOpen thread: {thread_link}"
     return subject, body_html, body_text
 
 
@@ -752,4 +1079,3 @@ def template_owner_missing_alert(owner_name: str, admin_link: str) -> tuple[str,
     """
     body_text = f"Notice: Owner {owner_name} has no open deals in the latest upload. Account is retained. Review: {admin_link}"
     return subject, body_html, body_text
-

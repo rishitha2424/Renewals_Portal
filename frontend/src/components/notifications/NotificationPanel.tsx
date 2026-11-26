@@ -14,14 +14,16 @@ import {
   X,
 } from 'lucide-react'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, NotificationItem } from '@/api/client'
-import { formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import { useAppStore } from '@/store/appStore'
+import { useAuthStore } from '@/store/authStore'
 
 interface NotificationPanelProps {
   onSelectDealId?: (dealId: string) => void
 }
 
 export default function NotificationPanel({ onSelectDealId }: NotificationPanelProps) {
+  const { currentUser } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'message' | 'comment' | 'alert'>('all')
   const panelRef = useRef<HTMLDivElement>(null)
@@ -55,6 +57,7 @@ export default function NotificationPanel({ onSelectDealId }: NotificationPanelP
     mutationFn: (id: string) => markNotificationRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
     },
   })
 
@@ -62,6 +65,7 @@ export default function NotificationPanel({ onSelectDealId }: NotificationPanelP
     mutationFn: () => markAllNotificationsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
     },
   })
 
@@ -209,7 +213,7 @@ export default function NotificationPanel({ onSelectDealId }: NotificationPanelP
                     )}
                     <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      <span>{formatDate(n.created_at)}</span>
+                      <span>{formatDateTime(n.created_at, currentUser?.timezone)}</span>
                     </div>
                   </div>
                 </div>

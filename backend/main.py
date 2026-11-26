@@ -76,9 +76,12 @@ async def lifespan(app: FastAPI):
                 for col in table.columns:
                     if col.name not in existing_cols:
                         col_type = col.type.compile(engine.dialect)
+                        default_clause = ""
+                        if not col.nullable and "BOOL" in col_type.upper():
+                            default_clause = " DEFAULT true" if col.default and col.default.arg is True else (" DEFAULT false" if is_postgres else " DEFAULT 0")
                         log.info("Auto-migrating missing column %s.%s (%s)", table_name, col.name, col_type)
                         with engine.begin() as conn:
-                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"))
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}{default_clause}"))
         with engine.begin() as conn:
             conn.execute(text("UPDATE opportunities SET is_reconciliation_entry = 0 WHERE is_reconciliation_entry IS NULL"))
     except Exception as exc:

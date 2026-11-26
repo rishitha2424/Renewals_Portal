@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
+from backend.utils.time_utils import to_utc_iso
 
 
 class CustomColumn(Base):
@@ -136,6 +137,10 @@ class DealComment(Base):
     author_role: Mapped[str] = mapped_column(String(32), default="admin", nullable=False)
     recipient_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded array of recipient user IDs
     batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    deleted_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (
         Index("ix_deal_comments_opp_deleted", "opportunity_id_18", "is_deleted"),
@@ -148,10 +153,13 @@ class DealComment(Base):
             "id": self.id,
             "opportunity_id_18": self.opportunity_id_18,
             "author": self.author,
-            "text": self.text,
+            "text": "This message was removed" if self.is_deleted else self.text,
             "is_deleted": self.is_deleted,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": to_utc_iso(self.created_at),
+            "updated_at": to_utc_iso(self.updated_at),
+            "edited_at": to_utc_iso(self.edited_at),
+            "deleted_at": to_utc_iso(self.deleted_at),
+            "deleted_by": self.deleted_by,
             "visibility": self.visibility or "internal",
             "author_id": self.author_id,
             "author_role": self.author_role or "admin",

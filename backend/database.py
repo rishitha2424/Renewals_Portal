@@ -51,7 +51,10 @@ def init_db():
                 for col in table.columns:
                     if col.name not in existing_cols:
                         col_type = col.type.compile(engine.dialect)
+                        default_clause = ""
+                        if not col.nullable and "BOOL" in col_type.upper():
+                            default_clause = " DEFAULT false" if not is_sqlite else " DEFAULT 0"
                         with engine.begin() as conn:
-                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"))
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}{default_clause}"))
     except Exception:
         pass
