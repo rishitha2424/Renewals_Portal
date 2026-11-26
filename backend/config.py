@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ADMIN_PASSWORD: str = ""
     ADMIN_SECRET_KEY: str = ""
+    OWNER_EMAIL: Optional[str] = None
+    OWNER_NAME: Optional[str] = None
     COOKIE_SECURE: Optional[bool] = None
     ADMIN_TOKEN_EXPIRE_HOURS: int = 8
     AUTH_SESSION_EXPIRE_HOURS: int = 24
@@ -136,7 +138,7 @@ class Settings(BaseSettings):
     SMTP_SSL: bool = False
     MAIL_FROM: str = "renewals@mobileum.com"
     APP_BASE_URL: str = "http://localhost:5173"
-    ADMIN_ALERT_EMAIL: str = "rishitha@mobileum.com"
+    ADMIN_ALERT_EMAIL: str = "alerts@mobileum.com"
 
     @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", mode="before")
     @classmethod

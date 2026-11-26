@@ -206,7 +206,7 @@ export default function Login() {
                   Reset Instructions Sent
                 </div>
                 <p>
-                  If an account exists for <strong className="font-semibold">{forgotEmail}</strong>, an email with reset instructions has been generated. If email delivery is disabled, please contact your Administrator Rishitha for a manual reset link.
+                  If an account exists for <strong className="font-semibold">{forgotEmail}</strong>, an email with reset instructions has been generated. If email delivery is disabled, please contact your system administrator for a manual reset link.
                 </p>
                 <div className="pt-2">
                   <button

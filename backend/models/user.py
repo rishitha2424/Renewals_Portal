@@ -31,7 +31,7 @@ class User(Base):
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     lockout_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # Owner (Rishitha) cannot be deleted/demoted/disabled
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # System owner cannot be deleted/demoted/disabled
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # Incremented on password change to invalidate sessions
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

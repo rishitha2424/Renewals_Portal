@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
     except Exception as log_err:
         log.info(f"Database: {dialect} ({migrations_status})")
 
-    # Seed default user accounts (admin Rishitha and management)
+    # Seed default user accounts (admin owner and management)
     try:
         from backend.database import SessionLocal
         from backend.services.auth_service import ensure_default_accounts

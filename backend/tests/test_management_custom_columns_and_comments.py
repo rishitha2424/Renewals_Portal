@@ -56,8 +56,8 @@ def client_and_users(test_db_session):
 
     # Create admin, management, and kam users
     admin_user = User(
-        name="Rishitha",
-        email="rishitha@mobileum.com",
+        name="Admin User",
+        email="admin@example.com",
         role="admin",
         status="active",
         is_owner=True,

@@ -155,7 +155,7 @@ Mobileum Horizon enforces strict role-based access control with three primary ro
 ### 1. Admin Login (Owner)
 1. Open `http://localhost:5173/login`.
 2. Sign in with the owner email:
-   - **Email**: `rishithathoka@gmail.com` (or `admin`)
+   - **Email**: Your configured `OWNER_EMAIL` from `.env` (or `admin`)
    - **Password**: Your configured `ADMIN_PASSWORD` from `.env`.
 3. Admin lands on the primary **Overview Dashboard** (`/`). Admin has full access to all pages, User Governance (`/admin/users`), Email Outbox (`/admin/email-outbox`), and Data Uploads.
 
@@ -172,7 +172,7 @@ Mobileum Horizon enforces strict role-based access control with three primary ro
 
 ### 4. Testing Roles in Separate Private/Incognito Windows
 To test multiple roles concurrently without cookie conflicts:
-1. **Window 1 (Regular)**: Admin (`rishithathoka@gmail.com`).
+1. **Window 1 (Regular)**: Admin (configured `OWNER_EMAIL` or `admin`).
 2. **Window 2 (Incognito / Private Window A)**: Management user.
 3. **Window 3 (Incognito / Private Window B or separate profile)**: KAM user.
    - When a KAM logs in via `/login`, they are automatically routed to **My Portfolio** (`/kam/overview`).

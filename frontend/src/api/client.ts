@@ -940,6 +940,7 @@ export const updateAdminUser = async (
     status?: 'active' | 'disabled' | 'invited'
     owner_name?: string
     aliases?: string[]
+    admin_password?: string
   }
 ) => {
   const res = await api.put(`/admin/users/${userId}`, data)

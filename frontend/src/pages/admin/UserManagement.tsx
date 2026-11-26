@@ -39,7 +39,7 @@ export default function UserManagement() {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { currentUser } = useAuthStore()
-  const isCurrentUserOwner = !!currentUser?.is_owner || currentUser?.email?.toLowerCase() === 'rishithathoka@gmail.com'
+  const isCurrentUserOwner = !!currentUser?.is_owner
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('All')
@@ -67,6 +67,7 @@ export default function UserManagement() {
   const [editOwnerName, setEditOwnerName] = useState('')
   const [editAliases, setEditAliases] = useState<string[]>([])
   const [editNewAlias, setEditNewAlias] = useState('')
+  const [editAdminPassword, setEditAdminPassword] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSuccess, setEditSuccess] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
@@ -80,6 +81,7 @@ export default function UserManagement() {
     setEditOwnerName(u.owner_name || '')
     setEditAliases(u.aliases ? [...u.aliases] : [])
     setEditNewAlias('')
+    setEditAdminPassword('')
     setEditError(null)
     setEditSuccess(null)
   }
@@ -101,6 +103,10 @@ export default function UserManagement() {
     }
 
     if (!editingUser) return
+    if (editingUser.is_owner && !editAdminPassword.trim()) {
+      setEditError('Administrator password is required to change system owner details.')
+      return
+    }
     setEditSaving(true)
 
     try {
@@ -111,6 +117,7 @@ export default function UserManagement() {
         status: editStatus,
         owner_name: editRole === 'kam' ? editOwnerName.trim() : undefined,
         aliases: editRole === 'kam' ? editAliases : undefined,
+        admin_password: editingUser.is_owner ? editAdminPassword.trim() : undefined,
       })
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       setEditSuccess('User saved successfully.')
@@ -674,12 +681,38 @@ export default function UserManagement() {
                 <input
                   type="email"
                   required
+                  disabled={editingUser.is_owner && (usersData as any)?.owner_email_env_set}
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
                   placeholder="e.g. jane.doe@mobileum.com"
-                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
+                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD] disabled:opacity-60 disabled:cursor-not-allowed"
                 />
+                {editingUser.is_owner && (usersData as any)?.owner_email_env_set && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                    Owner email is set in .env (OWNER_EMAIL). To change it permanently, update .env.
+                  </p>
+                )}
               </div>
+
+              {/* Owner password confirmation */}
+              {editingUser.is_owner && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1.5">
+                  <label className="block text-xs font-semibold text-[var(--text-primary)]">
+                    Administrator Password Required
+                  </label>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Re-enter the administrator password to confirm changes to the system owner account.
+                  </p>
+                  <input
+                    type="password"
+                    required
+                    value={editAdminPassword}
+                    onChange={(e) => setEditAdminPassword(e.target.value)}
+                    placeholder="Enter administrator password..."
+                    className="w-full px-3 py-2 text-xs bg-[var(--bg-card)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[#00A3AD]"
+                  />
+                </div>
+              )}
 
               {/* Role */}
               <div>

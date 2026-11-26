@@ -64,7 +64,7 @@ class ForgotPasswordRequest(BaseModel):
 
 @router.post("/login")
 def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
-    """Authenticate user with email and password. Supports admin Rishitha and env password."""
+    """Authenticate user with email and password. Supports system owner and env password."""
     ensure_default_accounts(db)
 
     client_ip = request.client.host if request.client else "unknown"
@@ -75,17 +75,19 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
 
     user = db.query(User).filter(func.lower(User.email) == clean_email).first()
 
-    # Check for legacy admin login using username 'admin' or owner email
+    # Check for admin password match
     is_admin_password_match = False
     if settings.ADMIN_PASSWORD and req.password == settings.ADMIN_PASSWORD:
-        if clean_email in ("admin", "admin@mobileum.com", "rishitha@mobileum.com", "rishithathoka@gmail.com") or (user and user.is_owner):
+        if clean_email == "admin" or (user and (user.is_owner or user.role == "admin")):
             is_admin_password_match = True
 
     if not user:
-        if is_admin_password_match:
-            # Ensure owner exists
-            accs = ensure_default_accounts(db)
-            user = accs.get("admin")
+        if clean_email == "admin" and is_admin_password_match:
+            # Login via username 'admin' maps to the primary system owner account
+            user = db.query(User).filter(User.is_owner == True).first()
+            if not user:
+                accs = ensure_default_accounts(db)
+                user = accs.get("admin")
         else:
             record_auth_failure(rate_key)
             log_audit_event(db, "failed_login", user_email=clean_email, ip_address=client_ip, details={"reason": "user_not_found"})
