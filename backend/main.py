@@ -181,6 +181,7 @@ EXEMPT_API_PATHS = {
     "/api/admin/login",
     "/api/auth/logout",
     "/api/admin/logout",
+    "/api/admin/status",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
     "/api/auth/verify-reset-token",

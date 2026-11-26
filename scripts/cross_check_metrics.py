@@ -27,8 +27,10 @@ def run_cross_check():
         ensure_default_accounts(db_init)
     login_resp = client.post("/api/auth/login", json={"email": "rishithathoka@gmail.com", "password": settings.ADMIN_PASSWORD})
     if login_resp.status_code == 200:
-        token = login_resp.json().get("token")
-        client.headers["Authorization"] = f"Bearer {token}"
+        token = login_resp.cookies.get("auth_token") or login_resp.json().get("token")
+        if token:
+            client.cookies.set("auth_token", token)
+            client.headers["Authorization"] = f"Bearer {token}"
 
     db = SessionLocal()
     snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()

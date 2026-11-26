@@ -138,8 +138,7 @@ export function Drawer({
   )
 
   if (typeof document === 'undefined') return null
-  const target = document.body || document.getElementById('root')
-  return createPortal(content, target)
+  return createPortal(content, document.body)
 }
 
 export default Drawer

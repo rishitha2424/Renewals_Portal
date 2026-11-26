@@ -11,7 +11,8 @@ export function PageErrorState({
   message = "Couldn’t load this page. Try again",
   onRetry,
 }: PageErrorStateProps) {
-  const is401 = String(message).includes('401') || String(message).toLowerCase().includes('unauthorized')
+  const msgStr = typeof message === 'string' ? message : (message as any)?.message || String(message || '')
+  const is401 = msgStr.includes('401') || msgStr.toLowerCase().includes('unauthorized')
 
   useEffect(() => {
     if (is401) {

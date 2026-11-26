@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Lock, LogOut, ShieldCheck, X, Loader2, Settings as SettingsIcon } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
@@ -96,9 +97,10 @@ export default function AdminAuthModal() {
       )}
 
       {/* Admin Sign-In Modal */}
-      <AnimatePresence>
-        {isOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60">
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 bg-black/60">
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -195,7 +197,9 @@ export default function AdminAuthModal() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
     </>
   )
 }

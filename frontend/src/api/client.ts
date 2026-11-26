@@ -25,8 +25,8 @@ api.interceptors.response.use(
     // 401 Unauthorized handling: clear auth and redirect to login
     if (error?.response?.status === 401) {
       const url = error.config?.url || ''
-      // Never intercept login, logout, or initial auth check endpoint (/auth/me)
-      if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me')) {
+      // Never intercept login, logout, or initial auth check endpoint (/auth/me, /admin/status)
+      if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me') && !url.includes('/admin/status')) {
         try {
           localStorage.removeItem('horizon_auth_state')
         } catch (_) {}

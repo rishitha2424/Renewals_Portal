@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX, MessageSquare } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
@@ -430,7 +431,9 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
     activeChips.push({ label: 'Deal Size', value: `< ${formatCurrency((initialFilters as any).max_acv)}` })
   }
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -859,6 +862,7 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
           setSelectedIds(new Set())
         }}
       />
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

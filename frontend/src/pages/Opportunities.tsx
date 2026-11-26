@@ -1751,7 +1751,7 @@ export default function Opportunities() {
         >
           <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between shrink-0">
+            <div className="sticky top-0 z-20 p-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between shrink-0 shadow-xs">
               <div>
                 <h2 className="font-black text-sm sm:text-base text-[var(--text-primary)]">
                   {selectedRowData['Opportunity Name'] || 'Deal Detail'}
@@ -1803,8 +1803,8 @@ export default function Opportunities() {
       )}
 
       {/* ── Reconciliation Modal ─────────────────────────────────────────── */}
-      {showReconcileModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+      {showReconcileModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <Card padding="lg" className="w-full max-w-2xl space-y-4 bg-[var(--bg-card)] shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div className="flex items-center gap-2">
@@ -1937,13 +1937,14 @@ export default function Opportunities() {
               </button>
             </div>
           </Card>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Save View Modal ──────────────────────────────────────────────── */}
-      {showSaveViewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <Card padding="md" className="w-full max-w-sm space-y-3 bg-[var(--bg-card)]">
+      {showSaveViewModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <Card padding="md" className="w-full max-w-sm space-y-3 bg-[var(--bg-card)] shadow-2xl">
             <h4 className="font-bold text-sm text-[var(--text-primary)]">Save Current Explorer View</h4>
             <input
               type="text"
@@ -1970,7 +1971,8 @@ export default function Opportunities() {
               </button>
             </div>
           </Card>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Add Columns Modal ────────────────────────────────────────────── */}
@@ -1990,8 +1992,8 @@ export default function Opportunities() {
       />
 
       {/* ── Header Column Delete Confirmation Modal ───────────────────────── */}
-      {deletingHeaderCol && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      {deletingHeaderCol && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-md space-y-4">
             <div className="flex items-center gap-3 text-rose-600">
               <div className="p-2 bg-rose-50 dark:bg-rose-950 rounded-lg">
@@ -2051,12 +2053,13 @@ export default function Opportunities() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Header Column Rename Modal ────────────────────────────────────── */}
-      {renamingHeaderCol && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      {renamingHeaderCol && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-sm space-y-4">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">
               Rename Column
@@ -2086,7 +2089,8 @@ export default function Opportunities() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Manage Columns Modal ─────────────────────────────────────────── */}

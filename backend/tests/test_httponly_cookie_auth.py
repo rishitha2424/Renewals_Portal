@@ -177,3 +177,16 @@ def test_logout_clears_cookie(auth_test_db):
     # After logout, accessing protected route returns 401
     me_resp = client.get("/api/auth/me")
     assert me_resp.status_code == 401
+
+
+def test_admin_status_accessible_without_login(auth_test_db):
+    """
+    /api/admin/status is called on initial app load and must return 200 without auth,
+    reporting is_admin=False rather than throwing 401.
+    """
+    anon_client = get_clean_client()
+    resp = anon_client.get("/api/admin/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_admin"] is False
+    assert "is_configured" in data
