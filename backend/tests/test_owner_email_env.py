@@ -226,3 +226,4 @@ def test_no_hardcoded_personal_emails_in_code():
                         violations.append(f"{file_path.relative_to(repo_root)}: matched {matches[0]}")
 
     assert not violations, f"Found hardcoded personal email violations in source: {violations}"
+

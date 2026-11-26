@@ -85,7 +85,7 @@ export function Drawer({
             transition={{ duration: 0.16, ease: 'easeOut' }}
             style={{ width: 'min(960px, 94vw)', maxWidth: 'min(960px, 94vw)' }}
             className={clsx(
-              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full',
+              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full overflow-hidden',
               'max-sm:max-w-full max-sm:rounded-none',
               position === 'right' ? 'sm:rounded-l-2xl' : 'sm:rounded-r-2xl',
               position === 'right' ? 'ml-auto' : 'mr-auto'
@@ -127,7 +127,7 @@ export function Drawer({
 
             {/* Footer */}
             {footer && (
-              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-[var(--border)] bg-[var(--bg-secondary)]/30 shrink-0">
                 {footer}
               </div>
             )}

@@ -76,6 +76,10 @@ class UserToken(Base):
 
     user: Mapped[User] = relationship("User", back_populates="tokens")
 
+    __table_args__ = (
+        Index("ix_user_tokens_lookup", "user_id", "token_type", "used_at"),
+    )
+
 
 class DealMessage(Base):
     __tablename__ = "deal_messages"
@@ -112,7 +116,7 @@ class EmailOutbox(Base):
     sender_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sender_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     recipient_role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", nullable=False)  # 'sent', 'failed', 'pending – email not configured'
+    status: Mapped[str] = mapped_column(String(50), default="pending – email not configured", index=True, nullable=False)  # 'sent', 'failed', 'pending – email not configured'
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     attempts = synonym("retry_count")

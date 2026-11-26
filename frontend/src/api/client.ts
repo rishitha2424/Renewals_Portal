@@ -29,6 +29,9 @@ api.interceptors.response.use(
       if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me') && !url.includes('/admin/status')) {
         try {
           localStorage.removeItem('horizon_auth_state')
+          import('../store/authStore').then(({ useAuthStore }) => {
+            useAuthStore.getState().setCurrentUser(null)
+          }).catch(() => {})
         } catch (_) {}
         if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
           window.location.href = '/login?expired=1'

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -1236,39 +1237,40 @@ export default function Topbar() {
       )}
 
       {/* ── Slide-over Filter Panel for Mobile (< 640px) and Tablet (< xl) ── */}
-      <AnimatePresence>
-        {mobileFiltersOpen && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={() => setMobileFiltersOpen(false)}
-              className="fixed inset-0 bg-black/60"
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="relative z-10 w-full max-w-md bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full max-sm:max-w-full"
-            >
-              {/* Panel Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-[#00A3AD]" />
-                  <h3 className="font-bold text-sm text-[var(--text-primary)]">Filters & Settings</h3>
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {mobileFiltersOpen && (
+            <div className="fixed inset-0 z-[100] overflow-hidden flex justify-end">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                onClick={() => setMobileFiltersOpen(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+              />
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="relative z-10 w-full max-w-md bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full max-sm:max-w-full overflow-hidden"
+              >
+                {/* Panel Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-[#00A3AD]" />
+                    <h3 className="font-bold text-sm text-[var(--text-primary)]">Filters & Settings</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileFiltersOpen(false)}
+                    className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors border border-[var(--border)] shadow-xs"
+                    aria-label="Close filters panel"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setMobileFiltersOpen(false)}
-                  className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
-                  aria-label="Close filters panel"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
               {/* Panel Body */}
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -1565,7 +1567,7 @@ export default function Topbar() {
               </div>
 
               {/* Panel Footer */}
-              <div className="p-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between gap-3">
+              <div className="p-4 border-t border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -1587,7 +1589,9 @@ export default function Topbar() {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
       {/* Change Password Modal */}
       {changePwdOpen && (

@@ -54,7 +54,8 @@ def hash_password(password: str) -> str:
         return f"argon2${_argon2_hasher.hash(password)}"
 
     if bcrypt is not None:
-        salt = bcrypt.gensalt(rounds=12)
+        rounds = getattr(settings, "BCRYPT_ROUNDS", 12)
+        salt = bcrypt.gensalt(rounds=rounds)
         hashed = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
         return f"bcrypt${hashed}"
 

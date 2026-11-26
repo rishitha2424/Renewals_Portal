@@ -1749,7 +1749,7 @@ export default function Opportunities() {
             if (e.target === e.currentTarget) setSelectedRowData(null)
           }}
         >
-          <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200">
+          <div className="w-full max-w-full sm:max-w-xl bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200 overflow-hidden">
             {/* Drawer Header */}
             <div className="sticky top-0 z-20 p-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between shrink-0 shadow-xs">
               <div>
@@ -1763,7 +1763,7 @@ export default function Opportunities() {
               <button
                 type="button"
                 onClick={() => setSelectedRowData(null)}
-                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] cursor-pointer"
+                className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] cursor-pointer border border-[var(--border)] shadow-xs"
                 aria-label="Close deal detail"
               >
                 <X className="w-5 h-5" />

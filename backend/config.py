@@ -127,11 +127,13 @@ class Settings(BaseSettings):
     RESET_TOKEN_EXPIRE_HOURS: int = 24
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15
+    BCRYPT_ROUNDS: int = 12
 
     # Email & SMTP Configuration (Round 18)
     MAIL_ENABLED: bool = False
     SMTP_HOST: str = "smtp.office365.com"
     SMTP_PORT: int = 587
+    SMTP_TIMEOUT_SECONDS: int = 5
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_STARTTLS: bool = True
@@ -157,10 +159,10 @@ class Settings(BaseSettings):
             return cleaned in ("true", "1", "yes", "t", "on")
         return bool(v)
 
-    @field_validator("SMTP_PORT", mode="before")
+    @field_validator("SMTP_PORT", "SMTP_TIMEOUT_SECONDS", "BCRYPT_ROUNDS", mode="before")
     @classmethod
     def parse_int_env(cls, v: Any) -> int:
-        """Parse port number integer safely from string representations."""
+        """Parse port/timeout/cost integer safely from string representations."""
         if isinstance(v, int):
             return v
         if isinstance(v, str):
@@ -222,6 +224,10 @@ class Settings(BaseSettings):
             "MAIL_FROM": {
                 "set": _is_set(self.MAIL_FROM),
                 "value": self.MAIL_FROM or "(not set)",
+            },
+            "SMTP_TIMEOUT_SECONDS": {
+                "set": _is_set(self.SMTP_TIMEOUT_SECONDS),
+                "value": self.SMTP_TIMEOUT_SECONDS,
             },
         }
 

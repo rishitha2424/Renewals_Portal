@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -193,74 +194,77 @@ export default function Sidebar() {
       </motion.aside>
 
       {/* ── 2. Mobile Drawer / Sheet (Phone < 640px) ── */}
-      <AnimatePresence>
-        {mobileSidebarOpen && (
-          <div className="fixed inset-0 z-50 sm:hidden flex">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMobileSidebarOpen(false)}
-              className="fixed inset-0 bg-black/60"
-            />
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {mobileSidebarOpen && (
+            <div className="fixed inset-0 z-[100] sm:hidden flex">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setMobileSidebarOpen(false)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+              />
 
-            {/* Slide-out drawer */}
-            <motion.div
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-              className="relative w-64 max-w-[80vw] h-full flex flex-col z-10"
-              style={{ background: '#12284C' }}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
-                    <img
-                      src="/assets/logo.png"
-                      alt="Mobileum"
-                      className="w-full h-full object-contain"
-                    />
+              {/* Slide-out drawer */}
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+                className="relative w-64 max-w-[80vw] h-full flex flex-col z-10 overflow-hidden"
+                style={{ background: '#12284C' }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
+                      <img
+                        src="/assets/logo.png"
+                        alt="Mobileum"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold text-sm tracking-tight leading-none mb-1">
+                        Horizon
+                      </p>
+                      <p className="text-slate-400 text-[11px] font-normal tracking-tight leading-none">
+                        {isKamUser ? 'KAM Renewals' : 'Renewals intelligence'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-white font-semibold text-sm tracking-tight leading-none mb-1">
-                      Horizon
-                    </p>
-                    <p className="text-slate-400 text-[11px] font-normal tracking-tight leading-none">
-                      {isKamUser ? 'KAM Renewals' : 'Renewals intelligence'}
-                    </p>
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    className="w-10 h-10 rounded-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                    aria-label="Close navigation"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className="w-10 h-10 rounded-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                  aria-label="Close navigation"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Nav items list */}
-              <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
-                {renderNavLinks(primaryItems, true)}
-                {adminItems.length > 0 && (
-                  <div className="pt-3 mt-3 border-t border-white/10 space-y-1.5">
-                    <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Shield className="w-3 h-3 text-teal-400" />
-                      <span>Administration</span>
+                {/* Nav items list */}
+                <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
+                  {renderNavLinks(primaryItems, true)}
+                  {adminItems.length > 0 && (
+                    <div className="pt-3 mt-3 border-t border-white/10 space-y-1.5">
+                      <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Shield className="w-3 h-3 text-teal-400" />
+                        <span>Administration</span>
+                      </div>
+                      {renderNavLinks(adminItems, true)}
                     </div>
-                    {renderNavLinks(adminItems, true)}
-                  </div>
-                )}
-              </nav>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                  )}
+                </nav>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   MessageSquare,
   X,
@@ -124,7 +125,10 @@ export default function DealCommentPanel({
     }
   }
 
-  return (
+  if (!isOpen) return null
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <div
       className="fixed inset-0 z-[110] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
       onClick={(e) => {
@@ -132,7 +136,7 @@ export default function DealCommentPanel({
       }}
     >
       <div
-        className="w-full max-w-lg bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200"
+        className="w-full max-w-lg bg-[var(--bg-card)] h-full shadow-2xl flex flex-col border-l border-[var(--border)] animate-in slide-in-from-right duration-200 overflow-hidden"
         id="deal-comment-panel"
       >
         {/* Panel Header */}
@@ -377,7 +381,8 @@ export default function DealCommentPanel({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

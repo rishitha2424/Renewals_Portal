@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -211,10 +212,12 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', handler)
   }, [commandPaletteOpen, combinedItems, selected, navigate, setCommandPaletteOpen])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {commandPaletteOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden flex items-start justify-center pt-20 px-4">
+        <div className="fixed inset-0 z-[100] overflow-hidden flex items-start justify-center pt-20 px-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -345,6 +348,7 @@ export default function CommandPalette() {
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

@@ -393,6 +393,7 @@ def generate_invite_link(
     return {
         "status": "success",
         "invite_url": invite_url,
+        "invite_link": invite_url,
         "token": raw_token,
         "expires_in_hours": getattr(settings, "INVITE_TOKEN_EXPIRE_HOURS", 72),
         "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,
@@ -431,6 +432,7 @@ def generate_reset_link(
     return {
         "status": "success",
         "reset_url": reset_url,
+        "reset_link": reset_url,
         "token": raw_token,
         "expires_in_hours": getattr(settings, "RESET_TOKEN_EXPIRE_HOURS", 24),
         "expires_at": token_rec.expires_at.isoformat() if token_rec.expires_at else None,
