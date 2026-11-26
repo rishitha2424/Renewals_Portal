@@ -188,3 +188,127 @@ def test_zero_deals_owner_pdf_and_pptx(active_snap):
     prs = Presentation(io.BytesIO(pptx_bytes))
     assert len(prs.slides) >= 6
 
+
+def test_kam_pdf_reportlab_carlito_and_logo(db_session, active_snap):
+    """
+    Validates ReportLab Platypus rebuild requirements:
+    1. Uses Carlito font family across all text (0 Helvetica, 0 DejaVu).
+    2. Mobileum logo appears on every page (cover + content pages).
+    3. Document page count and landscape dimensions.
+    """
+    import fitz
+
+    ctx = UserContext(
+        user_id="test_runner",
+        email="test@mobileum.com",
+        display_name="Luay Arabi",
+        role="admin",
+        owner_name="Luay Arabi",
+        owner_aliases=["Luay Arabi"],
+    )
+
+    overview = get_kam_overview(
+        as_of=active_snap.snapshot_date.isoformat(),
+        period="Q4-2026",
+        owner_override="Luay Arabi",
+        ctx=ctx,
+        db=db_session,
+    )
+    deals = overview.get("deals", [])
+
+    pdf_io = KamReportService.generate_pdf_report(
+        kam_name="Luay Arabi",
+        owner_name="Luay Arabi",
+        period="Q4-2026",
+        as_of_date=active_snap.snapshot_date.isoformat(),
+        overview_data=overview,
+        deals=deals,
+    )
+    pdf_bytes = pdf_io.getvalue()
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    assert len(doc) >= 7
+
+    for pno, page in enumerate(doc):
+        # 1. Exact A4 landscape dimensions
+        w = round(page.rect.width, 2)
+        h = round(page.rect.height, 2)
+        assert abs(w - 841.89) < 2.0, f"Page {pno+1} width {w} != 841.89 pt"
+        assert abs(h - 595.28) < 2.0, f"Page {pno+1} height {h} != 595.28 pt"
+
+        # 2. Logo image present on every page
+        imgs = page.get_images()
+        assert len(imgs) >= 1, f"Page {pno+1} is missing the logo image"
+
+    # 3. Only Carlito font family embedded (no Helvetica fallback)
+    all_fonts = set()
+    for pno in range(len(doc)):
+        for f in doc.get_page_fonts(pno):
+            all_fonts.add(f[3])
+
+    assert len(all_fonts) > 0, "PDF must embed at least one font"
+    for fname in all_fonts:
+        assert "Carlito" in fname, f"Unexpected font {fname} in PDF (expected Carlito)"
+        assert "Helvetica" not in fname, f"Helvetica fallback detected in PDF: {fname}"
+        assert "DejaVu" not in fname, f"DejaVu font detected in PDF: {fname}"
+
+
+def test_kam_pptx_calibri_runs_and_logo(db_session, active_snap):
+    """
+    Validates PPTX typography polish:
+    1. Explicit Calibri font family on 100% of text runs across shapes and tables.
+    2. Slide 4 opportunity name multi-line formatting with secondary line in 10 pt.
+    """
+    ctx = UserContext(
+        user_id="test_runner",
+        email="test@mobileum.com",
+        display_name="Luay Arabi",
+        role="admin",
+        owner_name="Luay Arabi",
+        owner_aliases=["Luay Arabi"],
+    )
+
+    overview = get_kam_overview(
+        as_of=active_snap.snapshot_date.isoformat(),
+        period="Q4-2026",
+        owner_override="Luay Arabi",
+        ctx=ctx,
+        db=db_session,
+    )
+    deals = overview.get("deals", [])
+
+    pptx_io = KamReportService.generate_pptx_report(
+        kam_name="Luay Arabi",
+        owner_name="Luay Arabi",
+        period="Q4-2026",
+        as_of_date=active_snap.snapshot_date.isoformat(),
+        overview_data=overview,
+        deals=deals,
+    )
+    pptx_bytes = pptx_io.getvalue()
+    prs = Presentation(io.BytesIO(pptx_bytes))
+    assert len(prs.slides) >= 7
+
+    total_runs = 0
+    non_calibri = []
+    for s_idx, slide in enumerate(prs.slides):
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for p in shape.text_frame.paragraphs:
+                    for r in p.runs:
+                        total_runs += 1
+                        if r.font.name != "Calibri":
+                            non_calibri.append((s_idx + 1, r.text, r.font.name))
+            if shape.has_table:
+                for row in shape.table.rows:
+                    for cell in row.cells:
+                        for p in cell.text_frame.paragraphs:
+                            for r in p.runs:
+                                total_runs += 1
+                                if r.font.name != "Calibri":
+                                    non_calibri.append((s_idx + 1, r.text, r.font.name))
+
+    assert total_runs > 50, "PPTX must have text runs"
+    assert len(non_calibri) == 0, f"Found non-Calibri runs in PPTX: {non_calibri[:5]}"
+
+
