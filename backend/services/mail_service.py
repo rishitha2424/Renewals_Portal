@@ -81,7 +81,10 @@ class MailService:
         diag = settings.get_mail_diagnostics()
         diag["is_configured"] = cls.is_configured()
         diag["inactive_reason"] = cls.get_inactive_reason()
-        diag["timeout_seconds"] = getattr(settings, "SMTP_TIMEOUT_SECONDS", 5)
+        diag["mail_active"] = cls.is_configured() and bool(settings.MAIL_ENABLED)
+        timeout_val = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
+        diag["timeout"] = timeout_val
+        diag["timeout_seconds"] = timeout_val
         try:
             from backend.database import SessionLocal
             db = SessionLocal()
@@ -261,6 +264,60 @@ class MailService:
         }
 
     @classmethod
+    def retry_failed_emails(cls, db: Session, limit: int = 50) -> dict:
+        """Retry sending failed outbox items, returning recipient details and delivery counts."""
+        settings.reload_from_env()
+        failed_items = (
+            db.query(EmailOutbox)
+            .filter(EmailOutbox.status == "failed")
+            .order_by(EmailOutbox.created_at.asc())
+            .limit(limit)
+            .all()
+        )
+        recipients = [
+            {
+                "id": item.id,
+                "recipient_email": item.recipient_email,
+                "recipient_name": item.recipient_name,
+                "subject": item.subject,
+            }
+            for item in failed_items
+        ]
+        sent_count = 0
+        failed_count = 0
+        for item in failed_items:
+            item.status = "pending"
+            item.error_message = None
+            db.commit()
+            success = cls.dispatch_outbox_item(db, item.id)
+            if success:
+                sent_count += 1
+            else:
+                failed_count += 1
+
+        return {
+            "status": "success",
+            "retried_count": len(failed_items),
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "recipients": recipients,
+        }
+
+    @classmethod
+    def retry_outbox_item(cls, db: Session, item_id: str) -> tuple[bool, Optional[str], Optional[EmailOutbox]]:
+        """Retry sending a single outbox item."""
+        settings.reload_from_env()
+        item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+        if not item:
+            return False, "Outbox item not found", None
+        item.status = "pending"
+        item.error_message = None
+        db.commit()
+        success = cls.dispatch_outbox_item(db, item.id)
+        db.refresh(item)
+        return success, item.error_message, item
+
+    @classmethod
     def _send_smtp(
         cls,
         to_addr: str,
@@ -286,7 +343,7 @@ class MailService:
 
             host = settings.SMTP_HOST
             port = settings.SMTP_PORT
-            timeout = getattr(settings, "SMTP_TIMEOUT_SECONDS", 5)
+            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
 
             if settings.SMTP_SSL:
                 server = smtplib.SMTP_SSL(host, port, timeout=timeout)
@@ -317,7 +374,7 @@ class MailService:
             log.warning("SMTP connect failed for %s: %s", to_addr, err)
             return False, err
         except (socket.timeout, TimeoutError):
-            timeout = getattr(settings, "SMTP_TIMEOUT_SECONDS", 5)
+            timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
             err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
             log.warning("SMTP timeout for %s: %s", to_addr, err)
             return False, err
@@ -332,7 +389,7 @@ class MailService:
         except OSError as exc:
             err_code = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
             if err_code in (10060, 110) or "timed out" in str(exc).lower():
-                timeout = getattr(settings, "SMTP_TIMEOUT_SECONDS", 5)
+                timeout = getattr(settings, "SMTP_TIMEOUT", getattr(settings, "SMTP_TIMEOUT_SECONDS", 60))
                 err = f"Connection timed out connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT} (timeout={timeout}s)"
             elif err_code in (10061, 111):
                 err = f"Connection refused connecting to SMTP host {settings.SMTP_HOST}:{settings.SMTP_PORT}"

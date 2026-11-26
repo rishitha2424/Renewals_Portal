@@ -15,9 +15,11 @@ export function PageErrorState({
   const msgStr = typeof message === 'string' ? message : (message as any)?.message || (message as any)?.detail || String(message || '')
   const detailStr = (message as any)?.response?.data?.detail ? String((message as any).response.data.detail) : ''
   const is401 = status === 401 ||
+    (message as any)?.response?.status === 401 ||
     msgStr.includes('401') ||
     msgStr.toLowerCase().includes('unauthorized') ||
     msgStr.toLowerCase().includes('authentication required') ||
+    msgStr.toLowerCase().includes('status code 401') ||
     detailStr.toLowerCase().includes('unauthorized') ||
     detailStr.toLowerCase().includes('authentication required')
 

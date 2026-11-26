@@ -133,7 +133,8 @@ class Settings(BaseSettings):
     MAIL_ENABLED: bool = False
     SMTP_HOST: str = "smtp.office365.com"
     SMTP_PORT: int = 587
-    SMTP_TIMEOUT_SECONDS: int = 5
+    SMTP_TIMEOUT: int = 60
+    SMTP_TIMEOUT_SECONDS: int = 60
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_STARTTLS: bool = True
@@ -159,7 +160,7 @@ class Settings(BaseSettings):
             return cleaned in ("true", "1", "yes", "t", "on")
         return bool(v)
 
-    @field_validator("SMTP_PORT", "SMTP_TIMEOUT_SECONDS", "BCRYPT_ROUNDS", mode="before")
+    @field_validator("SMTP_PORT", "SMTP_TIMEOUT", "SMTP_TIMEOUT_SECONDS", "BCRYPT_ROUNDS", mode="before")
     @classmethod
     def parse_int_env(cls, v: Any) -> int:
         """Parse port/timeout/cost integer safely from string representations."""
@@ -225,6 +226,10 @@ class Settings(BaseSettings):
                 "set": _is_set(self.MAIL_FROM),
                 "value": self.MAIL_FROM or "(not set)",
             },
+            "SMTP_TIMEOUT": {
+                "set": _is_set(self.SMTP_TIMEOUT),
+                "value": self.SMTP_TIMEOUT,
+            },
             "SMTP_TIMEOUT_SECONDS": {
                 "set": _is_set(self.SMTP_TIMEOUT_SECONDS),
                 "value": self.SMTP_TIMEOUT_SECONDS,
@@ -253,8 +258,11 @@ class Settings(BaseSettings):
             "env_file_path": str(env_path),
             "env_file_exists": file_exists,
             "mail_enabled": bool(self.MAIL_ENABLED),
+            "mail_active": is_configured and bool(self.MAIL_ENABLED),
             "is_configured": is_configured,
             "inactive_reason": inactive_reason,
+            "timeout": self.SMTP_TIMEOUT,
+            "timeout_seconds": self.SMTP_TIMEOUT,
             "variables": variables,
         }
 

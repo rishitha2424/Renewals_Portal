@@ -200,3 +200,67 @@ def send_outbox_email_now(
     }
 
 
+@router.post("/outbox/{item_id}/retry")
+def retry_outbox_email(
+    item_id: str,
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Retry sending a single failed outbox item after admin confirmation.
+    Returns delivery status and recipient information.
+    """
+    item = db.query(EmailOutbox).filter(EmailOutbox.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+
+    recipient_info = {
+        "id": item.id,
+        "recipient_email": item.recipient_email,
+        "recipient_name": item.recipient_name,
+        "subject": item.subject,
+    }
+
+    success, err, updated_item = MailService.retry_outbox_item(db, item_id)
+    log_audit_event(
+        db,
+        "outbox_email_retried",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={"item_id": item_id, "recipient": item.recipient_email, "success": success},
+    )
+    return {
+        "status": "success" if success else "failed",
+        "delivered": success,
+        "recipient": recipient_info,
+        "detail": "Email retried and delivered successfully" if success else (err or "Retry delivery failed"),
+        "item_status": updated_item.status if updated_item else "failed",
+    }
+
+
+@router.post("/retry-failed")
+@router.post("/outbox/retry-failed")
+def retry_failed_outbox_emails(
+    ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
+):
+    """
+    Bulk retry sending all failed outbox items after admin confirmation.
+    Returns list of recipients retried along with counts.
+    """
+    res = MailService.retry_failed_emails(db)
+    log_audit_event(
+        db,
+        "outbox_emails_bulk_retried",
+        user_id=ctx.user_id,
+        user_email=ctx.email,
+        details={
+            "retried_count": res.get("retried_count", 0),
+            "sent_count": res.get("sent_count", 0),
+            "failed_count": res.get("failed_count", 0),
+        },
+    )
+    return res
+
+
+

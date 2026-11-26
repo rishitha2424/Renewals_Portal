@@ -1744,7 +1744,7 @@ export default function Opportunities() {
       {/* ── Detail Drawer (Click any row) ─────────────────────────────────── */}
       {selectedRowData && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[100] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+          className="fixed inset-0 z-[999] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSelectedRowData(null)
           }}

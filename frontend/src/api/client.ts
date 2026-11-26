@@ -1018,8 +1018,11 @@ export interface MailDiagnostics {
   env_file_path: string
   env_file_exists: boolean
   mail_enabled: boolean
+  mail_active?: boolean
   is_configured: boolean
   inactive_reason: string
+  timeout?: number
+  timeout_seconds?: number
   variables: Record<string, MailDiagnosticVariable>
 }
 
@@ -1082,6 +1085,16 @@ export const deleteOutboxEmail = async (itemId: string): Promise<{ status: strin
 
 export const sendOutboxEmailNow = async (itemId: string): Promise<{ status: string; delivered: boolean; detail: string; item_status: string }> => {
   const res = await api.post(`/admin/email/outbox/${itemId}/send-now`)
+  return res.data
+}
+
+export const retryOutboxEmail = async (itemId: string): Promise<{ status: string; delivered: boolean; detail: string; item_status: string; recipient?: any }> => {
+  const res = await api.post(`/admin/email/outbox/${itemId}/retry`)
+  return res.data
+}
+
+export const retryFailedEmails = async (): Promise<{ status: string; retried_count: number; sent_count: number; failed_count: number; recipients: any[] }> => {
+  const res = await api.post('/admin/email/retry-failed')
   return res.data
 }
 

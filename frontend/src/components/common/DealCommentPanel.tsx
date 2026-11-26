@@ -130,7 +130,7 @@ export default function DealCommentPanel({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[110] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[1000] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose()
       }}

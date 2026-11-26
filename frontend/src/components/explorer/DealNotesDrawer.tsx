@@ -183,7 +183,7 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[999] overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200"
       id="deal-notes-drawer-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()

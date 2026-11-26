@@ -437,7 +437,7 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
+        className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60"
         onClick={onClose}
       >
         <motion.div
