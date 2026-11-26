@@ -5,8 +5,9 @@ All mutating routes require admin context.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+import uuid
+from typing import Any, Optional, List
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models.opportunity import Opportunity
 from backend.models.custom_column import DealComment
+from backend.models.user import CommentMessageHistory
 from backend.services.context import (
     UserContext,
     get_user_context,
@@ -21,6 +23,15 @@ from backend.services.context import (
     require_management_or_admin,
     require_authenticated,
 )
+from backend.services.audit_service import log_audit_event
+from backend.services.delivery_service import (
+    resolve_caller_uid,
+    resolve_recipients,
+    get_latest_opportunities_map,
+    is_deal_owned_by_kam,
+    run_post_commit_delivery,
+)
+from backend.utils.time_utils import to_utc_iso
 from backend.services.settings_service import SettingsService
 from backend.services.annotation_service import (
     AnnotationService,
@@ -482,10 +493,9 @@ def list_deal_comments(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    """List comments for an opportunity (KAMs see shared + own comments only)."""
+    """List comments for an opportunity (KAMs see shared + own comments on own deals only)."""
     if ctx.is_kam:
-        opp = svc.db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
-        if opp and opp.opportunity_owner not in ctx.all_owner_names:
+        if not is_deal_owned_by_kam(svc.db, opportunity_id, ctx.all_owner_names):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden: This deal is not assigned to you.")
     comments = svc.list_comments(opportunity_id, user_context=ctx)
     return {"opportunity_id_18": opportunity_id, "comments": comments}
@@ -495,14 +505,17 @@ def list_deal_comments(
 def add_deal_comment(
     opportunity_id: str,
     body: CreateDealCommentRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(require_authenticated),
 ):
-    """Add a comment to an opportunity (Admin, Management, or KAM for own deals)."""
+    """Add a comment to an opportunity (Admin, Management, or KAM for own deals). Save-first + async delivery."""
+    opp_map = get_latest_opportunities_map(db, [opportunity_id])
+    opp = opp_map.get(opportunity_id)
+
     if ctx.is_kam:
-        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
-        if opp and opp.opportunity_owner not in ctx.all_owner_names:
+        if not is_deal_owned_by_kam(db, opportunity_id, ctx.all_owner_names):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access forbidden: KAMs can only comment on their own opportunities.",
@@ -516,74 +529,60 @@ def add_deal_comment(
         author_role = ctx.role
 
     try:
-        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
+        caller_uid = resolve_caller_uid(db, ctx)
         user_disp = ctx.display_name or ctx.email or author_name
 
-        # Resolve Recipients
-        from backend.models.user import User, UserAlias
-        from backend.services.notification_service import NotificationService
-        opp = db.query(Opportunity).filter(Opportunity.opportunity_id_18 == opportunity_id).first()
-
-        recipients: list[User] = []
-        if body.recipient_ids:
-            raw_ids = list(body.recipient_ids)
-            if "admin" in raw_ids:
-                raw_ids.remove("admin")
-                admin_ids = [u.id for u in db.query(User).filter(User.role == "admin", User.status != "disabled").all()]
-                raw_ids.extend(admin_ids)
-            recipients = db.query(User).filter(User.id.in_(raw_ids), User.status != "disabled").all()
-        else:
-            mgmt_admin = db.query(User).filter(User.role.in_(["management", "admin"]), User.status != "disabled").all()
-            recipients = list(mgmt_admin)
-            if vis in ("shared", "shared_with_owner") and opp and opp.opportunity_owner:
-                owner_clean = opp.opportunity_owner.strip()
-                kam_u = db.query(User).filter(func.lower(User.owner_name) == owner_clean.lower(), User.status != "disabled").first()
-                if not kam_u:
-                    alias = db.query(UserAlias).filter(func.lower(UserAlias.alias_name) == owner_clean.lower()).first()
-                    if alias and alias.user.status != "disabled":
-                        kam_u = alias.user
-                if kam_u and kam_u.id not in [u.id for u in recipients]:
-                    recipients.append(kam_u)
-
-        # Filter out author
-        recipients = [u for u in recipients if str(u.id) != str(user_id)]
+        resolved = resolve_recipients(
+            db=db,
+            caller_uid=caller_uid,
+            caller_role=author_role,
+            raw_recipient_ids=body.recipient_ids,
+            deal_ids=[opportunity_id],
+            kind="comment",
+            visibility=vis,
+        )
 
         batch_id = str(uuid.uuid4())
         comment = svc.add_comment(
             opportunity_id_18=opportunity_id,
             text=body.text,
             author=author_name,
-            user_id=user_id,
+            user_id=caller_uid,
             visibility=vis,
             author_role=author_role,
             user_display=user_disp,
-            recipient_ids=[u.id for u in recipients],
+            recipient_ids=resolved.recipient_ids,
             batch_id=batch_id,
         )
 
-        # Dispatch In-App Notifications & Emails for each recipient
         deal_title = opp.opportunity_name if opp else opportunity_id
-        for r in recipients:
-            try:
-                NotificationService.create_notification(
-                    db=db,
-                    user_id=r.id,
-                    category="comment",
-                    title=f"New comment from {author_name}",
-                    message=body.text.strip(),
-                    deal_id=opportunity_id,
-                    deal_name=deal_title,
-                    target_type="deal_comment",
-                    target_id=comment.get("id"),
-                    send_email=True,
-                    email_sender_name=author_name,
-                    email_sender_role=author_role,
-                    account_name=opp.account_name if opp else None,
-                    acv_amount=float(opp.forecast_acv_amount or 0.0) if opp else None,
-                )
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning("Failed to queue notification for shared comment: %s", e)
+        short_deal = (deal_title or opportunity_id)[:40]
+        background_tasks.add_task(
+            run_post_commit_delivery,
+            bind_engine=db.get_bind(),
+            event_type="comment",
+            entity_type="deal_comment",
+            entity_id=comment.get("id", ""),
+            author_id=caller_uid,
+            author_name=author_name,
+            author_role=author_role,
+            author_email=ctx.email or "",
+            subject=f"New comment: {short_deal}",
+            body_text=body.text.strip(),
+            deal_id=opportunity_id,
+            deal_name=deal_title,
+            account_name=opp.account_name if opp else None,
+            acv_amount=float(opp.forecast_acv_amount or 0.0) if (opp and opp.forecast_acv_amount is not None) else None,
+            recipient_user_ids=resolved.recipient_ids,
+            recipient_summary=resolved.summary_admin,
+            audit_event_type="comment_created",
+            audit_details={
+                "comment_id": comment.get("id"),
+                "deal_id": opportunity_id,
+                "visibility": comment.get("visibility"),
+                "recipient_count": len(resolved.recipient_ids),
+            },
+        )
 
         return {"comment": comment}
     except ValidationError as e:
@@ -599,29 +598,45 @@ def update_deal_comment(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(require_authenticated),
 ):
-    """Update a comment (Admin, or author for their own comments)."""
+    """Edit own comment (Author only; editing does not send new emails)."""
     comment = db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
 
-    if not ctx.is_admin:
-        # Management and KAM can only edit their own comments
-        if comment.author_id != str(ctx.user_id) and comment.author != ctx.display_name:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"{ctx.role.capitalize()} users can only edit their own comments.",
-            )
+    caller_uid = resolve_caller_uid(db, ctx)
+    is_author = (
+        str(comment.author_id) == str(caller_uid)
+        or str(comment.author_id) == str(ctx.user_id)
+        or (ctx.is_owner and str(comment.author_id) == "admin")
+    )
+    if not is_author:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the comment author can edit this comment.",
+        )
 
     try:
-        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
-        user_disp = ctx.display_name or ctx.email or user_id
+        user_disp = ctx.display_name or ctx.email or caller_uid
+        old_text = comment.text
         res = svc.update_comment(
             comment_id=comment_id,
             text=body.text,
-            user_id=user_id,
+            user_id=caller_uid,
             visibility=body.visibility,
             user_role=ctx.role,
             user_display=user_disp,
+        )
+        log_audit_event(
+            db,
+            "comment_edited",
+            user_id=caller_uid,
+            user_email=ctx.email,
+            details={
+                "comment_id": comment_id,
+                "deal_id": opportunity_id,
+                "old_length": len(old_text or ""),
+                "new_length": len(body.text.strip()),
+            },
         )
         return {"comment": res}
     except ValidationError as e:
@@ -636,35 +651,89 @@ def delete_deal_comment(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(require_authenticated),
 ):
-    """Delete a comment (Admin, or author for their own comments)."""
+    """Unsend / remove a comment (Author can unsend own comment; Admin can remove any comment)."""
     comment = db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
 
-    if not ctx.is_admin:
-        if comment.author_id != str(ctx.user_id) and comment.author != ctx.display_name:
-            if ctx.is_management and (comment.author_role == "admin" or not comment.author_id):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Management users cannot delete admin-created comments.",
-                )
+    caller_uid = resolve_caller_uid(db, ctx)
+    is_author = (
+        str(comment.author_id) == str(caller_uid)
+        or str(comment.author_id) == str(ctx.user_id)
+        or (comment.author and ctx.display_name and comment.author == ctx.display_name)
+    )
+    if not ctx.is_admin and not is_author:
+        if ctx.is_management and (comment.author_role == "admin" or not comment.author_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"{ctx.role.capitalize()} users can only delete their own comments.",
+                detail="Management users cannot delete admin-created comments.",
             )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{ctx.role.capitalize()} users can only delete their own comments.",
+        )
 
     try:
-        user_id = str(ctx.user_id) if ctx.user_id else "Viewer"
-        user_disp = ctx.display_name or ctx.email or user_id
+        user_disp = ctx.display_name or ctx.email or caller_uid
         deleted = svc.delete_comment(
             comment_id=comment_id,
-            user_id=user_id,
+            user_id=caller_uid,
             user_role=ctx.role,
             user_display=user_disp,
+        )
+        log_audit_event(
+            db,
+            "comment_deleted",
+            user_id=caller_uid,
+            user_email=ctx.email,
+            details={"comment_id": comment_id, "deal_id": opportunity_id, "actor_role": ctx.role},
         )
         return {"deleted": deleted, "comment_id": comment_id}
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/deals/{opportunity_id}/comments/{comment_id}/history", dependencies=[Depends(require_admin_context)])
+def get_deal_comment_history(
+    opportunity_id: str,
+    comment_id: str,
+    db: Session = Depends(get_db),
+    ctx: UserContext = Depends(require_admin_context),
+):
+    """Admin-only edit/unsend version history for a comment."""
+    comment = db.query(DealComment).filter(
+        DealComment.id == comment_id,
+        DealComment.opportunity_id_18 == opportunity_id,
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
+
+    rows = (
+        db.query(CommentMessageHistory)
+        .filter(
+            CommentMessageHistory.entity_type == "deal_comment",
+            CommentMessageHistory.entity_id == comment_id,
+        )
+        .order_by(CommentMessageHistory.created_at.desc())
+        .all()
+    )
+    return {
+        "comment_id": comment_id,
+        "history": [
+            {
+                "id": r.id,
+                "action": r.action,
+                "previous_text": r.previous_text,
+                "new_text": r.new_text,
+                "previous_visibility": r.previous_visibility,
+                "new_visibility": r.new_visibility,
+                "actor_name": r.actor_name or "Admin",
+                "actor_role": r.actor_role or "admin",
+                "created_at": to_utc_iso(r.created_at),
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.get("/deals/{opportunity_id}/audit")
@@ -673,8 +742,11 @@ def get_deal_audit(
     svc: AnnotationService = Depends(_svc),
     ctx: UserContext = Depends(get_user_context),
 ):
-    """Get change audit entries for a deal."""
-    entries = svc.get_deal_audit(opportunity_id)
+    """Get change audit entries for a deal (KAM restricted to own deals & non-internal entries)."""
+    if ctx.is_kam:
+        if not is_deal_owned_by_kam(svc.db, opportunity_id, ctx.all_owner_names):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access forbidden: This deal is not assigned to you.")
+    entries = svc.get_deal_audit(opportunity_id, is_kam=ctx.is_kam)
     return {"opportunity_id_18": opportunity_id, "audit": entries}
 
 

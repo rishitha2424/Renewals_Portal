@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from backend.models.custom_column import CustomColumn, DealAnnotation, AnnotationAudit, DealComment
 from backend.models.snapshot import UploadSnapshot
 from backend.models.opportunity import Opportunity
+from backend.utils.time_utils import to_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -679,7 +680,7 @@ class AnnotationService:
             user_display=user_display,
         ).get("cleared", False)
 
-    def get_deal_audit(self, opportunity_id_18: str) -> list[dict]:
+    def get_deal_audit(self, opportunity_id_18: str, is_kam: bool = False) -> list[dict]:
         """Return history for a single deal from the audit log."""
         entries = (
             self.db.query(AnnotationAudit)
@@ -687,7 +688,21 @@ class AnnotationService:
             .order_by(AnnotationAudit.timestamp.desc())
             .all()
         )
-        return [e.to_dict() for e in entries]
+        col_vis = {c.key: c.visibility for c in self.db.query(CustomColumn).all()}
+        out = []
+        for e in entries:
+            if is_kam:
+                if e.entity_type == "deal_comment":
+                    vis = (e.extra_info or {}).get("visibility", "internal")
+                    if vis not in ("shared", "shared_with_owner", "visible_to_owner", "public", "all"):
+                        continue
+                elif e.entity_type == "deal_value" and e.column_key in col_vis:
+                    if col_vis[e.column_key] not in ("visible_to_owner", "Visible to owner"):
+                        continue
+            d = e.to_dict()
+            d["timestamp"] = to_utc_iso(e.timestamp)
+            out.append(d)
+        return out
 
     def get_audit_log(
         self,
@@ -1010,49 +1025,79 @@ class AnnotationService:
     # -------------------------------------------------------------
     def list_comments(self, opportunity_id_18: str, user_context: Optional[Any] = None) -> list[dict]:
         import json
+        from backend.models.user import User
         opp_id = str(opportunity_id_18 or "").strip()
         if not opp_id:
             return []
-        q = (
-            self.db.query(DealComment)
-            .filter(DealComment.opportunity_id_18 == opp_id, DealComment.is_deleted == False)
-        )
+        q = self.db.query(DealComment).filter(DealComment.opportunity_id_18 == opp_id)
         if user_context and getattr(user_context, "is_kam", False):
-            # KAM only sees comments shared with owner or written by themselves
+            # KAM only sees shared comments or comments authored by themselves on this deal
             q = q.filter(
                 or_(
-                    DealComment.visibility.in_(["shared", "shared_with_owner", "Shared with owner", "visible_to_owner"]),
+                    DealComment.visibility.in_(["shared", "shared_with_owner", "Shared with owner", "visible_to_owner", "public", "all"]),
                     DealComment.author_id == str(getattr(user_context, "user_id", "")),
-                    DealComment.author_role == "kam",
                 )
             )
         comments = q.order_by(DealComment.created_at.asc()).all()
+        if not comments:
+            return []
+
+        # Batch-load all recipient users in ONE query (eliminates N+1)
+        all_rec_ids: set[str] = set()
+        parsed_rec_map: dict[str, list[str]] = {}
+        for c in comments:
+            rec_ids: list[str] = []
+            if getattr(c, "recipient_ids", None):
+                try:
+                    raw = json.loads(c.recipient_ids)
+                    if isinstance(raw, list):
+                        rec_ids = [str(x) for x in raw if x]
+                except Exception:
+                    rec_ids = []
+            parsed_rec_map[c.id] = rec_ids
+            for rid in rec_ids:
+                if rid.lower() not in ("admin", "management", "owner"):
+                    all_rec_ids.add(rid)
+
+        user_map: dict[str, User] = {}
+        if all_rec_ids:
+            for u in self.db.query(User).filter(User.id.in_(list(all_rec_ids))).all():
+                user_map[str(u.id)] = u
+
+        is_caller_admin = getattr(user_context, "is_admin", False) if user_context else False
         out = []
         for c in comments:
             d = c.to_dict()
-            rec_ids = []
-            if getattr(c, "recipient_ids", None):
-                try:
-                    rec_ids = json.loads(c.recipient_ids)
-                except Exception:
-                    rec_ids = []
-            rec_names = []
-            is_caller_admin = getattr(user_context, "is_admin", False) if user_context else False
-            if rec_ids:
-                from backend.models.user import User
-                users = self.db.query(User).filter(User.id.in_(rec_ids)).all()
-                rec_names = [("Admin" if u.role == "admin" and not is_caller_admin else u.name) for u in users]
+            rec_ids = parsed_rec_map.get(c.id, [])
+            rec_names: list[str] = []
+            has_admin_rec = False
+            for rid in rec_ids:
+                if rid.lower() == "admin":
+                    has_admin_rec = True
+                    continue
+                u = user_map.get(rid)
+                if not u:
+                    continue
+                if u.role == "admin":
+                    if is_caller_admin:
+                        if u.name and u.name not in rec_names:
+                            rec_names.append(u.name)
+                    else:
+                        has_admin_rec = True
+                else:
+                    if u.name and u.name not in rec_names:
+                        rec_names.append(u.name)
+            if has_admin_rec and "Admin" not in rec_names:
+                rec_names.insert(0, "Admin")
 
             if not is_caller_admin and (c.author_role == "admin" or str(c.author_id) == "admin"):
                 d["author"] = "Admin"
                 d["user_display"] = "Admin"
 
             d["recipients"] = rec_names
-            time_str = c.created_at.strftime("%H:%M") if c.created_at else ""
-            if rec_names:
-                d["delivery_status"] = f"Emailed to {', '.join(rec_names)} – sent {time_str}"
-            else:
-                d["delivery_status"] = f"Sent {time_str}" if time_str else "Sent"
+            d["delivery_status"] = (
+                f"Recipients: {', '.join(rec_names)}" if rec_names else ""
+            )
             out.append(d)
         return out
 
@@ -1132,6 +1177,7 @@ class AnnotationService:
         user_role: str = "admin",
         user_display: str | None = None,
     ) -> dict:
+        from backend.models.user import CommentMessageHistory
         cleaned_text = str(text or "").strip()
         if not cleaned_text:
             raise ValidationError("Comment text cannot be empty.")
@@ -1140,15 +1186,34 @@ class AnnotationService:
             raise ValidationError("Comment not found.")
 
         old_val = comment.text
+        old_vis = comment.visibility
         now = datetime.now(timezone.utc)
         comment.text = cleaned_text
-        if visibility is not None:
+        if visibility is not None and user_role != "kam":
             vis_clean = str(visibility).strip().lower()
             if vis_clean in ("shared", "shared_with_owner", "shared with owner"):
                 comment.visibility = "shared_with_owner"
             elif vis_clean == "internal":
                 comment.visibility = "internal"
+        comment.edited_at = now
         comment.updated_at = now
+
+        history_row = CommentMessageHistory(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            deal_id=comment.opportunity_id_18,
+            action="edit",
+            previous_text=old_val,
+            new_text=cleaned_text,
+            previous_visibility=old_vis,
+            new_visibility=comment.visibility,
+            actor_id=str(user_id),
+            actor_name=user_display or comment.author,
+            actor_role=user_role,
+            created_at=now,
+        )
+        self.db.add(history_row)
 
         audit = AnnotationAudit(
             id=str(uuid.uuid4()),
@@ -1175,13 +1240,37 @@ class AnnotationService:
         user_role: str = "admin",
         user_display: str | None = None,
     ) -> bool:
+        from backend.models.user import CommentMessageHistory
+        from backend.services.notification_service import NotificationService
+
         comment = self.db.query(DealComment).filter(DealComment.id == comment_id, DealComment.is_deleted == False).first()
         if not comment:
             raise ValidationError("Comment not found.")
 
+        old_val = comment.text
         now = datetime.now(timezone.utc)
         comment.is_deleted = True
+        comment.deleted_at = now
+        comment.deleted_by = str(user_id)
+        comment.deleted_by_name = user_display or str(user_id)
         comment.updated_at = now
+
+        history_row = CommentMessageHistory(
+            id=str(uuid.uuid4()),
+            entity_type="deal_comment",
+            entity_id=comment.id,
+            deal_id=comment.opportunity_id_18,
+            action="unsend",
+            previous_text=old_val,
+            new_text=None,
+            previous_visibility=comment.visibility,
+            new_visibility=comment.visibility,
+            actor_id=str(user_id),
+            actor_name=user_display or str(user_id),
+            actor_role=user_role,
+            created_at=now,
+        )
+        self.db.add(history_row)
 
         audit = AnnotationAudit(
             id=str(uuid.uuid4()),
@@ -1190,13 +1279,30 @@ class AnnotationService:
             column_key="comment",
             opportunity_id_18=comment.opportunity_id_18,
             action="delete",
-            old_value=comment.text,
-            new_value=None,
+            old_value=old_val,
+            new_value="This message was removed",
             user_id=user_display or user_id,
             timestamp=now,
             extra_info={"author": comment.author, "role": user_role, "visibility": comment.visibility},
         )
         self.db.add(audit)
+
+        # Clear unread notifications for this comment (and batch if no active comments remain in batch)
+        target_ids = [comment.id]
+        if comment.batch_id:
+            remaining = (
+                self.db.query(DealComment)
+                .filter(
+                    DealComment.batch_id == comment.batch_id,
+                    DealComment.id != comment.id,
+                    DealComment.is_deleted == False,
+                )
+                .count()
+            )
+            if remaining == 0:
+                target_ids.append(comment.batch_id)
+        NotificationService.clear_notifications_for_target(self.db, "deal_comment", target_ids)
+
         self.db.commit()
         return True
 

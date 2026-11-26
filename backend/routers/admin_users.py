@@ -306,6 +306,14 @@ def update_user(
     db.commit()
     db.refresh(user)
 
+    if any(k in changes for k in ("role", "status", "owner_name", "aliases")):
+        try:
+            from backend.services.notification_service import NotificationService
+            NotificationService.prune_inaccessible_notifications_for_user(db, user)
+            db.commit()
+        except Exception as exc:
+            log.warning("Could not prune notifications on user update: %s", exc)
+
     log_audit_event(db, "user_updated", user_id=user.id, user_email=user.email, details={"updated_by": ctx.email, "changes": changes})
     aliases = [a.alias for a in user.aliases] if hasattr(user, "aliases") else []
     return {
@@ -337,6 +345,12 @@ def toggle_user_status(
         check_last_admin_or_owner_protection(db, user, "disable")
 
     user.status = req.status
+    if req.status != "active":
+        try:
+            from backend.services.notification_service import NotificationService
+            NotificationService.prune_inaccessible_notifications_for_user(db, user)
+        except Exception:
+            pass
     db.commit()
     log_audit_event(db, "user_status_changed", user_id=user.id, user_email=user.email, details={"new_status": req.status, "changed_by": ctx.email})
     return {"status": "success", "new_status": req.status}

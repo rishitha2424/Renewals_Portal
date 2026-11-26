@@ -309,6 +309,19 @@ class OpportunityService:
             .filter(Opportunity.snapshot_id == snap.id, Opportunity.opportunity_id_18 == opp_id)
             .first()
         )
+        missing_from_active = False
+        if not opp and snapshot_id is None:
+            # Fallback to the most recent snapshot containing this deal (for deals missing from latest snapshot)
+            fallback = (
+                self.db.query(Opportunity, UploadSnapshot)
+                .join(UploadSnapshot, Opportunity.snapshot_id == UploadSnapshot.id)
+                .filter(Opportunity.opportunity_id_18 == opp_id)
+                .order_by(UploadSnapshot.snapshot_date.desc(), Opportunity.id.desc())
+                .first()
+            )
+            if fallback:
+                opp, snap = fallback
+                missing_from_active = True
         if not opp:
             return None
         if ctx and ctx.is_kam:
@@ -319,6 +332,7 @@ class OpportunityService:
                     detail="Access forbidden: You do not have access to this opportunity.",
                 )
         data = self._to_dict(opp)
+        data["missing_from_active_snapshot"] = missing_from_active
         from backend.services.risk_service import RiskService
         risk_svc = RiskService(self.db)
         risk = risk_svc.compute_deal_risk(opp, as_of_date=snap.snapshot_date)
