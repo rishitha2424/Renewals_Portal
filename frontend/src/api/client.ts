@@ -1383,6 +1383,76 @@ export const addBatchComment = async (payload: BatchCommentPayload): Promise<Bat
   return res.data
 }
 
+// ── Microsoft SSO (Entra ID) ────────────────────────────────────────────────
+export interface SSOPublicConfig {
+  sso_enabled: boolean
+  sso_local_login_enabled: boolean
+  sso_password_login_for_users: boolean
+  provider_name: string
+  button_label: string
+  login_url: string
+}
+
+export interface SSOAdminDiagnostics {
+  sso_enabled: boolean
+  tenant_id: string
+  client_id: string
+  client_secret_configured: boolean
+  client_secret_expires: string | null
+  redirect_uri: string
+  allowed_domains: string[]
+  email_claim: string
+  local_login_enabled: boolean
+  password_login_for_users: boolean
+}
+
+export interface SSOAccessRequestItem {
+  id: string
+  email: string
+  name: string | null
+  tenant_id: string | null
+  status: 'pending' | 'approved' | 'dismissed'
+  attempt_count: number
+  created_at: string
+  last_attempt_at: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+}
+
+export const getSSOConfig = async (): Promise<SSOPublicConfig> => {
+  const res = await api.get('/auth/sso/config')
+  return res.data
+}
+
+export const getSSODiagnostics = async (): Promise<SSOAdminDiagnostics> => {
+  const res = await api.get('/admin/sso/diagnostics')
+  return res.data
+}
+
+export const testSSOConnection = async (): Promise<{ status: string; detail: string; tenant_id?: string; keys_found?: number }> => {
+  const res = await api.post('/admin/sso/test-connection')
+  return res.data
+}
+
+export const getSSOAccessRequests = async (status: string = 'pending'): Promise<SSOAccessRequestItem[]> => {
+  const res = await api.get('/admin/sso/access-requests', { params: { status } })
+  return res.data
+}
+
+export const approveSSOAccessRequest = async (
+  requestId: string,
+  payload: { role: string; owner_name?: string; name?: string }
+): Promise<{ status: string; user_id: string; email: string; role: string }> => {
+  const res = await api.post(`/admin/sso/access-requests/${requestId}/approve`, payload)
+  return res.data
+}
+
+export const dismissSSOAccessRequest = async (requestId: string): Promise<{ status: string }> => {
+  const res = await api.post(`/admin/sso/access-requests/${requestId}/dismiss`)
+  return res.data
+}
+
+
 
 
 

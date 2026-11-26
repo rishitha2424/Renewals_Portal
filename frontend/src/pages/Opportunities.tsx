@@ -155,7 +155,7 @@ export default function Opportunities() {
               return [...parsed, ...customColNames.filter((n) => !parsed.includes(n))]
             }
           }
-        } catch (_) {}
+        } catch (_) { }
         return allColumns.map((c) => c.name)
       } else {
         const customColNames = allColumns.filter((c) => c.is_custom).map((c) => c.name)
@@ -760,11 +760,10 @@ export default function Opportunities() {
           <button
             type="button"
             onClick={() => setShowColPicker(!showColPicker)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-              showColPicker
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${showColPicker
                 ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400'
                 : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-teal-500/40'
-            }`}
+              }`}
             id="explorer-columns-btn"
           >
             <Columns className="w-3.5 h-3.5" />
@@ -775,11 +774,10 @@ export default function Opportunities() {
           <button
             type="button"
             onClick={() => setShowFilterBuilder(!showFilterBuilder)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-              showFilterBuilder || filters.length > 0
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${showFilterBuilder || filters.length > 0
                 ? 'bg-[#12284C] text-white border-[#12284C]'
                 : 'bg-[var(--bg-card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-slate-400'
-            }`}
+              }`}
             id="explorer-filter-builder-btn"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -919,11 +917,10 @@ export default function Opportunities() {
                       key={st.name}
                       type="button"
                       onClick={() => toggleQuickFilter(selectedSalesTypes, setSelectedSalesTypes, st.name)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
-                        active
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${active
                           ? 'bg-[#12284C] text-white border-[#12284C] shadow-sm'
                           : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                      }`}
+                        }`}
                       id={`quick-filter-st-${st.name.replace(/\s+/g, '-').toLowerCase()}`}
                     >
                       {st.name} <span className="opacity-70 ml-1">({st.count})</span>
@@ -979,11 +976,10 @@ export default function Opportunities() {
                           onClick={() =>
                             toggleQuickFilter(selectedFiscalPeriods, setSelectedFiscalPeriods, fp.name)
                           }
-                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                            active
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${active
                               ? 'bg-[#00A3AD] text-white border-[#00A3AD]'
                               : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                          }`}
+                            }`}
                           id={`quick-filter-period-${fp.name.toLowerCase()}`}
                         >
                           {fp.name} <span className="opacity-70 ml-0.5">({fp.count})</span>
@@ -1010,11 +1006,10 @@ export default function Opportunities() {
                       onClick={() =>
                         toggleQuickFilter(selectedForecastCats, setSelectedForecastCats, fc.name)
                       }
-                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                        active
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${active
                           ? 'bg-[#12284C] text-white border-[#12284C]'
                           : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                      }`}
+                        }`}
                       id={`quick-filter-fc-${fc.name.toLowerCase()}`}
                     >
                       {fc.name} ({fc.count})
@@ -1037,11 +1032,10 @@ export default function Opportunities() {
                       onClick={() =>
                         toggleQuickFilter(selectedApprovals, setSelectedApprovals, app.name)
                       }
-                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                        active
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${active
                           ? 'bg-amber-600 text-white border-amber-600'
                           : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                      }`}
+                        }`}
                       id={`quick-filter-app-${app.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       {app.name} ({app.count})
@@ -1066,11 +1060,10 @@ export default function Opportunities() {
                       onClick={() =>
                         toggleQuickFilter(selectedRegions, setSelectedRegions, reg.name)
                       }
-                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                        active
+                      className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${active
                           ? 'bg-[#12284C] text-white border-[#12284C]'
                           : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                      }`}
+                        }`}
                       id={`quick-filter-reg-${reg.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       {reg.name} ({reg.count})
@@ -1109,11 +1102,10 @@ export default function Opportunities() {
                           onClick={() =>
                             toggleQuickFilter(selectedBUs, setSelectedBUs, bu.name)
                           }
-                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${
-                            active
+                          className={`px-2 py-0.5 rounded text-xs font-medium border transition-all ${active
                               ? 'bg-purple-600 text-white border-purple-600'
                               : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-[var(--border)] hover:bg-[var(--bg-card)]'
-                          }`}
+                            }`}
                           id={`quick-filter-bu-${bu.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                         >
                           {bu.name} ({bu.count})
@@ -1293,10 +1285,10 @@ export default function Opportunities() {
                   colType === 'currency' || colType === 'number'
                     ? NUMBER_OPERATORS
                     : colType === 'date'
-                    ? DATE_OPERATORS
-                    : colType === 'boolean'
-                    ? BOOLEAN_OPERATORS
-                    : TEXT_OPERATORS
+                      ? DATE_OPERATORS
+                      : colType === 'boolean'
+                        ? BOOLEAN_OPERATORS
+                        : TEXT_OPERATORS
 
                 return (
                   <div
@@ -1466,11 +1458,10 @@ export default function Opportunities() {
               return (
                 <label
                   key={col.name}
-                  className={`flex items-center gap-1.5 p-1.5 rounded border text-xs cursor-pointer select-none transition-colors ${
-                    isSelected
+                  className={`flex items-center gap-1.5 p-1.5 rounded border text-xs cursor-pointer select-none transition-colors ${isSelected
                       ? 'bg-teal-500/10 border-teal-500/30 text-teal-700 dark:text-teal-300 font-medium'
                       : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text-muted)]'
-                  }`}
+                    }`}
                 >
                   <input
                     type="checkbox"
@@ -1512,13 +1503,12 @@ export default function Opportunities() {
                   return (
                     <th
                       key={colName}
-                      className={`px-3 py-2.5 font-bold whitespace-nowrap select-none border-r border-[var(--border)] last:border-r-0 ${
-                        isClash
+                      className={`px-3 py-2.5 font-bold whitespace-nowrap select-none border-r border-[var(--border)] last:border-r-0 ${isClash
                           ? 'bg-purple-100/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-200 dark:border-purple-800'
                           : isCustom
-                          ? 'bg-teal-50/50 dark:bg-teal-950/20 text-[var(--text-primary)]'
-                          : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-                      }`}
+                            ? 'bg-teal-50/50 dark:bg-teal-950/20 text-[var(--text-primary)]'
+                            : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
                         <div
@@ -1804,7 +1794,7 @@ export default function Opportunities() {
 
       {/* ── Reconciliation Modal ─────────────────────────────────────────── */}
       {showReconcileModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <Card padding="lg" className="w-full max-w-2xl space-y-4 bg-[var(--bg-card)] shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div className="flex items-center gap-2">
@@ -1843,8 +1833,8 @@ export default function Opportunities() {
                     {reconcileData?.whole_snapshot?.total_rows != null
                       ? formatCount(reconcileData.whole_snapshot.total_rows)
                       : reconcileData?.total_rows != null
-                      ? formatCount(reconcileData.total_rows)
-                      : 'Not available'}
+                        ? formatCount(reconcileData.total_rows)
+                        : 'Not available'}
                   </p>
                   <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     Excel: {reconcileData?.whole_snapshot?.total_rows != null ? `${formatCount(reconcileData.whole_snapshot.total_rows)} rows` : 'Not available'}
@@ -1856,8 +1846,8 @@ export default function Opportunities() {
                     {reconcileData?.whole_snapshot?.total_acv != null
                       ? formatACV(reconcileData.whole_snapshot.total_acv)
                       : reconcileData?.total_acv != null
-                      ? formatACV(reconcileData.total_acv)
-                      : 'Not available'}
+                        ? formatACV(reconcileData.total_acv)
+                        : 'Not available'}
                   </p>
                   <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     Excel: {reconcileData?.whole_snapshot?.total_acv != null ? formatACV(reconcileData.whole_snapshot.total_acv) : 'Not available'}
@@ -1943,7 +1933,7 @@ export default function Opportunities() {
 
       {/* ── Save View Modal ──────────────────────────────────────────────── */}
       {showSaveViewModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <Card padding="md" className="w-full max-w-sm space-y-3 bg-[var(--bg-card)] shadow-2xl">
             <h4 className="font-bold text-sm text-[var(--text-primary)]">Save Current Explorer View</h4>
             <input
@@ -1993,7 +1983,7 @@ export default function Opportunities() {
 
       {/* ── Header Column Delete Confirmation Modal ───────────────────────── */}
       {deletingHeaderCol && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-md space-y-4">
             <div className="flex items-center gap-3 text-rose-600">
               <div className="p-2 bg-rose-50 dark:bg-rose-950 rounded-lg">
@@ -2059,7 +2049,7 @@ export default function Opportunities() {
 
       {/* ── Header Column Rename Modal ────────────────────────────────────── */}
       {renamingHeaderCol && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-sm space-y-4">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">
               Rename Column

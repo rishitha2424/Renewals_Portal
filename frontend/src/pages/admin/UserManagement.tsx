@@ -31,7 +31,13 @@ import {
   uploadKamRoster, 
   getKamSyncAlerts, 
   resolveKamSyncAlert,
-  AdminUserItem 
+  AdminUserItem,
+  getSSOAccessRequests,
+  approveSSOAccessRequest,
+  dismissSSOAccessRequest,
+  getSSOConfig,
+  SSOAccessRequestItem,
+  SSOPublicConfig
 } from '@/api/client'
 import { formatDate } from '@/utils/format'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -145,6 +151,62 @@ export default function UserManagement() {
     queryKey: ['kam-sync-alerts'],
     queryFn: getKamSyncAlerts,
   })
+
+  // SSO Access Requests Query & Config
+  const { data: ssoConfig } = useQuery<SSOPublicConfig>({
+    queryKey: ['sso-public-config'],
+    queryFn: getSSOConfig,
+  })
+
+  const { data: accessRequests = [], refetch: refetchAccessRequests } = useQuery<SSOAccessRequestItem[]>({
+    queryKey: ['admin-sso-access-requests'],
+    queryFn: () => getSSOAccessRequests('pending'),
+  })
+
+  const [approvingRequest, setApprovingRequest] = useState<SSOAccessRequestItem | null>(null)
+  const [approveRole, setApproveRole] = useState<'admin' | 'management' | 'kam'>('kam')
+  const [approveOwnerName, setApproveOwnerName] = useState('')
+  const [approveName, setApproveName] = useState('')
+  const [approveLoading, setApproveLoading] = useState(false)
+
+  const openApproveModal = (req: SSOAccessRequestItem) => {
+    setApprovingRequest(req)
+    setApproveName(req.name || req.email.split('@')[0])
+    setApproveRole('kam')
+    setApproveOwnerName('')
+  }
+
+  const handleConfirmApprove = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!approvingRequest) return
+    setApproveLoading(true)
+    try {
+      await approveSSOAccessRequest(approvingRequest.id, {
+        role: approveRole,
+        name: approveName.trim() || undefined,
+        owner_name: approveRole === 'kam' ? approveOwnerName.trim() : undefined,
+      })
+      showToast.success(`Approved access for ${approvingRequest.email} as ${approveRole.toUpperCase()}`)
+      setApprovingRequest(null)
+      refetchAccessRequests()
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    } catch (err: any) {
+      showToast.error(err.response?.data?.detail || 'Failed to approve access request')
+    } finally {
+      setApproveLoading(false)
+    }
+  }
+
+  const handleDismissRequest = async (id: string, email: string) => {
+    if (!window.confirm(`Dismiss access request for ${email}?`)) return
+    try {
+      await dismissSSOAccessRequest(id)
+      showToast.success(`Dismissed request for ${email}`)
+      refetchAccessRequests()
+    } catch (err: any) {
+      showToast.error(err.response?.data?.detail || 'Failed to dismiss request')
+    }
+  }
 
   const users = usersData?.users || []
   const alerts = alertsData?.alerts || []
@@ -342,6 +404,72 @@ export default function UserManagement() {
         </div>
       )}
 
+      {/* Microsoft SSO Access Requests Panel */}
+      {accessRequests.length > 0 && (
+        <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 text-xs text-[var(--text-primary)] space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+              <h3 className="font-bold text-sm text-[var(--text-primary)]">
+                Pending Microsoft SSO Access Requests ({accessRequests.length})
+              </h3>
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)] font-medium">
+              Enterprise Access Governance · Admin Role Assignment Required
+            </span>
+          </div>
+
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+            These corporate users authenticated through Microsoft Entra ID but were not pre-provisioned in Horizon. Review and approve to grant access:
+          </p>
+
+          <div className="divide-y divide-[var(--border)] border border-[var(--border)] rounded-xl bg-[var(--bg-card)] overflow-hidden">
+            {accessRequests.map((req) => (
+              <div key={req.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--text-primary)] truncate">
+                      {req.name || req.email}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold uppercase">
+                      Microsoft OIDC
+                    </span>
+                    {req.attempt_count > 1 && (
+                      <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                        ({req.attempt_count} attempts)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-3 mt-0.5">
+                    <span className="font-mono text-[var(--text-secondary)]">{req.email}</span>
+                    <span>•</span>
+                    <span>Requested: {formatDate(req.last_attempt_at)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleDismissRequest(req.id, req.email)}
+                    className="px-3 py-1.5 rounded-xl border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 transition cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openApproveModal(req)}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#12284C] hover:bg-[#1a386b] text-white shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Approve &amp; Assign Role</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filters Bar */}
       <div className="p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-3 shadow-sm">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
@@ -430,15 +558,22 @@ export default function UserManagement() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                        u.status === 'active'
-                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                          : u.status === 'invited'
-                          ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                          : 'bg-slate-500/15 text-slate-700 dark:text-slate-300'
-                      }`}>
-                        {u.status}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                          u.status === 'active'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            : u.status === 'invited'
+                            ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                            : 'bg-slate-500/15 text-slate-700 dark:text-slate-300'
+                        }`}>
+                          {u.status}
+                        </span>
+                        {((u as any).sso_provider === 'microsoft' || (u as any).last_sso_login) && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#00A4EF]/10 text-[#00A4EF] border border-[#00A4EF]/25" title="Authenticated via Microsoft Entra ID">
+                            SSO
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 tabular-nums text-[var(--text-secondary)]">
                       {u.last_login ? formatDate(u.last_login) : 'Never'}
@@ -506,7 +641,7 @@ export default function UserManagement() {
 
       {/* Invite Modal */}
       {showInviteModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
               <h3 className="font-bold text-sm text-[var(--text-primary)]">Invite New User</h3>
@@ -610,7 +745,7 @@ export default function UserManagement() {
 
       {/* Link Display Modal (Invite/Reset) */}
       {showLinkModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
               <h3 className="font-bold text-sm text-[var(--text-primary)]">{showLinkModal.title}</h3>
@@ -672,7 +807,7 @@ export default function UserManagement() {
 
       {/* Edit User Modal (Redesigned by Role) */}
       {editingUser && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-lg w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
               <div className="flex items-center gap-2">
@@ -897,6 +1032,85 @@ export default function UserManagement() {
                   className="px-4 py-2 text-xs font-semibold bg-[#12284C] text-white rounded-xl hover:bg-[#1a386b] disabled:opacity-50 transition-all shadow-sm"
                 >
                   {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Approve SSO Access Request Modal */}
+      {approvingRequest && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div>
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">Approve Access Request</h3>
+                <p className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5">{approvingRequest.email}</p>
+              </div>
+              <button onClick={() => setApprovingRequest(null)}>
+                <X className="w-4 h-4 text-[var(--text-muted)]" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmApprove} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Display Name</label>
+                <input
+                  type="text"
+                  required
+                  value={approveName}
+                  onChange={(e) => setApproveName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">Assigned Role</label>
+                <select
+                  value={approveRole}
+                  onChange={(e: any) => setApproveRole(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none cursor-pointer"
+                >
+                  <option value="kam">Opportunity Owner (KAM) - Own Deals Only</option>
+                  <option value="management">Management - Full Read-Only Analytics &amp; Messaging</option>
+                  <option value="admin">Administrator - Full Platform Control</option>
+                </select>
+              </div>
+
+              {approveRole === 'kam' && (
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                    Excel Opportunity Owner Name
+                  </label>
+                  <input
+                    type="text"
+                    value={approveOwnerName}
+                    onChange={(e) => setApproveOwnerName(e.target.value)}
+                    placeholder="Exact name from SFDC / Excel report"
+                    className="w-full px-3 py-2 text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl text-[var(--text-primary)] focus:outline-none"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    Matches opportunity owner in uploaded renewal spreadsheets to isolate their deals.
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setApprovingRequest(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={approveLoading}
+                  className="px-4 py-2 text-xs font-semibold bg-[#12284C] hover:bg-[#1a386b] text-white rounded-xl disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                >
+                  {approveLoading ? 'Approving...' : 'Confirm & Grant Access'}
                 </button>
               </div>
             </form>

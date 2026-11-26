@@ -187,3 +187,80 @@ cd /opt/renewals
 sudo chmod +x deploy/deploy.sh
 sudo ./deploy/deploy.sh
 ```
+
+---
+
+## 6. Microsoft Entra ID (Azure AD / OIDC) SSO Setup
+
+Mobileum Horizon supports Single Sign-On (SSO) via Microsoft Entra ID using OpenID Connect (OIDC) Authorization Code Flow with PKCE (RFC 7636).
+
+### Security Architecture & Principles
+1. **Authentication Only**: Entra ID authenticates user identity; local application controls access and role (`admin`, `management`, `kam`).
+2. **Zero Auto-Provisioning**: Unregistered users cannot access the application. Their attempt generates a pending `SSOAccessRequest` for administrator review.
+3. **Owner Break-Glass**: The system owner (`OWNER_EMAIL` in `.env`) retains break-glass local password login even when SSO is active.
+4. **HTTPS Required**: Microsoft Entra ID requires secure HTTPS redirect URIs in production (enforced via Nginx SSL reverse proxy).
+
+### Step 1: Azure App Registration in Microsoft Entra Portal
+1. Sign in to the [Microsoft Entra admin center](https://entra.microsoft.com/) or Azure Portal.
+2. Navigate to **Identity > Applications > App registrations** and click **New registration**.
+3. Fill in the registration details:
+   - **Name**: `Mobileum Horizon Renewals Portal`
+   - **Supported account types**: `Accounts in this organizational directory only (Single tenant)` (recommended) or multitenant if your organization spans multiple directories.
+   - **Redirect URI**: Select platform **Web** and enter:
+     ```text
+     https://<your-domain-or-server-ip>/api/auth/sso/callback
+     ```
+4. Click **Register**.
+5. Copy the following identifiers from the **Overview** blade:
+   - **Application (client) ID** -> `AZURE_CLIENT_ID`
+   - **Directory (tenant) ID** -> `AZURE_TENANT_ID`
+
+### Step 2: Generate Client Secret
+1. In your app registration, navigate to **Certificates & secrets > Client secrets**.
+2. Click **New client secret**, enter a description (e.g., `Renewals Production Secret`), and select an expiration (e.g., 180 or 365 days).
+3. Click **Add** and immediately copy the **Value** (not Secret ID). Store this securely in `/opt/renewals/.env` as `AZURE_CLIENT_SECRET`.
+4. Note the expiration date in `SSO_CLIENT_SECRET_EXPIRES=YYYY-MM-DD` so administrators receive advance expiration warnings.
+
+### Step 3: Configure Token Claims & Permissions
+1. Navigate to **API permissions**:
+   - Verify `User.Read` (Delegated) is granted by default.
+2. In **Token configuration** (optional):
+   - Add optional claims `email`, `preferred_username`, and `upn` to ID tokens to ensure reliable email claim resolution.
+
+### Step 4: Configure Production `.env`
+On your RHEL VM, edit `/opt/renewals/.env`:
+```ini
+# Microsoft Entra ID (OIDC / SSO)
+SSO_ENABLED=true
+AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
+AZURE_CLIENT_ID=00000000-0000-0000-0000-000000000000
+AZURE_CLIENT_SECRET=your_entra_app_client_secret_here
+SSO_REDIRECT_URI=https://<your-domain>/api/auth/sso/callback
+SSO_ALLOWED_DOMAINS=mobileum.com
+SSO_EMAIL_CLAIM=email,preferred_username,upn
+SSO_LOCAL_LOGIN_ENABLED=true
+SSO_PASSWORD_LOGIN_FOR_USERS=false
+SSO_CLIENT_SECRET_EXPIRES=2027-12-31
+```
+
+Restart the renewals service:
+```bash
+sudo systemctl restart renewals.service
+```
+
+### Step 5: Verify Connection & Workflow
+1. Navigate to **Admin Settings > Security**:
+   - Inspect the **Microsoft Entra ID (SSO)** configuration card.
+   - Click **Test Connection** to verify discovery endpoint reachability (`/.well-known/openid-configuration`), tenant resolution, and token endpoint connectivity.
+2. Navigate to **Admin > User Management**:
+   - When a new enterprise user clicks **Sign in with Microsoft**, their sign-in succeeds at Microsoft, but because they have no local account, they are redirected to `/login?error=no_access`.
+   - The user appears under **Pending Microsoft SSO Access Requests**.
+   - The administrator clicks **Approve & Assign Role**, selects their role (`admin`, `management`, or `kam`), and optionally assigns their KAM Portfolio name.
+
+### Break-Glass Access & Troubleshooting
+- **If Azure / SSO is Down or Misconfigured**:
+  - The system owner can always expand **Owner / Break-Glass Login** on the login page to sign in with their email and `ADMIN_PASSWORD`.
+  - Alternatively, SSH into the VM and set `SSO_ENABLED=false` or `SSO_PASSWORD_LOGIN_FOR_USERS=true` in `/opt/renewals/.env`, then run `sudo systemctl restart renewals.service`.
+- **Client Secret Rotation**:
+  - 30 days before expiration, generate a new secret in Azure App registrations, update `AZURE_CLIENT_SECRET` and `SSO_CLIENT_SECRET_EXPIRES` in `.env`, and reload the service.
+

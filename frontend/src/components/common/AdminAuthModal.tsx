@@ -100,7 +100,7 @@ export default function AdminAuthModal() {
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {isOpen && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 bg-black/60">
+            <div className="fixed inset-0 z-[999] flex items-center justify-center p-0 sm:p-4 bg-black/60">
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

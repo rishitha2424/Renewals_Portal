@@ -143,7 +143,19 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = "http://localhost:5173"
     ADMIN_ALERT_EMAIL: str = "alerts@mobileum.com"
 
-    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", mode="before")
+    # Microsoft SSO / Entra ID (OIDC)
+    SSO_ENABLED: bool = False
+    AZURE_TENANT_ID: str = ""
+    AZURE_CLIENT_ID: str = ""
+    AZURE_CLIENT_SECRET: str = ""
+    SSO_REDIRECT_URI: str = ""
+    SSO_ALLOWED_DOMAINS: str = ""
+    SSO_EMAIL_CLAIM: str = "email,preferred_username,upn"
+    SSO_LOCAL_LOGIN_ENABLED: bool = True
+    SSO_PASSWORD_LOGIN_FOR_USERS: bool = False
+    SSO_CLIENT_SECRET_EXPIRES: str = ""
+
+    @field_validator("MAIL_ENABLED", "SMTP_STARTTLS", "SMTP_SSL", "COOKIE_SECURE", "SSO_ENABLED", "SSO_LOCAL_LOGIN_ENABLED", "SSO_PASSWORD_LOGIN_FOR_USERS", mode="before")
     @classmethod
     def parse_bool_env(cls, v: Any) -> Any:
         """Parse boolean values case-insensitively, handling string representations and whitespace."""
@@ -271,6 +283,47 @@ class Settings(BaseSettings):
         if self.COOKIE_SECURE is not None:
             return self.COOKIE_SECURE
         return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def effective_sso_redirect_uri(self) -> str:
+        if self.SSO_REDIRECT_URI and self.SSO_REDIRECT_URI.strip():
+            return self.SSO_REDIRECT_URI.strip()
+        base = (self.APP_BASE_URL or "http://localhost:5173").rstrip("/")
+        return f"{base}/api/auth/sso/callback"
+
+    def get_sso_public_config(self) -> dict:
+        """Safe public SSO configuration. Never leaks secrets or tenant details."""
+        domains = [d.strip().lower() for d in self.SSO_ALLOWED_DOMAINS.split(",") if d.strip()] if self.SSO_ALLOWED_DOMAINS else []
+        return {
+            "sso_enabled": bool(self.SSO_ENABLED),
+            "sso_local_login_enabled": bool(self.SSO_LOCAL_LOGIN_ENABLED),
+            "sso_password_login_for_users": bool(self.SSO_PASSWORD_LOGIN_FOR_USERS),
+            "allowed_domains": domains,
+            "redirect_uri": self.effective_sso_redirect_uri,
+        }
+
+    def get_sso_admin_diagnostics(self) -> dict:
+        """Safe admin diagnostics with secrets masked."""
+        def mask_val(v: str) -> str:
+            v = (v or "").strip()
+            if not v:
+                return "(not configured)"
+            if len(v) <= 8:
+                return "••••••••"
+            return f"{v[:4]}••••••••{v[-4:]}"
+
+        return {
+            "sso_enabled": bool(self.SSO_ENABLED),
+            "tenant_id_masked": mask_val(self.AZURE_TENANT_ID),
+            "client_id_masked": mask_val(self.AZURE_CLIENT_ID),
+            "redirect_uri": self.effective_sso_redirect_uri,
+            "allowed_domains": self.SSO_ALLOWED_DOMAINS or "(all domains allowed)",
+            "email_claim_priority": self.SSO_EMAIL_CLAIM,
+            "local_login_enabled": bool(self.SSO_LOCAL_LOGIN_ENABLED),
+            "password_login_for_users": bool(self.SSO_PASSWORD_LOGIN_FOR_USERS),
+            "secret_configured": bool(self.AZURE_CLIENT_SECRET and self.AZURE_CLIENT_SECRET.strip()),
+            "secret_expires": self.SSO_CLIENT_SECRET_EXPIRES or "(no expiry date set)",
+        }
 
     @property
     def is_admin_configured(self) -> bool:

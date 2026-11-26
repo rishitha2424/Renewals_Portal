@@ -6,6 +6,7 @@ forgot password, and self-service password changes.
 from __future__ import annotations
 
 import logging
+import urllib.parse
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -72,6 +73,31 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
     rate_key = f"{client_ip}:{clean_email}"
 
     check_auth_rate_limit(rate_key)
+
+    # Microsoft SSO policy checks
+    if settings.SSO_ENABLED:
+        if not settings.SSO_LOCAL_LOGIN_ENABLED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Local password authentication is disabled. Please sign in with Microsoft SSO.",
+            )
+        if not settings.SSO_PASSWORD_LOGIN_FOR_USERS:
+            # Only system owner is permitted password break-glass
+            owner_env_email = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+            is_break_glass = (
+                clean_email == "admin"
+                or clean_email == owner_env_email
+            )
+            # Check if matching user in DB is marked as owner
+            candidate = db.query(User).filter(func.lower(User.email) == clean_email).first()
+            if candidate and candidate.is_owner:
+                is_break_glass = True
+
+            if not is_break_glass:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Password authentication is restricted to administrator break-glass. Please sign in with Microsoft.",
+                )
 
     user = db.query(User).filter(func.lower(User.email) == clean_email).first()
 
@@ -162,12 +188,22 @@ def login(req: LoginRequest, request: Request, response: Response, db: Session =
 
 @router.post("/logout")
 def logout(response: Response, ctx: UserContext = Depends(get_user_context), db: Session = Depends(get_db)):
-    """Clear session cookies and record logout in audit log."""
+    """Clear session cookies and record logout in audit log. Provides optional Microsoft sign-out URL."""
     response.delete_cookie(key="auth_token", path="/")
     response.delete_cookie(key="admin_token", path="/")
     if ctx.user_id != "guest":
         log_audit_event(db, "logout", user_id=ctx.user_id, user_email=ctx.email)
-    return {"status": "logged_out"}
+
+    microsoft_signout_url = None
+    if settings.SSO_ENABLED and settings.AZURE_TENANT_ID:
+        base_app = (settings.APP_BASE_URL or "http://localhost:5173").rstrip("/")
+        encoded_redirect = urllib.parse.quote(f"{base_app}/login")
+        microsoft_signout_url = f"https://login.microsoftonline.com/{settings.AZURE_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri={encoded_redirect}"
+
+    return {
+        "status": "logged_out",
+        "microsoft_signout_url": microsoft_signout_url,
+    }
 
 
 @router.get("/me")

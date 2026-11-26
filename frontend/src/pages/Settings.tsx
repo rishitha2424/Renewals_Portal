@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldCheck, AlertTriangle, CheckCircle2, Save, Lock, RefreshCw, KeyRound, Info, Monitor } from 'lucide-react'
+import { ShieldCheck, AlertTriangle, CheckCircle2, Save, Lock, RefreshCw, KeyRound, Info, Monitor, Server, ExternalLink } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
-import { getAdminStatus, getSystemSettings, updateSystemSetting } from '@/api/client'
+import { getAdminStatus, getSystemSettings, updateSystemSetting, getSSODiagnostics, testSSOConnection, SSOAdminDiagnostics } from '@/api/client'
 import { showToast } from '@/components/ui/Toast'
 import {
   DisplaySizeOption,
@@ -27,6 +27,36 @@ export default function Settings() {
     queryKey: ['system-settings'],
     queryFn: () => getSystemSettings(),
   })
+
+  // 3. Fetch SSO diagnostics (Admin only)
+  const { data: ssoDiag, isLoading: ssoLoading, refetch: refetchSSO } = useQuery<SSOAdminDiagnostics>({
+    queryKey: ['admin-sso-diagnostics'],
+    queryFn: getSSODiagnostics,
+    enabled: isAdmin,
+  })
+
+  const [testResult, setTestResult] = useState<{ status: string; detail: string; keys_found?: number } | null>(null)
+  const [testingSSO, setTestingSSO] = useState(false)
+
+  const handleTestSSO = async () => {
+    setTestingSSO(true)
+    setTestResult(null)
+    try {
+      const res = await testSSOConnection()
+      setTestResult(res)
+      if (res.status === 'ok') {
+        showToast.success('SSO Connection Verified', res.detail)
+      } else {
+        showToast.error('SSO Connection Failed', res.detail)
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Connection test failed'
+      setTestResult({ status: 'error', detail: msg })
+      showToast.error('SSO Connection Error', msg)
+    } finally {
+      setTestingSSO(false)
+    }
+  }
 
   const [editValues, setEditValues] = useState<Record<string, string>>({})
   const [displaySize, setDisplaySize] = useState<DisplaySizeOption>(getSavedDisplaySize)
@@ -159,6 +189,137 @@ export default function Settings() {
                 )
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MICROSOFT SSO STATUS CARD (Admin-only) ────────────────────────── */}
+      {isAdmin && ssoDiag && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] shadow-xs overflow-hidden" id="sso-settings">
+          <div className="px-5 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <Server className="w-4 h-4 text-[#00A4EF]" />
+              <div>
+                <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-tight">
+                  Microsoft Entra ID (OIDC / SSO)
+                </h2>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Single sign-on status, token validation, and redirect configuration.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-sm uppercase tracking-wider font-mono ${
+                  ssoDiag.sso_enabled
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                    : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
+                }`}
+              >
+                {ssoDiag.sso_enabled ? 'Active / Enabled' : 'Disabled (Local Login Only)'}
+              </span>
+              <button
+                type="button"
+                onClick={handleTestSSO}
+                disabled={testingSSO || !ssoDiag.sso_enabled}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#12284C] hover:bg-[#1a386b] text-white disabled:opacity-50 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                <RefreshCw className={`w-3 h-3 ${testingSSO ? 'animate-spin' : ''}`} />
+                <span>{testingSSO ? 'Testing...' : 'Test Connection'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4 text-xs">
+            {testResult && (
+              <div
+                className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+                  testResult.status === 'ok'
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-400'
+                }`}
+              >
+                {testResult.status === 'ok' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <span className="font-bold block">
+                    {testResult.status === 'ok' ? 'Discovery & Endpoint Verified' : 'Connection Verification Failed'}
+                  </span>
+                  <span className="text-[11px] block mt-0.5 leading-relaxed">{testResult.detail}</span>
+                  {testResult.keys_found != null && (
+                    <span className="text-[10px] font-mono text-[var(--text-muted)] block mt-1">
+                      Signing keys discovered: {testResult.keys_found} RS256 keys
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)]">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">Tenant ID</span>
+                <span className="font-mono text-xs text-[var(--text-primary)] font-semibold truncate block">
+                  {ssoDiag.tenant_id}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)]">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">Client ID</span>
+                <span className="font-mono text-xs text-[var(--text-primary)] font-semibold truncate block">
+                  {ssoDiag.client_id}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)]">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">Client Secret</span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                      ssoDiag.client_secret_configured
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {ssoDiag.client_secret_configured ? 'Configured (Masked)' : 'Missing'}
+                  </span>
+                  {ssoDiag.client_secret_expires && (
+                    <span className="text-[10px] text-[var(--text-muted)]">Expires: {ssoDiag.client_secret_expires}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)] sm:col-span-2">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">Redirect URI</span>
+                <span className="font-mono text-xs text-[var(--text-primary)] break-all block">
+                  {ssoDiag.redirect_uri}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]/50 border border-[var(--border)]">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">Allowed Domains</span>
+                <span className="text-xs text-[var(--text-primary)] font-medium">
+                  {ssoDiag.allowed_domains.length > 0 ? ssoDiag.allowed_domains.join(', ') : 'All corporate domains'}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[var(--text-muted)] border-t border-[var(--border)]">
+              <div>
+                Email claim hierarchy: <strong className="text-[var(--text-primary)]">{ssoDiag.email_claim}</strong>
+              </div>
+              <div className="flex items-center gap-3">
+                <span>
+                  Owner break-glass login: <strong className="text-emerald-600">{ssoDiag.local_login_enabled ? 'Enabled' : 'Disabled'}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  User password login: <strong className="text-[var(--text-primary)]">{ssoDiag.password_login_for_users ? 'Enabled' : 'Disabled'}</strong>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}
