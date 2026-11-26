@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   MessageSquare,
   Search,
@@ -19,8 +19,24 @@ import {
   AlertCircle,
   HelpCircle,
   Loader2,
+  Edit2,
+  Trash2,
+  History,
+  X,
+  Check,
+  Layers,
 } from 'lucide-react'
-import { getCommentsLog, CommentLogItem, CommentsLogResponse } from '@/api/client'
+import {
+  getCommentsLog,
+  updateDealComment,
+  deleteDealComment,
+  getCommentHistoryById,
+  CommentLogItem,
+  CommentsLogResponse,
+  CommentMessageHistoryItem,
+} from '@/api/client'
+import { formatDateTime } from '@/utils/format'
+import { showToast } from '@/components/ui/Toast'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
 import Card from '@/components/ui/Card'
@@ -29,8 +45,10 @@ import clsx from 'clsx'
 export default function CommentsLog() {
   const { globalFilters, activeSnapshotId, selectedOppId, setSelectedOppId } = useAppStore()
   const { currentUser } = useAuthStore()
+  const queryClient = useQueryClient()
 
   const isAdmin = currentUser?.role === 'admin'
+  const isMgmtOrAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management'
   const isKam = currentUser?.role === 'kam'
 
   // Page state
@@ -47,10 +65,67 @@ export default function CommentsLog() {
 
   // Expandable row state
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
+  const [editingItem, setEditingItem] = useState<CommentLogItem | null>(null)
+  const [editingText, setEditingText] = useState('')
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [unsendItem, setUnsendItem] = useState<CommentLogItem | null>(null)
+  const [isUnsending, setIsUnsending] = useState(false)
+  const [historyTarget, setHistoryTarget] = useState<{ id: string; title: string } | null>(null)
+  const [historyItems, setHistoryItems] = useState<CommentMessageHistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingItem || !editingText.trim() || isSavingEdit) return
+    setIsSavingEdit(true)
+    try {
+      await updateDealComment(editingItem.deal_id, editingItem.id, editingText.trim())
+      setEditingItem(null)
+      setEditingText('')
+      await refetch()
+      queryClient.invalidateQueries({ queryKey: ['deal-comments', editingItem.deal_id] })
+      showToast.success('Comment updated')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to update comment')
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  const handleConfirmUnsend = async () => {
+    if (!unsendItem || isUnsending) return
+    setIsUnsending(true)
+    try {
+      await deleteDealComment(unsendItem.deal_id, unsendItem.id)
+      setUnsendItem(null)
+      await refetch()
+      queryClient.invalidateQueries({ queryKey: ['deal-comments', unsendItem.deal_id] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
+      showToast.info('Comment removed')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to remove comment')
+    } finally {
+      setIsUnsending(false)
+    }
+  }
+
+  const openHistoryModal = async (item: CommentLogItem) => {
+    setHistoryTarget({ id: item.id, title: `${item.deal_name} · ${item.author}` })
+    setHistoryLoading(true)
+    try {
+      const items = await getCommentHistoryById(item.id)
+      setHistoryItems(items || [])
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Could not load version history')
+      setHistoryItems([])
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   // Fetch comments
@@ -154,8 +229,8 @@ export default function CommentsLog() {
         </div>
       </div>
 
-      {/* 2. Admin Tab Selector (if admin) */}
-      {isAdmin && (
+      {/* 2. Role Tab Selector (Admin & Management) */}
+      {isMgmtOrAdmin && (
         <div className="flex items-center gap-2 border-b border-[var(--border)]">
           <button
             type="button"
@@ -187,7 +262,7 @@ export default function CommentsLog() {
             )}
             id="tab-comments-all"
           >
-            All Comments (Admin View)
+            {isAdmin ? 'All Comments (Admin View)' : 'All Comments'}
           </button>
         </div>
       )}
@@ -230,8 +305,8 @@ export default function CommentsLog() {
             </div>
           )}
 
-          {/* Admin Filters: Author & Role */}
-          {isAdmin && tab === 'all' && (
+          {/* Author & Role Filters */}
+          {isMgmtOrAdmin && tab === 'all' && (
             <>
               <div className="w-40">
                 <input
@@ -342,17 +417,23 @@ export default function CommentsLog() {
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)]/70 text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
                   <th className="py-3 px-4 min-w-[220px]">Opportunity & Account</th>
                   <th className="py-3 px-4 min-w-[300px]">Comment</th>
-                  {isAdmin && tab === 'all' && <th className="py-3 px-3 min-w-[120px]">Author</th>}
+                  {isMgmtOrAdmin && tab === 'all' && <th className="py-3 px-3 min-w-[120px]">Author</th>}
                   <th className="py-3 px-3 min-w-[100px]">Visibility</th>
                   <th className="py-3 px-4 min-w-[180px]">Sent To</th>
                   <th className="py-3 px-4 min-w-[150px]">Date & Time</th>
                   <th className="py-3 px-3 min-w-[95px] text-center">Email</th>
+                  <th className="py-3 px-3 min-w-[90px] text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {comments.map((item: CommentLogItem) => {
                   const isExpanded = Boolean(expandedRows[item.id])
                   const isLongText = item.text.length > 120 || item.text.includes('\n')
+                  const isAuthor = Boolean(
+                    currentUser &&
+                    ((item.author_id && String(item.author_id) === String(currentUser.id)) ||
+                      (item.author && item.author === currentUser.name))
+                  )
 
                   return (
                     <tr
@@ -369,31 +450,70 @@ export default function CommentsLog() {
                         <div className="text-[11px] text-[var(--text-muted)] mt-0.5 font-medium truncate">
                           {item.account_name}
                         </div>
-                      </td>
-
-                      {/* Comment text */}
-                      <td className="py-3 px-4 align-top">
-                        <div className="text-[var(--text-secondary)] leading-relaxed">
-                          {isExpanded || !isLongText ? (
-                            <p className="whitespace-pre-wrap">{item.text}</p>
-                          ) : (
-                            <p className="line-clamp-2">{item.text}</p>
-                          )}
-                        </div>
-                        {isLongText && (
-                          <button
-                            type="button"
-                            onClick={(e) => toggleExpand(item.id, e)}
-                            className="mt-1 text-[11px] font-semibold text-[#00A3AD] hover:underline cursor-pointer inline-flex items-center gap-0.5"
-                          >
-                            <span>{isExpanded ? 'Show less' : 'Expand comment'}</span>
-                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          </button>
+                        {item.batch_id && (
+                          <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                            <Layers className="w-2.5 h-2.5" />
+                            Batch
+                          </span>
                         )}
                       </td>
 
-                      {/* Author (Admin All tab) */}
-                      {isAdmin && tab === 'all' && (
+                      {/* Comment text */}
+                      <td className="py-3 px-4 align-top" onClick={(e) => editingItem?.id === item.id && e.stopPropagation()}>
+                        {item.is_deleted ? (
+                          <p className="italic text-[var(--text-muted)]">This message was removed</p>
+                        ) : editingItem?.id === item.id ? (
+                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              rows={2}
+                              value={editingText}
+                              onChange={(e) => setEditingText(e.target.value)}
+                              className="w-full p-2 text-xs rounded-lg border border-[#00A3AD] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none resize-none"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingItem(null); setEditingText('') }}
+                                className="px-2 py-1 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] rounded"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingEdit || !editingText.trim()}
+                                onClick={handleSaveEdit}
+                                className="px-2.5 py-1 text-[11px] font-bold bg-[#00A3AD] text-white rounded flex items-center gap-1 disabled:opacity-50"
+                              >
+                                <Check className="w-3 h-3" />
+                                {isSavingEdit ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-[var(--text-secondary)] leading-relaxed">
+                              {isExpanded || !isLongText ? (
+                                <p className="whitespace-pre-wrap">{item.text}</p>
+                              ) : (
+                                <p className="line-clamp-2">{item.text}</p>
+                              )}
+                            </div>
+                            {isLongText && (
+                              <button
+                                type="button"
+                                onClick={(e) => toggleExpand(item.id, e)}
+                                className="mt-1 text-[11px] font-semibold text-[#00A3AD] hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                              >
+                                <span>{isExpanded ? 'Show less' : 'Expand comment'}</span>
+                                {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </td>
+
+                      {/* Author (All tab) */}
+                      {isMgmtOrAdmin && tab === 'all' && (
                         <td className="py-3 px-3 align-top whitespace-nowrap">
                           <span className="font-semibold text-[var(--text-primary)] block">
                             {item.author}
@@ -433,7 +553,14 @@ export default function CommentsLog() {
 
                       {/* Date & Time */}
                       <td className="py-3 px-4 align-top whitespace-nowrap text-[11px] text-[var(--text-muted)]">
-                        <div className="font-medium text-[var(--text-secondary)]">{item.created_at_formatted}</div>
+                        <div className="font-medium text-[var(--text-secondary)]">
+                          {item.created_at ? formatDateTime(item.created_at, currentUser?.timezone) : item.created_at_formatted}
+                        </div>
+                        {!item.is_deleted && item.edited_at && (
+                          <div className="text-[10px] italic text-[var(--text-muted)] mt-0.5">
+                            edited {formatDateTime(item.edited_at, currentUser?.timezone)}
+                          </div>
+                        )}
                       </td>
 
                       {/* Email Status Chip */}
@@ -454,6 +581,42 @@ export default function CommentsLog() {
                             <span>queued</span>
                           </span>
                         )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-3 align-top text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex items-center gap-1">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => openHistoryModal(item)}
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-indigo-500 hover:bg-indigo-500/10 cursor-pointer"
+                              title="View edit/delete history (Admin)"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!item.is_deleted && isAuthor && (
+                            <button
+                              type="button"
+                              onClick={() => { setEditingItem(item); setEditingText(item.text) }}
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-teal-500 hover:bg-teal-500/10 cursor-pointer"
+                              title="Edit comment"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!item.is_deleted && (isAuthor || isAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => setUnsendItem(item)}
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                              title="Unsend / remove comment"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -503,7 +666,88 @@ export default function CommentsLog() {
         )}
       </Card>
 
+      {/* Unsend Confirm Modal */}
+      {unsendItem && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-sm w-full p-5 space-y-4">
+            <h4 className="text-sm font-bold text-[var(--text-primary)]">Unsend Comment?</h4>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Unsending removes it from the portal; emails already sent stay in inboxes.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isUnsending}
+                onClick={() => setUnsendItem(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUnsending}
+                onClick={handleConfirmUnsend}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
+              >
+                {isUnsending ? 'Removing...' : 'Unsend'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Admin History Modal */}
+      {historyTarget && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-lg w-full p-5 space-y-3 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-500" />
+                <span>Version History — {historyTarget.title}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setHistoryTarget(null)}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2.5">
+              {historyLoading ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">Loading history...</p>
+              ) : historyItems.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">No edits or deletions recorded.</p>
+              ) : (
+                historyItems.map((h) => (
+                  <div key={h.id} className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)]">
+                        {h.action}
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {h.actor_name} · {formatDateTime(h.created_at, currentUser?.timezone)}
+                      </span>
+                    </div>
+                    {h.previous_text != null && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">Previous:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-secondary)] mt-0.5">{h.previous_text}</p>
+                      </div>
+                    )}
+                    {h.new_text != null && h.action === 'edit' && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">New:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-primary)] mt-0.5">{h.new_text}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

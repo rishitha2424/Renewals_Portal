@@ -12,6 +12,7 @@ export interface UserProfile {
   is_owner: boolean
   owner_name?: string
   aliases?: string[]
+  timezone?: string
   must_change_password?: boolean
   last_login?: string
 }

@@ -14,9 +14,11 @@ import {
   Filter,
 } from 'lucide-react'
 import { getNotifications, markNotificationRead, markAllNotificationsRead, NotificationItem } from '@/api/client'
-import { formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
+import { useAuthStore } from '@/store/authStore'
 
 export default function NotificationsPage() {
+  const { currentUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'message' | 'comment' | 'alert'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const queryClient = useQueryClient()
@@ -181,7 +183,7 @@ export default function NotificationsPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-[var(--text-muted)] flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      <span>{formatDate(n.created_at)}</span>
+                      <span>{formatDateTime(n.created_at, currentUser?.timezone)}</span>
                     </span>
                     {!n.is_read && (
                       <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shrink-0" />

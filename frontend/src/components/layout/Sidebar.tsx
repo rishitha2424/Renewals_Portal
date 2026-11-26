@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
+import { getNotifications } from '@/api/client'
 import { NAV_ITEMS, KAM_NAV_ITEMS, ADMIN_NAV_ITEMS } from '@/config/nav'
 import clsx from 'clsx'
 
@@ -21,8 +23,17 @@ export default function Sidebar() {
     setMobileSidebarOpen,
     isAdmin,
   } = useAppStore()
-  const { currentUser } = useAuthStore()
+  const { currentUser, isAuthenticated } = useAuthStore()
   const location = useLocation()
+
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications', 'all'],
+    queryFn: () => getNotifications('all', 50),
+    enabled: Boolean(isAuthenticated && currentUser),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  })
+  const unreadByCategory = notifData?.unread_by_category || { messages: 0, comments: 0, alerts: 0, total: 0 }
 
   // Track viewport breakpoint: compact (< 1280px e.g. tablets, 720p/768p/900p laptops, zoomed displays)
   const [isCompactScreen, setIsCompactScreen] = useState(false)
@@ -90,6 +101,13 @@ export default function Sidebar() {
         ? location.pathname === basePath && location.hash === `#${hash}`
         : location.pathname === to
 
+      const badgeCount =
+        basePath === '/messages'
+          ? unreadByCategory.messages || 0
+          : basePath === '/comments-log'
+            ? unreadByCategory.comments || 0
+            : 0
+
       return (
         <NavLink
           key={to}
@@ -107,16 +125,26 @@ export default function Sidebar() {
             <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#00A3AD] rounded-r-sm" />
           )}
 
-          <Icon
-            className={clsx(
-              'w-[18px] h-[18px] flex-shrink-0',
-              isActive ? 'text-[#00A3AD]' : 'text-slate-400 group-hover:text-slate-200'
+          <div className="relative flex-shrink-0">
+            <Icon
+              className={clsx(
+                'w-[18px] h-[18px]',
+                isActive ? 'text-[#00A3AD]' : 'text-slate-400 group-hover:text-slate-200'
+              )}
+              strokeWidth={1.75}
+            />
+            {effectiveCollapsed && !isMobile && badgeCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-teal-400" />
             )}
-            strokeWidth={1.75}
-          />
+          </div>
 
           {(!effectiveCollapsed || isMobile) && (
-            <span className="truncate whitespace-nowrap">{label}</span>
+            <span className="truncate whitespace-nowrap flex-1">{label}</span>
+          )}
+          {(!effectiveCollapsed || isMobile) && badgeCount > 0 && (
+            <span className="ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#00A3AD] text-white tabular-nums">
+              {badgeCount > 99 ? '99+' : badgeCount}
+            </span>
           )}
         </NavLink>
       )

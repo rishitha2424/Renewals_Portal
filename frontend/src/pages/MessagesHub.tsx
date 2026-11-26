@@ -19,9 +19,27 @@ import {
   Mail,
   RotateCw,
   Check,
+  Edit2,
+  Trash2,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
-import { getMessageThreads, getDealMessages, replyDealMessage, markMessageRead, sendDealMessage, searchGlobal, getEmailLog, EmailLogItem } from '@/api/client'
-import { formatCurrency, formatDate } from '@/utils/format'
+import {
+  getMessageThreads,
+  getDealMessages,
+  replyDealMessage,
+  markMessageRead,
+  sendDealMessage,
+  searchGlobal,
+  getEmailLog,
+  updateDealMessage,
+  unsendDealMessage,
+  getMessageHistory,
+  EmailLogItem,
+  CommentMessageHistoryItem,
+} from '@/api/client'
+import { formatCurrency, formatDate, formatDateTime } from '@/utils/format'
 import { useAuthStore } from '@/store/authStore'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import RecipientPicker from '@/components/common/RecipientPicker'
@@ -50,6 +68,15 @@ export default function MessagesHub() {
   const [newMsgBody, setNewMsgBody] = useState('')
   const [newMsgPriority, setNewMsgPriority] = useState('normal')
   const [isSendingNewMsg, setIsSendingNewMsg] = useState(false)
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editingMsgBody, setEditingMsgBody] = useState('')
+  const [isSavingMsgEdit, setIsSavingMsgEdit] = useState(false)
+  const [unsendMsgId, setUnsendMsgId] = useState<string | null>(null)
+  const [isUnsendingMsg, setIsUnsendingMsg] = useState(false)
+  const [historyMsgTarget, setHistoryMsgTarget] = useState<{ id: string; title: string } | null>(null)
+  const [historyItems, setHistoryItems] = useState<CommentMessageHistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [expandedLogIds, setExpandedLogIds] = useState<Record<string, boolean>>({})
 
   const { data: emailLogData, isLoading: isEmailLogLoading, refetch: refetchEmailLog } = useQuery({
     queryKey: ['email-log'],
@@ -91,10 +118,12 @@ export default function MessagesHub() {
   useEffect(() => {
     if (messages.length > 0 && currentUser) {
       messages.forEach((m: any) => {
-        if (!m.is_read && m.sender_id !== currentUser.id) {
+        if (!m.is_read && m.sender_id !== currentUser.id && !m.is_deleted) {
           markMessageRead(m.id)
             .then(() => {
               queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+              queryClient.invalidateQueries({ queryKey: ['notifications'] })
+              queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
             })
             .catch(() => {})
         }
@@ -113,11 +142,62 @@ export default function MessagesHub() {
       setReplyText('')
       queryClient.invalidateQueries({ queryKey: ['deal-messages', activeOppId] })
       queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      queryClient.invalidateQueries({ queryKey: ['email-log'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
     onError: (err: any) => {
       showToast.error(err?.response?.data?.detail || 'Failed to send reply')
     },
   })
+
+  const handleSaveEditMessage = async () => {
+    if (!editingMsgId || !editingMsgBody.trim() || isSavingMsgEdit) return
+    setIsSavingMsgEdit(true)
+    try {
+      await updateDealMessage(editingMsgId, editingMsgBody.trim())
+      setEditingMsgId(null)
+      setEditingMsgBody('')
+      queryClient.invalidateQueries({ queryKey: ['deal-messages', activeOppId] })
+      queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      showToast.success('Message updated')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to update message')
+    } finally {
+      setIsSavingMsgEdit(false)
+    }
+  }
+
+  const handleConfirmUnsendMessage = async () => {
+    if (!unsendMsgId || isUnsendingMsg) return
+    setIsUnsendingMsg(true)
+    try {
+      await unsendDealMessage(unsendMsgId)
+      setUnsendMsgId(null)
+      queryClient.invalidateQueries({ queryKey: ['deal-messages', activeOppId] })
+      queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
+      showToast.info('Message removed')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to remove message')
+    } finally {
+      setIsUnsendingMsg(false)
+    }
+  }
+
+  const openMessageHistory = async (id: string, senderName: string) => {
+    setHistoryMsgTarget({ id, title: `Message by ${senderName}` })
+    setHistoryLoading(true)
+    try {
+      const items = await getMessageHistory(id)
+      setHistoryItems(items || [])
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Could not load history')
+      setHistoryItems([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   // Debounced deal search for Compose modal
   useEffect(() => {
@@ -436,6 +516,7 @@ export default function MessagesHub() {
                 ) : (
                   messages.map((m: any) => {
                     const isMe = m.sender_id === currentUser?.id
+                    const isAdminViewer = currentUser?.role === 'admin'
                     return (
                       <div
                         key={m.id}
@@ -450,8 +531,8 @@ export default function MessagesHub() {
                         }`}>
                           {m.sender_name?.[0]?.toUpperCase() || 'U'}
                         </div>
-                        <div>
-                          <div className={`flex items-center gap-2 mb-1 text-[11px] ${isMe ? 'justify-end' : ''}`}>
+                        <div className="min-w-0">
+                          <div className={`flex items-center gap-2 mb-1 text-[11px] flex-wrap ${isMe ? 'justify-end' : ''}`}>
                             <span className="font-semibold text-[var(--text-primary)]">
                               {m.sender_name}
                             </span>
@@ -459,17 +540,82 @@ export default function MessagesHub() {
                               {m.sender_role}
                             </span>
                             <span className="text-[10px] text-[var(--text-muted)]">
-                              {m.created_at ? formatDate(m.created_at) : ''}
+                              {m.created_at ? formatDateTime(m.created_at, currentUser?.timezone) : ''}
+                              {!m.is_deleted && m.edited_at && (
+                                <span className="italic ml-1">· edited {formatDateTime(m.edited_at, currentUser?.timezone)}</span>
+                              )}
                             </span>
+                            {isAdminViewer && (
+                              <button
+                                type="button"
+                                onClick={() => openMessageHistory(m.id, m.sender_name)}
+                                className="p-0.5 text-[var(--text-muted)] hover:text-indigo-500 rounded cursor-pointer"
+                                title="View edit/delete history (Admin)"
+                              >
+                                <History className="w-3 h-3" />
+                              </button>
+                            )}
+                            {!m.is_deleted && isMe && editingMsgId !== m.id && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingMsgId(m.id); setEditingMsgBody(m.body || '') }}
+                                className="p-0.5 text-[var(--text-muted)] hover:text-teal-500 rounded cursor-pointer"
+                                title="Edit message"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {!m.is_deleted && (isMe || isAdminViewer) && (
+                              <button
+                                type="button"
+                                onClick={() => setUnsendMsgId(m.id)}
+                                className="p-0.5 text-[var(--text-muted)] hover:text-rose-500 rounded cursor-pointer"
+                                title="Unsend message"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
-                          <div className={`p-3.5 rounded-2xl text-xs ${
-                            isMe
-                              ? 'bg-[#12284C] text-white rounded-tr-none'
-                              : 'bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border)] rounded-tl-none shadow-sm'
-                          }`}>
-                            <p className="whitespace-pre-wrap">{m.body}</p>
-                          </div>
-                          {m.delivery_status && (
+                          {m.is_deleted ? (
+                            <div className="p-3 rounded-2xl text-xs italic bg-[var(--bg-card)] text-[var(--text-muted)] border border-dashed border-[var(--border)]">
+                              This message was removed
+                            </div>
+                          ) : editingMsgId === m.id ? (
+                            <div className="p-3 rounded-2xl border border-teal-500 bg-[var(--bg-card)] space-y-2 min-w-[240px]">
+                              <textarea
+                                rows={2}
+                                value={editingMsgBody}
+                                onChange={(e) => setEditingMsgBody(e.target.value)}
+                                className="w-full p-2 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none resize-none"
+                              />
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingMsgId(null); setEditingMsgBody('') }}
+                                  className="px-2.5 py-1 text-xs text-[var(--text-muted)] rounded hover:bg-[var(--bg-secondary)]"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingMsgEdit || !editingMsgBody.trim()}
+                                  onClick={handleSaveEditMessage}
+                                  className="px-3 py-1 text-xs font-semibold bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50"
+                                >
+                                  {isSavingMsgEdit ? 'Saving...' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={`p-3.5 rounded-2xl text-xs ${
+                              isMe
+                                ? 'bg-[#12284C] text-white rounded-tr-none'
+                                : 'bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border)] rounded-tl-none shadow-sm'
+                            }`}>
+                              <p className="whitespace-pre-wrap">{m.body}</p>
+                            </div>
+                          )}
+                          {!m.is_deleted && m.delivery_status && (
                             <div className={`mt-1 flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium ${isMe ? 'justify-end' : ''}`}>
                               <Check className="w-3 h-3 shrink-0" />
                               <span>{m.delivery_status}</span>
@@ -559,69 +705,130 @@ export default function MessagesHub() {
                   <thead>
                     <tr className="border-b border-[var(--border)] text-[var(--text-muted)] font-semibold">
                       <th className="pb-2.5 px-3">Date &amp; Time</th>
-                      <th className="pb-2.5 px-3">Type</th>
-                      <th className="pb-2.5 px-3">Deal / Opportunity</th>
-                      <th className="pb-2.5 px-3">Sender</th>
-                      <th className="pb-2.5 px-3">Recipient</th>
-                      <th className="pb-2.5 px-3">Delivery Status</th>
-                      <th className="pb-2.5 px-3 text-right">Attempts</th>
+                      <th className="pb-2.5 px-3">Author</th>
+                      <th className="pb-2.5 px-3">Subject &amp; Deal</th>
+                      <th className="pb-2.5 px-3">Recipients</th>
+                      <th className="pb-2.5 px-3">Counts</th>
+                      <th className="pb-2.5 px-3 text-right">Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
-                    {emailLogData.log.map((item) => {
-                      const dt = item.sent_at || item.created_at
+                    {emailLogData.log.map((item: EmailLogItem) => {
+                      const dt = item.created_at || item.sent_at
+                      const isExpanded = Boolean(expandedLogIds[item.id])
+                      const sentCnt = item.sent_count ?? (item.status === 'sent' ? 1 : 0)
+                      const failCnt = item.failed_count ?? (item.status === 'failed' ? 1 : 0)
+                      const skipCnt = item.skipped_count ?? (item.status === 'skipped' ? 1 : 0)
                       return (
-                        <tr key={item.id} className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
-                          <td className="py-3 px-3 text-[var(--text-secondary)] whitespace-nowrap tabular-nums">
-                            {dt ? `${formatDate(dt)} ${new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '—'}
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="capitalize px-2 py-0.5 rounded text-[10px] font-semibold bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]">
-                              {item.template_type.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 max-w-[200px]">
-                            <div className="font-semibold text-[var(--text-primary)] truncate" title={item.deal_name || item.deal_id || 'Deal'}>
-                              {item.deal_name || item.deal_id || '—'}
-                            </div>
-                            {item.deal_id && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedDrawerOppId(item.deal_id || null)}
-                                className="text-[10px] font-mono text-teal-600 dark:text-teal-400 hover:underline block truncate"
-                              >
-                                {item.deal_id}
-                              </button>
-                            )}
-                          </td>
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="font-semibold text-[var(--text-primary)]">{item.sender_name}</span>
-                            <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-[var(--bg-secondary)] text-[var(--text-muted)]">
-                              {item.sender_role}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            {/* Privacy: ONLY recipient name and role, ZERO email addresses */}
-                            <span className="font-semibold text-[var(--text-primary)]">{item.recipient_name}</span>
-                            <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-[var(--bg-secondary)] text-[var(--text-muted)]">
-                              {item.recipient_role}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              item.status === 'sent'
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                : item.status === 'failed'
-                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                            }`}>
-                              {item.status === 'sent' ? '✓ Delivered' : item.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right tabular-nums text-[var(--text-muted)] font-medium">
-                            {item.attempts}
-                          </td>
-                        </tr>
+                        <React.Fragment key={item.id}>
+                          <tr className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                            <td className="py-3 px-3 text-[var(--text-secondary)] whitespace-nowrap tabular-nums">
+                              {dt ? formatDateTime(dt, currentUser?.timezone) : '—'}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className="font-semibold text-[var(--text-primary)]">{item.author_name || item.sender_name}</span>
+                              <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded font-bold uppercase bg-[var(--bg-secondary)] text-[var(--text-muted)]">
+                                {item.author_role || item.sender_role}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 max-w-[260px]">
+                              <div className="font-semibold text-[var(--text-primary)] truncate" title={item.subject || item.deal_name || ''}>
+                                {item.subject || `${(item.event_type || item.template_type).replace('_', ' ')}`}
+                              </div>
+                              {item.deal_name && (
+                                <button
+                                  type="button"
+                                  onClick={() => item.deal_id && setSelectedDrawerOppId(item.deal_id)}
+                                  className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline block truncate"
+                                >
+                                  {item.deal_name}
+                                </button>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-[var(--text-secondary)]">
+                              <span className="font-medium">{item.recipient_summary || item.recipient_name || '—'}</span>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                  {sentCnt} sent
+                                </span>
+                                {failCnt > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300">
+                                    {failCnt} failed
+                                  </span>
+                                )}
+                                {skipCnt > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                                    {skipCnt} skipped
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              {item.details_redacted ? (
+                                <span className="text-[10px] text-[var(--text-muted)] italic">Restricted</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedLogIds((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
+                                  }
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] cursor-pointer"
+                                >
+                                  <span>{isExpanded ? 'Hide' : 'Details'}</span>
+                                  {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {isExpanded && !item.details_redacted && (
+                            <tr className="bg-[var(--bg-secondary)]/30">
+                              <td colSpan={6} className="p-3 space-y-2">
+                                {item.body_preview && (
+                                  <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
+                                    <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] block mb-1">
+                                      Message Preview
+                                    </span>
+                                    <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">
+                                      {item.body_preview}
+                                    </p>
+                                  </div>
+                                )}
+                                {item.recipients && item.recipients.length > 0 && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                    {item.recipients.map((rec) => (
+                                      <div
+                                        key={rec.id}
+                                        className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between gap-2 text-[11px]"
+                                      >
+                                        <div className="min-w-0">
+                                          <span className="font-semibold text-[var(--text-primary)] truncate block">
+                                            {rec.name}
+                                          </span>
+                                          {rec.reason && (
+                                            <span className="text-[10px] text-rose-500 block truncate" title={rec.reason}>
+                                              {rec.reason}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
+                                          rec.status === 'sent'
+                                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                            : rec.status === 'failed'
+                                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                            : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                        }`}>
+                                          {rec.status}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </tbody>
@@ -717,10 +924,12 @@ export default function MessagesHub() {
               {/* Recipient Picker */}
               {selectedDealForNewMsg && (
                 <RecipientPicker
+                  key={selectedDealForNewMsg.opportunity_id_18 || selectedDealForNewMsg.id}
                   dealId={selectedDealForNewMsg.opportunity_id_18 || selectedDealForNewMsg.id}
                   selectedIds={newMsgRecipients}
                   onChange={setNewMsgRecipients}
                   contextType="message"
+                  disabled={isSendingNewMsg}
                 />
               )}
 
@@ -781,6 +990,89 @@ export default function MessagesHub() {
         oppId={selectedDrawerOppId}
         onClose={() => setSelectedDrawerOppId(null)}
       />
+
+      {/* Unsend Confirm Modal */}
+      {unsendMsgId && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-sm w-full p-5 space-y-4">
+            <h4 className="text-sm font-bold text-[var(--text-primary)]">Unsend Message?</h4>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Unsending removes it from the portal; emails already sent stay in inboxes.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isUnsendingMsg}
+                onClick={() => setUnsendMsgId(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUnsendingMsg}
+                onClick={handleConfirmUnsendMessage}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
+              >
+                {isUnsendingMsg ? 'Removing...' : 'Unsend'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Version History Modal */}
+      {historyMsgTarget && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-lg w-full p-5 space-y-3 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-500" />
+                <span>Version History — {historyMsgTarget.title}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setHistoryMsgTarget(null)}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2.5">
+              {historyLoading ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">Loading history...</p>
+              ) : historyItems.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">No edits or deletions recorded.</p>
+              ) : (
+                historyItems.map((h) => (
+                  <div key={h.id} className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)]">
+                        {h.action}
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {h.actor_name} · {formatDateTime(h.created_at, currentUser?.timezone)}
+                      </span>
+                    </div>
+                    {h.previous_text != null && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">Previous:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-secondary)] mt-0.5">{h.previous_text}</p>
+                      </div>
+                    )}
+                    {h.new_text != null && h.action === 'edit' && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">New:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-primary)] mt-0.5">{h.new_text}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

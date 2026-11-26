@@ -288,7 +288,7 @@ export default function DealCommentPanel({
               </div>
             ) : (
               <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                <span>👥 Visible to opportunity owner, management &amp; admin</span>
+                <span>👥 Shared with Deal Owner, Management &amp; Admins</span>
               </div>
             )}
           </div>
@@ -299,11 +299,13 @@ export default function DealCommentPanel({
               Send Email &amp; In-App Notification To:
             </label>
             <RecipientPicker
+              key={deals.length === 1 ? deals[0].id : 'batch'}
               dealId={deals.length === 1 ? deals[0].id : undefined}
               selectedIds={recipientIds}
               onChange={setRecipientIds}
               contextType="comment"
               commentVisibility={visibility}
+              disabled={isSubmitting}
             />
           </div>
         </div>

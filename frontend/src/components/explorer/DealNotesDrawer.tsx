@@ -194,7 +194,7 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
         id="deal-notes-drawer"
       >
         {/* Drawer Header */}
-        <div className="sticky top-0 z-20 p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3 shrink-0 shadow-xs">
+        <div className="relative z-20 p-4 sm:p-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-start justify-between gap-3 shrink-0 shadow-xs">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
@@ -276,7 +276,7 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
 
         {/* Tab 1: Custom Values & Notes */}
         {activeTab === 'notes' && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
             {columns.length === 0 ? (
               <div className="py-12 text-center text-xs text-[var(--text-muted)]">
                 <FileText className="w-8 h-8 mx-auto opacity-30 mb-2" />

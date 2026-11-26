@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
@@ -15,6 +15,7 @@ interface DrawerProps {
   width?: string
   size?: 'sm' | 'md' | 'lg' | 'xl'
   position?: 'right' | 'left'
+  scrollResetKey?: string | null
 }
 
 export function Drawer({
@@ -28,8 +29,16 @@ export function Drawer({
   width,
   size = 'md',
   position = 'right',
+  scrollResetKey,
 }: DrawerProps) {
   const isDrawerOpen = open ?? isOpen ?? false
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isDrawerOpen && bodyRef.current) {
+      bodyRef.current.scrollTop = 0
+    }
+  }, [isDrawerOpen, scrollResetKey])
 
   const sizeWidthMap = {
     sm: 'max-w-sm',
@@ -91,10 +100,10 @@ export function Drawer({
               position === 'right' ? 'ml-auto' : 'mr-auto'
             )}
           >
-            {/* Sticky Header with prominent title, subtitle, and close button */}
+            {/* Fixed Header with prominent title, subtitle, and close button */}
             <div
               className={clsx(
-                'sticky top-0 z-30 flex items-center justify-between px-6 sm:px-8 py-5 border-b border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm shrink-0',
+                'relative z-30 flex items-center justify-between px-6 sm:px-8 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)] shadow-sm shrink-0',
                 position === 'right' ? 'sm:rounded-tl-2xl' : 'sm:rounded-tr-2xl'
               )}
             >
@@ -121,7 +130,7 @@ export function Drawer({
             </div>
 
             {/* Content Body */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
+            <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pt-5 pb-5">
               {children}
             </div>
 

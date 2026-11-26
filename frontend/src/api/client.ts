@@ -799,9 +799,26 @@ export interface DealCommentItem {
   is_deleted?: boolean
   created_at: string
   updated_at: string
+  edited_at?: string | null
+  deleted_at?: string | null
   visibility?: 'internal' | 'shared_with_owner' | 'shared'
   author_id?: string
   author_role?: string
+  recipients?: string[]
+  delivery_status?: string
+  batch_id?: string | null
+}
+
+export interface CommentMessageHistoryItem {
+  id: string
+  action: 'edit' | 'unsend' | 'delete' | string
+  previous_text?: string | null
+  new_text?: string | null
+  previous_visibility?: string | null
+  new_visibility?: string | null
+  actor_name: string
+  actor_role: string
+  created_at: string
 }
 
 export const getDealComments = async (opportunityId: string): Promise<DealCommentItem[]> => {
@@ -843,7 +860,22 @@ export const deleteDealComment = async (
   commentId: string
 ): Promise<boolean> => {
   const res = await api.delete(`/custom-columns/deals/${opportunityId}/comments/${commentId}`)
-  return res.data.ok ?? true
+  return res.data.deleted ?? res.data.ok ?? true
+}
+
+export const getDealCommentHistory = async (
+  opportunityId: string,
+  commentId: string
+): Promise<CommentMessageHistoryItem[]> => {
+  const res = await api.get(`/custom-columns/deals/${opportunityId}/comments/${commentId}/history`)
+  return res.data.history || []
+}
+
+export const getCommentHistoryById = async (
+  commentId: string
+): Promise<CommentMessageHistoryItem[]> => {
+  const res = await api.get(`/comments/${commentId}/history`)
+  return res.data.history || []
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1028,9 +1060,10 @@ export interface MailDiagnostics {
 
 export interface EmailOutboxItem {
   id: string
-  recipient_email: string
+  recipient_email?: string
   to_email?: string
   recipient_name?: string
+  recipient_role?: string
   subject: string
   body_text?: string
   template?: string
@@ -1118,7 +1151,9 @@ export interface DealMessageThreadItem {
 
 export interface DealMessageDetail {
   id: string
+  thread_id?: string
   parent_id?: string
+  sender_id?: string
   sender_name: string
   sender_role: string
   is_me: boolean
@@ -1126,7 +1161,10 @@ export interface DealMessageDetail {
   body: string
   priority: string
   is_read: boolean
+  is_deleted?: boolean
   created_at: string
+  edited_at?: string | null
+  deleted_at?: string | null
   delivery_status?: string
   recipients?: string[]
   recipient_ids?: string[]
@@ -1156,6 +1194,21 @@ export const sendDealMessage = async (data: {
 export const replyDealMessage = async (messageId: string, body: string, recipient_ids?: string[]) => {
   const res = await api.post(`/messages/${messageId}/reply`, { body, recipient_ids })
   return res.data
+}
+
+export const updateDealMessage = async (messageId: string, body: string) => {
+  const res = await api.put(`/messages/${messageId}`, { body })
+  return res.data
+}
+
+export const unsendDealMessage = async (messageId: string) => {
+  const res = await api.delete(`/messages/${messageId}`)
+  return res.data
+}
+
+export const getMessageHistory = async (messageId: string): Promise<CommentMessageHistoryItem[]> => {
+  const res = await api.get(`/messages/${messageId}/history`)
+  return res.data.history || []
 }
 
 export const markMessageRead = async (messageId: string) => {
@@ -1260,7 +1313,14 @@ export interface NotificationItem {
   read_at?: string | null
 }
 
-export const getNotifications = async (category?: string, limit = 50): Promise<{ notifications: NotificationItem[]; unread_count: number }> => {
+export const getNotifications = async (
+  category?: string,
+  limit = 50
+): Promise<{
+  notifications: NotificationItem[]
+  unread_count: number
+  unread_by_category?: { messages: number; comments: number; alerts: number; total: number }
+}> => {
   const params: any = { limit }
   if (category && category !== 'all') params.category = category
   const res = await api.get('/notifications', { params })
@@ -1283,13 +1343,17 @@ export interface RecipientUser {
   name: string
   role: string
   is_owner?: boolean
+  has_email?: boolean
+  count?: number
 }
 
 export interface RecipientOptions {
   deal_owner?: RecipientUser | null
   management: RecipientUser[]
   admins: RecipientUser[]
-  defaults: string[]
+  admin_count?: number
+  management_count?: number
+  defaults: string[] | { message?: string[]; reply?: string[]; comment?: string[] }
 }
 
 export const getMessageRecipients = async (deal_id?: string): Promise<RecipientOptions> => {
@@ -1299,23 +1363,46 @@ export const getMessageRecipients = async (deal_id?: string): Promise<RecipientO
   return res.data
 }
 
+export interface EmailLogRecipientDetail {
+  id: string
+  name: string
+  role: string
+  status: string
+  reason?: string | null
+  attempts: number
+  sent_at?: string | null
+}
+
 export interface EmailLogItem {
   id: string
   created_at?: string | null
   sent_at?: string | null
+  event_type?: string
   template_type: string
   deal_id?: string | null
   deal_name?: string | null
+  author_name?: string
   sender_name: string
+  author_role?: string
   sender_role: string
+  subject?: string
+  recipient_summary?: string
   recipient_name: string
   recipient_role: string
   status: string
-  attempts: number
+  attempts?: number
   error_message?: string | null
+  sent_count?: number
+  failed_count?: number
+  skipped_count?: number
+  pending_count?: number
+  total_count?: number
+  body_preview?: string | null
+  recipients?: EmailLogRecipientDetail[]
+  details_redacted?: boolean
 }
 
-export const getEmailLog = async (limit = 100): Promise<{ log: EmailLogItem[] }> => {
+export const getEmailLog = async (limit = 100): Promise<{ log: EmailLogItem[]; events?: EmailLogItem[] }> => {
   const res = await api.get('/messages/email-log', { params: { limit } })
   return res.data
 }
@@ -1326,13 +1413,18 @@ export interface CommentLogItem {
   deal_name: string
   account_name: string
   text: string
+  is_deleted?: boolean
   visibility: 'internal' | 'shared'
   author: string
+  author_id?: string | null
   author_role: string
+  batch_id?: string | null
   created_at: string | null
+  edited_at?: string | null
+  deleted_at?: string | null
   created_at_formatted: string
   recipients: string[]
-  email_status: 'emailed' | 'queued' | 'failed'
+  email_status: 'emailed' | 'queued' | 'failed' | 'partial'
 }
 
 export interface CommentsLogResponse {

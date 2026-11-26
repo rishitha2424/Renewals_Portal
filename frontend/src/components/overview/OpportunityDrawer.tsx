@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -45,14 +45,19 @@ import {
   addDealComment,
   updateDealComment,
   deleteDealComment,
+  getDealCommentHistory,
   getDealMessages,
   sendDealMessage,
   replyDealMessage,
+  updateDealMessage,
+  unsendDealMessage,
+  getMessageHistory,
   DealMessageDetail,
+  CommentMessageHistoryItem,
   CustomColumnItem,
   DealAnnotationItem,
 } from '@/api/client'
-import { formatACV, formatDate } from '@/utils/format'
+import { formatACV, formatDate, formatDateTime } from '@/utils/format'
 import Badge, { ForecastBadge, ApprovalBadge } from '@/components/ui/Badge'
 import Drawer from '@/components/ui/Drawer'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -70,6 +75,9 @@ export interface DealComment {
   author: string
   text: string
   createdAt: string
+  editedAt?: string | null
+  deletedAt?: string | null
+  isDeleted?: boolean
   visibility?: 'internal' | 'shared_with_owner' | 'shared'
   authorId?: string
   authorRole?: string
@@ -104,6 +112,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   })
   const dealMessages: DealMessageDetail[] = dealMessagesData?.messages || []
 
+  const queryClient = useQueryClient()
   const [msgSubject, setMsgSubject] = useState('')
   const [msgBody, setMsgBody] = useState('')
   const [msgPriority, setMsgPriority] = useState('normal')
@@ -112,10 +121,70 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const [replyBody, setReplyBody] = useState('')
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [isSendingReply, setIsSendingReply] = useState(false)
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editingMsgBody, setEditingMsgBody] = useState('')
+  const [isSavingMsgEdit, setIsSavingMsgEdit] = useState(false)
+  const [unsendTarget, setUnsendTarget] = useState<{ kind: 'comment' | 'message'; id: string } | null>(null)
+  const [isUnsending, setIsUnsending] = useState(false)
+  const [historyModalTarget, setHistoryModalTarget] = useState<{ kind: 'comment' | 'message'; id: string; title: string } | null>(null)
+  const [historyItems, setHistoryItems] = useState<CommentMessageHistoryItem[]>([])
+  const [versionHistoryLoading, setVersionHistoryLoading] = useState(false)
+
+  // Reset per-deal compose/picker/edit states when switching deals
+  useEffect(() => {
+    setCommentText('')
+    setCommentRecipients([])
+    setEditingCommentId(null)
+    setEditingCommentText('')
+    setMsgSubject('')
+    setMsgBody('')
+    setMsgRecipients([])
+    setReplyBody('')
+    setReplyingToId(null)
+    setEditingMsgId(null)
+    setEditingMsgBody('')
+    setUnsendTarget(null)
+    setHistoryModalTarget(null)
+    setShowAllSnapshots(false)
+  }, [oppId])
+
+  const openHistoryModal = async (kind: 'comment' | 'message', id: string, title: string) => {
+    if (!oppId) return
+    setHistoryModalTarget({ kind, id, title })
+    setVersionHistoryLoading(true)
+    try {
+      const items = kind === 'comment'
+        ? await getDealCommentHistory(oppId, id)
+        : await getMessageHistory(id)
+      setHistoryItems(items || [])
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Could not load version history')
+      setHistoryItems([])
+    } finally {
+      setVersionHistoryLoading(false)
+    }
+  }
+
+  const handleSaveEditMessage = async () => {
+    if (!editingMsgId || !editingMsgBody.trim()) return
+    setIsSavingMsgEdit(true)
+    try {
+      await updateDealMessage(editingMsgId, editingMsgBody.trim())
+      setEditingMsgId(null)
+      setEditingMsgBody('')
+      await refetchDealMessages()
+      queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      showToast.success('Message updated')
+    } catch (err: any) {
+      showToast.error(err?.response?.data?.detail || 'Failed to update message')
+    } finally {
+      setIsSavingMsgEdit(false)
+    }
+  }
 
   const handleSendNewMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!oppId || !msgSubject.trim() || !msgBody.trim()) return
+    if (!oppId || !msgSubject.trim() || !msgBody.trim() || isSendingMsg) return
     setIsSendingMsg(true)
     try {
       await sendDealMessage({
@@ -128,7 +197,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       setMsgSubject('')
       setMsgBody('')
       setMsgRecipients([])
-      refetchDealMessages()
+      await refetchDealMessages()
+      queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      queryClient.invalidateQueries({ queryKey: ['email-log'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
       showToast.success('Message sent to deal owner')
     } catch (err: any) {
       showToast.error(err?.response?.data?.detail || 'Failed to send message')
@@ -138,13 +210,16 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   }
 
   const handleSendReply = async (messageId: string) => {
-    if (!replyBody.trim()) return
+    if (!replyBody.trim() || isSendingReply) return
     setIsSendingReply(true)
     try {
       await replyDealMessage(messageId, replyBody.trim())
       setReplyBody('')
       setReplyingToId(null)
-      refetchDealMessages()
+      await refetchDealMessages()
+      queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+      queryClient.invalidateQueries({ queryKey: ['email-log'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
       showToast.success('Reply posted')
     } catch (err: any) {
       showToast.error(err?.response?.data?.detail || 'Failed to post reply')
@@ -162,6 +237,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   // ── Comments State ────────────────────────────────────────────────────────
   const [comments, setComments] = useState<DealComment[]>([])
   const [commentText, setCommentText] = useState('')
+  const [isSavingComment, setIsSavingComment] = useState(false)
   const [commentVisibility, setCommentVisibility] = useState<'internal' | 'shared_with_owner'>('internal')
   const [commentRecipients, setCommentRecipients] = useState<string[]>([])
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
@@ -223,6 +299,9 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
           author: c.author,
           text: c.text,
           createdAt: c.created_at,
+          editedAt: c.edited_at,
+          deletedAt: c.deleted_at,
+          isDeleted: Boolean(c.is_deleted || c.deleted_at),
           visibility: c.visibility,
           authorId: c.author_id,
           authorRole: c.author_role,
@@ -230,25 +309,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
         }))
       )
     } else if (serverComments && serverComments.length === 0) {
-      // Fallback check to localStorage if server has no comments yet
-      try {
-        const raw = localStorage.getItem(`deal_comments_${oppId}`)
-        if (raw) {
-          const localList: DealComment[] = JSON.parse(raw)
-          setComments(localList)
-          // Automatically migrate local comments to server in background
-          if (oppId && localList.length > 0) {
-            localList.forEach((lc) => {
-              addDealComment(oppId, lc.text, lc.author, (lc.visibility as any) || 'internal').catch(() => {})
-            })
-            localStorage.removeItem(`deal_comments_${oppId}`)
-          }
-        } else {
-          setComments((prev) => (prev.length > 0 ? [] : prev))
-        }
-      } catch {
-        setComments((prev) => (prev.length > 0 ? [] : prev))
-      }
+      setComments([])
     }
   }, [serverComments, oppId, opp?.opportunity_name])
 
@@ -267,37 +328,33 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
   const handleAddComment = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     const trimmed = commentText.trim()
-    if (!trimmed || !oppId) return
+    if (!trimmed || !oppId || isSavingComment) return
 
     const author = currentUser?.name || adminName || 'User'
     const effectiveVis = isKam ? 'shared_with_owner' : commentVisibility
-
-    const tempComment: DealComment = {
-      id: `comm_${Date.now()}`,
-      oppId,
-      oppName: opp?.opportunity_name || 'Opportunity',
-      author,
-      text: trimmed,
-      createdAt: new Date().toISOString(),
-      visibility: effectiveVis,
-      authorRole: currentUser?.role || 'admin',
-      authorId: currentUser?.id,
-    }
-
-    // Optimistic update
-    setComments((prev) => [tempComment, ...prev])
-    setCommentText('')
+    setIsSavingComment(true)
 
     try {
-      await addDealComment(oppId, trimmed, author, effectiveVis, commentRecipients.length > 0 ? commentRecipients : undefined)
+      await addDealComment(
+        oppId,
+        trimmed,
+        author,
+        effectiveVis,
+        commentRecipients.length > 0 ? commentRecipients : undefined
+      )
+      setCommentText('')
       await refetchComments()
-      setCommentRecipients([])
+      queryClient.invalidateQueries({ queryKey: ['comments-log'] })
+      queryClient.invalidateQueries({ queryKey: ['email-log'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
       showToast.success('Comment saved')
       setActiveTab('comments')
     } catch (err: any) {
       await refetchComments()
       const msg = err?.response?.data?.detail || 'Failed to save comment'
       showToast.error(msg)
+    } finally {
+      setIsSavingComment(false)
     }
   }
 
@@ -312,16 +369,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     const trimmed = editingCommentText.trim()
     const targetId = editingCommentId
 
-    // Optimistic update
-    setComments((prev) =>
-      prev.map((c) => (c.id === targetId ? { ...c, text: trimmed } : c))
-    )
-    setEditingCommentId(null)
-    setEditingCommentText('')
-
     try {
       await updateDealComment(oppId, targetId, trimmed, editingCommentVisibility)
+      setEditingCommentId(null)
+      setEditingCommentText('')
       await refetchComments()
+      queryClient.invalidateQueries({ queryKey: ['comments-log'] })
       showToast.success('Comment updated')
     } catch (err: any) {
       await refetchComments()
@@ -330,20 +383,30 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
     }
   }
 
-  const handleDeleteComment = async (commentId: string) => {
-    if (!oppId) return
-
-    // Optimistic update
-    setComments((prev) => prev.filter((c) => c.id !== commentId))
-
+  const handleConfirmUnsend = async () => {
+    if (!unsendTarget || isUnsending) return
+    setIsUnsending(true)
     try {
-      await deleteDealComment(oppId, commentId)
-      await refetchComments()
-      showToast.info('Comment removed')
+      if (unsendTarget.kind === 'comment') {
+        if (!oppId) return
+        await deleteDealComment(oppId, unsendTarget.id)
+        await refetchComments()
+        queryClient.invalidateQueries({ queryKey: ['comments-log'] })
+        showToast.info('Comment removed')
+      } else {
+        await unsendDealMessage(unsendTarget.id)
+        await refetchDealMessages()
+        queryClient.invalidateQueries({ queryKey: ['message-threads'] })
+        showToast.info('Message removed')
+      }
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-page'] })
+      setUnsendTarget(null)
     } catch (err: any) {
-      await refetchComments()
-      const msg = err?.response?.data?.detail || 'Failed to delete comment'
+      const msg = err?.response?.data?.detail || 'Failed to remove item'
       showToast.error(msg)
+    } finally {
+      setIsUnsending(false)
     }
   }
 
@@ -585,6 +648,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
       title={opp?.opportunity_name || 'Opportunity Details'}
       subtitle={`ID: ${oppId ?? ''}`}
       size="lg"
+      scrollResetKey={oppId || ''}
     >
       {oppLoading ? (
         <div className="space-y-4">
@@ -1221,29 +1285,31 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                         </div>
                       ) : (
                         <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                          👥 Visible to owner, management &amp; admin
+                          👥 Shared with Deal Owner, Management &amp; Admins
                         </span>
                       )}
 
                       <button
                         type="button"
                         onClick={() => handleAddComment()}
-                        disabled={!commentText.trim()}
+                        disabled={isSavingComment || !commentText.trim()}
                         className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer ml-auto"
                       >
                         <Send className="w-3 h-3" />
-                        Save Comment
+                        {isSavingComment ? 'Saving...' : 'Save Comment'}
                       </button>
                     </div>
 
                     {/* Recipient Picker for Comment */}
                     {oppId && (
                       <RecipientPicker
+                        key={`comment-tab1-${oppId}`}
                         dealId={oppId}
                         selectedIds={commentRecipients}
                         onChange={setCommentRecipients}
                         contextType="comment"
                         commentVisibility={commentVisibility}
+                        disabled={isSavingComment}
                       />
                     )}
                   </div>
@@ -1611,29 +1677,31 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                       </div>
                     ) : (
                       <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        👥 Visible to owner, management &amp; admin
+                        👥 Shared with Deal Owner, Management &amp; Admins
                       </span>
                     )}
 
                     <button
                       type="button"
                       onClick={() => handleAddComment()}
-                      disabled={!commentText.trim()}
+                      disabled={isSavingComment || !commentText.trim()}
                       className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer ml-auto"
                     >
                       <Send className="w-3 h-3" />
-                      Save Comment
+                      {isSavingComment ? 'Saving...' : 'Save Comment'}
                     </button>
                   </div>
 
                   {/* Recipient Picker for Tab 3 */}
                   {oppId && (
                     <RecipientPicker
+                      key={`comment-tab3-${oppId}`}
                       dealId={oppId}
                       selectedIds={commentRecipients}
                       onChange={setCommentRecipients}
                       contextType="comment"
                       commentVisibility={commentVisibility}
+                      disabled={isSavingComment}
                     />
                   )}
                 </div>
@@ -1654,7 +1722,14 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {comments.map((c) => (
+                    {comments.map((c) => {
+                      const isAuthor = Boolean(
+                        currentUser &&
+                        ((c.authorId && String(c.authorId) === String(currentUser.id)) ||
+                          (c.author && c.author === currentUser.name))
+                      )
+                      const isAdminUser = currentUser?.role === 'admin'
+                      return (
                       <div
                         key={c.id}
                         className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-xs flex flex-col gap-2 hover:border-teal-500/30 transition-all shadow-xs"
@@ -1665,7 +1740,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                               {c.author.substring(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-[var(--text-primary)] text-xs">
                                   {c.author}
                                 </span>
@@ -1684,13 +1759,28 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-[var(--text-muted)]">
-                                {formatDate(c.createdAt)} {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
+                              <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1.5 flex-wrap">
+                                <span>{formatDateTime(c.createdAt, currentUser?.timezone)}</span>
+                                {!c.isDeleted && c.editedAt && (
+                                  <span className="italic text-slate-400">
+                                    · edited {formatDateTime(c.editedAt, currentUser?.timezone)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
-                            {canEditComment(c) && editingCommentId !== c.id && (
+                            {isAdminUser && (
+                              <button
+                                type="button"
+                                onClick={() => openHistoryModal('comment', c.id, `Comment by ${c.author}`)}
+                                className="p-1 text-[var(--text-muted)] hover:text-indigo-600 rounded hover:bg-indigo-500/10 transition-colors cursor-pointer"
+                                title="View edit/delete history (Admin)"
+                              >
+                                <History className="w-3 h-3" />
+                              </button>
+                            )}
+                            {!c.isDeleted && isAuthor && editingCommentId !== c.id && (
                               <button
                                 type="button"
                                 onClick={() => handleStartEditComment(c)}
@@ -1700,12 +1790,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                                 <Edit2 className="w-3 h-3" />
                               </button>
                             )}
-                            {canEditComment(c) && (
+                            {!c.isDeleted && (isAuthor || isAdminUser) && (
                               <button
                                 type="button"
-                                onClick={() => handleDeleteComment(c.id)}
+                                onClick={() => setUnsendTarget({ kind: 'comment', id: c.id })}
                                 className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
-                                title="Delete comment"
+                                title="Unsend / remove comment"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1713,7 +1803,11 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                           </div>
                         </div>
 
-                        {editingCommentId === c.id ? (
+                        {c.isDeleted ? (
+                          <p className="text-xs italic text-[var(--text-muted)] pl-8">
+                            This message was removed
+                          </p>
+                        ) : editingCommentId === c.id ? (
                           <div className="space-y-2 pl-8 pt-1">
                             <textarea
                               rows={2}
@@ -1769,14 +1863,15 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                             {c.text}
                           </p>
                         )}
-                        {c.delivery_status && (
+                        {!c.isDeleted && c.delivery_status && (
                           <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium pl-8">
                             <Check className="w-3 h-3 shrink-0" />
                             <span>{c.delivery_status}</span>
                           </div>
                         )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -1817,7 +1912,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {dealMessages.map((m) => (
+                    {dealMessages.map((m) => {
+                      const isMsgAuthor = Boolean(currentUser && m.sender_id === currentUser.id)
+                      const isAdminUser = currentUser?.role === 'admin'
+                      return (
                       <div
                         key={m.id}
                         className={clsx(
@@ -1827,8 +1925,8 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                             : 'bg-[var(--bg-secondary)] border-[var(--border)]'
                         )}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-[var(--text-primary)]">{m.sender_name}</span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold bg-[var(--bg-primary)] border border-[var(--border)] text-[var(--text-muted)]">
                               {m.sender_role}
@@ -1842,19 +1940,85 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-[var(--text-muted)]">
-                            {formatDate(m.created_at)}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              {formatDateTime(m.created_at, currentUser?.timezone)}
+                              {!m.is_deleted && m.edited_at && (
+                                <span className="italic ml-1">· edited {formatDateTime(m.edited_at, currentUser?.timezone)}</span>
+                              )}
+                            </span>
+                            {isAdminUser && (
+                              <button
+                                type="button"
+                                onClick={() => openHistoryModal('message', m.id, `Message by ${m.sender_name}`)}
+                                className="p-1 text-[var(--text-muted)] hover:text-indigo-600 rounded hover:bg-indigo-500/10 cursor-pointer"
+                                title="View edit/delete history (Admin)"
+                              >
+                                <History className="w-3 h-3" />
+                              </button>
+                            )}
+                            {!m.is_deleted && isMsgAuthor && editingMsgId !== m.id && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingMsgId(m.id); setEditingMsgBody(m.body) }}
+                                className="p-1 text-[var(--text-muted)] hover:text-teal-600 rounded hover:bg-teal-500/10 cursor-pointer"
+                                title="Edit message"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {!m.is_deleted && (isMsgAuthor || isAdminUser) && (
+                              <button
+                                type="button"
+                                onClick={() => setUnsendTarget({ kind: 'message', id: m.id })}
+                                className="p-1 text-[var(--text-muted)] hover:text-rose-500 rounded hover:bg-rose-500/10 cursor-pointer"
+                                title="Unsend message"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         {m.subject && (
                           <div className="font-semibold text-[var(--text-primary)] border-b border-[var(--border)] pb-1">
                             {m.subject}
                           </div>
                         )}
-                        <p className="text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
-                          {m.body}
-                        </p>
-                        {m.delivery_status && (
+                        {m.is_deleted ? (
+                          <p className="italic text-[var(--text-muted)]">This message was removed</p>
+                        ) : editingMsgId === m.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              rows={2}
+                              value={editingMsgBody}
+                              onChange={(e) => setEditingMsgBody(e.target.value)}
+                              className="w-full p-2 text-xs rounded-lg border border-teal-500 bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none resize-none"
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingMsgId(null); setEditingMsgBody('') }}
+                                className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] rounded-md"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isSavingMsgEdit || !editingMsgBody.trim()}
+                                onClick={handleSaveEditMessage}
+                                className="px-3 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-md flex items-center gap-1 disabled:opacity-50"
+                              >
+                                <Check className="w-3 h-3" />
+                                {isSavingMsgEdit ? 'Saving...' : 'Save Edit'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
+                            {m.body}
+                          </p>
+                        )}
+                        {!m.is_deleted && m.delivery_status && (
                           <div className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 font-medium">
                             <Check className="w-3 h-3 shrink-0" />
                             <span>{m.delivery_status}</span>
@@ -1862,6 +2026,7 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                         )}
 
                         {/* Reply trigger button */}
+                        {!m.is_deleted && (
                         <div className="pt-1 flex items-center justify-end">
                           {replyingToId === m.id ? (
                             <div className="w-full space-y-2 pt-2 border-t border-[var(--border)]">
@@ -1901,8 +2066,10 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                             </button>
                           )}
                         </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
@@ -1941,10 +2108,12 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
                     />
                     {oppId && (
                       <RecipientPicker
+                        key={`msg-tab4-${oppId}`}
                         dealId={oppId}
                         selectedIds={msgRecipients}
                         onChange={setMsgRecipients}
                         contextType="message"
+                        disabled={isSendingMsg}
                       />
                     )}
                     <div className="flex justify-end">
@@ -2064,6 +2233,91 @@ export default function OpportunityDrawer({ oppId, onClose }: OpportunityDrawerP
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Unsend / Remove Confirm Modal */}
+      {unsendTarget && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-sm w-full p-5 space-y-4">
+            <h4 className="text-sm font-bold text-[var(--text-primary)]">
+              Unsend {unsendTarget.kind === 'comment' ? 'Comment' : 'Message'}?
+            </h4>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Unsending removes it from the portal; emails already sent stay in inboxes.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isUnsending}
+                onClick={() => setUnsendTarget(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUnsending}
+                onClick={handleConfirmUnsend}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50 cursor-pointer"
+              >
+                {isUnsending ? 'Removing...' : 'Unsend'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Edit/Delete History Modal */}
+      {historyModalTarget && (
+        <div className="fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] shadow-2xl max-w-lg w-full p-5 space-y-3 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-500" />
+                <span>Version History — {historyModalTarget.title}</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setHistoryModalTarget(null)}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2.5">
+              {versionHistoryLoading ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">Loading history...</p>
+              ) : historyItems.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] py-6 text-center">No edits or deletions recorded.</p>
+              ) : (
+                historyItems.map((h) => (
+                  <div key={h.id} className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--border)]">
+                        {h.action}
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {h.actor_name} · {formatDateTime(h.created_at, currentUser?.timezone)}
+                      </span>
+                    </div>
+                    {h.previous_text != null && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">Previous:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-secondary)] mt-0.5">{h.previous_text}</p>
+                      </div>
+                    )}
+                    {h.new_text != null && h.action === 'edit' && (
+                      <div>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">New:</span>
+                        <p className="whitespace-pre-wrap text-[var(--text-primary)] mt-0.5">{h.new_text}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </Drawer>

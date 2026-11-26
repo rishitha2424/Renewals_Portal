@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { 
   getEmailOutbox, 
+  getEmailLog,
   sendTestEmail, 
   resendPendingEmails,
   cancelOutboxEmail,
@@ -28,11 +29,14 @@ import {
   retryOutboxEmail,
   retryFailedEmails,
   EmailOutboxItem,
+  EmailLogItem,
   MailDiagnostics
 } from '@/api/client'
-import { formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
+import { useAuthStore } from '@/store/authStore'
 
 export default function EmailOutbox() {
+  const { currentUser } = useAuthStore()
   const queryClient = useQueryClient()
 
   const [search, setSearch] = useState('')
@@ -46,11 +50,18 @@ export default function EmailOutbox() {
   const [confirmRetryItem, setConfirmRetryItem] = useState<EmailOutboxItem | null>(null)
   const [showBulkRetryModal, setShowBulkRetryModal] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [expandedEventIds, setExpandedEventIds] = useState<Record<string, boolean>>({})
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['email-outbox'],
     queryFn: () => getEmailOutbox(),
+    refetchInterval: 15000,
+  })
+
+  const { data: emailLogData, refetch: refetchEmailLog } = useQuery({
+    queryKey: ['admin-email-log'],
+    queryFn: () => getEmailLog(150),
     refetchInterval: 15000,
   })
 
@@ -71,10 +82,11 @@ export default function EmailOutbox() {
       setNotification({
         type: res.delivered || res.status === 'success' ? 'success' : 'error',
         message: res.delivered || res.status === 'success'
-          ? `Email successfully retried and delivered to ${confirmRetryItem.recipient_email}.`
+          ? `Email successfully retried and delivered to ${confirmRetryItem.recipient_name || 'recipient'}.`
           : (res.detail || 'Failed to redeliver email on retry.'),
       })
       queryClient.invalidateQueries({ queryKey: ['email-outbox'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-email-log'] })
     } catch (err: any) {
       setNotification({
         type: 'error',
@@ -230,7 +242,7 @@ export default function EmailOutbox() {
     if (!search) return true
     const q = search.toLowerCase()
     return (
-      (em.recipient_email || em.to_email || '').toLowerCase().includes(q) ||
+      (em.recipient_name || '').toLowerCase().includes(q) ||
       (em.subject || '').toLowerCase().includes(q) ||
       (em.template || em.template_type || '').toLowerCase().includes(q) ||
       (em.status || '').toLowerCase().includes(q)
@@ -393,6 +405,137 @@ export default function EmailOutbox() {
         )}
       </div>
 
+      {/* Grouped Email Delivery Log (One row per comment / message event) */}
+      <div className="rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] overflow-hidden shadow-sm">
+        <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-secondary)]/50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-[var(--text-primary)]">Email Delivery Log (By Event)</h2>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              One row per comment or message event. Message text and recipient breakdown are shown only to the sender and selected recipients.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetchEmailLog()}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            Refresh Log
+          </button>
+        </div>
+        {!emailLogData?.log || emailLogData.log.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[var(--text-muted)]">
+            No email delivery events recorded yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-[var(--bg-secondary)] border-b border-[var(--border)] text-[var(--text-muted)] font-medium">
+                <tr>
+                  <th className="px-4 py-2.5">Date &amp; Time</th>
+                  <th className="px-4 py-2.5">Author</th>
+                  <th className="px-4 py-2.5">Subject &amp; Deal</th>
+                  <th className="px-4 py-2.5">Recipients</th>
+                  <th className="px-4 py-2.5">Sent / Failed / Skipped</th>
+                  <th className="px-4 py-2.5 text-right">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {emailLogData.log.map((ev: EmailLogItem) => {
+                  const dt = ev.created_at || ev.sent_at
+                  const isExp = Boolean(expandedEventIds[ev.id])
+                  return (
+                    <React.Fragment key={ev.id}>
+                      <tr className="hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                        <td className="px-4 py-2.5 tabular-nums whitespace-nowrap text-[var(--text-secondary)]">
+                          {dt ? formatDateTime(dt, currentUser?.timezone) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap font-semibold text-[var(--text-primary)]">
+                          {ev.author_name || ev.sender_name}
+                        </td>
+                        <td className="px-4 py-2.5 max-w-[260px]">
+                          <div className="font-semibold text-[var(--text-primary)] truncate" title={ev.subject || ''}>
+                            {ev.subject || ev.template_type}
+                          </div>
+                          {ev.deal_name && (
+                            <div className="text-[10px] text-[var(--text-muted)] truncate">{ev.deal_name}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-[var(--text-secondary)]">
+                          {ev.recipient_summary || ev.recipient_name || '—'}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                              {ev.sent_count ?? 0} sent
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300">
+                              {ev.failed_count ?? 0} failed
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                              {ev.skipped_count ?? 0} skipped
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          {ev.details_redacted ? (
+                            <span className="text-[10px] italic text-[var(--text-muted)]">Restricted</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedEventIds((p) => ({ ...p, [ev.id]: !p[ev.id] }))}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] cursor-pointer"
+                            >
+                              <span>{isExp ? 'Hide' : 'View'}</span>
+                              {isExp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {isExp && !ev.details_redacted && (
+                        <tr className="bg-[var(--bg-secondary)]/30">
+                          <td colSpan={6} className="p-3 space-y-2">
+                            {ev.body_preview && (
+                              <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)]">
+                                <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] block mb-1">
+                                  Body Preview
+                                </span>
+                                <p className="text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{ev.body_preview}</p>
+                              </div>
+                            )}
+                            {ev.recipients && ev.recipients.length > 0 && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                {ev.recipients.map((rec) => (
+                                  <div
+                                    key={rec.id}
+                                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex items-center justify-between gap-2 text-[11px]"
+                                  >
+                                    <div className="min-w-0">
+                                      <span className="font-semibold text-[var(--text-primary)] truncate block">{rec.name}</span>
+                                      {rec.reason && (
+                                        <span className="text-[10px] text-rose-500 block truncate" title={rec.reason}>
+                                          {rec.reason}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-[var(--bg-secondary)]">
+                                      {rec.status}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Search & Filter */}
       <div className="p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-sm">
         <div className="relative flex-1 max-w-sm">
@@ -454,9 +597,9 @@ export default function EmailOutbox() {
                 {filteredEmails.map((em: EmailOutboxItem) => (
                   <tr key={em.id} className="hover:bg-[var(--bg-secondary)] transition-colors">
                     <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
-                      <div>{em.recipient_email || em.to_email}</div>
-                      {em.recipient_name && (
-                        <div className="text-[10px] text-[var(--text-muted)] font-normal">{em.recipient_name}</div>
+                      <div>{em.recipient_name || 'Recipient'}</div>
+                      {em.recipient_role && (
+                        <div className="text-[10px] text-[var(--text-muted)] uppercase font-normal">{em.recipient_role}</div>
                       )}
                     </td>
                     <td className="px-4 py-3 max-w-sm truncate text-[var(--text-secondary)]" title={em.subject}>
@@ -491,7 +634,7 @@ export default function EmailOutbox() {
                       {em.attempts ?? em.retry_count ?? 0}
                     </td>
                     <td className="px-4 py-3 tabular-nums text-[var(--text-secondary)]">
-                      {em.created_at ? formatDate(em.created_at) : '—'}
+                      {em.created_at ? formatDateTime(em.created_at, currentUser?.timezone) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -625,11 +768,7 @@ export default function EmailOutbox() {
             <div className="p-3.5 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-[var(--text-muted)] font-medium">Recipient Name:</span>
-                <span className="font-semibold text-[var(--text-primary)]">{confirmRetryItem.recipient_name || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--text-muted)] font-medium">Recipient Email:</span>
-                <span className="font-mono text-[var(--text-primary)]">{confirmRetryItem.recipient_email}</span>
+                <span className="font-semibold text-[var(--text-primary)]">{confirmRetryItem.recipient_name || 'Recipient'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--text-muted)] font-medium">Subject:</span>
@@ -702,10 +841,10 @@ export default function EmailOutbox() {
                 <div key={fe.id} className="pt-2 first:pt-0 flex items-center justify-between text-xs gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-[var(--text-primary)] truncate">
-                      {fe.recipient_name || fe.recipient_email}
+                      {fe.recipient_name || 'Recipient'}
                     </p>
-                    <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">
-                      {fe.recipient_email} · {fe.subject}
+                    <p className="text-[10px] text-[var(--text-muted)] truncate">
+                      {fe.subject}
                     </p>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-rose-500/10 text-rose-600 shrink-0">
