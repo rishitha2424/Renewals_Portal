@@ -498,14 +498,17 @@ async def upload_kam_list(
 ):
     """Upload KAM Excel/CSV roster and run owner sync."""
     content = await file.read()
-    try:
+    from starlette.concurrency import run_in_threadpool
+
+    def _process():
         records = parse_kam_file(content, file.filename)
+        sync_svc = KamSyncService(db)
+        return sync_svc.sync_uploaded_kam_list(records, actor_email=ctx.email)
+
+    try:
+        return await run_in_threadpool(_process)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    sync_svc = KamSyncService(db)
-    result = sync_svc.sync_uploaded_kam_list(records, actor_email=ctx.email)
-    return result
 
 
 @router.get("/kam-sync/alerts")

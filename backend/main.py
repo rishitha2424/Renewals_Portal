@@ -65,27 +65,19 @@ async def lifespan(app: FastAPI):
             Base.metadata.create_all(bind=engine)
             migrations_status = "fallback to create_all"
 
-    # Defensive self-healing schema check: ensure all model columns exist on existing tables
-    try:
-        from sqlalchemy import inspect, text
-        from backend.database import Base
-        inspector = inspect(engine)
-        for table_name, table in Base.metadata.tables.items():
-            if inspector.has_table(table_name):
-                existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-                for col in table.columns:
-                    if col.name not in existing_cols:
-                        col_type = col.type.compile(engine.dialect)
-                        default_clause = ""
-                        if not col.nullable and "BOOL" in col_type.upper():
-                            default_clause = " DEFAULT true" if col.default and col.default.arg is True else (" DEFAULT false" if is_postgres else " DEFAULT 0")
-                        log.info("Auto-migrating missing column %s.%s (%s)", table_name, col.name, col_type)
-                        with engine.begin() as conn:
-                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}{default_clause}"))
-        with engine.begin() as conn:
-            conn.execute(text("UPDATE opportunities SET is_reconciliation_entry = 0 WHERE is_reconciliation_entry IS NULL"))
-    except Exception as exc:
-        log.warning("Self-healing column migration check warning: %s", exc)
+    # Read-only schema check at startup: report missing tables/columns clearly without auto-modifying data
+    from backend.services.schema_check import check_schema_health
+    schema_status = check_schema_health(engine)
+    app.state.schema_status = schema_status
+    if schema_status.get("needs_migration"):
+        log.error(
+            "DATABASE NEEDS MIGRATION: %s (current=%s head=%s missing_tables=%s missing_columns=%s)",
+            schema_status.get("message"),
+            schema_status.get("current_revision"),
+            schema_status.get("head_revision"),
+            schema_status.get("missing_tables"),
+            schema_status.get("missing_columns"),
+        )
 
     # Startup log: on boot, log one line such as Database: postgresql @ localhost:5432/renewals (migrations at head).
     try:
@@ -128,18 +120,21 @@ async def lifespan(app: FastAPI):
 
     backup_task = None
     if not is_testing:
+        def _run_backup_sync() -> str:
+            from backend.database import SessionLocal
+            from backend.services.annotation_backup_service import AnnotationBackupService
+            db_sess = SessionLocal()
+            try:
+                b_svc = AnnotationBackupService(db_sess)
+                return str(b_svc.run_daily_backup())
+            finally:
+                db_sess.close()
+
         async def scheduled_annotation_backup_worker():
             while True:
                 try:
-                    from backend.database import SessionLocal
-                    from backend.services.annotation_backup_service import AnnotationBackupService
-                    db_sess = SessionLocal()
-                    try:
-                        b_svc = AnnotationBackupService(db_sess)
-                        b_path = b_svc.run_daily_backup()
-                        log.info("Daily annotation backup scheduled job completed: %s", b_path)
-                    finally:
-                        db_sess.close()
+                    b_path = await asyncio.to_thread(_run_backup_sync)
+                    log.info("Daily annotation backup scheduled job completed: %s", b_path)
                 except Exception as exc:
                     log.warning("Scheduled daily annotation backup error: %s", exc)
                 # Sleep 24 hours
@@ -282,7 +277,37 @@ class AuthenticationRequiredMiddleware:
         return await self.app(scope, receive, send)
 
 
+class SlowRequestTimingMiddleware:
+    """Log requests that exceed SLOW_REQUEST_LOG_SECONDS (no secrets or PII)."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        import time
+        start = time.monotonic()
+        status_code = 500
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message.get("type") == "http.response.start":
+                status_code = message.get("status", 500)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            elapsed = time.monotonic() - start
+            threshold = getattr(settings, "SLOW_REQUEST_LOG_SECONDS", 2.0)
+            if elapsed >= threshold:
+                method = scope.get("method", "GET")
+                path = scope.get("path", "")
+                log.warning("Slow request: %s %s status=%d duration=%.2fs", method, path, status_code, elapsed)
+
+
 app.add_middleware(AuthenticationRequiredMiddleware)
+app.add_middleware(SlowRequestTimingMiddleware)
 
 # API routes (Mounted exactly once under /api)
 app.include_router(snapshots.router, prefix="/api")

@@ -20,6 +20,7 @@ from backend.models.user import User, SSOAccessRequest
 from backend.services.context import UserContext, require_admin_context
 from backend.services.audit_service import log_audit_event
 from backend.services.sso_service import SSOService
+from backend.services.schema_check import check_schema_health
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ def get_sso_diagnostics(
         .scalar() or 0
     )
     diag["pending_access_requests"] = pending_count
+    schema_info = check_schema_health(db.get_bind(), check_alembic=True)
+    diag["schema_status"] = schema_info
+    diag["needs_migration"] = schema_info.get("needs_migration", False)
+    diag["migration_message"] = schema_info.get("message", "ok")
 
     return diag
 

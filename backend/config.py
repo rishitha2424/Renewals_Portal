@@ -33,6 +33,12 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = f"sqlite:///{(ROOT_DIR / 'renewals.db').as_posix()}"
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 15
+    DB_POOL_RECYCLE: int = 1800
+    SQLITE_BUSY_TIMEOUT_MS: int = 10000
+    SLOW_REQUEST_LOG_SECONDS: float = 2.0
 
     @property
     def sqlalchemy_database_url(self) -> str:

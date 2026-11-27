@@ -18,6 +18,7 @@ from typing import Optional, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException, status
 from sqlalchemy import func, or_
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -29,6 +30,7 @@ from backend.models.snapshot import UploadSnapshot
 from backend.services.context import UserContext, require_authenticated, require_admin_context
 from backend.services.scopes import ScopeService, FilterSpec
 from backend.services.settings_service import SettingsService
+from backend.services.schema_check import check_schema_health
 from backend.services.delivery_service import (
     resolve_caller_uid,
     resolve_recipients,
@@ -72,6 +74,65 @@ def get_comments_log(
     - Includes unsent tombstones ("This message was removed") and edit indicators.
     - Zero N+1 queries.
     """
+    schema_info = check_schema_health(db.get_bind(), check_alembic=False)
+    if not schema_info.get("comments_ready", True):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database needs migration: run alembic upgrade head",
+        )
+
+    try:
+        return _execute_comments_log_query(
+            page=page,
+            page_size=page_size,
+            tab=tab,
+            search=search,
+            visibility=visibility,
+            author=author,
+            author_role=author_role,
+            deal=deal,
+            account=account,
+            start_date=start_date,
+            end_date=end_date,
+            limit_to_period=limit_to_period,
+            period=period,
+            as_of=as_of,
+            ctx=ctx,
+            db=db,
+        )
+    except (OperationalError, ProgrammingError) as db_exc:
+        err_msg = str(db_exc).lower()
+        if any(tok in err_msg for tok in ("no such column", "no such table", "undefinedcolumn", "undefinedtable", "does not exist")):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database needs migration: run alembic upgrade head",
+            )
+        log.exception("Database query error in GET /api/comments/log")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not query comments log. Please check server logs.",
+        )
+
+
+def _execute_comments_log_query(
+    *,
+    page: int,
+    page_size: int,
+    tab: str,
+    search: Optional[str],
+    visibility: Optional[str],
+    author: Optional[str],
+    author_role: Optional[str],
+    deal: Optional[str],
+    account: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    limit_to_period: bool,
+    period: Optional[str],
+    as_of: Optional[str],
+    ctx: UserContext,
+    db: Session,
+) -> dict[str, Any]:
     q = db.query(DealComment)
 
     effective_tab = "all" if tab == "all" else "my"
@@ -209,9 +270,9 @@ def get_comments_log(
         ]
         q = q.filter(
             or_(
-                and_filter_text := (DealComment.is_deleted == False) & func.lower(DealComment.text).like(s_term),
+                (or_(DealComment.is_deleted == False, DealComment.is_deleted.is_(None))) & func.lower(DealComment.text).like(s_term),
                 func.lower(DealComment.author).like(s_term),
-                DealComment.opportunity_id_18.in_(matching_opp_ids),
+                DealComment.opportunity_id_18.in_(matching_opp_ids) if matching_opp_ids else (DealComment.id == "__no_match__"),
             )
         )
 
@@ -267,11 +328,13 @@ def get_comments_log(
         )
         for ev in events:
             if ev.entity_id and ev.entity_id not in event_status_map:
-                if ev.sent_count > 0 and ev.failed_count == 0:
+                sent_c = ev.sent_count or 0
+                fail_c = ev.failed_count or 0
+                if sent_c > 0 and fail_c == 0:
                     event_status_map[ev.entity_id] = "emailed"
-                elif ev.failed_count > 0 and ev.sent_count == 0:
+                elif fail_c > 0 and sent_c == 0:
                     event_status_map[ev.entity_id] = "failed"
-                elif ev.failed_count > 0:
+                elif fail_c > 0:
                     event_status_map[ev.entity_id] = "partial"
                 else:
                     event_status_map[ev.entity_id] = "queued"
