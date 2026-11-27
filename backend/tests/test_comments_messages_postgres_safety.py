@@ -277,8 +277,9 @@ def test_compile_all_queries_postgresql_dialect_and_all_filters(tmp_path):
     app.dependency_overrides[get_db] = _override_db
     try:
         client = TestClient(app)
-        # Every filter combination the frontend can send across admin, management, kam
+        # Every filter combination the frontend can send across admin, management, kam, PLUS bare no-filter call
         filter_combos = [
+            "",
             f"page=1&page_size=20&tab=my&limit_to_period=false&period=current_quarter&as_of={snap_id}&include_deleted_lost=false&types=all",
             f"page=1&page_size=20&tab=all&limit_to_period=false&period=current_quarter&as_of={snap_id}&include_deleted_lost=false&types=all",
             f"page=1&page_size=20&tab=all&search=Alpha&visibility=shared&author=Admin&author_role=admin&start_date=2026-11-01&end_date=2026-11-30&limit_to_period=true&period=current_quarter&as_of={snap_id}&include_deleted_lost=false&types=all",
@@ -288,7 +289,8 @@ def test_compile_all_queries_postgresql_dialect_and_all_filters(tmp_path):
         for role_name, tok in tokens.items():
             headers = {"Authorization": f"Bearer {tok}"}
             for qs in filter_combos:
-                r = client.get(f"/api/comments/log?{qs}", headers=headers)
+                url = f"/api/comments/log?{qs}" if qs else "/api/comments/log"
+                r = client.get(url, headers=headers)
                 assert r.status_code == 200, f"role={role_name} qs={qs} returned {r.status_code}: {r.text}"
 
             # Messages & email log & notifications
@@ -379,15 +381,118 @@ def test_missing_column_returns_503_listing_missing_names(tmp_path):
         engine.dispose()
 
 
+def test_schema_health_and_comments_guard_parity_across_binds_and_pg_schemas(tmp_path):
+    """
+    Verify check_schema_health(engine) and comments.py's pre-flight guard (ensure_schema_ready)
+    use the exact same schema contract & resolution across Engine, Connection, and Session binds,
+    including PostgreSQL fallback schema / case normalization.
+    """
+    from backend.services.schema_check import check_schema_health, ensure_schema_ready
+
+    db_file = tmp_path / "parity.db"
+    engine = create_engine(f"sqlite:///{db_file.as_posix()}", connect_args={"check_same_thread": False})
+    TestingSession, tokens, _, _ = _seed_env(engine)
+    try:
+        # 1. Engine vs Connection vs Session bind must all report zero missing items
+        h_engine = check_schema_health(engine, check_alembic=False)
+        with engine.connect() as conn:
+            h_conn = check_schema_health(conn, check_alembic=False)
+        s = TestingSession()
+        try:
+            h_session = check_schema_health(s.get_bind(), check_alembic=False)
+            assert ensure_schema_ready(s.get_bind())["needs_migration"] is False
+        finally:
+            s.close()
+
+        assert h_engine["missing_tables"] == h_conn["missing_tables"] == h_session["missing_tables"] == []
+        assert h_engine["missing_columns"] == h_conn["missing_columns"] == h_session["missing_columns"] == []
+
+        # 2. Drop a required email_outbox column (deal_id) that previously diverged between
+        # REQUIRED_TABLES and COMMENTS_REQUIRED_TABLES: both check_schema_health and GET /api/comments/log
+        # must now report the exact same missing column.
+        with engine.begin() as conn:
+            conn.execute(text("DROP INDEX IF EXISTS ix_email_outbox_deal_id"))
+            conn.execute(text("ALTER TABLE email_outbox DROP COLUMN deal_id"))
+
+        after_drop = check_schema_health(engine, check_alembic=False)
+        assert "email_outbox.deal_id" in after_drop["missing_columns"]
+
+        def _override_db():
+            db = TestingSession()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[get_db] = _override_db
+        client = TestClient(app)
+        r = client.get("/api/comments/log", headers={"Authorization": f"Bearer {tokens['admin']}"})
+        assert r.status_code == 503
+        assert "email_outbox.deal_id" in r.json()["detail"]
+
+        # 3. Simulated PostgreSQL schema fallback when default_schema_name differs from table schema
+        class _FakeInspector:
+            default_schema_name = "custom_app_schema"
+
+            def clear_cache(self):
+                pass
+
+            def get_table_names(self, schema=None):
+                if schema == "public":
+                    return [
+                        "users",
+                        "deal_comments",
+                        "deal_messages",
+                        "email_outbox",
+                        "comment_message_history",
+                        "message_read_receipts",
+                        "email_delivery_events",
+                        "notifications",
+                    ]
+                return []
+
+            def get_schema_names(self):
+                return ["custom_app_schema", "public"]
+
+            def get_columns(self, table_name, schema=None):
+                from backend.services.schema_check import REQUIRED_TABLES
+                return [{"name": col.upper()} for col in REQUIRED_TABLES.get(table_name.lower(), set())]
+
+        class _FakeDialect:
+            name = "postgresql"
+
+        class _FakeEngine:
+            dialect = _FakeDialect()
+
+            def connect(self):
+                raise RuntimeError("no network")
+
+        with patch("backend.services.schema_check.inspect", return_value=_FakeInspector()):
+            pg_res = check_schema_health(_FakeEngine(), check_alembic=False)
+            assert pg_res["needs_migration"] is False
+            assert pg_res["missing_tables"] == []
+            assert pg_res["missing_columns"] == []
+            assert ensure_schema_ready(_FakeEngine())["needs_migration"] is False
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
 @pytest.mark.skipif(
     not (os.environ.get("TEST_DATABASE_URL", "").startswith("postgresql")),
     reason="TEST_DATABASE_URL not set to a PostgreSQL database",
 )
 def test_live_postgresql_comments_messages_email_log():
     """Optional live PostgreSQL run when TEST_DATABASE_URL points to PostgreSQL."""
+    from backend.services.schema_check import check_schema_health, ensure_schema_ready
+
     pg_url = os.environ["TEST_DATABASE_URL"]
     engine = create_engine(pg_url)
     TestingSession, tokens, snap_id, opp1_id = _seed_env(engine)
+
+    # Verify unified schema guard passes identically on PG Engine and Session bind
+    pg_health = check_schema_health(engine, check_alembic=False)
+    assert pg_health["needs_migration"] is False, pg_health
 
     def _override_db():
         s = TestingSession()
@@ -398,9 +503,18 @@ def test_live_postgresql_comments_messages_email_log():
 
     app.dependency_overrides[get_db] = _override_db
     try:
+        s = TestingSession()
+        try:
+            assert ensure_schema_ready(s.get_bind())["missing_columns"] == []
+        finally:
+            s.close()
+
         client = TestClient(app)
         for role_name, tok in tokens.items():
             headers = {"Authorization": f"Bearer {tok}"}
+            # Both bare /api/comments/log (no filters) and full query params
+            r_bare = client.get("/api/comments/log", headers=headers)
+            assert r_bare.status_code == 200, f"PG bare failed for {role_name}: {r_bare.text}"
             r = client.get(
                 f"/api/comments/log?page=1&page_size=20&tab=all&limit_to_period=false&period=current_quarter&as_of={snap_id}&include_deleted_lost=false&types=all",
                 headers=headers,
@@ -411,3 +525,4 @@ def test_live_postgresql_comments_messages_email_log():
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
+

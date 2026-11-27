@@ -16,7 +16,7 @@ from backend.models.custom_column import DealComment
 from backend.services.context import UserContext, require_authenticated
 from backend.services.notification_service import NotificationService
 from backend.services.delivery_service import resolve_caller_uid, get_kam_owned_deal_ids
-from backend.services.schema_check import NOTIFICATIONS_REQUIRED_TABLES, raise_db_endpoint_error
+from backend.services.schema_check import raise_db_endpoint_error
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -70,7 +70,6 @@ def list_notifications(
             db_exc,
             endpoint="GET /api/notifications",
             params={"category": category, "limit": limit, "role": getattr(ctx, "role", None)},
-            required_tables=NOTIFICATIONS_REQUIRED_TABLES,
             generic_detail="Could not load notifications due to a database error. Please try again.",
         )
 

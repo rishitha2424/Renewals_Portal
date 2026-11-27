@@ -18,7 +18,7 @@ from backend.models.user import EmailOutbox
 from backend.services.context import UserContext, require_admin_context
 from backend.services.mail_service import MailService
 from backend.services.audit_service import log_audit_event
-from backend.services.schema_check import EMAIL_LOG_REQUIRED_TABLES, check_schema_health, raise_db_endpoint_error
+from backend.services.schema_check import check_schema_health, raise_db_endpoint_error
 from backend.utils.time_utils import to_utc_iso
 
 log = logging.getLogger(__name__)
@@ -64,7 +64,6 @@ def list_email_outbox(
             db_exc,
             endpoint="GET /api/admin/email/outbox",
             params={"status_filter": status_filter, "limit": limit},
-            required_tables=EMAIL_LOG_REQUIRED_TABLES,
             generic_detail="Could not load email outbox due to a database error. Please try again.",
         )
 

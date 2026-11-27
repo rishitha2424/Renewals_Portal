@@ -11,13 +11,15 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 log = logging.getLogger(__name__)
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 
+# Single canonical table/column schema contract shared by startup checks,
+# /api/health/db, admin diagnostics, /api/comments/log, and raise_db_endpoint_error.
 REQUIRED_TABLES: dict[str, set[str]] = {
     "users": {"id", "email", "name", "role", "status", "last_sso_login", "sso_provider"},
     "deal_comments": {
@@ -36,6 +38,7 @@ REQUIRED_TABLES: dict[str, set[str]] = {
         "deleted_by",
         "deleted_by_name",
         "created_at",
+        "updated_at",
     },
     "deal_messages": {
         "id",
@@ -55,18 +58,30 @@ REQUIRED_TABLES: dict[str, set[str]] = {
         "event_id",
         "recipient_user_id",
         "sender_id",
+        "deal_id",
+        "template_type",
         "status",
+        "created_at",
     },
     "comment_message_history": {"id", "entity_type", "entity_id", "action"},
     "message_read_receipts": {"id", "message_id", "user_id", "read_at"},
-    "email_delivery_events": {"id", "event_type", "author_name", "sent_count", "failed_count", "skipped_count"},
+    "email_delivery_events": {
+        "id",
+        "event_type",
+        "entity_id",
+        "author_name",
+        "sent_count",
+        "failed_count",
+        "skipped_count",
+        "created_at",
+    },
     "notifications": {"id", "user_id", "category", "is_read", "created_at"},
 }
 
 COMMENTS_REQUIRED_TABLES: dict[str, set[str]] = {
     "deal_comments": REQUIRED_TABLES["deal_comments"],
-    "email_delivery_events": {"id", "entity_id", "sent_count", "failed_count", "skipped_count", "created_at"},
-    "email_outbox": {"id", "deal_id", "template_type", "status", "created_at"},
+    "email_delivery_events": REQUIRED_TABLES["email_delivery_events"],
+    "email_outbox": REQUIRED_TABLES["email_outbox"],
 }
 
 MESSAGES_REQUIRED_TABLES: dict[str, set[str]] = {
@@ -82,6 +97,40 @@ EMAIL_LOG_REQUIRED_TABLES: dict[str, set[str]] = {
 NOTIFICATIONS_REQUIRED_TABLES: dict[str, set[str]] = {
     "notifications": REQUIRED_TABLES["notifications"],
 }
+
+
+def _resolve_inspect_engine(bind: Any) -> Any:
+    """Normalize None, Session, Connection, or Engine to the underlying Engine/bind."""
+    if bind is None:
+        from backend.database import engine
+        return engine
+    if isinstance(bind, Session):
+        bind = bind.get_bind()
+    parent_engine = getattr(bind, "engine", None)
+    return parent_engine if parent_engine is not None else bind
+
+
+def _find_pg_fallback_schemas(target_engine: Any, inspector: Any, default_schema: Optional[str]) -> list[str]:
+    """Return candidate non-system PostgreSQL schemas to search if tables are outside default_schema."""
+    candidates: list[str] = []
+    try:
+        with target_engine.connect() as conn:
+            row = conn.execute(text("SELECT current_schemas(false)")).fetchone()
+            if row and row[0]:
+                for sch in row[0]:
+                    if sch and sch != default_schema and sch not in candidates:
+                        candidates.append(str(sch))
+    except Exception:
+        pass
+    if "public" != default_schema and "public" not in candidates:
+        candidates.append("public")
+    try:
+        for sch in inspector.get_schema_names():
+            if sch and sch not in candidates and sch != default_schema and sch != "information_schema" and not sch.startswith("pg_"):
+                candidates.append(sch)
+    except Exception:
+        pass
+    return candidates
 
 
 def sanitize_db_error_message(msg: Any) -> str:
@@ -127,13 +176,16 @@ def format_missing_schema_message(missing_tables: list[str], missing_columns: li
 
 
 def check_schema_health(
-    bind: Any,
+    bind: Any = None,
     check_alembic: bool = True,
     target_tables: Optional[dict[str, set[str]]] = None,
 ) -> dict[str, Any]:
     """
-    Inspect the database schema read-only and report missing tables, missing columns,
-    and whether Alembic revision is behind head. Never modifies data or schema.
+    Single canonical read-only database schema health check used by startup checks,
+    /api/health/db, admin diagnostics, /api/comments/log, and raise_db_endpoint_error.
+    Normalizes Engine/Connection/Session binds, clears SQLAlchemy inspector caches,
+    compares names case-insensitively, and searches PostgreSQL schemas cleanly.
+    Never modifies data or schema.
     """
     missing_tables: list[str] = []
     missing_columns: list[str] = []
@@ -143,17 +195,43 @@ def check_schema_health(
     tables_to_check = target_tables or REQUIRED_TABLES
 
     try:
-        dialect = getattr(getattr(bind, "dialect", None), "name", "unknown")
-        inspector = inspect(bind)
-        existing_tables = set(inspector.get_table_names())
+        target_engine = _resolve_inspect_engine(bind)
+        dialect = getattr(getattr(target_engine, "dialect", None), "name", "unknown")
+        inspector = inspect(target_engine)
+        if hasattr(inspector, "clear_cache"):
+            inspector.clear_cache()
+
+        default_schema = getattr(inspector, "default_schema_name", None)
+        found_tables: dict[str, tuple[Optional[str], str]] = {}
+        for t in inspector.get_table_names(schema=default_schema):
+            found_tables[t.lower()] = (default_schema, t)
+
+        if dialect == "postgresql":
+            missing_in_default = [tbl for tbl in tables_to_check if tbl.lower() not in found_tables]
+            if missing_in_default:
+                for sch in _find_pg_fallback_schemas(target_engine, inspector, default_schema):
+                    try:
+                        for t in inspector.get_table_names(schema=sch):
+                            found_tables.setdefault(t.lower(), (sch, t))
+                    except Exception:
+                        continue
+                    if all(tbl.lower() in found_tables for tbl in tables_to_check):
+                        break
 
         for tbl, req_cols in tables_to_check.items():
-            if tbl not in existing_tables:
+            entry = found_tables.get(tbl.lower())
+            if not entry:
                 missing_tables.append(tbl)
             else:
-                have_cols = {c["name"] for c in inspector.get_columns(tbl)}
-                for col in sorted(req_cols - have_cols):
-                    missing_columns.append(f"{tbl}.{col}")
+                found_schema, real_tbl = entry
+                have_cols = {
+                    str(c.get("name", "")).lower()
+                    for c in inspector.get_columns(real_tbl, schema=found_schema)
+                    if c.get("name")
+                }
+                for col in sorted(req_cols):
+                    if col.lower() not in have_cols:
+                        missing_columns.append(f"{tbl}.{col}")
 
         comments_missing = any(
             tbl in missing_tables or any(mc.startswith(f"{tbl}.") for mc in missing_columns)
@@ -171,7 +249,7 @@ def check_schema_health(
                 alembic_cfg = Config(str(cfg_path))
                 script = ScriptDirectory.from_config(alembic_cfg)
                 head_rev = script.get_current_head()
-                with bind.connect() as conn:
+                with target_engine.connect() as conn:
                     ctx = MigrationContext.configure(conn)
                     current_rev = ctx.get_current_revision()
                 if current_rev is not None and head_rev is not None and current_rev != head_rev:
@@ -209,6 +287,27 @@ def check_schema_health(
             "missing_columns": missing_columns,
             "inspection_failed": True,
         }
+
+
+def ensure_schema_ready(
+    bind: Any = None,
+    *,
+    check_alembic: bool = False,
+) -> dict[str, Any]:
+    """
+    Unified endpoint pre-flight guard delegating directly to check_schema_health().
+    Raises HTTP 503 with exact missing table/column names only if required schema
+    objects are missing.
+    """
+    schema_info = check_schema_health(bind, check_alembic=check_alembic)
+    missing_t = schema_info.get("missing_tables") or []
+    missing_c = schema_info.get("missing_columns") or []
+    if (missing_t or missing_c) and not schema_info.get("inspection_failed"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=format_missing_schema_message(missing_t, missing_c),
+        )
+    return schema_info
 
 
 def raise_db_endpoint_error(

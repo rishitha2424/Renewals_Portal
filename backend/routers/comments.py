@@ -31,9 +31,7 @@ from backend.services.context import UserContext, require_authenticated, require
 from backend.services.scopes import ScopeService, FilterSpec
 from backend.services.settings_service import SettingsService
 from backend.services.schema_check import (
-    COMMENTS_REQUIRED_TABLES,
-    check_schema_health,
-    format_missing_schema_message,
+    ensure_schema_ready,
     raise_db_endpoint_error,
 )
 from backend.services.delivery_service import (
@@ -79,18 +77,7 @@ def get_comments_log(
     - Includes unsent tombstones ("This message was removed") and edit indicators.
     - Zero N+1 queries.
     """
-    schema_info = check_schema_health(
-        db.get_bind(),
-        check_alembic=False,
-        target_tables=COMMENTS_REQUIRED_TABLES,
-    )
-    missing_t = schema_info.get("missing_tables") or []
-    missing_c = schema_info.get("missing_columns") or []
-    if (missing_t or missing_c) and not schema_info.get("inspection_failed"):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=format_missing_schema_message(missing_t, missing_c),
-        )
+    ensure_schema_ready(db.get_bind())
 
     req_params = {
         "page": page,
@@ -137,7 +124,6 @@ def get_comments_log(
             db_exc,
             endpoint="GET /api/comments/log",
             params=req_params,
-            required_tables=COMMENTS_REQUIRED_TABLES,
             generic_detail="Could not load comments log due to a database error. Please try again.",
         )
 

@@ -37,11 +37,7 @@ from backend.services.context import (
 )
 from backend.services.audit_service import log_audit_event
 from backend.services.notification_service import NotificationService
-from backend.services.schema_check import (
-    EMAIL_LOG_REQUIRED_TABLES,
-    MESSAGES_REQUIRED_TABLES,
-    raise_db_endpoint_error,
-)
+from backend.services.schema_check import raise_db_endpoint_error
 from backend.services.delivery_service import (
     resolve_caller_uid,
     resolve_recipients,
@@ -214,7 +210,6 @@ def get_email_log(
             db_exc,
             endpoint="GET /api/messages/email-log",
             params={"limit": limit, "role": getattr(ctx, "role", None)},
-            required_tables=EMAIL_LOG_REQUIRED_TABLES,
             generic_detail="Could not load email log due to a database error. Please try again.",
         )
 
@@ -837,7 +832,6 @@ def list_message_threads(
             db_exc,
             endpoint="GET /api/messages/threads",
             params={"deal_id": deal_id, "thread_status": thread_status, "has_q": bool(q), "role": getattr(ctx, "role", None)},
-            required_tables=MESSAGES_REQUIRED_TABLES,
             generic_detail="Could not load message threads due to a database error. Please try again.",
         )
 
@@ -989,7 +983,6 @@ def get_deal_thread(
             db_exc,
             endpoint="GET /api/messages/deal/{deal_id}",
             params={"deal_id": deal_id, "role": getattr(ctx, "role", None)},
-            required_tables=MESSAGES_REQUIRED_TABLES,
             generic_detail="Could not load deal messages due to a database error. Please try again.",
         )
 
