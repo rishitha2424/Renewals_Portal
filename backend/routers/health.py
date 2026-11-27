@@ -21,7 +21,7 @@ def get_db_health(db: Session = Depends(get_db)):
         cols = [c["name"] for c in inspector.get_columns("opportunities")] if "opportunities" in table_names else []
         is_legacy = ("fiscal_period" not in cols or "sales_type" not in cols) if cols else False
 
-        schema_info = check_schema_health(db.bind, check_alembic=True)
+        schema_info = check_schema_health(db.get_bind(), check_alembic=True)
         current_rev = schema_info.get("current_revision")
         head_rev = schema_info.get("head_revision")
         needs_migration = schema_info.get("needs_migration", False)

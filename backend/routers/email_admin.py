@@ -9,6 +9,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -17,7 +18,7 @@ from backend.models.user import EmailOutbox
 from backend.services.context import UserContext, require_admin_context
 from backend.services.mail_service import MailService
 from backend.services.audit_service import log_audit_event
-from backend.services.schema_check import check_schema_health
+from backend.services.schema_check import check_schema_health, raise_db_endpoint_error
 from backend.utils.time_utils import to_utc_iso
 
 log = logging.getLogger(__name__)
@@ -52,10 +53,19 @@ def list_email_outbox(
     db: Session = Depends(get_db),
 ):
     """List recent outbox emails with delivery status, timestamp, and transport diagnostics."""
-    q = db.query(EmailOutbox)
-    if status_filter:
-        q = q.filter(EmailOutbox.status == status_filter)
-    emails = q.order_by(EmailOutbox.created_at.desc()).limit(limit).all()
+    try:
+        q = db.query(EmailOutbox)
+        if status_filter:
+            q = q.filter(EmailOutbox.status == status_filter)
+        emails = q.order_by(EmailOutbox.created_at.desc()).limit(limit).all()
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/admin/email/outbox",
+            params={"status_filter": status_filter, "limit": limit},
+            generic_detail="Could not load email outbox due to a database error. Please try again.",
+        )
 
     diag = MailService.get_diagnostics()
 

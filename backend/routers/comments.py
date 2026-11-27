@@ -13,12 +13,12 @@ import json
 import math
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException, status
-from sqlalchemy import func, or_
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy import false, func, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -30,7 +30,10 @@ from backend.models.snapshot import UploadSnapshot
 from backend.services.context import UserContext, require_authenticated, require_admin_context
 from backend.services.scopes import ScopeService, FilterSpec
 from backend.services.settings_service import SettingsService
-from backend.services.schema_check import check_schema_health
+from backend.services.schema_check import (
+    ensure_schema_ready,
+    raise_db_endpoint_error,
+)
 from backend.services.delivery_service import (
     resolve_caller_uid,
     resolve_recipients,
@@ -74,12 +77,25 @@ def get_comments_log(
     - Includes unsent tombstones ("This message was removed") and edit indicators.
     - Zero N+1 queries.
     """
-    schema_info = check_schema_health(db.get_bind(), check_alembic=False)
-    if not schema_info.get("comments_ready", True):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database needs migration: run alembic upgrade head",
-        )
+    ensure_schema_ready(db.get_bind())
+
+    req_params = {
+        "page": page,
+        "page_size": page_size,
+        "tab": tab,
+        "visibility": visibility,
+        "author_role": author_role,
+        "limit_to_period": limit_to_period,
+        "period": period,
+        "as_of": as_of,
+        "has_search": bool(search and search.strip()),
+        "has_author": bool(author and author.strip()),
+        "has_deal": bool(deal and deal.strip()),
+        "has_account": bool(account and account.strip()),
+        "start_date": start_date,
+        "end_date": end_date,
+        "role": getattr(ctx, "role", None),
+    }
 
     try:
         return _execute_comments_log_query(
@@ -100,17 +116,15 @@ def get_comments_log(
             ctx=ctx,
             db=db,
         )
-    except (OperationalError, ProgrammingError) as db_exc:
-        err_msg = str(db_exc).lower()
-        if any(tok in err_msg for tok in ("no such column", "no such table", "undefinedcolumn", "undefinedtable", "does not exist")):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Database needs migration: run alembic upgrade head",
-            )
-        log.exception("Database query error in GET /api/comments/log")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not query comments log. Please check server logs.",
+    except HTTPException:
+        raise
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/comments/log",
+            params=req_params,
+            generic_detail="Could not load comments log due to a database error. Please try again.",
         )
 
 
@@ -143,7 +157,7 @@ def _execute_comments_log_query(
         if owned_deal_ids:
             q = q.filter(DealComment.opportunity_id_18.in_(owned_deal_ids))
         else:
-            q = q.filter(DealComment.id == "impossible_no_owned_deals")
+            q = q.filter(false())
 
         # KAM NEVER sees internal comments
         q = q.filter(DealComment.visibility.in_(["shared", "shared_with_owner", "public", "all"]))
@@ -193,48 +207,60 @@ def _execute_comments_log_query(
             q = q.filter(DealComment.visibility.in_(["shared", "shared_with_owner"]))
         elif v_clean == "internal":
             if ctx.is_kam:
-                q = q.filter(DealComment.id == "disallowed_for_kam")
+                q = q.filter(false())
             else:
                 q = q.filter(DealComment.visibility == "internal")
 
-    # Date range filters
+    # Date range filters (normalize aware ISO timestamps to naive UTC cleanly for SQLite & PostgreSQL)
+    def _parse_filter_dt(raw: str, end_of_day: bool = False) -> Optional[datetime]:
+        s = raw.strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        if end_of_day and len(raw.strip()) <= 10:
+            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return dt
+
     if start_date and start_date.strip():
         try:
-            s_d = datetime.fromisoformat(start_date.strip())
-            q = q.filter(DealComment.created_at >= s_d)
+            s_d = _parse_filter_dt(start_date, end_of_day=False)
+            if s_d is not None:
+                q = q.filter(DealComment.created_at >= s_d)
         except Exception:
             pass
 
     if end_date and end_date.strip():
         try:
-            e_d = datetime.fromisoformat(end_date.strip()).replace(hour=23, minute=59, second=59)
-            q = q.filter(DealComment.created_at <= e_d)
+            e_d = _parse_filter_dt(end_date, end_of_day=True)
+            if e_d is not None:
+                q = q.filter(DealComment.created_at <= e_d)
         except Exception:
             pass
 
-    snap = None
-    if as_of:
-        snap = db.query(UploadSnapshot).filter(
-            or_(UploadSnapshot.id == as_of, UploadSnapshot.snapshot_date == as_of)
-        ).first()
-    if not snap:
-        snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
-    if not snap:
-        snap = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
+    if limit_to_period:
+        from backend.services.snapshot_resolver import resolve_snapshot
+        snap = resolve_snapshot(db, as_of=as_of, lte_on_date=False)
+        if not snap:
+            snap = resolve_snapshot(db, as_of=None)
 
-    if limit_to_period and snap:
-        fs = FilterSpec.from_params(
-            as_of=snap.snapshot_date.isoformat(),
-            period=period or "current_quarter",
-            user_context=ctx,
-        )
-        res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
-        period_opp_query = db.query(Opportunity.opportunity_id_18).filter(
-            Opportunity.snapshot_id == snap.id,
-            *res.conditions
-        )
-        period_opp_ids = [r[0] for r in period_opp_query.all()]
-        q = q.filter(DealComment.opportunity_id_18.in_(period_opp_ids))
+        if snap:
+            fs = FilterSpec.from_params(
+                as_of=snap.snapshot_date.isoformat(),
+                period=period or "current_quarter",
+                user_context=ctx,
+            )
+            res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
+            period_opp_query = db.query(Opportunity.opportunity_id_18).filter(
+                Opportunity.snapshot_id == snap.id,
+                *res.conditions
+            )
+            period_opp_ids = [r[0] for r in period_opp_query.all() if r[0]]
+            if period_opp_ids:
+                q = q.filter(DealComment.opportunity_id_18.in_(period_opp_ids))
+            else:
+                q = q.filter(false())
 
     if deal and deal.strip():
         d_term = f"%{deal.strip().lower()}%"
@@ -245,8 +271,12 @@ def _execute_comments_log_query(
                     func.lower(Opportunity.opportunity_id_18).like(d_term),
                 )
             ).distinct().all()
+            if r[0]
         ]
-        q = q.filter(DealComment.opportunity_id_18.in_(matching_opp_ids))
+        if matching_opp_ids:
+            q = q.filter(DealComment.opportunity_id_18.in_(matching_opp_ids))
+        else:
+            q = q.filter(false())
 
     if account and account.strip():
         a_term = f"%{account.strip().lower()}%"
@@ -254,8 +284,12 @@ def _execute_comments_log_query(
             r[0] for r in db.query(Opportunity.opportunity_id_18).filter(
                 func.lower(Opportunity.account_name).like(a_term)
             ).distinct().all()
+            if r[0]
         ]
-        q = q.filter(DealComment.opportunity_id_18.in_(matching_opp_ids))
+        if matching_opp_ids:
+            q = q.filter(DealComment.opportunity_id_18.in_(matching_opp_ids))
+        else:
+            q = q.filter(false())
 
     if search and search.strip():
         s_term = f"%{search.strip().lower()}%"
@@ -267,14 +301,15 @@ def _execute_comments_log_query(
                     func.lower(Opportunity.opportunity_id_18).like(s_term),
                 )
             ).distinct().all()
+            if r[0]
         ]
-        q = q.filter(
-            or_(
-                (or_(DealComment.is_deleted == False, DealComment.is_deleted.is_(None))) & func.lower(DealComment.text).like(s_term),
-                func.lower(DealComment.author).like(s_term),
-                DealComment.opportunity_id_18.in_(matching_opp_ids) if matching_opp_ids else (DealComment.id == "__no_match__"),
-            )
-        )
+        search_conds = [
+            (or_(DealComment.is_deleted.is_(False), DealComment.is_deleted.is_(None))) & func.lower(DealComment.text).like(s_term),
+            func.lower(DealComment.author).like(s_term),
+        ]
+        if matching_opp_ids:
+            search_conds.append(DealComment.opportunity_id_18.in_(matching_opp_ids))
+        q = q.filter(or_(*search_conds))
 
     total = q.count()
     total_pages = max(1, math.ceil(total / page_size))

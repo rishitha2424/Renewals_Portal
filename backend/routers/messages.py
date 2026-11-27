@@ -14,7 +14,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Optional, List, Any
 from pydantic import BaseModel
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
@@ -36,6 +37,7 @@ from backend.services.context import (
 )
 from backend.services.audit_service import log_audit_event
 from backend.services.notification_service import NotificationService
+from backend.services.schema_check import raise_db_endpoint_error
 from backend.services.delivery_service import (
     resolve_caller_uid,
     resolve_recipients,
@@ -190,7 +192,7 @@ def get_message_recipients(
 def get_email_log(
     ctx: UserContext = Depends(require_authenticated),
     db: Session = Depends(get_db),
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=500),
 ):
     """
     Email delivery event log (ONE row per comment/message event).
@@ -198,6 +200,26 @@ def get_email_log(
     - Management & KAM ("My email log"): only events they sent or received.
     - PRIVACY ENFORCEMENT: Never includes email addresses anywhere in response!
     """
+    try:
+        return _execute_email_log_query(ctx=ctx, db=db, limit=limit)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/messages/email-log",
+            params={"limit": limit, "role": getattr(ctx, "role", None)},
+            generic_detail="Could not load email log due to a database error. Please try again.",
+        )
+
+
+def _execute_email_log_query(
+    *,
+    ctx: UserContext,
+    db: Session,
+    limit: int,
+) -> dict[str, Any]:
     caller_uid = resolve_caller_uid(db, ctx)
 
     events_q = db.query(EmailDeliveryEvent).order_by(EmailDeliveryEvent.created_at.desc())
@@ -322,7 +344,7 @@ def get_email_log(
     # Include legacy EmailOutbox rows without event_id (including template_type 'message' and 'reply')
     if len(results) < limit:
         legacy_q = db.query(EmailOutbox).filter(
-            EmailOutbox.event_id == None,
+            EmailOutbox.event_id.is_(None),
             EmailOutbox.template_type.in_(["message", "reply", "new_message", "reply_message", "comment", "deal_comment"]),
         )
         if not ctx.is_admin:
@@ -792,6 +814,38 @@ def list_message_threads(
     - KAM: only their own deals' threads.
     - Management & Admin: ONLY threads containing messages where they are sender or selected recipient.
     """
+    try:
+        return _execute_list_message_threads(
+            deal_id=deal_id,
+            thread_status=thread_status,
+            q=q,
+            owner=owner,
+            sender=sender,
+            ctx=ctx,
+            db=db,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/messages/threads",
+            params={"deal_id": deal_id, "thread_status": thread_status, "has_q": bool(q), "role": getattr(ctx, "role", None)},
+            generic_detail="Could not load message threads due to a database error. Please try again.",
+        )
+
+
+def _execute_list_message_threads(
+    *,
+    deal_id: Optional[str],
+    thread_status: Optional[str],
+    q: Optional[str],
+    owner: Optional[str],
+    sender: Optional[str],
+    ctx: UserContext,
+    db: Session,
+) -> dict[str, Any]:
     caller_uid = resolve_caller_uid(db, ctx)
     owned_deal_ids = get_kam_owned_deal_ids(db, ctx.all_owner_names) if ctx.is_kam else set()
 
@@ -919,6 +973,26 @@ def get_deal_thread(
     db: Session = Depends(get_db),
 ):
     """Fetch visible message history for a specific deal (enforces strict participant rules, zero N+1)."""
+    try:
+        return _execute_get_deal_thread(deal_id=deal_id, ctx=ctx, db=db)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/messages/deal/{deal_id}",
+            params={"deal_id": deal_id, "role": getattr(ctx, "role", None)},
+            generic_detail="Could not load deal messages due to a database error. Please try again.",
+        )
+
+
+def _execute_get_deal_thread(
+    *,
+    deal_id: str,
+    ctx: UserContext,
+    db: Session,
+) -> dict[str, Any]:
     opp_map = get_latest_opportunities_map(db, [deal_id])
     opp = opp_map.get(deal_id)
 

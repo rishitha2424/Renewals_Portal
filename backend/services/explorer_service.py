@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -178,26 +178,8 @@ class ExplorerService:
         self.db = db
 
     def resolve_snapshot(self, as_of: Optional[str] = None) -> Optional[UploadSnapshot]:
-        snap_q = self.db.query(UploadSnapshot)
-        if as_of:
-            by_id = snap_q.filter(UploadSnapshot.id == as_of).first()
-            if by_id:
-                return by_id
-            try:
-                d = date.fromisoformat(as_of)
-                exact = snap_q.filter(UploadSnapshot.snapshot_date == d).first()
-                if exact:
-                    return exact
-                snap = snap_q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
-                if snap:
-                    return snap
-            except ValueError:
-                pass
-            return None
-        snap = snap_q.filter(UploadSnapshot.is_active_today == True).order_by(UploadSnapshot.snapshot_date.desc()).first()
-        if not snap:
-            snap = snap_q.order_by(UploadSnapshot.snapshot_date.desc()).first()
-        return snap
+        from backend.services.snapshot_resolver import resolve_snapshot
+        return resolve_snapshot(self.db, as_of=as_of, lte_on_date=True)
 
     def get_column_order(self, snap: UploadSnapshot) -> List[str]:
         if snap.column_order and isinstance(snap.column_order, list) and len(snap.column_order) > 0:
@@ -582,22 +564,52 @@ class ExplorerService:
             elif val_to is not None:
                 return expr <= float(val_to)
 
-        # Date operators
+        # Date operators (coerce to Python date/datetime when column is SQL Date/DateTime; keep string only for JSON text)
+        def _coerce_date_cmp_val(raw_v: Any, end_of_day: bool = False) -> Any:
+            attr_name = HEADER_TO_MODEL_ATTR.get(col)
+            if attr_name not in ("close_date", "last_modified_date"):
+                return str(raw_v)
+            s_val = str(raw_v or "").strip()
+            parsed_d = date.fromisoformat(s_val[:10])
+            if attr_name == "close_date":
+                return parsed_d
+            if len(s_val) > 10:
+                dt = datetime.fromisoformat(s_val[:-1] + "+00:00" if s_val.endswith("Z") else s_val)
+                return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo is not None else dt
+            if end_of_day:
+                return datetime(parsed_d.year, parsed_d.month, parsed_d.day, 23, 59, 59, 999999)
+            return datetime(parsed_d.year, parsed_d.month, parsed_d.day, 0, 0, 0)
+
         if op == "on":
             expr = get_column_date_expr(col)
-            return expr == str(val)
+            try:
+                attr_name = HEADER_TO_MODEL_ATTR.get(col)
+                if attr_name == "last_modified_date":
+                    return and_(expr >= _coerce_date_cmp_val(val, False), expr <= _coerce_date_cmp_val(val, True))
+                return expr == _coerce_date_cmp_val(val, False)
+            except (ValueError, TypeError):
+                return expr.is_(None) & expr.isnot(None)
 
         if op in ("before", "earlier than"):
             expr = get_column_date_expr(col)
-            return expr < str(val)
+            try:
+                return expr < _coerce_date_cmp_val(val, False)
+            except (ValueError, TypeError):
+                return expr.is_(None) & expr.isnot(None)
 
         if op in ("after", "later than"):
             expr = get_column_date_expr(col)
-            return expr > str(val)
+            try:
+                return expr > _coerce_date_cmp_val(val, True)
+            except (ValueError, TypeError):
+                return expr.is_(None) & expr.isnot(None)
 
         if op == "date between":
             expr = get_column_date_expr(col)
-            return and_(expr >= str(val), expr <= str(val_to))
+            try:
+                return and_(expr >= _coerce_date_cmp_val(val, False), expr <= _coerce_date_cmp_val(val_to, True))
+            except (ValueError, TypeError):
+                return expr.is_(None) & expr.isnot(None)
 
         # Boolean operators
         if op in ("is true", "true"):

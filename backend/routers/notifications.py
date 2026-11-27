@@ -6,6 +6,7 @@ Strictly isolated to the authenticated user.
 from __future__ import annotations
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -15,6 +16,7 @@ from backend.models.custom_column import DealComment
 from backend.services.context import UserContext, require_authenticated
 from backend.services.notification_service import NotificationService
 from backend.services.delivery_service import resolve_caller_uid, get_kam_owned_deal_ids
+from backend.services.schema_check import raise_db_endpoint_error
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -33,32 +35,43 @@ def list_notifications(
             "unread_by_category": {"messages": 0, "comments": 0, "alerts": 0, "total": 0},
         }
 
-    uid = resolve_caller_uid(db, ctx)
-    items, unread_count, by_category = NotificationService.get_user_notifications(
-        db=db,
-        user_id=uid,
-        category=category,
-        limit=limit,
-    )
+    try:
+        uid = resolve_caller_uid(db, ctx)
+        items, unread_count, by_category = NotificationService.get_user_notifications(
+            db=db,
+            user_id=uid,
+            category=category,
+            limit=limit,
+        )
 
-    admin_users = db.query(User).filter(User.role == "admin").all() if not ctx.is_admin else []
-    admin_names = [u.name for u in admin_users if u.name]
-    admin_emails = [u.email for u in admin_users if u.email]
+        admin_users = db.query(User).filter(User.role == "admin").all() if not ctx.is_admin else []
+        admin_names = [u.name for u in admin_users if u.name]
+        admin_emails = [u.email for u in admin_users if u.email]
 
-    # Defense-in-depth for role/owner changes: never show KAMs internal comment or unowned real-deal notifications
-    owned_deal_ids = get_kam_owned_deal_ids(db, ctx.all_owner_names) if ctx.is_kam else None
-    existing_opp_deal_ids: set[str] = set()
-    comment_vis_map: dict[str, str] = {}
-    if ctx.is_kam:
-        notif_deal_ids = list({n.deal_id for n in items if n.deal_id})
-        if notif_deal_ids:
-            for r in db.query(Opportunity.opportunity_id_18).filter(Opportunity.opportunity_id_18.in_(notif_deal_ids)).distinct().all():
-                if r[0]:
-                    existing_opp_deal_ids.add(r[0])
-        c_ids = [n.target_id for n in items if n.target_type == "deal_comment" and n.target_id]
-        if c_ids:
-            for c in db.query(DealComment.id, DealComment.visibility).filter(DealComment.id.in_(c_ids)).all():
-                comment_vis_map[c[0]] = c[1]
+        # Defense-in-depth for role/owner changes: never show KAMs internal comment or unowned real-deal notifications
+        owned_deal_ids = get_kam_owned_deal_ids(db, ctx.all_owner_names) if ctx.is_kam else None
+        existing_opp_deal_ids: set[str] = set()
+        comment_vis_map: dict[str, str] = {}
+        if ctx.is_kam:
+            notif_deal_ids = list({n.deal_id for n in items if n.deal_id})
+            if notif_deal_ids:
+                for r in db.query(Opportunity.opportunity_id_18).filter(Opportunity.opportunity_id_18.in_(notif_deal_ids)).distinct().all():
+                    if r[0]:
+                        existing_opp_deal_ids.add(r[0])
+            c_ids = [n.target_id for n in items if n.target_type == "deal_comment" and n.target_id]
+            if c_ids:
+                for c in db.query(DealComment.id, DealComment.visibility).filter(DealComment.id.in_(c_ids)).all():
+                    comment_vis_map[c[0]] = c[1]
+    except HTTPException:
+        raise
+    except SQLAlchemyError as db_exc:
+        raise_db_endpoint_error(
+            db,
+            db_exc,
+            endpoint="GET /api/notifications",
+            params={"category": category, "limit": limit, "role": getattr(ctx, "role", None)},
+            generic_detail="Could not load notifications due to a database error. Please try again.",
+        )
 
     out_items = []
     for n in items:

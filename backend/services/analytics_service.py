@@ -111,14 +111,14 @@ class AnalyticsService:
 
     def _resolve_snapshot(self, ctx: UserContext, snapshot_id: str | None) -> UploadSnapshot | None:
         if snapshot_id:
-            snap = self.get_snapshot_by_id(ctx, snapshot_id)
-            if not snap:
-                try:
-                    d = date.fromisoformat(snapshot_id)
-                    snap = self.get_snapshot_by_date(ctx, d)
-                except Exception:
-                    pass
-            return snap
+            from backend.services.snapshot_resolver import resolve_snapshot
+            return resolve_snapshot(
+                self.db,
+                as_of=snapshot_id,
+                lte_on_date=False,
+                fallback_to_active=False,
+                fallback_to_latest=False,
+            )
         return self.get_active_snapshot(ctx)
 
     def _opps_for(
