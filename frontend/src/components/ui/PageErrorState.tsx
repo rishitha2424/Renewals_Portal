@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import React, { useEffect } from 'react'
 import { AlertCircle, RotateCcw, LogIn } from 'lucide-react'
 import Card from '@/components/ui/Card'
@@ -31,8 +32,8 @@ export function PageErrorState({
           useAuthStore.getState().setCurrentUser(null)
         }).catch(() => {})
       } catch (_) {}
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login?expired=1'
+      if (typeof window !== 'undefined' && window.location.pathname !== appBase + 'login') {
+        window.location.href = appBase + 'login?expired=1'
       }
     }
   }, [is401])
@@ -53,7 +54,7 @@ export function PageErrorState({
         </p>
         {is401 ? (
           <a
-            href="/login?expired=1"
+            href={`${appBase}login?expired=1`}
             className="inline-flex items-center gap-2 px-4 py-2 bg-[#12284C] dark:bg-[#00A3AD] text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity shadow-sm"
           >
             <LogIn className="w-3.5 h-3.5" />

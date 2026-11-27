@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
@@ -1152,7 +1153,7 @@ export default function Topbar() {
                         onClick={async () => {
                           setProfileOpen(false)
                           await authLogoutStore()
-                          window.location.href = '/login'
+                          window.location.href = appBase + 'login'
                         }}
                         className="w-full px-3.5 py-2 text-left text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 flex items-center gap-2"
                       >
@@ -1166,7 +1167,7 @@ export default function Topbar() {
             ) : (
               <div className="flex items-center gap-2 flex-shrink-0">
                 <a
-                  href="/login"
+                  href={`${appBase}login`}
                   className="h-9 px-3 rounded-md flex items-center gap-1.5 bg-[#12284C] text-white hover:bg-[#1a386b] text-xs font-semibold shadow-sm transition-all"
                 >
                   <UserIcon className="w-3.5 h-3.5" />

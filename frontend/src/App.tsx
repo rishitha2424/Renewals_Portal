@@ -1,3 +1,4 @@
+import { appBase } from './appBase'
 import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
@@ -117,7 +118,7 @@ export default function App() {
   // Dynamic titles based on path
   useEffect(() => {
     const handleTitle = () => {
-      const path = window.location.pathname
+      const path = '/' + window.location.pathname.slice(appBase.length)
       const titleMap: Record<string, string> = {
         '/': 'Overview — Mobileum Horizon',
         '/expiry': 'Expiry — Mobileum Horizon',
@@ -150,7 +151,7 @@ export default function App() {
   }, [])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={appBase}>
       <OverlayRouteReset />
       <Toaster
         position="top-right"

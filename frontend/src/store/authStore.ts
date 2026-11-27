@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import api, { authLogin, authLogout, getAuthMe } from '../api/client'
@@ -94,8 +95,8 @@ export const useAuthStore = create<AuthState>()(
             useAppStore.getState().setCompareSnapshotId(null)
           } catch (_) {}
           // If in browser, redirect to login
-          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-            window.location.href = '/login'
+          if (typeof window !== 'undefined' && window.location.pathname !== appBase + 'login') {
+            window.location.href = appBase + 'login'
           }
         }
       },

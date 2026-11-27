@@ -656,3 +656,72 @@ def test_admin_access_request_approve_and_dismiss(sso_test_env):
     assert dismiss_audit is not None
     assert "dismissed.user@mobileum.com" in str(dismiss_audit.details)
 
+
+def test_sso_subpath_base_url_honours_redirect_uri_and_redirects(sso_test_env, monkeypatch):
+    """
+    When APP_BASE_URL includes /renewals and SSO_REDIRECT_URI is unset:
+    1. effective_sso_redirect_uri resolves to https://<host>/renewals/api/auth/sso/callback
+    2. /api/auth/sso/login embeds that redirect_uri in the Microsoft authorize URL
+    3. Error redirects go to /renewals/login?error=...
+    4. Success redirects go to /renewals/kam/overview (KAM) and /renewals/ (admin/mgmt)
+    """
+    import urllib.parse
+
+    client = TestClient(app)
+    orig_app_base = settings.APP_BASE_URL
+    orig_sso_redirect = settings.SSO_REDIRECT_URI
+    try:
+        settings.APP_BASE_URL = "https://portal.example.com/renewals"
+        settings.SSO_REDIRECT_URI = ""
+
+        assert settings.effective_sso_redirect_uri == "https://portal.example.com/renewals/api/auth/sso/callback"
+        assert settings.app_base_path == "/renewals/"
+
+        init_resp = client.get("/api/auth/sso/login", follow_redirects=False)
+        assert init_resp.status_code == 302
+        parsed_auth = urllib.parse.urlparse(init_resp.headers["location"])
+        qs = urllib.parse.parse_qs(parsed_auth.query)
+        assert qs["redirect_uri"] == ["https://portal.example.com/renewals/api/auth/sso/callback"]
+
+        # Error redirect must stay under /renewals/login
+        err_resp = client.get("/api/auth/sso/callback?error=access_denied", follow_redirects=False)
+        assert err_resp.status_code == 302
+        assert err_resp.headers["location"] == "/renewals/login?error=sso_cancelled"
+
+        # Success redirect for KAM and admin must honour /renewals/
+        monkeypatch.setattr(SSOService, "fetch_jwks", lambda tenant_id=None: MOCK_JWKS)
+        for email, expected_target in [
+            ("luay.arabi@mobileum.com", "/renewals/kam/overview"),
+            ("admin.owner@example.com", "/renewals/"),
+        ]:
+            login_resp = client.get("/api/auth/sso/login", follow_redirects=False)
+            state = login_resp.cookies["sso_state"]
+            nonce = login_resp.cookies["sso_nonce"]
+            verifier = login_resp.cookies["sso_verifier"]
+            now = int(time.time())
+            id_token = create_mock_jwt({
+                "iss": f"https://login.microsoftonline.com/{MOCK_TENANT_ID}/v2.0",
+                "aud": MOCK_CLIENT_ID,
+                "tid": MOCK_TENANT_ID,
+                "sub": f"sub-{email}",
+                "email": email,
+                "nonce": nonce,
+                "iat": now - 10,
+                "exp": now + 3600,
+            })
+            monkeypatch.setattr(
+                SSOService,
+                "exchange_code",
+                lambda code, code_verifier, tok=id_token, **kw: {"id_token": tok, "access_token": "mock-at"},
+            )
+            client.cookies.set("sso_state", state)
+            client.cookies.set("sso_nonce", nonce)
+            client.cookies.set("sso_verifier", verifier)
+            cb = client.get(f"/api/auth/sso/callback?code=ok&state={state}", follow_redirects=False)
+            assert cb.status_code == 302
+            assert cb.headers["location"] == expected_target
+    finally:
+        settings.APP_BASE_URL = orig_app_base
+        settings.SSO_REDIRECT_URI = orig_sso_redirect
+
+

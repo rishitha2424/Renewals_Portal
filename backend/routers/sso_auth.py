@@ -26,6 +26,16 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/sso", tags=["sso-auth"])
 
 
+def _resolve_sso_base_path(request: Optional[Request] = None) -> str:
+    """Resolve UI base path ('/' or '/<subpath>/') honoring APP_BASE_URL and X-Forwarded-Prefix."""
+    base_path = settings.app_base_path
+    if base_path == "/" and request is not None:
+        fwd_prefix = (request.headers.get("x-forwarded-prefix") or "").strip().strip("/")
+        if fwd_prefix:
+            return f"/{fwd_prefix}/"
+    return base_path
+
+
 @router.get("/config")
 def get_sso_config():
     """
@@ -100,6 +110,7 @@ def sso_callback(
     matches email against existing active accounts, and issues application session cookie.
     """
     client_ip = request.client.host if request.client else "unknown"
+    base_path = _resolve_sso_base_path(request)
 
     def make_redirect_with_cleared_sso_cookies(target_url: str) -> RedirectResponse:
         resp = RedirectResponse(url=target_url, status_code=status.HTTP_302_FOUND)
@@ -107,28 +118,31 @@ def sso_callback(
             resp.delete_cookie(c_name, path="/")
         return resp
 
+    def login_error_redirect(error_query: str) -> RedirectResponse:
+        return make_redirect_with_cleared_sso_cookies(f"{base_path}login?{error_query}")
+
     # 1. Handle error returned by Microsoft (e.g. user cancelled login)
     if error:
         log.info("Microsoft SSO callback returned error: %s (%s)", error, error_description)
         log_audit_event(db, "sso_callback_error", ip_address=client_ip, details={"error": error, "description": error_description})
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_cancelled")
+        return login_error_redirect("error=sso_cancelled")
 
     if not code or not state:
         log_audit_event(db, "sso_callback_missing_params", ip_address=client_ip)
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_state_invalid")
+        return login_error_redirect("error=sso_state_invalid")
 
     # 2. Validate state to prevent CSRF
     stored_state = request.cookies.get("sso_state")
     if not stored_state or stored_state != state:
         log.warning("SSO state mismatch: stored=%s received=%s", stored_state, state)
         log_audit_event(db, "sso_state_mismatch", ip_address=client_ip)
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_state_invalid")
+        return login_error_redirect("error=sso_state_invalid")
 
     stored_nonce = request.cookies.get("sso_nonce")
     stored_verifier = request.cookies.get("sso_verifier")
     if not stored_verifier:
         log.warning("SSO PKCE code_verifier cookie missing")
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_state_invalid")
+        return login_error_redirect("error=sso_state_invalid")
 
     # 3. Exchange authorization code for tokens
     try:
@@ -136,12 +150,12 @@ def sso_callback(
     except Exception as exc:
         log.warning("SSO token exchange failed: %s", exc)
         log_audit_event(db, "sso_exchange_failed", ip_address=client_ip, details={"error": str(exc)})
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_token_invalid")
+        return login_error_redirect("error=sso_token_invalid")
 
     id_token = token_data.get("id_token")
     if not id_token:
         log.warning("SSO token response did not contain id_token")
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_token_invalid")
+        return login_error_redirect("error=sso_token_invalid")
 
     # 4. Cryptographically validate id_token (signature, tenant, audience, nonce, expiry)
     try:
@@ -151,8 +165,8 @@ def sso_callback(
         log.warning("SSO id_token validation failed: %s", err_msg)
         log_audit_event(db, "sso_token_invalid", ip_address=client_ip, details={"error": err_msg})
         if "Tenant ID mismatch" in err_msg or "tenant_mismatch" in err_msg.lower():
-            return make_redirect_with_cleared_sso_cookies("/login?error=tenant_mismatch")
-        return make_redirect_with_cleared_sso_cookies("/login?error=sso_token_invalid")
+            return login_error_redirect("error=tenant_mismatch")
+        return login_error_redirect("error=sso_token_invalid")
 
     # 5. Extract email according to configured priority (email, preferred_username, upn)
     try:
@@ -160,7 +174,7 @@ def sso_callback(
     except Exception as exc:
         log.warning("Could not extract email from verified claims: %s", exc)
         log_audit_event(db, "sso_email_missing", ip_address=client_ip)
-        return make_redirect_with_cleared_sso_cookies("/login?error=missing_email_claim")
+        return login_error_redirect("error=missing_email_claim")
 
     clean_email = raw_email.strip().lower()
     user_name = SSOService.extract_name(claims, clean_email)
@@ -171,7 +185,7 @@ def sso_callback(
         log.warning("SSO email domain rejected for %s", clean_email)
         log_audit_event(db, "sso_domain_rejected", user_email=clean_email, ip_address=client_ip, details={"domain": clean_email.split("@")[-1]})
         encoded_email = urllib.parse.quote(clean_email)
-        return make_redirect_with_cleared_sso_cookies(f"/login?error=domain_not_allowed&email={encoded_email}")
+        return login_error_redirect(f"error=domain_not_allowed&email={encoded_email}")
 
     # 7. Identity Matching: Compare against existing database users
     user = db.query(User).filter(func.lower(User.email) == clean_email).first()
@@ -227,13 +241,13 @@ def sso_callback(
         db.commit()
 
         encoded_email = urllib.parse.quote(clean_email)
-        return make_redirect_with_cleared_sso_cookies(f"/login?error=no_access&email={encoded_email}")
+        return login_error_redirect(f"error=no_access&email={encoded_email}")
 
     # If user exists but is disabled
     if user.status == "disabled":
         log.warning("SSO login attempted for disabled user: %s", clean_email)
         log_audit_event(db, "sso_login_disabled", user_id=user.id, user_email=clean_email, ip_address=client_ip)
-        return make_redirect_with_cleared_sso_cookies("/login?error=account_disabled")
+        return login_error_redirect("error=account_disabled")
 
     # 9. Successful SSO Authentication: Activate user, generate session, and issue cookie
     if user.status in ("invited", "pending_email"):
@@ -257,7 +271,7 @@ def sso_callback(
     session_token = sign_session_token(user)
 
     # Determine destination URL
-    target_path = "/kam/overview" if user.role == "kam" else "/"
+    target_path = f"{base_path}kam/overview" if user.role == "kam" else base_path
     response = make_redirect_with_cleared_sso_cookies(target_path)
 
     # Issue HttpOnly session cookie

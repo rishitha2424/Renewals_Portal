@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -80,7 +81,7 @@ export default function Sidebar() {
         return (
           <a
             key={to}
-            href="/executive"
+            href={`${appBase}executive`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={isMobile ? () => setMobileSidebarOpen(false) : undefined}
@@ -171,7 +172,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-3 px-3.5 h-14 border-b border-white/10 flex-shrink-0">
           <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
             <img
-              src="/assets/logo.png"
+              src={`${appBase}assets/logo.png`}
               alt="Mobileum"
               className="w-full h-full object-contain"
             />
@@ -253,7 +254,7 @@ export default function Sidebar() {
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-md overflow-hidden flex-shrink-0 bg-white/10 p-1 flex items-center justify-center">
                       <img
-                        src="/assets/logo.png"
+                        src={`${appBase}assets/logo.png`}
                         alt="Mobileum"
                         className="w-full h-full object-contain"
                       />

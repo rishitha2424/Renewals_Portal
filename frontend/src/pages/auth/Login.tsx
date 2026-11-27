@@ -1,3 +1,5 @@
+import { apiBase } from '@/appBase'
+import { appBase } from '@/appBase'
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, KeyRound } from 'lucide-react'
@@ -94,7 +96,7 @@ export default function Login() {
   }
 
   const handleMicrosoftLogin = () => {
-    window.location.href = ssoConfig?.login_url || '/api/auth/sso/login'
+    window.location.href = `${apiBase}/auth/sso/login`
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -147,7 +149,7 @@ export default function Login() {
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#12284C] shadow-lg mb-4">
-          <img src="/assets/logo.png" alt="Mobileum" className="w-8 h-8 object-contain" />
+          <img src={`${appBase}assets/logo.png`} alt="Mobileum" className="w-8 h-8 object-contain" />
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)] tracking-tight">
           Mobileum Horizon

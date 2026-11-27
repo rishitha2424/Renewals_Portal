@@ -298,6 +298,22 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() == "production"
 
     @property
+    def app_base_path(self) -> str:
+        """Normalized application base path ('/' or '/<subpath>/') inferred from APP_BASE_URL or SSO_REDIRECT_URI."""
+        import urllib.parse
+        raw_path = urllib.parse.urlparse((self.APP_BASE_URL or "").strip()).path.strip("/")
+        if raw_path:
+            return f"/{raw_path}/"
+        sso_uri = (self.SSO_REDIRECT_URI or "").strip()
+        if sso_uri:
+            sso_path = urllib.parse.urlparse(sso_uri).path
+            if sso_path.endswith("/api/auth/sso/callback"):
+                prefix = sso_path[: -len("/api/auth/sso/callback")].strip("/")
+                if prefix:
+                    return f"/{prefix}/"
+        return "/"
+
+    @property
     def effective_sso_redirect_uri(self) -> str:
         if self.SSO_REDIRECT_URI and self.SSO_REDIRECT_URI.strip():
             return self.SSO_REDIRECT_URI.strip()
