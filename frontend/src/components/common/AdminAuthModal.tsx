@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import React, { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -63,7 +64,7 @@ export default function AdminAuthModal() {
           <ShieldCheck className="w-4 h-4 flex-shrink-0" />
           <span className="hidden sm:inline">{adminName || 'Admin'}</span>
           <a
-            href="/settings"
+            href={`${appBase}settings`}
             title="System Settings & Security Status"
             className="hover:text-emerald-800 dark:hover:text-emerald-200 transition-colors p-1 rounded"
           >

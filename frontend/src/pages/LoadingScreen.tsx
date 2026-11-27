@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -35,7 +36,7 @@ export default function LoadingScreen() {
         />
         <div className="relative w-24 h-24 rounded-md bg-white/10 p-3.5 border border-white/20 shadow-2xl flex items-center justify-center">
           <img
-            src="/assets/logo.png"
+            src={`${appBase}assets/logo.png`}
             alt="Mobileum"
             className="w-full h-full object-contain drop-shadow-xl"
           />

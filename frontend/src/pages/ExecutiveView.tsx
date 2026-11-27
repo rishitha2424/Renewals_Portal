@@ -1,3 +1,4 @@
+import { appBase } from '@/appBase'
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -573,7 +574,7 @@ export default function ExecutiveView() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="/assets/logo.png"
+              src={`${appBase}assets/logo.png`}
               alt="Mobileum"
               className="w-10 h-10 object-contain flex-shrink-0"
               style={{ display: 'inline-block', printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}

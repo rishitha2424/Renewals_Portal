@@ -1,3 +1,4 @@
+import { apiBase, appBase } from '../appBase'
 import axios from 'axios'
 import { useAppStore, FilterSpec } from '../store/appStore'
 import { POLL_CONFIG } from '../config/polling'
@@ -8,7 +9,7 @@ let reqSeq = 0
 let isHandling401Redirect = false
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBase,
   timeout: POLL_CONFIG.API_TIMEOUT_MS,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
@@ -53,8 +54,8 @@ api.interceptors.response.use(
               useAuthStore.getState().setCurrentUser(null)
             }).catch(() => {})
           } catch (_) {}
-          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-            window.location.href = '/login?expired=1'
+          if (typeof window !== 'undefined' && window.location.pathname !== appBase + 'login') {
+            window.location.href = appBase + 'login?expired=1'
           }
         }
       }
@@ -339,7 +340,7 @@ export const exportOpportunitiesUrl = (filters: OppFilters = {}) => {
   if (filters.minAcv != null) params.append('min_acv', String(filters.minAcv))
   if (filters.maxAcv != null) params.append('max_acv', String(filters.maxAcv))
   if (filters.search) params.append('search', filters.search)
-  return `/api/opportunities/export?${params.toString()}`
+  return `${apiBase}/opportunities/export?${params.toString()}`
 }
 
 export const getOpportunity = (oppId: string, snapshotId?: string) =>

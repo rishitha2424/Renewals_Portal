@@ -208,7 +208,10 @@ Mobileum Horizon supports Single Sign-On (SSO) via Microsoft Entra ID using Open
    - **Supported account types**: `Accounts in this organizational directory only (Single tenant)` (recommended) or multitenant if your organization spans multiple directories.
    - **Redirect URI**: Select platform **Web** and enter:
      ```text
+     # Root deployment:
      https://<your-domain-or-server-ip>/api/auth/sso/callback
+     # Subpath deployment under /renewals (when APP_BASE_URL=https://<your-domain>/renewals):
+     https://<your-domain-or-server-ip>/renewals/api/auth/sso/callback
      ```
 4. Click **Register**.
 5. Copy the following identifiers from the **Overview** blade:
@@ -230,12 +233,17 @@ Mobileum Horizon supports Single Sign-On (SSO) via Microsoft Entra ID using Open
 ### Step 4: Configure Production `.env`
 On your RHEL VM, edit `/opt/renewals/.env`:
 ```ini
+# Base URL (include /renewals if served under /renewals/ via nginx)
+APP_BASE_URL=https://<your-domain>/renewals
+
 # Microsoft Entra ID (OIDC / SSO)
 SSO_ENABLED=true
 AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
 AZURE_CLIENT_ID=00000000-0000-0000-0000-000000000000
 AZURE_CLIENT_SECRET=your_entra_app_client_secret_here
-SSO_REDIRECT_URI=https://<your-domain>/api/auth/sso/callback
+# Leave SSO_REDIRECT_URI empty to auto-resolve to https://<your-domain>/renewals/api/auth/sso/callback
+# (or set explicitly to match the Entra ID App Registration Redirect URI)
+SSO_REDIRECT_URI=https://<your-domain>/renewals/api/auth/sso/callback
 SSO_ALLOWED_DOMAINS=mobileum.com
 SSO_EMAIL_CLAIM=email,preferred_username,upn
 SSO_LOCAL_LOGIN_ENABLED=true
