@@ -31,7 +31,7 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
           return {
             slowRequestIds: nextSlow,
             slowActive: true,
-            retryingMessage: state.retryingMessage || 'Connection is slow, waiting for server...',
+            retryingMessage: state.retryingMessage || 'Still loading from server...',
           }
         })
       }, POLL_CONFIG.SLOW_THRESHOLD_MS)
