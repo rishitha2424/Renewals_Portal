@@ -279,6 +279,8 @@ def delete_snapshot(
     snap_date = snap.snapshot_date.isoformat()
     db.delete(snap)
     db.commit()
+    from backend.services.cache_service import analytics_cache
+    analytics_cache.invalidate_snapshots()
     return {"status": "ok", "deleted_snapshot_id": snapshot_id, "snapshot_date": snap_date}
 
 
@@ -297,6 +299,8 @@ def set_active_snapshot_endpoint(
     db.query(UploadSnapshot).filter(UploadSnapshot.id != snapshot_id).update({"is_active_today": False})
     target_snap.is_active_today = True
     db.commit()
+    from backend.services.cache_service import analytics_cache
+    analytics_cache.invalidate_snapshots()
     return {
         "status": "ok",
         "active_snapshot_id": target_snap.id,
@@ -476,6 +480,8 @@ async def upload_files_legacy(
                 svc.ingest_comparison_tool(ctx, ct_path, snap)
 
             db.commit()
+            from backend.services.cache_service import analytics_cache
+            analytics_cache.invalidate_snapshots()
             return {"status": "ok", "snapshot_id": snap.id if snap else None, "snapshot_date": snap_date.isoformat()}
 
     return await run_in_threadpool(_process_legacy_upload)

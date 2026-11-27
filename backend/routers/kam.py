@@ -153,11 +153,8 @@ def get_kam_overview(
     )
     res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
 
-    opps = (
-        db.query(Opportunity)
-        .filter(Opportunity.snapshot_id == snap.id, *res.conditions)
-        .all()
-    )
+    from backend.services.cache_service import analytics_cache
+    opps = analytics_cache.query_scoped_lite(db, snap.id, res.conditions)
 
     deals = [serialize_opportunity(o) for o in opps]
     total_count = len(deals)
@@ -289,11 +286,7 @@ def get_kam_overview(
     def _compute_delta(base_snap: UploadSnapshot | None) -> dict[str, Any]:
         if not base_snap:
             return {"count": None, "acv": None, "available": False, "label": "n/a", "date": None}
-        b_opps = (
-            db.query(Opportunity)
-            .filter(Opportunity.snapshot_id == base_snap.id, *res.conditions)
-            .all()
-        )
+        b_opps = analytics_cache.query_scoped_lite(db, base_snap.id, res.conditions)
         b_cnt = len(b_opps)
         b_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in b_opps), 2)
         diff_cnt = total_count - b_cnt
@@ -335,11 +328,7 @@ def get_kam_overview(
     }
 
     if compare_snap and compare_snap.id != snap.id:
-        prior_opps = (
-            db.query(Opportunity)
-            .filter(Opportunity.snapshot_id == compare_snap.id, *res.conditions)
-            .all()
-        )
+        prior_opps = analytics_cache.query_scoped_lite(db, compare_snap.id, res.conditions)
         prior_deals = [serialize_opportunity(o) for o in prior_opps]
         prior_by_id = {str(d.get("opportunity_id_18") or d.get("id")): d for d in prior_deals if (d.get("opportunity_id_18") or d.get("id"))}
         cur_by_id = {str(d.get("opportunity_id_18") or d.get("id")): d for d in deals if (d.get("opportunity_id_18") or d.get("id"))}
@@ -820,15 +809,12 @@ def get_kam_overview(
     }
 
     # 17. Data Notes (Reconciliation excluded + Missing service dates)
-    recon_opps = (
-        db.query(Opportunity)
-        .filter(
-            Opportunity.snapshot_id == snap.id,
-            Opportunity.opportunity_owner.in_(allowed_owners),
-            Opportunity.is_reconciliation_entry == True,
-        )
-        .all()
-    )
+    all_snap_rows, _ = analytics_cache.get_snapshot_lite_data(db, snap.id)
+    allowed_set = set(allowed_owners)
+    recon_opps = [
+        o for o in all_snap_rows
+        if o.opportunity_owner in allowed_set and bool(o.is_reconciliation_entry)
+    ]
     recon_cnt = len(recon_opps)
     recon_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in recon_opps), 2)
     recon_acv_str = f"-${abs(recon_acv):,.2f}" if recon_acv < 0 else f"${recon_acv:,.2f}"
@@ -1009,11 +995,8 @@ def get_kam_deals(
     )
     res = ScopeService.resolve(fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
 
-    opps = (
-        db.query(Opportunity)
-        .filter(Opportunity.snapshot_id == snap.id, *res.conditions)
-        .all()
-    )
+    from backend.services.cache_service import analytics_cache
+    opps = analytics_cache.query_scoped_lite(db, snap.id, res.conditions)
 
     deals = [serialize_opportunity(o) for o in opps]
 

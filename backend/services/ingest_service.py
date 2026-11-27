@@ -864,6 +864,11 @@ class IngestService:
 
         try:
             self.db.commit()
+            try:
+                from backend.services.cache_service import analytics_cache
+                analytics_cache.invalidate_snapshots()
+            except Exception:
+                pass
             _delete_session(session_id)
             log.info("Committed snapshot %s (%s) with %d rows (%d active)", snap.id, snap.snapshot_date, snap.row_count, snap.active_row_count)
             # Automatic KAM owner sync on daily workbook upload (Round 18)

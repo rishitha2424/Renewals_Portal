@@ -132,10 +132,19 @@ class ExcelExportService:
         q_short = parts[0] if len(parts) > 0 else "Q"
         fy_label = ScopeService.quarter_label(target_fp)
 
-        # Scoped opportunities matching website exactly
-        from backend.models.opportunity import Opportunity
-        q_opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id, *res.conditions)
-        opps = q_opps.all()
+        from backend.services.cache_service import analytics_cache
+        exp_key = (
+            snap.id,
+            comp_snap.id if comp_snap else "",
+            analytics_cache.normalize_filter_key(fs),
+        )
+        cached_exp = analytics_cache.get_export(self.db, "excel", exp_key)
+        if cached_exp is not None:
+            raw_bytes, cached_name = cached_exp
+            return io.BytesIO(raw_bytes), cached_name
+
+        # Scoped opportunities matching website exactly (lightweight cached projection)
+        opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions)
         df_scoped = _opps_to_df(opps)
 
         fs_analytics = self.analytics_svc.get_forecast_summary(
@@ -915,6 +924,8 @@ class ExcelExportService:
 
         output = io.BytesIO()
         wb.save(output)
-        output.seek(0)
+        raw_bytes = output.getvalue()
         filename = f"Mobileum_Renewals_Daily_Update_{snap.snapshot_date.isoformat()}.xlsx"
+        analytics_cache.set_export(self.db, "excel", exp_key, raw_bytes, filename)
+        output.seek(0)
         return output, filename

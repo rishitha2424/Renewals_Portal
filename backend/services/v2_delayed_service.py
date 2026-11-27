@@ -273,12 +273,13 @@ class V2DelayedService:
 
         return None, False, "n/a"
 
-    def _get_opps(self, snap: UploadSnapshot) -> list[Opportunity]:
+    def _get_opps(self, snap: UploadSnapshot) -> list[Any]:
         from backend.services.settings_service import SettingsService
-        q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        from backend.services.cache_service import analytics_cache
+        rows, _ = analytics_cache.get_snapshot_lite_data(self.db, snap.id)
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
-        return q.all()
+            return [o for o in rows if not bool(o.is_reconciliation_entry)]
+        return list(rows)
 
     def _parse_period_info(self, target_p_str: str, snap_d: date) -> tuple[bool, Optional[int], tuple[int, int], date, date, str, str]:
         snap_cq = ScopeService.quarter_of(snap_d)
@@ -320,7 +321,12 @@ class V2DelayedService:
         no_baseline: bool = False,
         preloaded_df: Optional[pd.DataFrame] = None,
     ) -> dict:
-        t_df = preloaded_df if preloaded_df is not None else _opps_to_df(self._get_opps(snap))
+        from backend.services.cache_service import analytics_cache
+        exclude_recon = SettingsService.get_exclude_reconciliation_entry(self.db)
+        if preloaded_df is not None:
+            t_df = preloaded_df
+        else:
+            t_df = analytics_cache.get_or_build_delayed_df(self.db, snap.id, exclude_recon, _opps_to_df)
         snap_date = snap.snapshot_date
         t_snap_date = pd.Timestamp(snap_date)
 
@@ -532,8 +538,7 @@ class V2DelayedService:
         # Lost since start of quarter (kept per prompt)
         lost_df = pd.DataFrame()
         if not is_future and not no_baseline and base_snap and not t_df.empty:
-            base_opps = self._get_opps(base_snap)
-            base_df = _opps_to_df(base_opps)
+            base_df = analytics_cache.get_or_build_delayed_df(self.db, base_snap.id, exclude_recon, _opps_to_df)
             base_ren = base_df[base_df["sales_type"] == "Renewals"] if not base_df.empty else pd.DataFrame()
             t_ren = t_df[t_df["sales_type"] == "Renewals"] if not t_df.empty else pd.DataFrame()
 
@@ -603,6 +608,7 @@ class V2DelayedService:
         as_of: str | None = None,
         compare: str | None = None,
         filter_spec: Optional[ScopeService.FilterSpec] = None,
+        include_trend: bool = True,
     ) -> dict:
         eff_as_of = as_of or (filter_spec.as_of if filter_spec else None)
         eff_compare = compare or (filter_spec.compare if filter_spec else "yesterday")
@@ -611,12 +617,24 @@ class V2DelayedService:
             return {"error": "No data"}
 
         from backend.services.scopes import FilterSpec
+        from backend.services.cache_service import analytics_cache
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
-        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
+        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date, db=self.db)
 
         target_p_str = fs.period if fs.period and (fs.period.startswith("Q") or fs.period.startswith("FY") or len(fs.period) == 4) else res.period
         if not target_p_str or target_p_str in ("current_quarter", "all_periods", "all"):
             target_p_str = ScopeService.current_quarter(t_snap.snapshot_date)
+
+        cache_key = (
+            t_snap.id,
+            target_p_str,
+            eff_compare or "yesterday",
+            bool(include_trend),
+            analytics_cache.normalize_filter_key(fs),
+        )
+        cached = analytics_cache.get_response(self.db, "v2_delayed_summary", cache_key)
+        if cached is not None:
+            return cached
 
         is_year, target_year, target_parsed, s_date, e_date, ptype, target_q_label = self._parse_period_info(target_p_str, t_snap.snapshot_date)
         is_future = ptype in ("future_quarter", "future_year")
@@ -874,16 +892,17 @@ class V2DelayedService:
         # -------------------------------------------------------------
         # Delayed Renewals Trend across stored snapshots
         # -------------------------------------------------------------
-        snaps_all = self.db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.asc()).all()
         trend_items = []
-        for s in snaps_all:
-            s_b = self._compute_snapshot_buckets(s, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
-            s_del = s_b["delayed_total"]
-            trend_items.append({
-                "snapshot_date": s.snapshot_date.isoformat(),
-                "count": len(s_del),
-                "acv": _safe_acv(s_del),
-            })
+        if include_trend:
+            snaps_all = self.db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.asc()).all()
+            for s in snaps_all:
+                s_b = self._compute_snapshot_buckets(s, target_p_str, filter_spec=fs, base_snap=None, no_baseline=True)
+                s_del = s_b["delayed_total"]
+                trend_items.append({
+                    "snapshot_date": s.snapshot_date.isoformat(),
+                    "count": len(s_del),
+                    "acv": _safe_acv(s_del),
+                })
 
         # -------------------------------------------------------------
         # Newly Delayed vs Yesterday (ties to Overdue card)
@@ -1034,7 +1053,7 @@ class V2DelayedService:
         total_delayed_acv = _safe_acv(del_tot_df)
         delayed_pct_of_quarter = round((total_delayed_acv / quarter_total_acv * 100), 1) if quarter_total_acv > 0 and total_delayed_acv else 0.0
 
-        return {
+        result_payload = {
             "data_slice": target_q_label,
             "data_slice_key": target_p_str,
             "period_type": ptype,
@@ -1085,6 +1104,8 @@ class V2DelayedService:
                 "note": f"Other types excluded: {next((it['count'] for it in needs_review.get('items', []) if it.get('type') == 'other_types'), 0)} deals / ${next((it['acv'] for it in needs_review.get('items', []) if it.get('type') == 'other_types'), 0.0):,.2f}",
             } if any(it.get("type") == "other_types" and it.get("count", 0) > 0 for it in needs_review.get("items", [])) else None,
         }
+        analytics_cache.set_response(self.db, "v2_delayed_summary", cache_key, result_payload)
+        return result_payload
 
     def get_deals(
         self,
@@ -1112,7 +1133,7 @@ class V2DelayedService:
 
         from backend.services.scopes import FilterSpec
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
-        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date)
+        res = ScopeService.resolve(fs, snapshot=t_snap, as_of_date=t_snap.snapshot_date, db=self.db)
 
         target_p_str = fs.period if fs.period and (fs.period.startswith("Q") or fs.period.startswith("FY") or len(fs.period) == 4) else res.period
         if not target_p_str or target_p_str in ("current_quarter", "all_periods", "all"):

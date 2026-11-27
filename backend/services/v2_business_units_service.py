@@ -172,14 +172,8 @@ class V2BusinessUnitsService:
         if not eff_date:
             eff_date = snap.snapshot_date
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
-        q = (
-            self.db.query(Opportunity)
-            .filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.conditions
-            )
-        )
-        return q.all(), res
+        from backend.services.cache_service import analytics_cache
+        return analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions), res
 
     def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
         opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
@@ -217,6 +211,13 @@ class V2BusinessUnitsService:
                 pass
         if not eff_as_of_date:
             eff_as_of_date = snap.snapshot_date
+
+        from backend.services.cache_service import analytics_cache
+        bu_key = (snap.id, eff_as_of_date.isoformat(), analytics_cache.normalize_filter_key(fs))
+        cached_bu = analytics_cache.get_response(self.db, "v2_bu_summary", bu_key)
+        if cached_bu is not None:
+            return cached_bu
+
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
@@ -354,10 +355,7 @@ class V2BusinessUnitsService:
         target_fp = res.resolved_quarter
         other_types_excluded = None
         if res.effective_types is not None:
-            base_opps = self.db.query(Opportunity).filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.base_conditions
-            ).all()
+            base_opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.base_conditions)
             excluded_opps = [
                 o for o in base_opps
                 if ScopeService.extract_type_code(
@@ -410,6 +408,7 @@ class V2BusinessUnitsService:
         summary_payload["source_check"] = self.recompute_and_reconcile(
             ctx, filter_spec=fs, summary_to_check=summary_payload
         )
+        analytics_cache.set_response(self.db, "v2_bu_summary", bu_key, summary_payload)
         return summary_payload
 
     def recompute_and_reconcile(
