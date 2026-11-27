@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone, timedelta
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
@@ -35,6 +36,7 @@ from backend.services.kam_report_service import KamReportService
 from backend.services.settings_service import SettingsService
 from backend.constants import get_approval_group, is_approved_2nd, normalize_approval_status
 from backend.utils.excel_parser import parse_excel_date
+from backend.services.schema_check import REQUIRED_TABLES, raise_db_endpoint_error
 
 log = logging.getLogger(__name__)
 
@@ -243,7 +245,7 @@ def get_kam_overview(
     from backend.services.delivery_service import resolve_caller_uid
     caller_uid = resolve_caller_uid(db, ctx)
     owned_ids = [d["opportunity_id_18"] for d in deals if d.get("opportunity_id_18")]
-    msg_q = db.query(DealMessage).filter(DealMessage.is_deleted == False)
+    msg_q = db.query(DealMessage).filter(DealMessage.is_deleted.is_(False))
     if owned_ids:
         msg_q = msg_q.filter(
             or_(
@@ -781,7 +783,7 @@ def get_kam_overview(
             db.query(DealComment)
             .filter(
                 DealComment.opportunity_id_18.in_(owned_ids),
-                DealComment.is_deleted == False,
+                DealComment.is_deleted.is_(False),
                 DealComment.visibility.in_(["shared", "shared_with_owner", "all", "public"]),
             )
             .order_by(DealComment.created_at.desc())
@@ -874,11 +876,7 @@ def get_kam_overview(
         user_context=ctx,
     )
     all_res = ScopeService.resolve(all_fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
-    all_opps = (
-        db.query(Opportunity)
-        .filter(Opportunity.snapshot_id == snap.id, *all_res.conditions)
-        .all()
-    )
+    all_opps = analytics_cache.query_scoped_lite(db, snap.id, all_res.conditions)
     total_all_count = len(all_opps)
     total_all_acv = round(sum(float(o.forecast_acv_amount or 0.0) for o in all_opps), 2)
     other_periods_count = max(0, total_all_count - total_count)
@@ -1029,11 +1027,7 @@ def get_kam_deals(
         user_context=ctx,
     )
     all_res = ScopeService.resolve(all_fs, snapshot=snap, as_of_date=snap.snapshot_date, db=db)
-    all_opps = (
-        db.query(Opportunity)
-        .filter(Opportunity.snapshot_id == snap.id, *all_res.conditions)
-        .all()
-    )
+    all_opps = analytics_cache.query_scoped_lite(db, snap.id, all_res.conditions)
     total_all_count = len(all_opps)
     total_all_acv = round(float(sum(o.forecast_acv_amount or 0.0 for o in all_opps)), 2)
     other_periods_count = max(0, total_all_count - cur_count)
