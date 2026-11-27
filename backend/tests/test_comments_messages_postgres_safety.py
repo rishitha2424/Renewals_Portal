@@ -240,13 +240,27 @@ def _assert_pg_safe_sql(compiled_sql: str, params: dict) -> None:
         assert not re.search(rf"\b{bool_col}\b\s*=\s*[01]\b", low), (
             f"Integer literal compared to boolean column '{bool_col}' in SQL:\n{compiled_sql}"
         )
-    # Specifically verify snapshot_date is NEVER compared directly against a non-date string (e.g. UUID)
-    if "upload_snapshots.snapshot_date =" in low:
-        for k, v in (params or {}).items():
-            if "snapshot_date" in k and isinstance(v, str) and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
-                raise AssertionError(
-                    f"Non-date string {v!r} bound to upload_snapshots.snapshot_date comparison:\n{compiled_sql}"
-                )
+    # Fail on ANY raw string bound to a DATE / TIMESTAMP comparison
+    date_cols = (
+        "snapshot_date",
+        "close_date",
+        "last_modified_date",
+        "created_at",
+        "updated_at",
+        "edited_at",
+        "deleted_at",
+        "read_at",
+        "sent_at",
+    )
+    for col_name in date_cols:
+        for m in re.finditer(rf"\b{col_name}\b\s*(?:=|!=|<>|<=|>=|<|>)\s*%\(([^)]+)\)s", low):
+            p_name = m.group(1)
+            if p_name in (params or {}):
+                val = params[p_name]
+                if isinstance(val, str):
+                    raise AssertionError(
+                        f"Raw string {val!r} bound to DATE/TIMESTAMP column '{col_name}' in SQL:\n{compiled_sql}"
+                    )
 
 
 def test_compile_all_queries_postgresql_dialect_and_all_filters(tmp_path):
@@ -303,10 +317,82 @@ def test_compile_all_queries_postgresql_dialect_and_all_filters(tmp_path):
         # Admin email outbox & diagnostics
         adm_headers = {"Authorization": f"Bearer {tokens['admin']}"}
         assert client.get("/api/admin/email/outbox", headers=adm_headers).status_code == 200
+        assert client.get(f"/api/search?q=Alpha&as_of={snap_id}", headers=adm_headers).status_code == 200
+        assert client.get(f"/api/search?q=Alpha&as_of=2026-11-20", headers=adm_headers).status_code == 200
+        assert client.get(f"/api/v2/filters/options?as_of={snap_id}", headers=adm_headers).status_code == 200
+        assert client.get(f"/api/v2/filters/options?as_of=2026-11-20", headers=adm_headers).status_code == 200
         assert len(compiled_queries) > 20
     finally:
         app.dependency_overrides.clear()
         event.remove(listener_Target, "do_orm_execute", _on_orm_execute)
+        engine.dispose()
+
+
+def test_snapshot_resolver_and_explorer_dates_never_compare_str_to_date(tmp_path):
+    """
+    Verify resolve_snapshot (by UUID/ID, ISO date, and date obj) and ExplorerService date filters
+    compile cleanly under PostgreSQL dialect without ever comparing strings to DATE columns.
+    """
+    from backend.services.explorer_service import ExplorerService, FilterRule
+    from backend.services.snapshot_resolver import resolve_snapshot
+    from backend.services.v2_approvals_service import V2ApprovalsService
+    from backend.services.v2_business_units_service import V2BusinessUnitsService
+    from backend.services.v2_delayed_service import V2DelayedService
+    from backend.services.v2_expiry_service import V2ExpiryService
+    from backend.services.v2_overview_service import V2OverviewService
+    from backend.services.v2_regions_service import V2RegionsService
+
+    db_file = tmp_path / "snap_resolve.db"
+    engine = create_engine(f"sqlite:///{db_file.as_posix()}", connect_args={"check_same_thread": False})
+    TestingSession, _, snap_id, _ = _seed_env(engine)
+
+    pg_dialect = postgresql.dialect()
+    checked_count = 0
+
+    def _on_orm_execute(orm_execute_state):
+        nonlocal checked_count
+        stmt = orm_execute_state.statement
+        compiled = stmt.compile(dialect=pg_dialect)
+        _assert_pg_safe_sql(str(compiled), dict(compiled.params or {}))
+        checked_count += 1
+
+    event.listen(Session, "do_orm_execute", _on_orm_execute)
+    db = TestingSession()
+    try:
+        for arg in (snap_id, "2026-11-20", date(2026, 11, 20), None):
+            snap = resolve_snapshot(db, as_of=arg)
+            assert snap is not None and snap.id == snap_id
+
+        assert ExplorerService(db).resolve_snapshot(snap_id).id == snap_id
+        assert ExplorerService(db).resolve_snapshot("2026-11-20").id == snap_id
+        assert V2OverviewService(db)._active_snap(snap_id).id == snap_id
+        assert V2OverviewService(db)._active_snap("2026-11-20").id == snap_id
+        assert V2BusinessUnitsService(db)._active_snap(snap_id).id == snap_id
+        assert V2RegionsService(db)._active_snap(snap_id).id == snap_id
+        assert V2DelayedService(db)._active_snap(snap_id).id == snap_id
+        assert V2DelayedService(db)._active_snap("2026-11-20").id == snap_id
+        assert V2ApprovalsService(db)._get_snapshot(None, snap_id).id == snap_id
+        assert V2ExpiryService(db)._get_snapshot(None, snap_id).id == snap_id
+
+        # Explorer Close Date filter operators (on, before, after, date between)
+        exp = ExplorerService(db)
+        snap = resolve_snapshot(db, as_of=snap_id)
+        rows_on, cnt_on, _ = exp.query_rows(
+            snap,
+            filter_spec=None,
+            filters=[FilterRule(column="Close Date", operator="on", value="2026-11-25")],
+        )
+        assert cnt_on == 1 and len(rows_on) == 1
+        _, cnt_between, _ = exp.query_rows(
+            snap,
+            filter_spec=None,
+            filters=[FilterRule(column="Close Date", operator="date between", value="2026-11-24", value_to="2026-11-29")],
+        )
+        assert cnt_between == 2
+        assert checked_count >= 12
+    finally:
+        db.close()
+        event.remove(Session, "do_orm_execute", _on_orm_execute)
         engine.dispose()
 
 

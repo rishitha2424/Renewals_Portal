@@ -63,24 +63,16 @@ class V2ApprovalsService:
                     target = latest.snapshot_date - timedelta(days=7)
                 return q.filter(UploadSnapshot.snapshot_date <= target).order_by(UploadSnapshot.snapshot_date.desc()).first()
             else:
-                by_id = q.filter(UploadSnapshot.id == target_date).first()
-                if by_id:
-                    return by_id
-                try:
-                    d = date.fromisoformat(target_date)
-                    exact = q.filter(UploadSnapshot.snapshot_date == d).first()
-                    if exact:
-                        return exact
-                    snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
-                    if snap:
-                        return snap
-                except ValueError:
-                    pass
-                return None
-        active = q.filter(UploadSnapshot.is_active_today == True).first()
-        if active:
-            return active
-        return q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+                from backend.services.snapshot_resolver import resolve_snapshot
+                return resolve_snapshot(
+                    self.db,
+                    as_of=target_date,
+                    lte_on_date=True,
+                    fallback_to_active=False,
+                    fallback_to_latest=False,
+                )
+        from backend.services.snapshot_resolver import resolve_snapshot
+        return resolve_snapshot(self.db, as_of=None)
 
     def _scoped_opps(self, snap: UploadSnapshot, filter_spec: Optional[ScopeService.FilterSpec] = None, exclude_deleted_lost: bool = False, target_date = None) -> tuple[pd.DataFrame, Any]:
         from backend.services.scopes import FilterSpec

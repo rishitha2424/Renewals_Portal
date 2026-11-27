@@ -184,29 +184,16 @@ class V2DelayedService:
         self.db = db
 
     def _active_snap(self, as_of: str | date | None = None) -> UploadSnapshot | None:
-        q = self.db.query(UploadSnapshot)
+        from backend.services.snapshot_resolver import resolve_snapshot
         if as_of:
-            if isinstance(as_of, date):
-                d = as_of
-                exact = q.filter(UploadSnapshot.snapshot_date == d).first()
-                if exact:
-                    return exact
-                return q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
-            by_id = q.filter(UploadSnapshot.id == str(as_of)).first()
-            if by_id:
-                return by_id
-            try:
-                d = date.fromisoformat(str(as_of))
-                exact = q.filter(UploadSnapshot.snapshot_date == d).first()
-                if exact:
-                    return exact
-                snap = q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
-                if snap:
-                    return snap
-            except ValueError:
-                pass
-            return None
-        return q.filter(UploadSnapshot.is_active_today == True).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            return resolve_snapshot(
+                self.db,
+                as_of=as_of,
+                lte_on_date=True,
+                fallback_to_active=False,
+                fallback_to_latest=False,
+            )
+        return resolve_snapshot(self.db, as_of=None, fallback_to_latest=False)
 
     def _snap_by_date(self, d: date) -> UploadSnapshot | None:
         return self.db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == d).first()

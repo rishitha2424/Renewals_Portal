@@ -240,20 +240,10 @@ def _execute_comments_log_query(
             pass
 
     if limit_to_period:
-        snap = None
-        if as_of and as_of.strip():
-            as_of_clean = as_of.strip()
-            snap = db.query(UploadSnapshot).filter(UploadSnapshot.id == as_of_clean).first()
-            if not snap:
-                try:
-                    parsed_d = date.fromisoformat(as_of_clean)
-                    snap = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == parsed_d).first()
-                except ValueError:
-                    snap = None
+        from backend.services.snapshot_resolver import resolve_snapshot
+        snap = resolve_snapshot(db, as_of=as_of, lte_on_date=False)
         if not snap:
-            snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()  # noqa: E712
-        if not snap:
-            snap = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
+            snap = resolve_snapshot(db, as_of=None)
 
         if snap:
             fs = FilterSpec.from_params(

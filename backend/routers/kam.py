@@ -53,21 +53,12 @@ def _require_kam_or_management(ctx: UserContext = Depends(require_authenticated)
 
 
 def _resolve_snapshot(db: Session, as_of: Optional[str] = None) -> UploadSnapshot | None:
-    snap = db.query(UploadSnapshot).filter(UploadSnapshot.is_active_today == True).first()
+    from backend.services.snapshot_resolver import resolve_snapshot
     if as_of:
-        s_target = db.query(UploadSnapshot).filter(UploadSnapshot.id == as_of).first()
-        if not s_target:
-            try:
-                target_d = date.fromisoformat(as_of)
-                s_target = db.query(UploadSnapshot).filter(UploadSnapshot.snapshot_date == target_d).first()
-            except ValueError:
-                pass
-        if s_target:
-            snap = s_target
-
-    if not snap:
-        snap = db.query(UploadSnapshot).order_by(UploadSnapshot.snapshot_date.desc()).first()
-    return snap
+        target = resolve_snapshot(db, as_of=as_of, lte_on_date=False, fallback_to_active=False, fallback_to_latest=False)
+        if target:
+            return target
+    return resolve_snapshot(db, as_of=None)
 
 
 @router.get("/overview")

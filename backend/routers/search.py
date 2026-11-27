@@ -39,18 +39,10 @@ def global_search(
     pattern = f"%{clean_q}%"
 
     # 1. Resolve active snapshot
-    snap_q = db.query(UploadSnapshot)
-    if as_of:
-        try:
-            from datetime import date
-            d = date.fromisoformat(as_of)
-            snap = snap_q.filter(UploadSnapshot.snapshot_date <= d).order_by(UploadSnapshot.snapshot_date.desc()).first()
-        except ValueError:
-            snap = snap_q.order_by(UploadSnapshot.snapshot_date.desc()).first()
-    else:
-        snap = snap_q.filter(UploadSnapshot.is_active_today == True).order_by(UploadSnapshot.snapshot_date.desc()).first()
-        if not snap:
-            snap = snap_q.order_by(UploadSnapshot.snapshot_date.desc()).first()
+    from backend.services.snapshot_resolver import resolve_snapshot
+    snap = resolve_snapshot(db, as_of=as_of, lte_on_date=True)
+    if as_of and not snap:
+        snap = resolve_snapshot(db, as_of=None, fallback_to_active=False, fallback_to_latest=True)
 
     snapshot_id = snap.id if snap else None
 
