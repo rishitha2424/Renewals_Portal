@@ -1,8 +1,15 @@
 import axios from 'axios'
 import { useAppStore, FilterSpec } from '../store/appStore'
+import { POLL_CONFIG } from '../config/polling'
+import { useConnectionStore } from '../store/connectionStore'
+import { resetAllOverlays } from '../utils/overlayManager'
+
+let reqSeq = 0
+let isHandling401Redirect = false
 
 const api = axios.create({
   baseURL: '/api',
+  timeout: POLL_CONFIG.API_TIMEOUT_MS,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
   paramsSerializer: {
@@ -14,6 +21,9 @@ const api = axios.create({
 // Treat that as a connection error instead of accepting it as empty application data.
 api.interceptors.response.use(
   (response) => {
+    const reqId = (response.config as any)?._reqId
+    if (reqId) useConnectionStore.getState().endRequest(reqId, false)
+
     if (typeof response.data === 'string' &&
         (String(response.headers['content-type'] || '').includes('text/html') ||
          /^\s*(<!doctype html|<html)/i.test(response.data))) {
@@ -22,19 +32,30 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    // 401 Unauthorized handling: clear auth and redirect to login
+    const reqId = (error?.config as any)?._reqId || ''
+    const isTimeoutOrNetwork =
+      error?.code === 'ECONNABORTED' ||
+      error?.message?.toLowerCase?.().includes('timeout') ||
+      (!error?.response && !axios.isCancel(error))
+    useConnectionStore.getState().endRequest(reqId, isTimeoutOrNetwork)
+
+    // 401 Unauthorized handling: clear auth and redirect to login once cleanly
     if (error?.response?.status === 401) {
       const url = error.config?.url || ''
-      // Never intercept login, logout, or initial auth check endpoint (/auth/me, /admin/status)
       if (!url.includes('/auth/login') && !url.includes('/auth/logout') && !url.includes('/auth/me') && !url.includes('/admin/status')) {
-        try {
-          localStorage.removeItem('horizon_auth_state')
-          import('../store/authStore').then(({ useAuthStore }) => {
-            useAuthStore.getState().setCurrentUser(null)
-          }).catch(() => {})
-        } catch (_) {}
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login?expired=1'
+        if (!isHandling401Redirect) {
+          isHandling401Redirect = true
+          try {
+            resetAllOverlays()
+            useConnectionStore.getState().clearWatchdog()
+            localStorage.removeItem('horizon_auth_state')
+            import('../store/authStore').then(({ useAuthStore }) => {
+              useAuthStore.getState().setCurrentUser(null)
+            }).catch(() => {})
+          } catch (_) {}
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login?expired=1'
+          }
         }
       }
     }
@@ -47,6 +68,17 @@ const FILTER_EXCLUDED_PATHS = ['/snapshots/validate', '/snapshots/commit', '/sna
 
 api.interceptors.request.use((config) => {
   const url = config.url || ''
+  const reqId = `req_${++reqSeq}`
+  ;(config as any)._reqId = reqId
+  useConnectionStore.getState().beginRequest(reqId)
+
+  // Heavy file exports/uploads get a higher timeout than standard UI calls
+  if (!config.timeout || config.timeout === POLL_CONFIG.API_TIMEOUT_MS) {
+    if (url.includes('/export/') || url.includes('/snapshots/validate') || url.includes('/snapshots/commit') || url.includes('/snapshots/upload') || url.includes('/kam/report/')) {
+      config.timeout = 120_000
+    }
+  }
+
   const isExcluded = FILTER_EXCLUDED_PATHS.some((p) => url.includes(p))
   if (isExcluded) return config
 
@@ -1086,8 +1118,11 @@ export interface EmailOutboxResponse {
   diagnostics?: MailDiagnostics
 }
 
-export const getEmailOutbox = async (params: { status?: string; limit?: number } = {}): Promise<EmailOutboxResponse> => {
-  const res = await api.get('/admin/email/outbox', { params })
+export const getEmailOutbox = async (
+  params: { status?: string; limit?: number } = {},
+  signal?: AbortSignal
+): Promise<EmailOutboxResponse> => {
+  const res = await api.get('/admin/email/outbox', { params, signal })
   return res.data
 }
 
@@ -1170,13 +1205,19 @@ export interface DealMessageDetail {
   recipient_ids?: string[]
 }
 
-export const getMessageThreads = async (params: { deal_id?: string; thread_status?: string } = {}) => {
-  const res = await api.get('/messages/threads', { params })
+export const getMessageThreads = async (
+  params: { deal_id?: string; thread_status?: string } = {},
+  signal?: AbortSignal
+) => {
+  const res = await api.get('/messages/threads', { params, signal })
   return res.data
 }
 
-export const getDealMessages = async (dealId: string): Promise<{ messages: DealMessageDetail[]; opportunity?: any }> => {
-  const res = await api.get(`/messages/deal/${dealId}`)
+export const getDealMessages = async (
+  dealId: string,
+  signal?: AbortSignal
+): Promise<{ messages: DealMessageDetail[]; opportunity?: any }> => {
+  const res = await api.get(`/messages/deal/${dealId}`, { signal })
   return res.data
 }
 
@@ -1315,7 +1356,8 @@ export interface NotificationItem {
 
 export const getNotifications = async (
   category?: string,
-  limit = 50
+  limit = 50,
+  signal?: AbortSignal
 ): Promise<{
   notifications: NotificationItem[]
   unread_count: number
@@ -1323,7 +1365,7 @@ export const getNotifications = async (
 }> => {
   const params: any = { limit }
   if (category && category !== 'all') params.category = category
-  const res = await api.get('/notifications', { params })
+  const res = await api.get('/notifications', { params, signal })
   return res.data
 }
 
@@ -1402,8 +1444,8 @@ export interface EmailLogItem {
   details_redacted?: boolean
 }
 
-export const getEmailLog = async (limit = 100): Promise<{ log: EmailLogItem[]; events?: EmailLogItem[] }> => {
-  const res = await api.get('/messages/email-log', { params: { limit } })
+export const getEmailLog = async (limit = 100, signal?: AbortSignal): Promise<{ log: EmailLogItem[]; events?: EmailLogItem[] }> => {
+  const res = await api.get('/messages/email-log', { params: { limit }, signal })
   return res.data
 }
 
@@ -1436,23 +1478,26 @@ export interface CommentsLogResponse {
   tab: string
 }
 
-export const getCommentsLog = async (params: {
-  page?: number
-  page_size?: number
-  tab?: 'my' | 'all'
-  search?: string
-  visibility?: string
-  author?: string
-  author_role?: string
-  deal?: string
-  account?: string
-  start_date?: string
-  end_date?: string
-  limit_to_period?: boolean
-  period?: string
-  as_of?: string | null
-}): Promise<CommentsLogResponse> => {
-  const res = await api.get('/comments/log', { params })
+export const getCommentsLog = async (
+  params: {
+    page?: number
+    page_size?: number
+    tab?: 'my' | 'all'
+    search?: string
+    visibility?: string
+    author?: string
+    author_role?: string
+    deal?: string
+    account?: string
+    start_date?: string
+    end_date?: string
+    limit_to_period?: boolean
+    period?: string
+    as_of?: string | null
+  },
+  signal?: AbortSignal
+): Promise<CommentsLogResponse> => {
+  const res = await api.get('/comments/log', { params, signal })
   return res.data
 }
 

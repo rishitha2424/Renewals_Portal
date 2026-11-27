@@ -34,10 +34,12 @@ import {
 } from '@/api/client'
 import { formatDateTime } from '@/utils/format'
 import { useAuthStore } from '@/store/authStore'
+import { POLL_CONFIG, usePageVisible, getPollingInterval } from '@/config/polling'
 
 export default function EmailOutbox() {
   const { currentUser } = useAuthStore()
   const queryClient = useQueryClient()
+  const isPageVisible = usePageVisible()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -55,14 +57,18 @@ export default function EmailOutbox() {
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['email-outbox'],
-    queryFn: () => getEmailOutbox(),
-    refetchInterval: 15000,
+    queryFn: ({ signal }) => getEmailOutbox({}, signal),
+    refetchInterval: (query) =>
+      getPollingInterval(POLL_CONFIG.EMAIL_OUTBOX_MS, isPageVisible, query.state.fetchFailureCount),
+    refetchIntervalInBackground: false,
   })
 
   const { data: emailLogData, refetch: refetchEmailLog } = useQuery({
     queryKey: ['admin-email-log'],
-    queryFn: () => getEmailLog(150),
-    refetchInterval: 15000,
+    queryFn: ({ signal }) => getEmailLog(150, signal),
+    refetchInterval: (query) =>
+      getPollingInterval(POLL_CONFIG.EMAIL_OUTBOX_MS, isPageVisible, query.state.fetchFailureCount),
+    refetchIntervalInBackground: false,
   })
 
   const emails: EmailOutboxItem[] = data?.emails || data?.outbox || []

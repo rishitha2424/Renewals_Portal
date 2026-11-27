@@ -279,6 +279,8 @@ def delete_snapshot(
     snap_date = snap.snapshot_date.isoformat()
     db.delete(snap)
     db.commit()
+    from backend.services.cache_service import analytics_cache
+    analytics_cache.invalidate_snapshots()
     return {"status": "ok", "deleted_snapshot_id": snapshot_id, "snapshot_date": snap_date}
 
 
@@ -297,6 +299,8 @@ def set_active_snapshot_endpoint(
     db.query(UploadSnapshot).filter(UploadSnapshot.id != snapshot_id).update({"is_active_today": False})
     target_snap.is_active_today = True
     db.commit()
+    from backend.services.cache_service import analytics_cache
+    analytics_cache.invalidate_snapshots()
     return {
         "status": "ok",
         "active_snapshot_id": target_snap.id,
@@ -372,25 +376,29 @@ async def validate_upload(
         if not uploaded_files_list:
             raise HTTPException(status_code=422, detail="No files were uploaded.")
 
-        # Save files to disk and detect their content-based slot
-        for field_name, u_file in uploaded_files_list:
-            f_path = tmp / u_file.filename
-            with f_path.open("wb") as f:
-                shutil.copyfileobj(u_file.file, f)
+        # Save files and run heavy Excel parsing/validation off the asyncio event loop
+        from starlette.concurrency import run_in_threadpool
 
-            from backend.utils.excel_parser import detect_file_slot
-            detected_slot, _ = detect_file_slot(f_path)
-            # Use detected content slot or fallback to field_name
-            slot_key = detected_slot if detected_slot != "unknown" else field_name
-            base_key = slot_key
-            idx = 2
-            while slot_key in files_dict:
-                slot_key = f"{base_key}_{idx}"
-                idx += 1
-            files_dict[slot_key] = f_path
+        def _process_validate():
+            for field_name, u_file in uploaded_files_list:
+                f_path = tmp / u_file.filename
+                with f_path.open("wb") as f:
+                    shutil.copyfileobj(u_file.file, f)
 
-        svc = IngestService(db)
-        result = svc.validate_upload(ctx, files_dict, as_of, yest)
+                from backend.utils.excel_parser import detect_file_slot
+                detected_slot, _ = detect_file_slot(f_path)
+                slot_key = detected_slot if detected_slot != "unknown" else field_name
+                base_key = slot_key
+                idx = 2
+                while slot_key in files_dict:
+                    slot_key = f"{base_key}_{idx}"
+                    idx += 1
+                files_dict[slot_key] = f_path
+
+            svc = IngestService(db)
+            return svc.validate_upload(ctx, files_dict, as_of, yest)
+
+        result = await run_in_threadpool(_process_validate)
         return result
     finally:
         try:
@@ -447,28 +455,33 @@ async def upload_files_legacy(
     except ValueError:
         raise HTTPException(status_code=422, detail="snapshot_date must be YYYY-MM-DD")
 
-    svc = IngestService(db)
+    from starlette.concurrency import run_in_threadpool
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
-        snap = None
-        if renewals_summary:
-            rs_path = tmp / renewals_summary.filename
-            with rs_path.open("wb") as f:
-                shutil.copyfileobj(renewals_summary.file, f)
-            snap = svc.ingest_renewals_summary(ctx, rs_path, snap_date, label)
+    def _process_legacy_upload():
+        svc = IngestService(db)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            snap = None
+            if renewals_summary:
+                rs_path = tmp / renewals_summary.filename
+                with rs_path.open("wb") as f:
+                    shutil.copyfileobj(renewals_summary.file, f)
+                snap = svc.ingest_renewals_summary(ctx, rs_path, snap_date, label)
 
-        if comparison_tool:
-            ct_path = tmp / comparison_tool.filename
-            with ct_path.open("wb") as f:
-                shutil.copyfileobj(comparison_tool.file, f)
-            if snap is None:
-                analytics = AnalyticsService(db)
-                snap = analytics.get_snapshot_by_date(ctx, snap_date)
+            if comparison_tool:
+                ct_path = tmp / comparison_tool.filename
+                with ct_path.open("wb") as f:
+                    shutil.copyfileobj(comparison_tool.file, f)
                 if snap is None:
-                    raise HTTPException(status_code=422, detail="Upload Renewals Summary first for this date.")
-            svc.ingest_comparison_tool(ctx, ct_path, snap)
+                    analytics = AnalyticsService(db)
+                    snap = analytics.get_snapshot_by_date(ctx, snap_date)
+                    if snap is None:
+                        raise HTTPException(status_code=422, detail="Upload Renewals Summary first for this date.")
+                svc.ingest_comparison_tool(ctx, ct_path, snap)
 
-        db.commit()
+            db.commit()
+            from backend.services.cache_service import analytics_cache
+            analytics_cache.invalidate_snapshots()
+            return {"status": "ok", "snapshot_id": snap.id if snap else None, "snapshot_date": snap_date.isoformat()}
 
-    return {"status": "ok", "snapshot_id": snap.id if snap else None, "snapshot_date": snap_date.isoformat()}
+    return await run_in_threadpool(_process_legacy_upload)

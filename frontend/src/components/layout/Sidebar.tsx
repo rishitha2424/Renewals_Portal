@@ -13,6 +13,7 @@ import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
 import { getNotifications } from '@/api/client'
 import { NAV_ITEMS, KAM_NAV_ITEMS, ADMIN_NAV_ITEMS } from '@/config/nav'
+import { POLL_CONFIG, usePageVisible, getPollingInterval } from '@/config/polling'
 import clsx from 'clsx'
 
 export default function Sidebar() {
@@ -25,13 +26,16 @@ export default function Sidebar() {
   } = useAppStore()
   const { currentUser, isAuthenticated } = useAuthStore()
   const location = useLocation()
+  const isPageVisible = usePageVisible()
 
   const { data: notifData } = useQuery({
     queryKey: ['notifications', 'all'],
-    queryFn: () => getNotifications('all', 50),
+    queryFn: ({ signal }) => getNotifications('all', 50, signal),
     enabled: Boolean(isAuthenticated && currentUser),
-    refetchInterval: 30_000,
-    staleTime: 10_000,
+    refetchInterval: (query) =>
+      getPollingInterval(POLL_CONFIG.NOTIFICATIONS_MS, isPageVisible, query.state.fetchFailureCount),
+    refetchIntervalInBackground: false,
+    staleTime: 25_000,
   })
   const unreadByCategory = notifData?.unread_by_category || { messages: 0, comments: 0, alerts: 0, total: 0 }
 

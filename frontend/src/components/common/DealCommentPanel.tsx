@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useId, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { acquireBodyScrollLock, releaseBodyScrollLock, registerOverlayCloser } from '@/utils/overlayManager'
 import {
   MessageSquare,
   X,
@@ -54,6 +55,20 @@ export default function DealCommentPanel({
   const [recipientIds, setRecipientIds] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const lockId = useId()
+
+  useEffect(() => {
+    if (!isOpen) {
+      releaseBodyScrollLock(lockId)
+      return
+    }
+    acquireBodyScrollLock(lockId)
+    const unregister = registerOverlayCloser(lockId, onClose)
+    return () => {
+      unregister()
+      releaseBodyScrollLock(lockId)
+    }
+  }, [isOpen, lockId, onClose])
 
   // Reset form when opened or deal list changes
   useEffect(() => {

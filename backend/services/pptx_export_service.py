@@ -149,6 +149,9 @@ def adjust_table_rows(tbl, target_row_count: int):
             tbl._tbl.remove(tbl.rows[remove_idx]._tr)
 
 
+_REF_ORDER_CACHE: dict[tuple[str, int], tuple[dict[str, int], dict[str, int]]] = {}
+
+
 class PptxExportService:
     def __init__(self, db: Session):
         self.db = db
@@ -215,10 +218,19 @@ class PptxExportService:
         q_short = parts[0] if len(parts) > 0 else "Q4"
         fy_label = ScopeService.quarter_label(target_fp)
 
-        # Scoped opportunities matching website exactly
-        from backend.models.opportunity import Opportunity
-        q_opps = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id, *res.conditions)
-        opps = q_opps.all()
+        from backend.services.cache_service import analytics_cache
+        exp_key = (
+            snap.id,
+            comp_snap.id if comp_snap else "",
+            analytics_cache.normalize_filter_key(fs),
+        )
+        cached_exp = analytics_cache.get_export(self.db, "pptx", exp_key)
+        if cached_exp is not None:
+            raw_bytes, cached_name = cached_exp
+            return io.BytesIO(raw_bytes), cached_name
+
+        # Scoped opportunities matching website exactly (lightweight cached projection)
+        opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions)
 
         fs_analytics = self.analytics_svc.get_forecast_summary(
             ADMIN_CONTEXT, snapshot_id=snap.id, compare_to=comp_snap.id if comp_snap else None,
@@ -261,24 +273,30 @@ class PptxExportService:
             excel_summary_path = settings.DATA_DIR / snap.source_file_summary
 
         if excel_summary_path.exists():
-            try:
-                rA = pd.read_excel(excel_summary_path, sheet_name="Top 10 Region Summary")
-                ra_order = {
-                    str(row["Opportunity ID 18 Digit"]).strip(): idx
-                    for idx, row in rA.iterrows()
-                    if pd.notna(row.get("Opportunity ID 18 Digit"))
-                }
-            except Exception:
-                pass
-            try:
-                rB = pd.read_excel(excel_summary_path, sheet_name="Top 10 Region BU Summary")
-                rb_order = {
-                    str(row["Opportunity ID 18 Digit"]).strip(): idx
-                    for idx, row in rB.iterrows()
-                    if pd.notna(row.get("Opportunity ID 18 Digit"))
-                }
-            except Exception:
-                pass
+            ref_key = (str(excel_summary_path), excel_summary_path.stat().st_mtime_ns)
+            cached_orders = _REF_ORDER_CACHE.get(ref_key)
+            if cached_orders is not None:
+                ra_order, rb_order = cached_orders
+            else:
+                try:
+                    rA = pd.read_excel(excel_summary_path, sheet_name="Top 10 Region Summary")
+                    ra_order = {
+                        str(row["Opportunity ID 18 Digit"]).strip(): idx
+                        for idx, row in rA.iterrows()
+                        if pd.notna(row.get("Opportunity ID 18 Digit"))
+                    }
+                except Exception:
+                    pass
+                try:
+                    rB = pd.read_excel(excel_summary_path, sheet_name="Top 10 Region BU Summary")
+                    rb_order = {
+                        str(row["Opportunity ID 18 Digit"]).strip(): idx
+                        for idx, row in rB.iterrows()
+                        if pd.notna(row.get("Opportunity ID 18 Digit"))
+                    }
+                except Exception:
+                    pass
+                _REF_ORDER_CACHE[ref_key] = (ra_order, rb_order)
 
         for s in prs.slides:
             t = title(s)
@@ -876,6 +894,8 @@ class PptxExportService:
 
         output = io.BytesIO()
         prs.save(output)
-        output.seek(0)
+        raw_bytes = output.getvalue()
         filename = f"Mobileum_Renewals_Daily_Update_{snap.snapshot_date.isoformat()}.pptx"
+        analytics_cache.set_export(self.db, "pptx", exp_key, raw_bytes, filename)
+        output.seek(0)
         return output, filename

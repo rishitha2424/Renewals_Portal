@@ -98,14 +98,8 @@ class V2ApprovalsService:
         if exclude_deleted_lost:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
-        q = (
-            self.db.query(Opportunity)
-            .filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.conditions
-            )
-        )
-        opps = q.all()
+        from backend.services.cache_service import analytics_cache
+        opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions)
         if not opps:
             return pd.DataFrame(), res
             
@@ -162,7 +156,19 @@ class V2ApprovalsService:
                 pass
         if not eff_target_date:
             eff_target_date = snap.snapshot_date
-            
+
+        from backend.services.cache_service import analytics_cache
+        dist_key = (
+            snap.id,
+            str(eff_compare or ""),
+            bool(exclude_deleted_lost),
+            eff_target_date.isoformat(),
+            analytics_cache.normalize_filter_key(filter_spec),
+        )
+        cached_dist = analytics_cache.get_response(self.db, "v2_approvals_dist", dist_key)
+        if cached_dist is not None:
+            return cached_dist
+
         df, res = self._get_opps_df(snap, filter_spec=filter_spec, exclude_deleted_lost=exclude_deleted_lost, target_date=eff_target_date)
         
         comp_snap = None
@@ -587,10 +593,8 @@ class V2ApprovalsService:
             
         other_types_excluded = None
         if res and res.effective_types is not None:
-            base_opps = self.db.query(Opportunity).filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.base_conditions
-            ).all()
+            from backend.services.cache_service import analytics_cache
+            base_opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.base_conditions)
             excluded_opps = [
                 o for o in base_opps
                 if ScopeService.extract_type_code(
@@ -622,7 +626,7 @@ class V2ApprovalsService:
                     ]
                 }
 
-        return {
+        dist_result = {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": eff_as_of or snap.snapshot_date.isoformat(),
             "compare_date": comp_snap.snapshot_date.isoformat() if comp_snap else None,
@@ -670,6 +674,8 @@ class V2ApprovalsService:
                 "reason_for_approval": r["reason_for_approval"] if "reason_for_approval" in r and pd.notna(r["reason_for_approval"]) else None
             } for _, r in pending_df.sort_values("forecast_acv_amount", ascending=False).iterrows()] if not pending_df.empty else []
         }
+        analytics_cache.set_response(self.db, "v2_approvals_dist", dist_key, dist_result)
+        return dist_result
 
     def get_deals(
         self,

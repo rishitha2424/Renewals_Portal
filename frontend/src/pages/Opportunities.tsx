@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
+import { acquireBodyScrollLock, releaseBodyScrollLock, registerOverlayCloser } from '@/utils/overlayManager'
 import {
   Search,
   X,
@@ -205,16 +206,20 @@ export default function Opportunities() {
 
   // Lock body scroll and ESC listener for selected row detail drawer
   useEffect(() => {
-    if (selectedRowData) {
-      document.body.style.overflow = 'hidden'
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') setSelectedRowData(null)
-      }
-      window.addEventListener('keydown', handleKeyDown)
-      return () => {
-        document.body.style.overflow = ''
-        window.removeEventListener('keydown', handleKeyDown)
-      }
+    if (!selectedRowData) {
+      releaseBodyScrollLock('opp-row-drawer')
+      return
+    }
+    acquireBodyScrollLock('opp-row-drawer')
+    const unregister = registerOverlayCloser('opp-row-drawer', () => setSelectedRowData(null))
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedRowData(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      unregister()
+      releaseBodyScrollLock('opp-row-drawer')
+      window.removeEventListener('keydown', handleKeyDown)
     }
   }, [selectedRowData])
   const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false)

@@ -127,31 +127,35 @@ class AnalyticsService:
         scope: str = "all",
         include_deleted_lost: bool = False,
         types: Optional[list[str]] = None,
-    ) -> list[Opportunity]:
+    ) -> list[Any]:
         from sqlalchemy import or_
         from backend.services.settings_service import SettingsService
-        q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snapshot.id)
+        from backend.services.cache_service import analytics_cache
+        conds: list = []
 
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
+            conds.append(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
 
         # Exclude Deleted & Lost unless explicitly requested
         if not include_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
+            conds.append(Opportunity.is_deleted_or_lost == False)
 
         # Filter by scope
         s = (scope or "renewals").lower()
         if s == "renewals":
-            q = q.filter(ScopeService.is_renewals())
+            conds.append(ScopeService.is_renewals())
         elif s == "current_quarter":
             cq = ScopeService.quarter_of(snapshot.snapshot_date)
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == cq)
+            conds.append(ScopeService.is_renewals())
+            conds.append(Opportunity.fiscal_period == cq)
         elif s.startswith("fy") and len(s) == 6 and s[2:].isdigit():
             y_str = s[2:]
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period.in_([f"Q{i}-{y_str}" for i in range(1, 5)]))
+            conds.append(ScopeService.is_renewals())
+            conds.append(Opportunity.fiscal_period.in_([f"Q{i}-{y_str}" for i in range(1, 5)]))
         elif re.match(r"^q[1-4]_\d{4}$", s):
             q_norm = s.replace("_", "-").upper()
-            q = q.filter(ScopeService.is_renewals(), Opportunity.fiscal_period == q_norm)
+            conds.append(ScopeService.is_renewals())
+            conds.append(Opportunity.fiscal_period == q_norm)
         elif s in ("all", "full"):
             pass
 
@@ -161,7 +165,6 @@ class AnalyticsService:
             if not any(t.lower() == "all" for t in types):
                 effective_types = [t.upper().strip() for t in types if t.strip()]
         else:
-            from backend.services.settings_service import SettingsService
             setting_types = SettingsService.get_included_types(self.db)
             if setting_types and not any(t.lower() == "all" for t in setting_types):
                 effective_types = setting_types
@@ -170,7 +173,7 @@ class AnalyticsService:
 
         if effective_types is not None:
             if len(effective_types) == 0:
-                q = q.filter(Opportunity.id == "no_match_type_filter")
+                return []
             else:
                 type_col = Opportunity.extra_attributes["Type"].as_string()
                 type_conds = []
@@ -180,9 +183,9 @@ class AnalyticsService:
                     else:
                         type_conds.append(or_(type_col == code, type_col.like(f"{code}-%"), type_col.like(f"{code} -%")))
                 if type_conds:
-                    q = q.filter(or_(*type_conds))
+                    conds.append(or_(*type_conds))
 
-        return q.all()
+        return analytics_cache.query_scoped_lite(self.db, snapshot.id, conds)
 
     def is_scope_available(self, snapshot_id: str, scope: str) -> bool:
         s = (scope or "renewals").lower()

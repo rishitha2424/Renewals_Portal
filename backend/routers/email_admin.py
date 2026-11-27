@@ -17,6 +17,7 @@ from backend.models.user import EmailOutbox
 from backend.services.context import UserContext, require_admin_context
 from backend.services.mail_service import MailService
 from backend.services.audit_service import log_audit_event
+from backend.services.schema_check import check_schema_health
 from backend.utils.time_utils import to_utc_iso
 
 log = logging.getLogger(__name__)
@@ -32,9 +33,14 @@ class TestEmailRequest(BaseModel):
 @router.get("/diagnostics")
 def get_email_diagnostics(
     ctx: UserContext = Depends(require_admin_context),
+    db: Session = Depends(get_db),
 ):
-    """Safe email transport diagnostics (admin only). Secrets are never returned."""
+    """Safe email transport and schema diagnostics (admin only). Secrets are never returned."""
     diag = MailService.get_diagnostics()
+    schema_info = check_schema_health(db.get_bind(), check_alembic=True)
+    diag["schema_status"] = schema_info
+    diag["needs_migration"] = schema_info.get("needs_migration", False)
+    diag["migration_message"] = schema_info.get("message", "ok")
     return diag
 
 

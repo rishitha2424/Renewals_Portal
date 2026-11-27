@@ -63,6 +63,9 @@ COMPARISON_SHEETS = [
 # Robust value parsing
 # ---------------------------------------------------------------------------
 _EXCEL_EPOCH = datetime(1899, 12, 30)
+_ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$")
+_DT_STRING_CACHE: dict[str, datetime | None] = {}
+_DT_CACHE_MAX = 16384
 
 
 def parse_excel_datetime(val) -> datetime | None:
@@ -71,55 +74,78 @@ def parse_excel_datetime(val) -> datetime | None:
     Any date serial at or below zero, or an empty cell, is treated as missing (None).
     Years below 1900 (such as 1899 from Excel serial 0) are treated as missing (None).
     Time-only values (e.g. datetime.time, '00:00:00') are treated as missing (None)."""
-    if val is None or pd.isna(val):
+    if val is None:
         return None
+    if isinstance(val, datetime):
+        return val if val.year >= 1900 else None
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return datetime(val.year, val.month, val.day) if val.year >= 1900 else None
     if isinstance(val, time):
-        return None
-    if isinstance(val, (int, float)):
-        if val <= 0:
-            return None
-        if 18000 <= val <= 73415:
-            dt = _EXCEL_EPOCH + timedelta(days=val)
-            return dt if dt.year >= 1900 else None
         return None
     if isinstance(val, pd.Timestamp):
         if pd.isna(val) or val.year < 1900:
             return None
         return val.to_pydatetime()
-    if isinstance(val, datetime):
-        return val if val.year >= 1900 else None
-    if isinstance(val, date):
-        return datetime(val.year, val.month, val.day) if val.year >= 1900 else None
-    s = str(val).strip()
+    if isinstance(val, (int, float)):
+        if pd.isna(val) or val <= 0:
+            return None
+        if 18000 <= val <= 73415:
+            dt = _EXCEL_EPOCH + timedelta(days=val)
+            return dt if dt.year >= 1900 else None
+        return None
+    if not isinstance(val, str):
+        if pd.isna(val):
+            return None
+        s = str(val).strip()
+    else:
+        s = val.strip()
     if not s or s.lower() in ("nan", "nat", "none", "null", "0", "0.0", "blank", "00:00:00"):
         return None
     if s.startswith("-"):
         return None
+
+    cached = _DT_STRING_CACHE.get(s, _MISSING_CACHE_SENTINEL := object())
+    if cached is not _MISSING_CACHE_SENTINEL:
+        return cached
+
+    parsed: datetime | None = None
+    # Fast path for standard ISO strings (avoids slow pd.to_datetime/dateutil on thousands of rows)
+    m_iso = _ISO_DATE_RE.match(s)
+    if m_iso:
+        try:
+            y, mo, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
+            if y >= 1900:
+                hh = int(m_iso.group(4)) if m_iso.group(4) else 0
+                mm = int(m_iso.group(5)) if m_iso.group(5) else 0
+                ss = int(m_iso.group(6)) if m_iso.group(6) else 0
+                parsed = datetime(y, mo, d, hh, mm, ss)
+        except ValueError:
+            parsed = None
     # Check for time-only strings (e.g. "00:00:00", "12:30", "14:15:30")
-    if re.fullmatch(r"^\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$", s):
-        return None
+    elif re.fullmatch(r"^\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$", s):
+        parsed = None
     # Excel serial number
-    if re.fullmatch(r"\d{1,6}(\.\d+)?", s):
+    elif re.fullmatch(r"\d{1,6}(\.\d+)?", s):
         try:
             n = float(s)
-            if n <= 0:
-                return None
             if 18000 <= n <= 73415:
                 dt = _EXCEL_EPOCH + timedelta(days=n)
-                return dt if dt.year >= 1900 else None
-            return None
+                parsed = dt if dt.year >= 1900 else None
         except Exception:
-            return None
-    try:
-        # Check if string has date separators or month names
-        if not re.search(r"[-/]|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", s, re.IGNORECASE):
-            return None
-        ts = pd.to_datetime(s, errors="coerce")
-        if pd.isna(ts) or ts.year < 1900:
-            return None
-        return ts.to_pydatetime()
-    except Exception:
-        return None
+            parsed = None
+    else:
+        try:
+            if re.search(r"[-/]|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", s, re.IGNORECASE):
+                ts = pd.to_datetime(s, errors="coerce")
+                if not pd.isna(ts) and ts.year >= 1900:
+                    parsed = ts.to_pydatetime()
+        except Exception:
+            parsed = None
+
+    if len(_DT_STRING_CACHE) >= _DT_CACHE_MAX:
+        _DT_STRING_CACHE.clear()
+    _DT_STRING_CACHE[s] = parsed
+    return parsed
 
 
 def parse_excel_date(val) -> date | None:

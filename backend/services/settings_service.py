@@ -76,6 +76,15 @@ class SettingsService:
 
     @staticmethod
     def get_setting(db: Session, key: str, default: str | None = None) -> str:
+        from backend.services.cache_service import analytics_cache
+        cached = analytics_cache.get_setting_value(db, key)
+        if cached is not analytics_cache._MISSING:
+            if cached is not None:
+                return cached
+            if default is not None:
+                return default
+            return DEFAULT_SETTINGS.get(key, {}).get("value", "")
+
         try:
             row = db.query(SystemSetting).filter(SystemSetting.key == key).first()
         except Exception:
@@ -87,8 +96,10 @@ class SettingsService:
                 log.warning("Could not query SystemSetting '%s': %s", key, e)
                 return default if default is not None else DEFAULT_SETTINGS.get(key, {}).get("value", "")
 
-        if row and row.value is not None:
-            return row.value
+        val = row.value if (row and row.value is not None) else None
+        analytics_cache.set_setting_value(db, key, val)
+        if val is not None:
+            return val
         if default is not None:
             return default
         return DEFAULT_SETTINGS.get(key, {}).get("value", "")
@@ -112,6 +123,11 @@ class SettingsService:
                 row.description = description
         db.commit()
         db.refresh(row)
+        try:
+            from backend.services.cache_service import analytics_cache
+            analytics_cache.invalidate_settings()
+        except Exception:
+            pass
         return row
 
     @staticmethod

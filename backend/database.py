@@ -2,7 +2,7 @@
 SQLAlchemy engine + session factory (synchronous).
 Import `get_db` in routers for dependency injection.
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from backend.config import settings
@@ -15,12 +15,33 @@ engine_kwargs = {
     "pool_pre_ping": True,
 }
 if is_sqlite:
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine_kwargs["connect_args"] = {
+        "check_same_thread": False,
+        "timeout": max(1.0, settings.SQLITE_BUSY_TIMEOUT_MS / 1000.0),
+    }
 else:
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_size"] = settings.DB_POOL_SIZE
+    engine_kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+    engine_kwargs["pool_timeout"] = settings.DB_POOL_TIMEOUT
+    engine_kwargs["pool_recycle"] = settings.DB_POOL_RECYCLE
 
 engine = create_engine(db_url, **engine_kwargs)
+
+if is_sqlite and not db_url.endswith(":memory:"):
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute(f"PRAGMA busy_timeout = {int(settings.SQLITE_BUSY_TIMEOUT_MS)}")
+            req_mode = (settings.SQLITE_JOURNAL_MODE or "").strip().upper()
+            if req_mode in ("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"):
+                cursor.execute(f"PRAGMA journal_mode = {req_mode}")
+                if req_mode == "WAL":
+                    cursor.execute("PRAGMA synchronous = NORMAL")
+        except Exception:
+            pass
+        finally:
+            cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

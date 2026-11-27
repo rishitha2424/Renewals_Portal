@@ -29,9 +29,16 @@ def upgrade() -> None:
     is_pg = conn.dialect.name == "postgresql"
     false_default = sa.text("false") if is_pg else sa.text("0")
 
-    # 1. deal_comments columns
+    # 1. deal_comments columns (including batch_id / is_deleted if earlier migration omitted them)
     if "deal_comments" in tables:
         cols = {c["name"] for c in inspector.get_columns("deal_comments")}
+        if "batch_id" not in cols:
+            op.add_column("deal_comments", sa.Column("batch_id", sa.String(64), nullable=True))
+        if "is_deleted" not in cols:
+            op.add_column(
+                "deal_comments",
+                sa.Column("is_deleted", sa.Boolean(), server_default=false_default, nullable=False),
+            )
         if "edited_at" not in cols:
             op.add_column("deal_comments", sa.Column("edited_at", sa.DateTime(), nullable=True))
         if "deleted_at" not in cols:
@@ -40,6 +47,16 @@ def upgrade() -> None:
             op.add_column("deal_comments", sa.Column("deleted_by", sa.String(128), nullable=True))
         if "deleted_by_name" not in cols:
             op.add_column("deal_comments", sa.Column("deleted_by_name", sa.String(255), nullable=True))
+
+    # 1b. users SSO columns if missing
+    if "users" in tables:
+        u_cols = {c["name"] for c in inspector.get_columns("users")}
+        if "last_sso_login" not in u_cols:
+            op.add_column("users", sa.Column("last_sso_login", sa.DateTime(), nullable=True))
+        if "sso_provider" not in u_cols:
+            op.add_column("users", sa.Column("sso_provider", sa.String(64), nullable=True))
+        if "sso_subject" not in u_cols:
+            op.add_column("users", sa.Column("sso_subject", sa.String(256), nullable=True))
 
     # 2. deal_messages columns
     if "deal_messages" in tables:

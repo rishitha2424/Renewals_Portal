@@ -133,14 +133,8 @@ class V2RegionsService:
         if exclude_deleted:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
-        q = (
-            self.db.query(Opportunity)
-            .filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.conditions
-            )
-        )
-        return q.all(), res
+        from backend.services.cache_service import analytics_cache
+        return analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions), res
 
     def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
         opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
@@ -186,6 +180,12 @@ class V2RegionsService:
                 pass
         if not eff_as_of_date:
             eff_as_of_date = snap.snapshot_date
+
+        from backend.services.cache_service import analytics_cache
+        reg_key = (snap.id, eff_as_of_date.isoformat(), analytics_cache.normalize_filter_key(fs))
+        cached_reg = analytics_cache.get_response(self.db, "v2_regions_summary", reg_key)
+        if cached_reg is not None:
+            return cached_reg
 
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
@@ -359,10 +359,7 @@ class V2RegionsService:
 
         other_types_excluded = None
         if res.effective_types is not None:
-            base_opps = self.db.query(Opportunity).filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.base_conditions
-            ).all()
+            base_opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.base_conditions)
             excluded_opps = [
                 o for o in base_opps
                 if ScopeService.extract_type_code(
@@ -395,7 +392,7 @@ class V2RegionsService:
                     ]
                 }
 
-        return {
+        reg_payload = {
             "snapshot_date": snap.snapshot_date.isoformat(),
             "requested_as_of": fs.as_of or snap.snapshot_date.isoformat(),
             "yesterday_date": y_snap.snapshot_date.isoformat() if y_snap else None,
@@ -423,6 +420,8 @@ class V2RegionsService:
             "unmapped": unmapped,
             "other_types_excluded": other_types_excluded,
         }
+        analytics_cache.set_response(self.db, "v2_regions_summary", reg_key, reg_payload)
+        return reg_payload
 
     def get_region_summary(
         self,

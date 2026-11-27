@@ -51,8 +51,8 @@ export default function CommentsLog() {
   const isMgmtOrAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management'
   const isKam = currentUser?.role === 'kam'
 
-  // Page state
-  const [tab, setTab] = useState<'my' | 'all'>('my')
+  // Page state (KAM defaults to comments on own deals; Admin/Mgmt default to My Comments)
+  const [tab, setTab] = useState<'my' | 'all'>(currentUser?.role === 'kam' ? 'all' : 'my')
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(20)
   const [search, setSearch] = useState<string>('')
@@ -129,7 +129,7 @@ export default function CommentsLog() {
   }
 
   // Fetch comments
-  const { data, isLoading, isError, refetch } = useQuery<CommentsLogResponse>({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery<CommentsLogResponse>({
     queryKey: [
       'comments-log',
       tab,
@@ -146,23 +146,31 @@ export default function CommentsLog() {
       limitToPeriod ? activeSnapshotId : null,
       currentUser?.id,
     ],
-    queryFn: () =>
-      getCommentsLog({
-        page,
-        page_size: pageSize,
-        tab,
-        search: search.trim() || undefined,
-        visibility: visibility !== 'all' ? visibility : undefined,
-        author: tab === 'all' && authorFilter.trim() ? authorFilter.trim() : undefined,
-        author_role: tab === 'all' && authorRoleFilter !== 'all' ? authorRoleFilter : undefined,
-        start_date: startDate || undefined,
-        end_date: endDate || undefined,
-        limit_to_period: limitToPeriod,
-        period: globalFilters.period,
-        as_of: activeSnapshotId,
-      }),
+    queryFn: ({ signal }) =>
+      getCommentsLog(
+        {
+          page,
+          page_size: pageSize,
+          tab,
+          search: search.trim() || undefined,
+          visibility: visibility !== 'all' ? visibility : undefined,
+          author: tab === 'all' && authorFilter.trim() ? authorFilter.trim() : undefined,
+          author_role: tab === 'all' && authorRoleFilter !== 'all' ? authorRoleFilter : undefined,
+          start_date: startDate || undefined,
+          end_date: endDate || undefined,
+          limit_to_period: limitToPeriod,
+          period: globalFilters.period,
+          as_of: activeSnapshotId,
+        },
+        signal
+      ),
     placeholderData: keepPreviousData,
   })
+
+  const friendlyError =
+    (error as any)?.response?.data?.detail ||
+    (error as any)?.message ||
+    'Could not load comments log.'
 
   const comments = data?.items || []
   const total = data?.total || 0
@@ -229,43 +237,41 @@ export default function CommentsLog() {
         </div>
       </div>
 
-      {/* 2. Role Tab Selector (Admin & Management) */}
-      {isMgmtOrAdmin && (
-        <div className="flex items-center gap-2 border-b border-[var(--border)]">
-          <button
-            type="button"
-            onClick={() => {
-              setTab('my')
-              setPage(1)
-            }}
-            className={clsx(
-              'pb-3 px-4 text-xs font-bold transition-colors relative cursor-pointer',
-              tab === 'my'
-                ? 'text-[#00A3AD] border-b-2 border-[#00A3AD]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border-b-2 border-transparent'
-            )}
-            id="tab-comments-my"
-          >
-            My Comments
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('all')
-              setPage(1)
-            }}
-            className={clsx(
-              'pb-3 px-4 text-xs font-bold transition-colors relative cursor-pointer',
-              tab === 'all'
-                ? 'text-[#00A3AD] border-b-2 border-[#00A3AD]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border-b-2 border-transparent'
-            )}
-            id="tab-comments-all"
-          >
-            {isAdmin ? 'All Comments (Admin View)' : 'All Comments'}
-          </button>
-        </div>
-      )}
+      {/* 2. Role Tab Selector */}
+      <div className="flex items-center gap-2 border-b border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => {
+            setTab('my')
+            setPage(1)
+          }}
+          className={clsx(
+            'pb-3 px-4 text-xs font-bold transition-colors relative cursor-pointer',
+            tab === 'my'
+              ? 'text-[#00A3AD] border-b-2 border-[#00A3AD]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border-b-2 border-transparent'
+          )}
+          id="tab-comments-my"
+        >
+          My Comments
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTab('all')
+            setPage(1)
+          }}
+          className={clsx(
+            'pb-3 px-4 text-xs font-bold transition-colors relative cursor-pointer',
+            tab === 'all'
+              ? 'text-[#00A3AD] border-b-2 border-[#00A3AD]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border-b-2 border-transparent'
+          )}
+          id="tab-comments-all"
+        >
+          {isAdmin ? 'All Comments (Admin View)' : isKam ? "Comments on My Deals" : 'All Comments'}
+        </button>
+      </div>
 
       {/* 3. Filter Toolbar */}
       <Card padding="md" className="space-y-3 bg-[var(--bg-card)] shadow-xs">
@@ -388,8 +394,24 @@ export default function CommentsLog() {
             <span>Loading comments log...</span>
           </div>
         ) : isError ? (
-          <div className="p-12 text-center text-xs text-rose-500">
-            Failed to load comments log. Please try again.
+          <div className="p-12 text-center text-xs space-y-3">
+            <AlertCircle className="w-7 h-7 text-rose-500 mx-auto" />
+            <div className="font-semibold text-sm text-[var(--text-primary)]">
+              Unable to load comments log
+            </div>
+            <p className="text-rose-600 dark:text-rose-400 max-w-md mx-auto">
+              {String(friendlyError)}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00A3AD] hover:bg-[#008f98] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
+              id="comments-log-retry-btn"
+            >
+              {isFetching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              <span>{isFetching ? 'Retrying...' : 'Retry'}</span>
+            </button>
           </div>
         ) : comments.length === 0 ? (
           <div className="p-16 text-center text-xs text-[var(--text-muted)] space-y-2">

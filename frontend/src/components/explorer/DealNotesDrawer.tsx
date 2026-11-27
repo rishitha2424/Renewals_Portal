@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
+import { acquireBodyScrollLock, releaseBodyScrollLock, registerOverlayCloser } from '@/utils/overlayManager'
 import { useQuery } from '@tanstack/react-query'
 import {
   X,
@@ -97,17 +98,21 @@ export const DealNotesDrawer: React.FC<DealNotesDrawerProps> = ({
     }
   }, [deal, columns, annotationsMap])
 
-  // Lock body scroll when drawer is open
+  const lockId = useId()
+
+  // Lock body scroll & register closer when drawer is open
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    if (!isOpen) {
+      releaseBodyScrollLock(lockId)
+      return
     }
+    acquireBodyScrollLock(lockId)
+    const unregister = registerOverlayCloser(lockId, onClose)
     return () => {
-      document.body.style.overflow = ''
+      unregister()
+      releaseBodyScrollLock(lockId)
     }
-  }, [isOpen])
+  }, [isOpen, lockId, onClose])
 
   // Close on Escape key
   useEffect(() => {

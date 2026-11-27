@@ -164,14 +164,8 @@ class V2OverviewService:
         if exclude_deleted:
             fs.include_deleted_lost = False
         res = ScopeService.resolve(fs, snapshot=snap, as_of_date=eff_date, db=self.db)
-        q = (
-            self.db.query(Opportunity)
-            .filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.conditions
-            )
-        )
-        return q.all(), res
+        from backend.services.cache_service import analytics_cache
+        return analytics_cache.query_scoped_lite(self.db, snap.id, res.conditions), res
 
     def _q4_opps(self, snap: UploadSnapshot, exclude_deleted: bool = False, target_date = None) -> list[Opportunity]:
         opps, _ = self._scoped_opps(snap, exclude_deleted=exclude_deleted, target_date=target_date)
@@ -524,10 +518,10 @@ class V2OverviewService:
         is_all_types = effective_types is None or any(t.lower() == "all" for t in effective_types)
 
         from backend.services.settings_service import SettingsService
-        opps_q = self.db.query(Opportunity).filter(Opportunity.snapshot_id == snap.id)
+        from backend.services.cache_service import analytics_cache
+        opps, _ = analytics_cache.get_snapshot_lite_data(self.db, snap.id)
         if SettingsService.get_exclude_reconciliation_entry(self.db):
-            opps_q = opps_q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
-        opps = opps_q.all()
+            opps = [o for o in opps if not bool(o.is_reconciliation_entry)]
         prop_pending_opps = []
         jan1_opps = []
 
@@ -663,6 +657,7 @@ class V2OverviewService:
         - Snapshot metadata (date, files, uploaded_at)
         """
         from backend.services.scopes import FilterSpec
+        from backend.services.cache_service import analytics_cache
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if as_of:
             fs.as_of = as_of
@@ -682,6 +677,11 @@ class V2OverviewService:
         if not eff_as_of_date:
             eff_as_of_date = snap.snapshot_date
 
+        ov_cache_key = (snap.id, eff_as_of_date.isoformat(), analytics_cache.normalize_filter_key(fs))
+        cached_ov = analytics_cache.get_response(self.db, "v2_overview_summary", ov_cache_key)
+        if cached_ov is not None:
+            return cached_ov
+
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         df = _opps_to_df(opps)
 
@@ -695,10 +695,7 @@ class V2OverviewService:
         # ── Other types excluded note ─────────────────────────────────────────
         other_types_excluded = None
         if res.effective_types is not None:
-            base_opps = self.db.query(Opportunity).filter(
-                Opportunity.snapshot_id == snap.id,
-                *res.base_conditions
-            ).all()
+            base_opps = analytics_cache.query_scoped_lite(self.db, snap.id, res.base_conditions)
             excluded_opps = [
                 o for o in base_opps
                 if ScopeService.extract_type_code(
@@ -718,7 +715,7 @@ class V2OverviewService:
         # ── Delayed / Slippage summary tying directly to Delayed page ──────────
         from backend.services.v2_delayed_service import V2DelayedService
         delayed_svc = V2DelayedService(self.db)
-        del_sum = delayed_svc.get_summary(as_of=fs.as_of or snap.id, filter_spec=fs)
+        del_sum = delayed_svc.get_summary(as_of=fs.as_of or snap.id, filter_spec=fs, include_trend=False)
 
         del_overall = del_sum.get("total", {"count": 0, "acv": 0.0})
         del_slipped = del_sum.get("slipped", {"count": 0, "acv": 0.0})
@@ -912,13 +909,12 @@ class V2OverviewService:
                 items.append(item_dict)
 
         # 1. Past close date deals (overdue renewals across snapshot)
-        all_opps_q_stmt = self.db.query(Opportunity).filter(
-            Opportunity.snapshot_id == snap.id,
-            Opportunity.sales_type == "Renewals",
-        )
-        if ScopeService._is_exclude_reconciliation_enabled(self.db):
-            all_opps_q_stmt = all_opps_q_stmt.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
-        all_opps_q = all_opps_q_stmt.all()
+        all_snap_rows, _ = analytics_cache.get_snapshot_lite_data(self.db, snap.id)
+        exclude_recon_flag = ScopeService._is_exclude_reconciliation_enabled(self.db)
+        all_opps_q = [
+            o for o in all_snap_rows
+            if o.sales_type == "Renewals" and (not exclude_recon_flag or not bool(o.is_reconciliation_entry))
+        ]
         all_df = _opps_to_df(all_opps_q)
         overdue_df = pd.DataFrame()
         if not all_df.empty and "close_date" in all_df.columns:
@@ -1161,7 +1157,7 @@ class V2OverviewService:
         if isinstance(slip_sec, dict) and slip_sec.get("top_deal"):
             slippage_data["top_deal"] = slip_sec["top_deal"]
 
-        return {
+        result_summary = {
             "snapshot_date":    snap.snapshot_date.isoformat(),
             "requested_as_of":  fs.as_of or snap.snapshot_date.isoformat(),
             "snapshot_id":      snap.id,
@@ -1216,6 +1212,8 @@ class V2OverviewService:
                 "failed_items": [c.metric_name for c in snap.checks if c.status == "fail"],
             },
         }
+        analytics_cache.set_response(self.db, "v2_overview_summary", ov_cache_key, result_summary)
+        return result_summary
 
     def get_movements(
         self,
@@ -1229,6 +1227,7 @@ class V2OverviewService:
         compare: 'yesterday' | 'last_week'
         """
         from backend.services.scopes import FilterSpec
+        from backend.services.cache_service import analytics_cache
         fs = filter_spec.model_copy() if filter_spec else FilterSpec()
         if compare:
             fs.compare = compare
@@ -1248,13 +1247,18 @@ class V2OverviewService:
         if not eff_as_of_date:
             eff_as_of_date = snap.snapshot_date
 
+        mov_key = (snap.id, eff_as_of_date.isoformat(), analytics_cache.normalize_filter_key(fs))
+        cached_mov = analytics_cache.get_response(self.db, "v2_overview_movements", mov_key)
+        if cached_mov is not None:
+            return cached_mov
+
         opps, res = self._scoped_opps(snap, filter_spec=fs, target_date=eff_as_of_date)
         today_df = _opps_to_df(opps)
 
         comp = fs.compare if fs.compare in ("yesterday", "last_week") else "yesterday"
         prev_snap = self._yesterday_snap(snap) if comp == "yesterday" else self._lastweek_snap(snap)
         if prev_snap is None:
-            return {
+            res_empty = {
                 "compare": comp,
                 "compare_date": None,
                 "data_slice": res.data_slice,
@@ -1264,30 +1268,34 @@ class V2OverviewService:
                 "slipped_later_quarter": {"count": 0, "acv": 0.0},
                 "slipped_earlier": {"count": 0, "acv": 0.0},
             }
+            analytics_cache.set_response(self.db, "v2_overview_movements", mov_key, res_empty)
+            return res_empty
 
         prev_opps, _ = self._scoped_opps(prev_snap, filter_spec=fs, target_date=eff_as_of_date)
         prev_df   = _opps_to_df(prev_opps)
 
         # Get ALL renewals opps for today to see where prev_df deals went
-        q = self.db.query(Opportunity).filter(
-            Opportunity.snapshot_id == snap.id,
-            ScopeService.is_renewals()
-        )
-        if ScopeService._is_exclude_reconciliation_enabled(self.db):
-            q = q.filter(func.coalesce(Opportunity.is_reconciliation_entry, False) == False)
-        if not fs.include_deleted_lost:
-            q = q.filter(Opportunity.is_deleted_or_lost == False)
-        today_all_df = _opps_to_df(q.all())
+        snap_rows, _ = analytics_cache.get_snapshot_lite_data(self.db, snap.id)
+        exclude_recon = ScopeService._is_exclude_reconciliation_enabled(self.db)
+        today_all_opps = [
+            o for o in snap_rows
+            if o.sales_type == "Renewals"
+            and (not exclude_recon or not bool(o.is_reconciliation_entry))
+            and (fs.include_deleted_lost or not bool(o.is_deleted_or_lost))
+        ]
+        today_all_df = _opps_to_df(today_all_opps)
 
         target_fp = res.resolved_quarter
         moves = self._movements(today_df, prev_df, today_all_df, target_fp)
-        return {
+        res_moves = {
             "compare": comp,
             "compare_date": prev_snap.snapshot_date.isoformat(),
             "data_slice": res.data_slice,
             "filters_applied": res.filters_applied,
             **moves,
         }
+        analytics_cache.set_response(self.db, "v2_overview_movements", mov_key, res_moves)
+        return res_moves
 
     def get_regional_breakdown(
         self,
@@ -1303,6 +1311,12 @@ class V2OverviewService:
         snap = self._active_snap(fs.as_of)
         if snap is None:
             return {"error": "no_snapshot"}
+
+        from backend.services.cache_service import analytics_cache
+        reg_key = (snap.id, analytics_cache.normalize_filter_key(fs))
+        cached_reg = analytics_cache.get_response(self.db, "v2_overview_regional", reg_key)
+        if cached_reg is not None:
+            return cached_reg
 
         opps, res = self._scoped_opps(snap, filter_spec=fs)
         df = _opps_to_df(opps)
@@ -1401,7 +1415,7 @@ class V2OverviewService:
         regional_sum = sum(r["total_acv"] for r in trend_rows)
         check_passes = abs(regional_sum - total_row["total_acv"]) < 0.01
 
-        return {
+        reg_result = {
             "data_slice": res.data_slice,
             "filters_applied": res.filters_applied,
             "proposal_confirmation": prop_rows,
@@ -1412,6 +1426,8 @@ class V2OverviewService:
             "total_acv_check_passes": check_passes,
             "other_count": int((df["canonical_region"] == "Other").sum()) if not df.empty and "canonical_region" in df.columns else 0,
         }
+        analytics_cache.set_response(self.db, "v2_overview_regional", reg_key, reg_result)
+        return reg_result
 
     def get_deals(
         self,
