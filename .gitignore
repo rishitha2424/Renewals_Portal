@@ -28,6 +28,10 @@ frontend/.vite/
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+renewals.db-wal
+renewals.db-shm
 
 # Environment / Secrets
 .env

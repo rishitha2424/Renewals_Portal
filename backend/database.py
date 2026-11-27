@@ -33,6 +33,11 @@ if is_sqlite and not db_url.endswith(":memory:"):
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute(f"PRAGMA busy_timeout = {int(settings.SQLITE_BUSY_TIMEOUT_MS)}")
+            req_mode = (settings.SQLITE_JOURNAL_MODE or "").strip().upper()
+            if req_mode in ("DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"):
+                cursor.execute(f"PRAGMA journal_mode = {req_mode}")
+                if req_mode == "WAL":
+                    cursor.execute("PRAGMA synchronous = NORMAL")
         except Exception:
             pass
         finally:

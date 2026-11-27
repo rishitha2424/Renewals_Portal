@@ -38,7 +38,13 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 15
     DB_POOL_RECYCLE: int = 1800
     SQLITE_BUSY_TIMEOUT_MS: int = 10000
+    # Optional SQLite journal mode (e.g. "WAL" or "DELETE"). None leaves existing DB mode untouched.
+    SQLITE_JOURNAL_MODE: Optional[str] = None
     SLOW_REQUEST_LOG_SECONDS: float = 2.0
+    # Snapshot-scoped analytics & export cache settings
+    ANALYTICS_CACHE_TTL_SECONDS: int = 300
+    ANALYTICS_CACHE_MAX_ENTRIES: int = 256
+    EXPORT_CACHE_MAX_ENTRIES: int = 24
 
     @property
     def sqlalchemy_database_url(self) -> str:
