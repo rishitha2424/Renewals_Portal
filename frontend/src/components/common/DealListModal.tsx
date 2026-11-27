@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { acquireBodyScrollLock, releaseBodyScrollLock, registerOverlayCloser } from '@/utils/overlayManager'
 import { X, Search, ArrowUpDown, ArrowUp, ArrowDown, Download, FilterX, MessageSquare } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate, getForecastCategoryLabel, getApprovalStatusLabel } from '@/utils/format'
 import { FORECAST_COLORS } from '@/design/tokens'
@@ -431,18 +431,25 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
     activeChips.push({ label: 'Deal Size', value: `< ${formatCurrency((initialFilters as any).max_acv)}` })
   }
 
+  const lockId = useId()
+  useEffect(() => {
+    acquireBodyScrollLock(lockId)
+    const unregister = registerOverlayCloser(lockId, onClose)
+    return () => {
+      unregister()
+      releaseBodyScrollLock(lockId)
+    }
+  }, [lockId, onClose])
+
   if (typeof document === 'undefined') return null
 
   return createPortal(
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    <>
+      <div
         className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60"
         onClick={onClose}
       >
-        <motion.div
-          initial={{ scale: 0.97, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 12 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
+        <div
           style={{ width: 'min(1100px, 92vw)', maxWidth: 'min(1100px, 92vw)' }}
           className="w-full max-h-[85vh] flex flex-col bg-[var(--bg-primary)] rounded-2xl shadow-xl overflow-hidden border border-[var(--border)]"
           onClick={(e) => e.stopPropagation()}
@@ -839,8 +846,8 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
               </div>
             </div>
           )}
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
 
       {/* Comment Panel */}
       <DealCommentPanel
@@ -862,7 +869,7 @@ export default function DealListModal({ title, deals, expectedCount, isLoading, 
           setSelectedIds(new Set())
         }}
       />
-    </AnimatePresence>,
+    </>,
     document.body
   )
 }

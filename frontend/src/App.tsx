@@ -28,6 +28,18 @@ import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
 import { useAdminSession } from '@/hooks/useAdminSession'
 import { computeScale, applyScale, getSavedDisplaySize } from '@/config/layoutScale'
+import { resetAllOverlays } from '@/utils/overlayManager'
+
+function OverlayRouteReset() {
+  const location = useLocation()
+  useEffect(() => {
+    resetAllOverlays()
+    const st = useAppStore.getState()
+    if (st.selectedOppId) st.setSelectedOppId(null)
+    if (st.commandPaletteOpen) st.setCommandPaletteOpen(false)
+  }, [location.pathname])
+  return null
+}
 
 function ProtectedRoute({ children }: { children?: React.ReactNode }) {
   const { isAuthenticated, isInitializing } = useAuthStore()
@@ -139,6 +151,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <OverlayRouteReset />
       <Toaster
         position="top-right"
         toastOptions={{

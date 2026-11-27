@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Copy } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import { copyToClipboard } from '@/utils/clipboard'
+import { resetAllOverlays } from '@/utils/overlayManager'
 
 interface Props {
   children?: ReactNode
@@ -28,6 +29,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    resetAllOverlays()
     console.error('[ErrorBoundary caught error]:', error)
     if (error?.stack) {
       console.error('[ErrorBoundary stack]:', error.stack)

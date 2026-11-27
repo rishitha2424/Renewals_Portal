@@ -9,6 +9,7 @@ import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import FloatingPageControls from '@/components/common/FloatingPageControls'
 import { useAppStore } from '@/store/appStore'
+import { useConnectionStore } from '@/store/connectionStore'
 import { formatDate } from '@/utils/format'
 import { useEffect, useState, useRef } from 'react'
 
@@ -29,6 +30,8 @@ export default function Shell() {
   const setOpen = useAppStore(s => s.setCommandPaletteOpen)
   const selectedOppId = useAppStore(s => s.selectedOppId)
   const setSelectedOppId = useAppStore(s => s.setSelectedOppId)
+  const slowActive = useConnectionStore(s => s.slowActive)
+  const retryingMessage = useConnectionStore(s => s.retryingMessage)
 
   const { data: dbHealth } = useQuery({
     queryKey: ['dbHealth'],
@@ -58,11 +61,23 @@ export default function Shell() {
     <div className="flex h-full w-full overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {dbHealth?.status === 'error' && (
+        {(slowActive || retryingMessage) && (
+          <div
+            role="status"
+            className="bg-amber-500 text-slate-950 px-4 py-1.5 text-xs font-semibold flex items-center justify-center gap-2 border-b border-amber-600 z-40 pointer-events-none"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{retryingMessage || 'Connection is slow, retrying...'}</span>
+          </div>
+        )}
+        {(dbHealth?.status === 'error' || dbHealth?.needs_migration) && (
           <div className="bg-rose-600 text-white px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-rose-700 z-50 shadow-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             <span>
-              Database Warning ({dbHealth?.dialect || 'unknown'}): {dbHealth?.error || `Schema revision (${dbHealth?.alembic_revision ?? 'none'}) is behind Alembic head (${dbHealth?.alembic_head ?? 'unknown'})`}
+              Database Warning ({dbHealth?.dialect || 'unknown'}):{' '}
+              {dbHealth?.needs_migration
+                ? 'Database needs migration: run alembic upgrade head'
+                : dbHealth?.error || `Schema revision (${dbHealth?.alembic_revision ?? 'none'}) is behind Alembic head (${dbHealth?.alembic_head ?? 'unknown'})`}
             </span>
           </div>
         )}

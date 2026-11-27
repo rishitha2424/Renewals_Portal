@@ -17,6 +17,7 @@ import { getNotifications, markNotificationRead, markAllNotificationsRead, Notif
 import { formatDateTime } from '@/utils/format'
 import { useAppStore } from '@/store/appStore'
 import { useAuthStore } from '@/store/authStore'
+import { POLL_CONFIG, usePageVisible, getPollingInterval } from '@/config/polling'
 
 interface NotificationPanelProps {
   onSelectDealId?: (dealId: string) => void
@@ -29,12 +30,16 @@ export default function NotificationPanel({ onSelectDealId }: NotificationPanelP
   const panelRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const isPageVisible = usePageVisible()
 
-  // Polling notifications every 30 seconds
+  // Adaptive polling: pauses when tab hidden, backs off on error, aborts on unmount
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', activeTab],
-    queryFn: () => getNotifications(activeTab),
-    refetchInterval: 30_000,
+    queryFn: ({ signal }) => getNotifications(activeTab, 50, signal),
+    refetchInterval: (query) =>
+      getPollingInterval(POLL_CONFIG.NOTIFICATIONS_MS, isPageVisible, query.state.fetchFailureCount),
+    refetchIntervalInBackground: false,
+    staleTime: 25_000,
   })
 
   const notifications = data?.notifications || []

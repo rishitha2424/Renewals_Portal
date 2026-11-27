@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
+import { acquireBodyScrollLock, releaseBodyScrollLock, registerOverlayCloser } from '@/utils/overlayManager'
 
 interface DrawerProps {
   open?: boolean
@@ -33,6 +34,7 @@ export function Drawer({
 }: DrawerProps) {
   const isDrawerOpen = open ?? isOpen ?? false
   const bodyRef = useRef<HTMLDivElement>(null)
+  const lockId = useId()
 
   useEffect(() => {
     if (isDrawerOpen && bodyRef.current) {
@@ -49,17 +51,19 @@ export function Drawer({
 
   const effectiveWidth = width || sizeWidthMap[size] || 'max-w-md'
 
-  // Lock body scroll when open
+  // Lock body scroll & register closer when open (ref-counted, never leaks overflow/pointer lock)
   useEffect(() => {
-    if (isDrawerOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    if (!isDrawerOpen) {
+      releaseBodyScrollLock(lockId)
+      return
     }
+    acquireBodyScrollLock(lockId)
+    const unregister = registerOverlayCloser(lockId, onClose)
     return () => {
-      document.body.style.overflow = ''
+      unregister()
+      releaseBodyScrollLock(lockId)
     }
-  }, [isDrawerOpen])
+  }, [isDrawerOpen, lockId, onClose])
 
   // ESC key to close
   useEffect(() => {
@@ -72,34 +76,27 @@ export function Drawer({
 
   const slideX = position === 'right' ? '100%' : '-100%'
 
-  const content = (
-    <AnimatePresence>
-      {isDrawerOpen && (
-        <div className="fixed inset-0 z-[999] overflow-hidden flex">
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.14 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
-          />
+  const content = isDrawerOpen ? (
+    <div className="fixed inset-0 z-[999] overflow-hidden flex">
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+      />
 
-          {/* Drawer Panel */}
-          <motion.div
-            initial={{ x: slideX }}
-            animate={{ x: 0 }}
-            exit={{ x: slideX }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-            style={{ width: 'min(960px, 94vw)', maxWidth: 'min(960px, 94vw)' }}
-            className={clsx(
-              'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full overflow-hidden',
-              'max-sm:max-w-full max-sm:rounded-none',
-              position === 'right' ? 'sm:rounded-l-2xl' : 'sm:rounded-r-2xl',
-              position === 'right' ? 'ml-auto' : 'mr-auto'
-            )}
-          >
+      {/* Drawer Panel */}
+      <motion.div
+        initial={{ x: slideX }}
+        animate={{ x: 0 }}
+        transition={{ duration: 0.14, ease: 'easeOut' }}
+        style={{ width: 'min(960px, 94vw)', maxWidth: 'min(960px, 94vw)' }}
+        className={clsx(
+          'relative z-10 w-full bg-[var(--bg-card)] border-l border-[var(--border)] shadow-2xl flex flex-col h-full overflow-hidden',
+          'max-sm:max-w-full max-sm:rounded-none',
+          position === 'right' ? 'sm:rounded-l-2xl' : 'sm:rounded-r-2xl',
+          position === 'right' ? 'ml-auto' : 'mr-auto'
+        )}
+      >
             {/* Fixed Header with prominent title, subtitle, and close button */}
             <div
               className={clsx(
@@ -142,9 +139,7 @@ export function Drawer({
             )}
           </motion.div>
         </div>
-      )}
-    </AnimatePresence>
-  )
+  ) : null
 
   if (typeof document === 'undefined') return null
   return createPortal(content, document.body)

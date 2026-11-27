@@ -41,6 +41,7 @@ import {
 } from '@/api/client'
 import { formatCurrency, formatDate, formatDateTime } from '@/utils/format'
 import { useAuthStore } from '@/store/authStore'
+import { POLL_CONFIG, usePageVisible, getPollingInterval } from '@/config/polling'
 import OpportunityDrawer from '@/components/overview/OpportunityDrawer'
 import RecipientPicker from '@/components/common/RecipientPicker'
 import { showToast } from '@/components/ui/Toast'
@@ -77,19 +78,22 @@ export default function MessagesHub() {
   const [historyItems, setHistoryItems] = useState<CommentMessageHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [expandedLogIds, setExpandedLogIds] = useState<Record<string, boolean>>({})
+  const isPageVisible = usePageVisible()
 
   const { data: emailLogData, isLoading: isEmailLogLoading, refetch: refetchEmailLog } = useQuery({
     queryKey: ['email-log'],
-    queryFn: () => getEmailLog(150),
+    queryFn: ({ signal }) => getEmailLog(150, signal),
     enabled: hubTab === 'email_log',
   })
 
   const { data: threadsData, isLoading: isThreadsLoading } = useQuery({
     queryKey: ['message-threads'],
-    queryFn: async () => {
-      return await getMessageThreads()
+    queryFn: async ({ signal }) => {
+      return await getMessageThreads({}, signal)
     },
-    refetchInterval: 10000,
+    refetchInterval: (query) =>
+      getPollingInterval(POLL_CONFIG.THREADS_MS, isPageVisible, query.state.fetchFailureCount),
+    refetchIntervalInBackground: false,
   })
 
   const rawThreads = threadsData?.threads || []
@@ -103,12 +107,16 @@ export default function MessagesHub() {
 
   const { data: activeThreadData, isLoading: isActiveMessagesLoading } = useQuery({
     queryKey: ['deal-messages', activeOppId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!activeOppId) return null
-      return await getDealMessages(activeOppId)
+      return await getDealMessages(activeOppId, signal)
     },
     enabled: Boolean(activeOppId),
-    refetchInterval: 5000,
+    refetchInterval: (query) =>
+      activeOppId
+        ? getPollingInterval(POLL_CONFIG.ACTIVE_THREAD_MS, isPageVisible, query.state.fetchFailureCount)
+        : false,
+    refetchIntervalInBackground: false,
   })
 
   const messages = activeThreadData?.messages || []
